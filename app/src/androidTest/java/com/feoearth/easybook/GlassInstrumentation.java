@@ -20,7 +20,7 @@ public class GlassInstrumentation extends Instrumentation {
     private void launch() throws Exception {
         Intent i=new Intent(getTargetContext(),MainActivity.class);i.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
         activity=startActivitySync(i);
-        runOnMainSync(()->web=(WebView)((ViewGroup)activity.findViewById(android.R.id.content)).getChildAt(0));
+        runOnMainSync(()->web=(WebView)activity.findViewById(android.R.id.content).findViewWithTag("notes-webview"));
         for(int x=0;x<50;x++){if("true".equals(js("!!document.getElementById('heading') && typeof window.handleBack==='function'")))return;Thread.sleep(200);}
         throw new AssertionError("WebView page did not initialize");
     }
@@ -32,6 +32,39 @@ public class GlassInstrumentation extends Instrumentation {
     }
     private void check(String script,String label) throws Exception {
         if(!"true".equals(js(script)))throw new AssertionError(label+": "+js("document.body.innerText.slice(0,300)"));
+    }
+    private void checkSafeArea() throws Exception {
+        AtomicReference<String> error = new AtomicReference<>();
+        runOnMainSync(() -> {
+            android.view.WindowInsets insets=web.getRootWindowInsets();
+            if(insets==null){error.set("Missing Android window insets");return;}
+            android.graphics.Insets bars=insets.getInsets(android.view.WindowInsets.Type.systemBars() | android.view.WindowInsets.Type.displayCutout());
+            android.graphics.Insets ime=insets.getInsets(android.view.WindowInsets.Type.ime());
+            int[] position=new int[2];web.getLocationInWindow(position);
+            android.view.View decor=activity.getWindow().getDecorView();
+            if(bars.top==0)error.set("Status bar must be visible during this test");
+            if(position[1]<bars.top)error.set("WebView overlaps status bar");
+            if(position[0]<bars.left || position[0]+web.getWidth()>decor.getWidth()-bars.right)error.set("WebView overlaps cutout");
+            if(position[1]+web.getHeight()>decor.getHeight()-Math.max(bars.bottom,ime.bottom))error.set("WebView overlaps navigation bar or keyboard");
+        });
+        if(error.get()!=null)throw new AssertionError(error.get());
+    }
+    private void checkKeyboard() throws Exception {
+        js("document.getElementById('title').focus()");
+        runOnMainSync(() -> {
+            web.requestFocus();
+            ((android.view.inputmethod.InputMethodManager)activity.getSystemService(android.content.Context.INPUT_METHOD_SERVICE)).showSoftInput(web, android.view.inputmethod.InputMethodManager.SHOW_IMPLICIT);
+        });
+        boolean visible=false;
+        for(int i=0;i<30;i++){
+            AtomicReference<Boolean> shown=new AtomicReference<>(false);
+            runOnMainSync(() -> shown.set(web.getRootWindowInsets().isVisible(android.view.WindowInsets.Type.ime())));
+            if(shown.get()){visible=true;break;}Thread.sleep(100);
+        }
+        if(!visible)throw new AssertionError("Keyboard did not open");
+        Thread.sleep(400);checkSafeArea();shot("keyboard.png");
+        runOnMainSync(() -> ((android.view.inputmethod.InputMethodManager)activity.getSystemService(android.content.Context.INPUT_METHOD_SERVICE)).hideSoftInputFromWindow(web.getWindowToken(),0));
+        js("document.activeElement.blur()");Thread.sleep(500);checkSafeArea();
     }
     private void shot(String name) throws Exception {
         CountDownLatch frame = new CountDownLatch(1);
@@ -45,8 +78,8 @@ public class GlassInstrumentation extends Instrumentation {
         Thread.sleep(500);
         AtomicReference<Bitmap> capture=new AtomicReference<>();
         runOnMainSync(() -> {
-            Bitmap bitmap=Bitmap.createBitmap(web.getWidth(),web.getHeight(),Bitmap.Config.ARGB_8888);
-            web.draw(new android.graphics.Canvas(bitmap));
+            Bitmap bitmap=Bitmap.createBitmap(((android.view.View)web.getParent()).getWidth(),((android.view.View)web.getParent()).getHeight(),Bitmap.Config.ARGB_8888);
+            ((android.view.View)web.getParent()).draw(new android.graphics.Canvas(bitmap));
             capture.set(bitmap);
         });
         Bitmap image=capture.get();
@@ -61,11 +94,12 @@ public class GlassInstrumentation extends Instrumentation {
     @Override public void onStart() {
         Bundle result=new Bundle();
         try {
-            launch();check("document.getElementById('heading').textContent==='备忘录'","Home");shot("home.png");
+            launch();checkSafeArea();check("document.getElementById('heading').textContent==='备忘录'","Home");shot("home.png");
             js("window.receiveSharedText('## 清单\\n- [ ] 牛奶\\n- [ ] 鸡蛋')");
             check("!document.getElementById('editor').hidden","Editor navigation");
             js("document.getElementById('title').value='周末采购';document.getElementById('title').dispatchEvent(new Event('input',{bubbles:true}));window.persistNow()");
             check("JSON.parse(localStorage.getItem('easybook-'+localStorage.getItem('easybook-key'))).some(n=>n.title==='周末采购')","Local save");
+            checkKeyboard();
             js("document.getElementById('previewButton').click()");
             check("document.querySelectorAll('#preview [role=checkbox]').length===2","Todo rendering");shot("editor.png");
             js("document.querySelector('#preview [role=checkbox]').click()");
@@ -77,7 +111,7 @@ public class GlassInstrumentation extends Instrumentation {
             js("document.querySelector('[data-tab=settings]').click();document.querySelector('button[data-theme=dark]').click()");
             check("document.documentElement.dataset.theme==='dark'","Dark appearance");
             check("typeof EasybookDevice.copy==='function' && typeof EasybookDevice.share==='function' && typeof EasybookDevice.exportNotes==='function' && typeof EasybookDevice.importNotes==='function'","Native actions");
-            shot("settings.png");result.putString("passed","true");result.putString("checks","launch, editor, local save, todo toggle, favorite, back, restart persistence, dark appearance, native actions");
+            shot("settings.png");result.putString("passed","true");result.putString("checks","native status/navigation/cutout bounds, launch, editor, local save, todo toggle, favorite, back, restart persistence, dark appearance, native actions");
             finish(Activity.RESULT_OK,result);
         }catch(Throwable e){result.putString("passed","false");result.putString("failure",e.toString());finish(Activity.RESULT_CANCELED,result);}
     }

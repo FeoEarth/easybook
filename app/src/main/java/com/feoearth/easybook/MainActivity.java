@@ -15,6 +15,7 @@ import java.util.concurrent.ExecutorService;
 
 public class MainActivity extends Activity {
     private WebView web;
+    private android.widget.FrameLayout safeArea;
     private boolean ready;
     private String pendingExport;
     private final ExecutorService io = Executors.newSingleThreadExecutor();
@@ -29,14 +30,22 @@ public class MainActivity extends Activity {
         getWindow().setSoftInputMode(WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE);
         if (android.os.Build.VERSION.SDK_INT >= 30) getWindow().setDecorFitsSystemWindows(false);
         web = new WebView(this); web.setBackgroundColor(color);
-        setContentView(web);
-        if (android.os.Build.VERSION.SDK_INT >= 30) web.setOnApplyWindowInsetsListener((v, insets) -> {
-            android.graphics.Insets bars = insets.getInsets(WindowInsets.Type.systemBars());
+        web.setTag("notes-webview");
+        // Insets belong to the container: WebView padding does not reliably constrain
+        // CSS position:fixed controls to the Android safe area.
+        safeArea = new android.widget.FrameLayout(this);
+        safeArea.setBackgroundColor(color);
+        safeArea.addView(web, new android.widget.FrameLayout.LayoutParams(
+            ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
+        if (android.os.Build.VERSION.SDK_INT >= 30) safeArea.setOnApplyWindowInsetsListener((v, insets) -> {
+            android.graphics.Insets bars = insets.getInsets(WindowInsets.Type.systemBars() | WindowInsets.Type.displayCutout());
             android.graphics.Insets ime = insets.getInsets(WindowInsets.Type.ime());
             v.setPadding(bars.left, bars.top, bars.right, Math.max(bars.bottom, ime.bottom));
             web.evaluateJavascript("window.setKeyboardVisible && window.setKeyboardVisible(" + insets.isVisible(WindowInsets.Type.ime()) + ")", null);
             return WindowInsets.CONSUMED;
         });
+        setContentView(safeArea);
+        safeArea.requestApplyInsets();
         WebSettings s = web.getSettings();
         s.setJavaScriptEnabled(true); s.setDomStorageEnabled(true);
         s.setAllowFileAccess(false); s.setAllowContentAccess(false);
@@ -62,7 +71,7 @@ public class MainActivity extends Activity {
         @JavascriptInterface public void theme(String value) { runOnUiThread(() -> {
             boolean dark = "dark".equals(value) || (!"light".equals(value) && (getResources().getConfiguration().uiMode & Configuration.UI_MODE_NIGHT_MASK) == Configuration.UI_MODE_NIGHT_YES);
             int color = dark ? 0xff000000 : 0xfff2f2f7;
-            web.setBackgroundColor(color); getWindow().setStatusBarColor(color); getWindow().setNavigationBarColor(color);
+            web.setBackgroundColor(color); safeArea.setBackgroundColor(color); getWindow().setStatusBarColor(color); getWindow().setNavigationBarColor(color);
             getWindow().getDecorView().setSystemUiVisibility(dark ? 0 : View.SYSTEM_UI_FLAG_LIGHT_STATUS_BAR | View.SYSTEM_UI_FLAG_LIGHT_NAVIGATION_BAR);
         }); }
         @JavascriptInterface public void copy(String value) { runOnUiThread(() -> {
