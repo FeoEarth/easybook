@@ -81,3 +81,13 @@ jobs:
           with open('/tmp/apk-upload.json','w') as f: json.dump(body,f)
           PY
           gh api "repos/$GITHUB_REPOSITORY/contents/downloads/Easybook-0.2.0.apk" --method PUT --input /tmp/apk-upload.json --jq .commit.sha
+          python3 - <<'PYSHOTS'
+          import pathlib,subprocess,json,base64,os
+          repo=os.environ['GITHUB_REPOSITORY']
+          for p in pathlib.Path('smoke').glob('*.png'):
+              endpoint=f'repos/{repo}/contents/downloads/preview-{p.name}'
+              old=subprocess.run(['gh','api',endpoint+'?ref=apk-download','--jq','.sha'],text=True,capture_output=True)
+              payload=dict(message='Update Android emulator preview',branch='apk-download',content=base64.b64encode(p.read_bytes()).decode())
+              if old.returncode==0:payload['sha']=old.stdout.strip()
+              subprocess.run(['gh','api',endpoint,'--method','PUT','--input','-','--jq','.commit.sha'],input=json.dumps(payload),text=True,check=True)
+          PYSHOTS

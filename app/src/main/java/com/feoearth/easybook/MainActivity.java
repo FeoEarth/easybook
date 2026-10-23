@@ -59,6 +59,12 @@ public class MainActivity extends Activity {
         web.loadUrl(LOCAL);
     }
     public class DeviceActions {
+        @JavascriptInterface public void theme(String value) { runOnUiThread(() -> {
+            boolean dark = "dark".equals(value) || (!"light".equals(value) && (getResources().getConfiguration().uiMode & Configuration.UI_MODE_NIGHT_MASK) == Configuration.UI_MODE_NIGHT_YES);
+            int color = dark ? 0xff111824 : 0xffeef3fb;
+            web.setBackgroundColor(color); getWindow().setStatusBarColor(color); getWindow().setNavigationBarColor(color);
+            getWindow().getDecorView().setSystemUiVisibility(dark ? 0 : View.SYSTEM_UI_FLAG_LIGHT_STATUS_BAR | View.SYSTEM_UI_FLAG_LIGHT_NAVIGATION_BAR);
+        }); }
         @JavascriptInterface public void copy(String value) { runOnUiThread(() -> {
             ((ClipboardManager)getSystemService(CLIPBOARD_SERVICE)).setPrimaryClip(ClipData.newPlainText("Easybook", value));
         }); }
