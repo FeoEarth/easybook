@@ -94,7 +94,7 @@ public class GlassInstrumentation extends Instrumentation {
     @Override public void onStart() {
         Bundle result=new Bundle();
         try {
-            launch();checkSafeArea();check("document.getElementById('heading').textContent==='备忘录'","Home");shot("home.png");
+            launch();checkSafeArea();check("document.getElementById('heading').textContent==='全部备忘录'","Home");shot("home.png");
             js("document.getElementById('foldersButton').click()");
             check("document.body.dataset.page==='folders' && !document.getElementById('folders').hidden && !document.querySelector('dialog[open]')", "Folders is a page, not a dialog");shot("folders.png");
             js("document.querySelector('[data-tab=all]').click()");
@@ -115,10 +115,30 @@ public class GlassInstrumentation extends Instrumentation {
             check("!document.body.classList.contains('editing')","Back navigation");
             runOnMainSync(()->activity.finish());Thread.sleep(500);launch();
             check("document.getElementById('cards').innerText.includes('周末采购')","Activity restart persistence");shot("notes.png");
+            js("document.getElementById('foldersButton').click();document.getElementById('createFolder').click();document.getElementById('folderName').value='工作';document.getElementById('newFolderForm').requestSubmit()");
+            check("document.getElementById('customFolders').innerText.includes('工作')", "Create folder");
+            js("document.getElementById('createFolder').click();document.getElementById('folderName').value='工作';document.getElementById('newFolderForm').requestSubmit()");
+            check("document.getElementById('folderError').textContent.includes('同名')", "Duplicate folder validation");
+            js("document.getElementById('newFolderDialog').close();document.querySelector('[data-tab=all]').click();document.querySelector('#cards [data-id]').click();document.getElementById('moreButton').click();document.getElementById('moveButton').click();document.querySelector('#moveFolders [data-move-folder]:not([data-move-folder=\"\"])').click();window.goHome();document.getElementById('foldersButton').click()");
+            check("JSON.parse(localStorage.getItem('easybook-'+localStorage.getItem('easybook-key'))).find(n=>n.title==='周末采购').folder_id.length===36", "Move note persists assignment");shot("folders.png");
+            js("document.querySelector('[data-tab=all]').click();window.receiveSharedText('咖啡 收据');document.getElementById('title').value='ＡＢＣ 报销';document.getElementById('title').dispatchEvent(new Event('input',{bubbles:true}));window.persistNow();window.goHome();document.getElementById('foldersButton').click();document.querySelector('#customFolders [data-folder-tab^=folder]').click()");
+            js("document.getElementById('search').value='报销';document.getElementById('search').dispatchEvent(new Event('input',{bubbles:true}))");
+            check("document.querySelectorAll('#cards [data-id]').length===0", "Current folder search excludes other folder");
+            js("document.getElementById('scopeAll').click()");
+            check("document.querySelectorAll('#cards [data-id]').length===1", "Global scope includes other folder");
+            js("document.getElementById('search').value='abc  咖啡';document.getElementById('search').dispatchEvent(new Event('input',{bubbles:true}))");
+            check("document.querySelectorAll('#cards [data-id]').length===1", "Full-width, case and multiple keywords");
+            js("document.querySelector('#cards [data-id]').click();window.goHome()");
+            check("document.getElementById('search').value==='abc  咖啡' && document.querySelectorAll('#cards [data-id]').length===1", "Search survives editor round trip");shot("search.png");
+            js("document.getElementById('foldersButton').click();document.getElementById('search').value='牛奶';document.getElementById('search').dispatchEvent(new Event('compositionend',{bubbles:true}))");
+            check("document.getElementById('folders').hidden && document.querySelectorAll('#cards [data-id]').length===1", "Folder root searches note body");
+            js("document.getElementById('clearSearch').click()");check("!document.getElementById('folders').hidden && document.getElementById('home').hidden", "Clear root search restores folders");
+            runOnMainSync(()->activity.finish());Thread.sleep(500);launch();
+            check("JSON.parse(localStorage.getItem('easybook-folders-'+localStorage.getItem('easybook-key'))).some(f=>f.name==='工作') && JSON.parse(localStorage.getItem('easybook-'+localStorage.getItem('easybook-key'))).find(n=>n.title==='周末采购').folder_id.length===36", "Folder and assignment survive Activity restart");
             js("document.getElementById('foldersButton').click();document.getElementById('folderSettings').click();document.querySelector('button[data-theme=dark]').click()");
             check("document.documentElement.dataset.theme==='dark'","Dark appearance");
             check("typeof EasybookDevice.copy==='function' && typeof EasybookDevice.share==='function' && typeof EasybookDevice.exportNotes==='function' && typeof EasybookDevice.importNotes==='function'","Native actions");
-            shot("settings.png");result.putString("passed","true");result.putString("checks","folder page hierarchy and Android back, native status/navigation/cutout bounds, launch, editor, local save, todo toggle, favorite, back, restart persistence, dark appearance, native actions");
+            shot("settings.png");result.putString("passed","true");result.putString("checks","folder creation, duplicate validation, move, scoped/global/CJK/multiple-keyword search, persistence, native status/navigation/cutout bounds, launch, editor, local save, todo toggle, favorite, back, restart persistence, dark appearance, native actions");
             finish(Activity.RESULT_OK,result);
         }catch(Throwable e){result.putString("passed","false");result.putString("failure",e.toString());finish(Activity.RESULT_CANCELED,result);}
     }
