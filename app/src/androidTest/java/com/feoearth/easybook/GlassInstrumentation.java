@@ -62,7 +62,11 @@ public class GlassInstrumentation extends Instrumentation {
             if(shown.get()){visible=true;break;}Thread.sleep(100);
         }
         if(!visible)throw new AssertionError("Keyboard did not open");
-        Thread.sleep(400);checkSafeArea();shot("keyboard.png");
+        Thread.sleep(400);checkSafeArea();
+        check("getComputedStyle(document.getElementById('title')).outlineStyle==='none'", "Focused title has no input frame");
+        js("document.getElementById('body').focus()");
+        check("getComputedStyle(document.getElementById('body')).outlineStyle==='none'", "Focused body has no input frame");
+        shot("keyboard.png");
         runOnMainSync(() -> ((android.view.inputmethod.InputMethodManager)activity.getSystemService(android.content.Context.INPUT_METHOD_SERVICE)).hideSoftInputFromWindow(web.getWindowToken(),0));
         js("document.activeElement.blur()");Thread.sleep(500);checkSafeArea();
     }
