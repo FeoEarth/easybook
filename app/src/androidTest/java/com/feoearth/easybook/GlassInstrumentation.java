@@ -84,8 +84,9 @@ public class GlassInstrumentation extends Instrumentation {
         });
         if(error.get()!=null)throw new AssertionError(error.get());
     }
-    private void checkKeyboard() throws Exception {
-        double viewport=Double.parseDouble(js("window.innerWidth")),cssY=Double.parseDouble(js("document.getElementById('title').getBoundingClientRect().top+20"));
+    private void checkKeyboard() throws Exception {checkKeyboard("title");}
+    private void checkKeyboard(String input) throws Exception {
+        double viewport=Double.parseDouble(js("window.innerWidth")),cssY=Double.parseDouble(js("document.getElementById('"+input+"').getBoundingClientRect().top+20"));
         int[] point=new int[2];runOnMainSync(()->{int[] origin=new int[2];web.getLocationOnScreen(origin);point[0]=origin[0]+web.getWidth()/2;point[1]=origin[1]+(int)(cssY*web.getWidth()/viewport);});
         long now=android.os.SystemClock.uptimeMillis();android.view.MotionEvent down=android.view.MotionEvent.obtain(now,now,android.view.MotionEvent.ACTION_DOWN,point[0],point[1],0),up=android.view.MotionEvent.obtain(now,now+80,android.view.MotionEvent.ACTION_UP,point[0],point[1],0);down.setSource(android.view.InputDevice.SOURCE_TOUCHSCREEN);up.setSource(android.view.InputDevice.SOURCE_TOUCHSCREEN);sendPointerSync(down);sendPointerSync(up);down.recycle();up.recycle();
         runOnMainSync(() -> {
@@ -100,10 +101,14 @@ public class GlassInstrumentation extends Instrumentation {
         }
         if(!visible)throw new AssertionError("Keyboard did not open");
         Thread.sleep(400);checkSafeArea();
+        if(input.equals("folderName")){
+            check("(()=>{const d=document.getElementById('newFolderDialog').getBoundingClientRect();return d.top>=0&&d.bottom<=innerHeight})()", "Folder sheet remains above Android keyboard");shot("new-folder-keyboard.png");
+        } else {
         check("getComputedStyle(document.getElementById('title')).outlineStyle==='none'", "Focused title has no input frame");
         js("document.getElementById('body').focus()");
         check("getComputedStyle(document.getElementById('body')).outlineStyle==='none'", "Focused body has no input frame");
         shot("keyboard.png");
+        }
         runOnMainSync(() -> ((android.view.inputmethod.InputMethodManager)activity.getSystemService(android.content.Context.INPUT_METHOD_SERVICE)).hideSoftInputFromWindow(web.getWindowToken(),0));
         js("document.activeElement.blur()");Thread.sleep(500);checkSafeArea();
     }
@@ -164,7 +169,12 @@ public class GlassInstrumentation extends Instrumentation {
             flush();runOnMainSync(()->activity.finish());Thread.sleep(500);launch();
             check("document.getElementById('cards').innerText.includes('周末采购')","Activity restart persistence");shot("notes.png");
             js("document.getElementById('foldersButton').click();document.getElementById('createFolder').click()");
-            check("document.getElementById('newFolderDialog').getBoundingClientRect().width<=282&&getComputedStyle(document.getElementById('folderName')).outlineStyle==='none'&&document.getElementById('createFolderSubmit').disabled","Compact alert, no yellow focus frame, empty-name guard");shot("new-folder.png");
+            check("document.getElementById('newFolderDialog').getBoundingClientRect().width<=422&&getComputedStyle(document.getElementById('folderName')).outlineStyle==='none'&&document.getElementById('createFolderSubmit').disabled","Folder sheet, no yellow focus frame, empty-name guard");shot("new-folder.png");checkKeyboard("folderName");
+            check("(()=>{const d=document.getElementById('newFolderDialog').getBoundingClientRect(),a=document.querySelector('#newFolderDialog [data-close]').getBoundingClientRect(),b=document.getElementById('createFolderSubmit').getBoundingClientRect();return d.bottom<=innerHeight&&d.top>=0&&a.width>=44&&b.width>=44&&Math.abs(a.top-b.top)<1})()", "Folder sheet visible and top actions reachable");
+            js("document.documentElement.dataset.theme='dark'");shot("new-folder-dark.png");
+            js("document.documentElement.dataset.glass='reduced'");check("getComputedStyle(document.getElementById('newFolderDialog')).backdropFilter==='none'", "Reduced transparency respected");
+            js("document.documentElement.dataset.glass='normal';document.documentElement.dataset.theme='light';document.querySelector('#newFolderDialog [data-close]').click()");check("!document.getElementById('newFolderDialog').open", "Cancel folder creation");
+            js("document.getElementById('createFolder').click()");
             js("document.getElementById('folderName').value='工作';document.getElementById('folderName').dispatchEvent(new Event('input',{bubbles:true}));document.getElementById('newFolderForm').requestSubmit()");
             check("document.getElementById('customFolders').innerText.includes('工作')", "Create folder");
             js("document.getElementById('createFolder').click();document.getElementById('folderName').value='工作';document.getElementById('newFolderForm').requestSubmit()");
@@ -190,7 +200,7 @@ public class GlassInstrumentation extends Instrumentation {
             js("document.getElementById('foldersButton').click();document.getElementById('folderSettings').click();document.querySelector('button[data-theme=dark]').click()");
             check("document.documentElement.dataset.theme==='dark'","Dark appearance");
             check("typeof EasybookDevice.copy==='function' && typeof EasybookDevice.share==='function' && typeof EasybookDevice.exportNotes==='function' && typeof EasybookDevice.importNotes==='function'","Native actions");
-            shot("settings.png");result.putString("passed","true");result.putString("checks","Keystore AES256-GCM tamper/AAD/IV, plaintext credential migration/retry/rollback, invalidated-key offline and re-pair, no bridge secrets, backup exclusions, SQLite transactional migration, retry, collision, rollback archive, Worker protocol (live cross-device covered by 0.6.0; UI run may skip live), compact folder alert, narrow single-line header, bridge origin/allowlist/CSP, folder creation, duplicate validation, move, scoped/global/CJK/multiple-keyword search, persistence, native status/navigation/cutout bounds, launch, editor, local save, todo toggle, favorite, back, restart persistence, dark appearance, native actions");
+            shot("settings.png");result.putString("passed","true");result.putString("checks","Keystore AES256-GCM tamper/AAD/IV, plaintext credential migration/retry/rollback, invalidated-key offline and re-pair, no bridge secrets, backup exclusions, SQLite transactional migration, retry, collision, rollback archive, Worker protocol (live cross-device covered by 0.6.0; UI run may skip live), folder material sheet, narrow single-line header, bridge origin/allowlist/CSP, folder creation, duplicate validation, move, scoped/global/CJK/multiple-keyword search, persistence, native status/navigation/cutout bounds, launch, editor, local save, todo toggle, favorite, back, restart persistence, dark appearance, native actions");
             getUiAutomation().executeShellCommand("cmd connectivity airplane-mode disable").close();finish(Activity.RESULT_OK,result);
         }catch(Throwable e){try{getUiAutomation().executeShellCommand("cmd connectivity airplane-mode disable").close();}catch(Exception ignored){}result.putString("passed","false");result.putString("failure",e.toString());e.printStackTrace();try{result.putString("diagnostics","nativeLegacy="+NoteRepository.get(getTargetContext()).setting("legacyMode","false")+"; page="+js("JSON.stringify({legacy:!!window.EasybookRollbackMode,bridge:typeof window.NativeStore,rollbackFailed:!!window.__rollbackFailed,ready:typeof window.handleBack})"));}catch(Exception ignored){}finish(Activity.RESULT_CANCELED,result);}
     }
