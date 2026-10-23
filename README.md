@@ -24,7 +24,7 @@ Liquid Glass 风格的轻量 Android 文本笔记应用，使用 Cloudflare Work
 ## 构建
 
 JDK 17、Android SDK 35、Gradle 8.9：`gradle :app:assembleDebug`。
-GitHub Actions 在推送 main 后构建并发布带 SHA-256 校验文件的 APK，构建时检查 JavaScript 语法，并在 Android 35 模拟器上验证创建、编辑、返回导航和进程重启后持久保存。开发签名通过 Actions 缓存保留；正式发布前应配置独立且安全备份的 release 签名。
+GitHub Actions 在推送 main 后构建并发布带 SHA-256 校验文件的 APK，构建时检查 JavaScript 语法，并在 Android 35 模拟器上验证创建、编辑、返回导航和Activity 重建后持久保存、待办勾选、深色外观和原生操作接口。开发签名通过 Actions 缓存保留；正式发布前应配置独立且安全备份的 release 签名。
 
 ## 后端
 
