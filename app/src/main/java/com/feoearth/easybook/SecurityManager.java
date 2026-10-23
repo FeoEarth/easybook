@@ -23,10 +23,10 @@ public final class SecurityManager {
             case "bootstrap":if(initialized==generation)throw new SecurityException("Already initialized");fields=fields("legacy");break;
             case "commit":fields=fields("key","changes");break;
             case "search":fields=fields("key","query","category","everywhere");break;
-            case "sync":fields=fields("key");break;
+            case "sync.activity":case "sync":fields=fields("key");break;
             case "attachment.restore":fields=fields("key","files");break;
             case "attachment.pick":fields=fields("key","noteId");break;
-            case "attachment.get":case "attachment.export":fields=fields("key","id");break;
+            case "attachment.open":case "attachment.share":case "attachment.get":case "attachment.export":fields=fields("key","id");break;
             case "device.theme":fields=fields("value");break;
             case "device.copy":fields=fields("value");break;
             case "device.share":fields=fields("title","text");break;
@@ -48,4 +48,5 @@ public final class SecurityManager {
     private void showCredential(){io.execute(()->{try{String k=db.credential(db.activeSpace());activity.runOnUiThread(()->{TextView text=new TextView(activity);text.setText(k);text.setPadding(28,18,28,18);text.setTextIsSelectable(false);AlertDialog d=new AlertDialog.Builder(activity).setTitle("同步密钥（仅在原生窗口显示）").setView(text).setNegativeButton("关闭",(a,b)->text.setText("")).setPositiveButton("复制密钥",(a,b)->{ClipData clip=ClipData.newPlainText("Easybook 同步密钥",k);if(Build.VERSION.SDK_INT>=24){PersistableBundle extras=new PersistableBundle();extras.putBoolean("android.content.extra.IS_SENSITIVE",true);clip.getDescription().setExtras(extras);}((ClipboardManager)activity.getSystemService(Context.CLIPBOARD_SERVICE)).setPrimaryClip(clip);text.setText("");message("密钥已复制，请仅提供给自己的设备");}).create();d.setOnShowListener(v->d.getWindow().addFlags(WindowManager.LayoutParams.FLAG_SECURE));d.setOnDismissListener(v->text.setText(""));d.show();});}catch(Exception e){message("本机凭据不可用。请输入原同步密钥重新配对；离线笔记仍可编辑和导出。");}});}
     private void message(String value){activity.runOnUiThread(()->Toast.makeText(activity,value,Toast.LENGTH_LONG).show());}
 }
+
 

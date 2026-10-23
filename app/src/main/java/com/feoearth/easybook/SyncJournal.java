@@ -1,0 +1,25 @@
+package com.feoearth.easybook;
+import org.json.*;
+import java.util.*;
+
+/** Durable observations of the existing outbox; no credentials, paths or transport payloads. */
+final class SyncJournal {
+ private final NoteRepository db;private final String space;
+ SyncJournal(NoteRepository db,String space){this.db=db;this.space=space;}
+ private String key(){return "sync-activity:"+NoteRepository.spaceId(space);}
+ JSONArray tasks()throws Exception{synchronized(db){return new JSONArray(db.setting(key(),"[]"));}}
+ void state(String id,String name,String kind,String direction,String state,String error,long loaded,long total)throws Exception{synchronized(db){JSONArray old=tasks();List<JSONObject> list=new ArrayList<>();JSONObject task=null;for(int i=0;i<old.length();i++){JSONObject t=old.getJSONObject(i);if(t.getString("id").equals(id))task=t;else list.add(t);}long now=System.currentTimeMillis();if(task==null)task=new JSONObject().put("id",id).put("created",now);task.put("name",AttachmentStore.cleanName(name)).put("kind",kind).put("direction",direction).put("state",state).put("updated",now).put("error",error);if(loaded>=0){task.put("loaded",loaded).put("total",total);}else{task.remove("loaded");task.remove("total");}list.add(task);list.sort((a,b)->Long.compare(b.optLong("updated"),a.optLong("updated")));JSONArray out=new JSONArray();int history=0;for(JSONObject t:list){if(t.optString("state").matches("done|conflict")&&history++>=60)continue;out.put(t);}db.setSetting(key(),out.toString());}}
+ void complete(String id,String state)throws Exception{JSONArray list=tasks();for(int i=0;i<list.length();i++){JSONObject t=list.getJSONObject(i);if(t.getString("id").equals(id)){state(id,t.getString("name"),t.getString("kind"),t.getString("direction"),state,"",t.optLong("loaded",-1),t.optLong("total",0));return;}}}
+ JSONObject request(NativeSync.Transport transport,String path,JSONObject body,String credential)throws Exception{
+  boolean file=path.startsWith("/api/attachments/"),note=path.startsWith("/api/notes");if(!file&&!note)return transport.request(path,body,credential);
+  String resource=path.substring(path.lastIndexOf('/')+1),id=file?"asset:"+resource+":"+(body==null?"down":"up"):body==null?"notes:down:"+path.substring(path.indexOf("cursor=")+7):"note:"+resource+":"+body.getString("mutation");
+  String name=body==null?(file?"附件":"检查笔记更新"):body.optString(file?"name":"title",file?"附件":"无标题"),kind=file?"attachment":"note",direction=body==null?"down":"up";
+  if(file){JSONArray ns=db.rows(space,"note");for(int i=0;i<ns.length();i++){JSONObject doc=ns.getJSONObject(i).getJSONObject("document");if(imageRef(doc.getJSONObject("doc"),resource))kind="image";}JSONObject meta=db.row(space,"attachment",resource);if(meta!=null)name=meta.optString("name",name);}
+  final long[] lastProgress={0};final String taskName=name,taskKind=kind;state(id,name,kind,direction,"running","",-1,0);
+  if(transport instanceof NativeSync.HttpsTransport)((NativeSync.HttpsTransport)transport).progress=file?(loaded,total)->{long now=System.currentTimeMillis();if(now-lastProgress[0]<250&&loaded!=total)return;lastProgress[0]=now;try{state(id,taskName,taskKind,direction,"running","",loaded,total);}catch(Exception ignored){}}:null;
+  try{return transport.request(path,body,credential).put("_activityId",id);}catch(Exception e){state(id,name,kind,direction,"failed",e.getMessage()!=null&&e.getMessage().contains("401")?"空间凭据不可用，请重新连接":"传输失败，请检查网络后重试",-1,0);throw e;}finally{if(transport instanceof NativeSync.HttpsTransport)((NativeSync.HttpsTransport)transport).progress=null;}
+ }
+ static boolean imageRef(JSONObject node,String id){if(node.optString("type").equals("image")&&("sha256:"+id).equals(node.optJSONObject("attrs").optString("assetId")))return true;JSONArray c=node.optJSONArray("content");if(c!=null)for(int i=0;i<c.length();i++)if(imageRef(c.optJSONObject(i),id))return true;return false;}
+ void recover()throws Exception{JSONArray ts=tasks();for(int i=0;i<ts.length();i++){JSONObject t=ts.getJSONObject(i);if(t.optString("state").equals("running"))state(t.getString("id"),t.getString("name"),t.getString("kind"),t.getString("direction"),"waiting","等待恢复同步",-1,0);}}
+ void failRunning()throws Exception{JSONArray ts=tasks();for(int i=0;i<ts.length();i++){JSONObject t=ts.getJSONObject(i);if(t.optString("state").equals("running"))state(t.getString("id"),t.getString("name"),t.getString("kind"),t.getString("direction"),"failed","同步未完成，可重试",-1,0);}}
+}
