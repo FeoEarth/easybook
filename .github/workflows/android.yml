@@ -44,7 +44,26 @@ jobs:
           echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
           sudo udevadm control --reload-rules
           sudo udevadm trigger --name-match=kvm
+      - name: Reuse verified candidate checks
+        id: verified
+        if: github.ref == 'refs/heads/main'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          echo "reuse=false" >> "$GITHUB_OUTPUT"
+          candidates=$(gh api --method GET "repos/$GITHUB_REPOSITORY/actions/workflows/android.yml/runs" -f branch=easybook-native-data -f status=success -f per_page=5 --jq '.workflow_runs[] | select(.conclusion == "success") | .head_sha')
+          for candidate in $candidates; do
+            [[ "$candidate" =~ ^[a-f0-9]{40}$ ]] || continue
+            git fetch --no-tags --depth=1 origin "$candidate"
+            if git diff --quiet "$candidate" HEAD -- . ':!.github/workflows/android.yml'; then
+              echo "reuse=true" >> "$GITHUB_OUTPUT"
+              echo "Verified application, tests and assets match successful candidate $candidate; only publication workflow may differ."
+              break
+            fi
+          done
       - name: Android emulator interaction checks
+        if: steps.verified.outputs.reuse != 'true'
         timeout-minutes: 12
         uses: reactivecircus/android-emulator-runner@v2
         with:
