@@ -1,1 +1,30 @@
-# easybook
+# Easybook
+
+Notion 风格的轻量 Android 文本笔记应用，使用 Cloudflare Workers + D1 跨设备同步。
+
+## 安装
+
+打开本仓库 **Releases**，下载 `Easybook-0.1.0.apk`。支持 Android 8.0 及以上。APK 是可安装的开发签名测试版。首次安装需要允许来自浏览器的应用安装。
+
+## 使用
+
+- 离线创建、编辑、搜索笔记；标题、列表、待办与引用，点击「预览」查看。
+- 收藏页面、回收站恢复、复制全文、Android 系统分享文本到 Easybook。
+- 打开应用时每 12 秒同步一次，也可手动同步；后台关闭后不持续同步。
+- 侧栏「连接其他设备」复制 64 位随机密钥，在另一台设备输入。密钥持有者可读写整个空间。请保存好，丢失后无法找回。
+- 网页版：https://easybook-sync.1902521952.workers.dev ，可和 Android 共享空间。
+- 同时修改同一页面时保留冲突副本；删除使用可同步的墓碑记录，防止离线设备复活已删除页面。
+- 网页支持 JSON 导入导出；Android 通过电脑网页版连接同一空间备份。
+
+## 数据与限制
+
+使用 HTTPS，Cloudflare D1 保存文本；当前未实现端到端加密。密钥只保存在设备，后端以 SHA-256 密钥摘要隔离空间。卸载会清除本机数据；同步成功的内容可通过原密钥重新取回。单篇正文上限 60,000 字符。此版本不包含 Notion 数据库、多人权限、图片上传、富文本协同或后台同步。
+
+## 构建
+
+JDK 17、Android SDK 35、Gradle 8.9：`gradle :app:assembleDebug`。
+GitHub Actions 在推送 main 后构建并发布带 SHA-256 校验文件的 APK，构建时检查 JavaScript 语法。开发签名通过 Actions 缓存保留；正式发布前应配置独立且安全备份的 release 签名。
+
+## 后端
+
+`worker/schema.sql` 为 D1 表结构，`worker/index.mjs` 实现版本条件写入和幂等重试。`worker/ui.mjs` 由 Android HTML 生成，两个端共享同一界面。修改 HTML 后执行 `node scripts/generate-ui.mjs`。`worker/wrangler.jsonc` 提供部署配置；Cloudflare 认证凭据不要提交到仓库。
