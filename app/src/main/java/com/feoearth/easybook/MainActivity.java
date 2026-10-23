@@ -21,6 +21,7 @@ public class MainActivity extends Activity {
     private android.widget.FrameLayout safeArea;
     private boolean ready;
     private boolean destroyed;
+    private long documentGeneration;
     private NoteRepository repository;
     private static final ExecutorService syncIo=Executors.newSingleThreadExecutor();
     private String pendingExport;
@@ -66,9 +67,9 @@ public class MainActivity extends Activity {
             if(!isMainFrame||!("https".equals(origin.getScheme())&&"appassets.androidplatform.net".equals(origin.getHost())&&(origin.getPort()==-1||origin.getPort()==443))||!LOCAL.equals(web.getUrl()))return;
             String text=message.getData();
             if(text==null||text.length()>16*1024*1024)return;
-            try{JSONObject envelope=new JSONObject(text);String requestId=envelope.getString("id"),method=envelope.getString("method");JSONObject args=envelope.optJSONObject("args");if(args==null)args=new JSONObject();final JSONObject input=args;
+            try{JSONObject envelope=new JSONObject(text);String requestId=envelope.getString("id"),method=envelope.getString("method");JSONObject args=envelope.optJSONObject("args");if(args==null)args=new JSONObject();final JSONObject input=args;final long generation=documentGeneration;
                 if(!requestId.matches("[a-zA-Z0-9-]{1,80}"))return;
-                Runnable operation=()->{try{JSONObject output=dispatch(method,input);respond(reply,new JSONObject().put("id",requestId).put("ok",true).put("result",output));}catch(Exception e){try{respond(reply,new JSONObject().put("id",requestId).put("ok",false).put("error","操作未完成，数据已保留；可重试或导出备份"));}catch(Exception ignored){}}};
+                Runnable operation=()->{try{JSONObject output=dispatch(method,input,generation);respond(reply,generation,new JSONObject().put("id",requestId).put("ok",true).put("result",output));}catch(Exception e){try{respond(reply,generation,new JSONObject().put("id",requestId).put("ok",false).put("error","操作未完成，数据已保留；可重试或导出备份"));}catch(Exception ignored){}}};
                 if(method.equals("sync"))syncIo.execute(operation);else io.execute(operation);
             }catch(Exception ignored){}
         });
@@ -80,7 +81,7 @@ public class MainActivity extends Activity {
                         boolean legacy=repository.setting("legacyMode","false").equals("true");
                         String html=readAsset("index.html");if(!legacy)html=html.replace("connect-src https://easybook-sync.1902521952.workers.dev","connect-src 'none'");
                         html=html.replace("<script>","<script>"+(legacy?"window.EasybookRollbackMode=true;":"")+readAsset("native-api.js")+"</script><script>");
-                        return new WebResourceResponse("text/html","UTF-8",new ByteArrayInputStream(html.getBytes(StandardCharsets.UTF_8)));
+                        return new WebResourceResponse("text/html","UTF-8",200,"OK",Collections.singletonMap("Cache-Control","no-store"),new ByteArrayInputStream(html.getBytes(StandardCharsets.UTF_8)));
                     }
                     catch (IOException e) { return new WebResourceResponse("text/plain", "UTF-8", new ByteArrayInputStream(new byte[0])); }
                 }
@@ -88,15 +89,15 @@ public class MainActivity extends Activity {
                 if(repository.setting("legacyMode","false").equals("true")&&"https".equals(u.getScheme())&&"easybook-sync.1902521952.workers.dev".equals(u.getHost())&&u.getPath().startsWith("/api/"))return null;
                 return new WebResourceResponse("text/plain", "UTF-8", new ByteArrayInputStream(new byte[0]));
             }
-            @Override public boolean shouldOverrideUrlLoading(WebView v, WebResourceRequest r) { return true; }
-            @Override public void onPageStarted(WebView v,String url,android.graphics.Bitmap icon){ready=false;}
+            @Override public boolean shouldOverrideUrlLoading(WebView v, WebResourceRequest r) { return !r.isForMainFrame() || !LOCAL.equals(r.getUrl().toString()); }
+            @Override public void onPageStarted(WebView v,String url,android.graphics.Bitmap icon){ready=false;documentGeneration++;}
         });
         web.loadUrl(LOCAL);
     }
     private String readAsset(String name)throws IOException {try(InputStream in=getAssets().open(name);ByteArrayOutputStream out=new ByteArrayOutputStream()){byte[] b=new byte[8192];int n;while((n=in.read(b))!=-1)out.write(b,0,n);return out.toString("UTF-8");}}
-    private void respond(JavaScriptReplyProxy reply,JSONObject value){runOnUiThread(()->{if(!destroyed&&LOCAL.equals(web.getUrl()))reply.postMessage(value.toString());});}
+    private void respond(JavaScriptReplyProxy reply,long generation,JSONObject value){runOnUiThread(()->{if(!destroyed&&generation==documentGeneration&&LOCAL.equals(web.getUrl()))try{reply.postMessage(value.toString());}catch(IllegalStateException ignored){}});}
     private String bounded(JSONObject args,String name,int max)throws Exception{String s=args.getString(name);if(s.length()>max)throw new IllegalArgumentException("Value too large");return s;}
-    private JSONObject dispatch(String method,JSONObject args)throws Exception {
+    private JSONObject dispatch(String method,JSONObject args,long generation)throws Exception {
         String active=method.equals("bootstrap")?"":repository.active();
         switch(method){
             case "bootstrap":{
@@ -111,7 +112,7 @@ public class MainActivity extends Activity {
             case "migration.resume":repository.setSetting("legacyMode","false");return new JSONObject();
             case "migration.status":return new JSONObject().put("reports",repository.migrationReports()).put("protection","plaintext-stage-1");
             case "migration.rollback":return repository.rollbackArchive();
-            case "ui.ready":runOnUiThread(()->{ready=true;receiveShare(getIntent());});return new JSONObject();
+            case "ui.ready":runOnUiThread(()->{if(!destroyed&&generation==documentGeneration){ready=true;receiveShare(getIntent());}});return new JSONObject();
             case "device.theme":{String mode=bounded(args,"value",10);if(!mode.matches("auto|light|dark"))throw new IllegalArgumentException();new DeviceActions().theme(mode);break;}
             case "device.haptic":runOnUiThread(()->web.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP));break;
             case "device.copy":new DeviceActions().copy(bounded(args,"value",100000));break;

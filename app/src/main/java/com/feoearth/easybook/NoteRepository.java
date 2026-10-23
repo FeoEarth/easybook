@@ -29,12 +29,13 @@ public final class NoteRepository extends SQLiteOpenHelper {
     static String id(){return UUID.randomUUID().toString();}
     static JSONObject copy(JSONObject n)throws JSONException{return new JSONObject(n.toString());}
     static void validNote(JSONObject n)throws Exception{
+        for(String field:new String[]{"id","title","body","mutation"})if(!(n.get(field) instanceof String))throw new IllegalArgumentException("Invalid note field type");
         if(!n.getString("id").matches("[a-f0-9-]{36}")||n.getString("title").length()>200||n.getString("body").length()>60000||n.optString("icon","📄").length()>16)throw new IllegalArgumentException("Invalid note");
-        if(n.optLong("version",0)<0||!n.optString("mutation").matches("[a-f0-9-]{36}"))throw new IllegalArgumentException("Invalid note revision");
+        if(n.optDouble("version",0)!=n.optLong("version",0)||n.optLong("version",0)<0||!n.optString("mutation").matches("[a-f0-9-]{36}"))throw new IllegalArgumentException("Invalid note revision");
         String f=n.optString("folder_id","");if(!f.isEmpty()&&!f.matches("[a-f0-9-]{36}"))throw new IllegalArgumentException("Invalid folder assignment");
         for(String field:new String[]{"favorite","deleted"})if(n.optInt(field,0)!=0&&n.optInt(field,0)!=1)throw new IllegalArgumentException("Invalid flag");
     }
-    static void validFolder(JSONObject f)throws Exception{if(!f.getString("id").matches("[a-f0-9-]{36}")||f.getString("name").trim().isEmpty()||f.getString("name").length()>60)throw new IllegalArgumentException("Invalid folder");}
+    static void validFolder(JSONObject f)throws Exception{if(!(f.get("id") instanceof String)||!(f.get("name") instanceof String))throw new IllegalArgumentException("Invalid folder field type");if(!f.getString("id").matches("[a-f0-9-]{36}")||f.getString("name").trim().isEmpty()||f.getString("name").length()>60)throw new IllegalArgumentException("Invalid folder");}
     public synchronized String setting(String name,String fallback){try(Cursor c=getReadableDatabase().rawQuery("SELECT value FROM settings WHERE name=?",new String[]{name})){return c.moveToFirst()?c.getString(0):fallback;}}
     public synchronized void setSetting(String name,String value){ContentValues v=new ContentValues();v.put("name",name);v.put("value",value);getWritableDatabase().insertWithOnConflict("settings",null,v,SQLiteDatabase.CONFLICT_REPLACE);}
     public synchronized String active(){String s=setting("active","");if(s.isEmpty()){s=newKey();setSetting("active",s);}return s;}
