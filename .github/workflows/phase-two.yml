@@ -19,6 +19,8 @@ jobs:
       - run: npm run build:editor && npm test
       - name: Development Worker protocol smoke
         run: node scripts/live-json-smoke.mjs
+      - name: Install Chromium for cross-client checks
+        run: npx playwright install --with-deps chromium
       - name: Generated assets match source
         run: git diff --exit-code -- app/src/main/assets/editor.js app/src/main/assets/editor.js.LEGAL.txt worker/ui.mjs worker/editor.mjs
       - uses: actions/setup-java@v4
@@ -49,7 +51,13 @@ jobs:
           target: google_apis
           profile: pixel_2
           disable-animations: true
-          script: python3 scripts/android-smoke.py
+          script: python3 scripts/android-smoke.py && node scripts/cross-client-test.mjs
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: Cross-client-diagnostics
+          path: smoke/
+          if-no-files-found: ignore
       - uses: actions/upload-artifact@v4
         with:
           name: Easybook-0.8.0-Test-APK
