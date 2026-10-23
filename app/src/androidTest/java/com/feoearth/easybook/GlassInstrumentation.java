@@ -26,6 +26,7 @@ public class GlassInstrumentation extends Instrumentation {
         throw new AssertionError("WebView page did not initialize");
     }
     private String js(String script) throws Exception {
+        if(web==null)throw new IllegalStateException("WebView not yet launched");
         CountDownLatch latch=new CountDownLatch(1);AtomicReference<String> value=new AtomicReference<>();
         runOnMainSync(()->web.evaluateJavascript(script,v->{value.set(v);latch.countDown();}));
         if(!latch.await(15,TimeUnit.SECONDS))throw new AssertionError("JavaScript evaluation timed out");
@@ -182,6 +183,6 @@ public class GlassInstrumentation extends Instrumentation {
             check("typeof EasybookDevice.copy==='function' && typeof EasybookDevice.share==='function' && typeof EasybookDevice.exportNotes==='function' && typeof EasybookDevice.importNotes==='function'","Native actions");
             shot("settings.png");result.putString("passed","true");result.putString("checks","Keystore AES256-GCM tamper/AAD/IV, plaintext credential migration/retry/rollback, invalidated-key offline and re-pair, no bridge secrets, backup exclusions, SQLite transactional migration, retry, collision, rollback archive, live Worker cross-device/conflict/browser compatibility, bridge origin/allowlist/CSP, folder creation, duplicate validation, move, scoped/global/CJK/multiple-keyword search, persistence, native status/navigation/cutout bounds, launch, editor, local save, todo toggle, favorite, back, restart persistence, dark appearance, native actions");
             getUiAutomation().executeShellCommand("cmd connectivity airplane-mode disable").close();finish(Activity.RESULT_OK,result);
-        }catch(Throwable e){try{getUiAutomation().executeShellCommand("cmd connectivity airplane-mode disable").close();}catch(Exception ignored){}result.putString("passed","false");result.putString("failure",e.toString());try{result.putString("diagnostics","nativeLegacy="+NoteRepository.get(getTargetContext()).setting("legacyMode","false")+"; page="+js("JSON.stringify({legacy:!!window.EasybookRollbackMode,bridge:typeof window.NativeStore,rollbackFailed:!!window.__rollbackFailed,ready:typeof window.handleBack})"));}catch(Exception ignored){}finish(Activity.RESULT_CANCELED,result);}
+        }catch(Throwable e){try{getUiAutomation().executeShellCommand("cmd connectivity airplane-mode disable").close();}catch(Exception ignored){}result.putString("passed","false");result.putString("failure",e.toString());e.printStackTrace();try{result.putString("diagnostics","nativeLegacy="+NoteRepository.get(getTargetContext()).setting("legacyMode","false")+"; page="+js("JSON.stringify({legacy:!!window.EasybookRollbackMode,bridge:typeof window.NativeStore,rollbackFailed:!!window.__rollbackFailed,ready:typeof window.handleBack})"));}catch(Exception ignored){}finish(Activity.RESULT_CANCELED,result);}
     }
 }
