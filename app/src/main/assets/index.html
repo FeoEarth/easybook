@@ -133,7 +133,7 @@ async function sync(manual=false){if(busy){if(manual)toast('正在同步');retur
  else if(n.mutation===snapshot.mutation)Object.assign(n,res.note,{dirty:false});else n.version=res.note.version;if(!persistNow())throw Error('Local storage');}
  let after='';do{const res=await request('/api/notes'+(after?'?after='+encodeURIComponent(after):''),{},workspaceKey);if(workspaceKey!==key)return;for(const n of res.notes)applyRemote(n);after=res.next}while(after);
  persistNow();lastSync=Date.now();if(!current&&(listBefore!==JSON.stringify(notes)||foldersBefore!==JSON.stringify(folders)))renderList();status(notes.some(n=>n.dirty)?'已保存 · 等待同步':'已同步');if(manual)toast('同步完成');
- }catch(e){status(stored?'云端未连接 · 已存本机':'本机保存失败',stored?'offline':'error');if(manual)toast(stored?'暂时无法同步，笔记已保存在本机':'本机空间不足，请导出备份')}finally{busy=false}}
+ }catch(e){if(native&&e.code==='CREDENTIAL_UNAVAILABLE'){status('需要重新配对 · 已存本机','offline');if(manual)toast('同步凭据不可用，请在设置中重新连接原空间');return}status(stored?'云端未连接 · 已存本机':'本机保存失败',stored?'offline':'error');if(manual)toast(stored?'暂时无法同步，笔记已保存在本机':'本机空间不足，请导出备份')}finally{busy=false}}
 function confirmAction(title,text,action){confirmCallback=action;$('confirmTitle').textContent=title;$('confirmText').textContent=text;$('confirmDialog').showModal()}
 $('confirmCancel').onclick=()=>{$('confirmDialog').close();confirmCallback=null};$('confirmAccept').onclick=()=>{const fn=confirmCallback;confirmCallback=null;$('confirmDialog').close();if(fn)fn()};
 function closeMenu(){$('menuDialog').close()}

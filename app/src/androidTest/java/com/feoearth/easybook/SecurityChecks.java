@@ -8,9 +8,13 @@ import org.json.*;
 final class SecurityChecks {
     static void require(boolean b,String s){DataLayerChecks.require(b,s);}
     static void run(Context context)throws Exception{
+        require((context.getApplicationInfo().flags & android.content.pm.ApplicationInfo.FLAG_DEBUGGABLE)==0,"release APK must not be debuggable");
+        require((context.getApplicationInfo().flags & android.content.pm.ApplicationInfo.FLAG_ALLOW_BACKUP)==0,"system backup disabled");
+        for(String resource:new String[]{"backup_rules","data_extraction_rules"}){int id=context.getResources().getIdentifier(resource,"xml",context.getPackageName());require(id!=0,"backup exclusion resource exists");android.content.res.XmlResourceParser parser=context.getResources().getXml(id);int exclusions=0;while(parser.next()!=org.xmlpull.v1.XmlPullParser.END_DOCUMENT)if(parser.getEventType()==org.xmlpull.v1.XmlPullParser.START_TAG&&parser.getName().equals("exclude"))exclusions++;parser.close();require(exclusions>=5,"explicit data backup exclusions");}
         String name="security-tests-"+NoteRepository.id()+".db";NoteRepository db=new NoteRepository(context,name);CredentialVault v=db.vault;
         try{
-            String key=NoteRepository.newKey(),ref=NoteRepository.hash(key);String a=v.seal(key,"test"),b=v.seal(key,"test");require(!a.equals(b)&&!a.contains(key),"randomized credential encryption");require(v.open(a,"test").equals(key),"AES-GCM roundtrip");
+            String key=NoteRepository.newKey(),ref=NoteRepository.hash(key);
+            KeyStore keyStore=KeyStore.getInstance("AndroidKeyStore");keyStore.load(null);String alias=v.currentAlias();javax.crypto.SecretKey material=(javax.crypto.SecretKey)keyStore.getKey(alias,null);require(material.getEncoded()==null,"Keystore key is non-exportable");android.security.keystore.KeyInfo info=(android.security.keystore.KeyInfo)javax.crypto.SecretKeyFactory.getInstance("AES","AndroidKeyStore").getKeySpec(material,android.security.keystore.KeyInfo.class);require(info.getKeySize()==256,"Keystore AES key size");String a=v.seal(key,"test"),b=v.seal(key,"test");require(!a.equals(b)&&!a.contains(key),"randomized credential encryption");require(v.open(a,"test").equals(key),"AES-GCM roundtrip");
             try{v.open(a,"wrong-purpose");throw new AssertionError("AAD ignored");}catch(javax.crypto.AEADBadTagException expected){}
             String[] p=a.split(":");byte[] bytes=android.util.Base64.decode(p[3],android.util.Base64.NO_WRAP);bytes[0]^=1;p[3]=android.util.Base64.encodeToString(bytes,android.util.Base64.NO_WRAP);try{v.open(String.join(":",p),"test");throw new AssertionError("tampering accepted");}catch(javax.crypto.AEADBadTagException expected){}
             // Exact stage-one database schema and plaintext credential/archive fixture.

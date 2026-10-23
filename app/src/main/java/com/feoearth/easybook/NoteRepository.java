@@ -96,7 +96,7 @@ public final class NoteRepository extends SQLiteOpenHelper {
             }
             String previous=setting("active","");if(previous.isEmpty()&&!selected.isEmpty())setSetting("active",spaceId(selected));
             JSONObject report=new JSONObject().put("state","verified").put("digest",digest).put("spaces",new HashSet<>(spaces).size()).put("notes",noteCount).put("folders",folderCount).put("preservedCopies",copies).put("created",System.currentTimeMillis());
-            ContentValues journal=new ContentValues();journal.put("digest",digest);journal.put("source",vault.seal(source.toString(),"migration:"+digest));journal.put("state","verified");journal.put("report",report.toString());journal.put("created",System.currentTimeMillis());db.insertOrThrow("migration_journal",null,journal);db.setTransactionSuccessful();return report;
+            ContentValues journal=new ContentValues();journal.put("digest",digest);String sealedSource=vault.seal(source.toString(),"migration:"+digest);if(!vault.open(sealedSource,"migration:"+digest).equals(source.toString()))throw new SecurityException("Archive verification failed");journal.put("source",sealedSource);journal.put("state","verified");journal.put("report",report.toString());journal.put("created",System.currentTimeMillis());db.insertOrThrow("migration_journal",null,journal);db.setTransactionSuccessful();return report;
         }finally{db.endTransaction();}
     }
     public synchronized JSONArray migrationReports()throws Exception{JSONArray reports=new JSONArray();try(Cursor c=getReadableDatabase().rawQuery("SELECT report FROM migration_journal ORDER BY created",null)){while(c.moveToNext())reports.put(new JSONObject(c.getString(0)));}return reports;}

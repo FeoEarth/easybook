@@ -40,7 +40,7 @@ public class MainActivity extends Activity {
         getWindow().setSoftInputMode(WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE);
         if (android.os.Build.VERSION.SDK_INT >= 30) getWindow().setDecorFitsSystemWindows(false);
         web = new WebView(this); web.setBackgroundColor(color);
-        web.setTag("notes-webview");
+        web.setTag("notes-webview");web.setImportantForAutofill(View.IMPORTANT_FOR_AUTOFILL_NO_EXCLUDE_DESCENDANTS);
         // Insets belong to the container: WebView padding does not reliably constrain
         // CSS position:fixed controls to the Android safe area.
         safeArea = new android.widget.FrameLayout(this);
@@ -74,7 +74,7 @@ public class MainActivity extends Activity {
             if(text==null||text.length()>16*1024*1024)return;
             try{JSONObject envelope=new JSONObject(text);String requestId=envelope.getString("id"),method=envelope.getString("method");JSONObject args=envelope.optJSONObject("args");if(args==null)args=new JSONObject();final JSONObject input=args;final long generation=documentGeneration;
                 if(!requestId.matches("[a-zA-Z0-9-]{1,80}"))return;
-                Runnable operation=()->{try{if(destroyed||generation!=documentGeneration)throw new SecurityException();security.authorize(method,input,generation);JSONObject output=dispatch(method,input,generation);respond(reply,generation,new JSONObject().put("id",requestId).put("ok",true).put("result",output));}catch(Exception e){try{respond(reply,generation,new JSONObject().put("id",requestId).put("ok",false).put("error","操作未完成，数据已保留；可重试或导出备份"));}catch(Exception ignored){}}};
+                Runnable operation=()->{try{if(destroyed||generation!=documentGeneration)throw new SecurityException();security.authorize(method,input,generation);JSONObject output=dispatch(method,input,generation);respond(reply,generation,new JSONObject().put("id",requestId).put("ok",true).put("result",output));}catch(Exception e){try{respond(reply,generation,new JSONObject().put("id",requestId).put("ok",false).put("error","操作未完成，数据已保留；可重试或导出备份").put("code",e instanceof CredentialVault.KeyUnavailable?"CREDENTIAL_UNAVAILABLE":"OPERATION_FAILED"));}catch(Exception ignored){}}};
                 if(method.equals("sync"))syncIo.execute(operation);else io.execute(operation);
             }catch(Exception ignored){}
         });
@@ -111,7 +111,7 @@ public class MainActivity extends Activity {
             case "commit":{String k=args.getString("key");if(!k.equals(active))throw new IllegalStateException("Workspace changed");return repository.commit(k,args.getJSONObject("changes"));}
             case "search":{if(!args.getString("key").equals(active))throw new IllegalStateException("Workspace changed");return new JSONObject().put("notes",repository.search(active,bounded(args,"query",2000),bounded(args,"category",80),args.optBoolean("everywhere")));}
             case "snapshot":return repository.snapshot(active);
-            case "sync":{String k=args.getString("key");if(!k.equals(active))throw new IllegalStateException("Workspace changed");return new NativeSync(repository,new NativeSync.HttpsTransport(new DataProtection.Plaintext())).run(k);}
+            case "sync":{if(!repository.securityStatus().getBoolean("paired"))throw new CredentialVault.KeyUnavailable();String k=args.getString("key");if(!k.equals(active))throw new IllegalStateException("Workspace changed");return new NativeSync(repository,new NativeSync.HttpsTransport(new DataProtection.Plaintext())).run(k);}
             case "security.pair":security.pairing(()->{if(!destroyed&&generation==documentGeneration)web.reload();});return new JSONObject().put("nativeDialog",true);
             case "security.status":return repository.securityStatus();
             case "migration.cleaned":if(!repository.setting("rendererCredentials","").equals("cleared")){repository.scrubDeletedPages();repository.setSetting("rendererCredentials","cleared");}return new JSONObject().put("verified",true);
