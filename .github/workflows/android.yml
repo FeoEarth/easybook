@@ -47,3 +47,19 @@ jobs:
         run: |
           TAG="build-${GITHUB_RUN_NUMBER}"
           gh release create "$TAG" Easybook-0.1.0.apk SHA256SUMS.txt --target "$GITHUB_SHA" --title "Easybook 0.1.0 · build ${GITHUB_RUN_NUMBER}" --notes "Android 8+ 可安装测试版。Notion 风格笔记、离线编辑、Cloudflare D1 同步、设备密钥配对、冲突副本、回收站。开发签名；非应用商店正式发行版。"
+      - name: Keep latest APK available through repository downloads
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if ! gh api "repos/$GITHUB_REPOSITORY/git/ref/heads/apk-download" >/dev/null 2>&1; then
+            gh api "repos/$GITHUB_REPOSITORY/git/refs" -f ref=refs/heads/apk-download -f sha="$GITHUB_SHA"
+          fi
+          EXISTING_SHA=$(gh api "repos/$GITHUB_REPOSITORY/contents/downloads/Easybook-0.1.0.apk?ref=apk-download" --jq .sha 2>/dev/null || true)
+          export EXISTING_SHA
+          python3 - <<'PY'
+          import os, json, base64
+          body = dict(message='Publish installable APK', branch='apk-download', content=base64.b64encode(open('Easybook-0.1.0.apk','rb').read()).decode())
+          if os.environ.get('EXISTING_SHA'): body['sha'] = os.environ['EXISTING_SHA']
+          with open('/tmp/apk-upload.json','w') as f: json.dump(body,f)
+          PY
+          gh api "repos/$GITHUB_REPOSITORY/contents/downloads/Easybook-0.1.0.apk" --method PUT --input /tmp/apk-upload.json --jq .commit.sha
