@@ -6,3 +6,5 @@ node_modules/
 *.log
 
 worker/deploy.mjs
+
+worker/deploy.mjs

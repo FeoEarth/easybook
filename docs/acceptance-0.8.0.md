@@ -15,3 +15,18 @@ Legend: [x] evidence reviewed; [ ] unverified/pending. Phase 1 is documentation-
 - [ ] Phase 2 implementation explicitly authorized.
 - [ ] Production deployment authorized (out of scope).
 No core code changed; no Worker deployed; no D1/R2 objects or secrets deleted in phase 1.
+
+## Phase 2 implementation evidence — 2026-10-24
+- [x] Explicit phase 2 authorization; scope and no-isolation instruction captured.
+- [x] Current Worker bindings and D1 table definitions read-only verified.
+- [x] Shared versioned JSON contract and native asset match.
+- [x] All requested nodes/marks serialized, validated and restored in local tests.
+- [x] Web IndexedDB offline save and stale-tab CAS tested.
+- [x] Worker CAS, immutable replay receipt, incremental cursor, tombstone and rollback tested using SQLite.
+- [x] Old HTML canonical storage/Markdown conversion removed from active clients and API.
+- [x] Android release APK build and emulator instrumentation passed in final run 40004780785 at code commit 34ff03d15f3dbcd14cf32d468fefb2710d05f8a6; native workspace credentials retained.
+- [ ] Device IME and comprehensive editor UI acceptance (later phase).
+
+- [x] Current development Worker deployed; D1 additive schema and independent pin state verified.
+- [x] Deployed Worker/D1 real-network JSON, CAS, delayed replay, cursor and tombstone smoke passed in CI.
+- [x] R2 and native/remote secrets not deleted or reset.

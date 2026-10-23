@@ -1,0 +1,235 @@
+{
+  "schemaVersion": 1,
+  "maxBytes": 200000,
+  "maxNodes": 10000,
+  "maxDepth": 32,
+  "nodes": {
+    "doc": {
+      "children": [
+        "paragraph",
+        "heading",
+        "blockquote",
+        "bulletList",
+        "orderedList",
+        "taskList",
+        "codeBlock",
+        "horizontalRule",
+        "image",
+        "attachment"
+      ],
+      "min": 1,
+      "attrs": {}
+    },
+    "paragraph": {
+      "children": [
+        "text",
+        "hardBreak"
+      ],
+      "min": 0,
+      "attrs": {}
+    },
+    "heading": {
+      "children": [
+        "text",
+        "hardBreak"
+      ],
+      "min": 0,
+      "attrs": {
+        "level": [
+          "integer",
+          1,
+          3
+        ]
+      }
+    },
+    "blockquote": {
+      "children": [
+        "paragraph",
+        "heading",
+        "blockquote",
+        "bulletList",
+        "orderedList",
+        "taskList",
+        "codeBlock",
+        "horizontalRule",
+        "image",
+        "attachment"
+      ],
+      "min": 1,
+      "attrs": {}
+    },
+    "bulletList": {
+      "children": [
+        "listItem"
+      ],
+      "min": 1,
+      "attrs": {}
+    },
+    "orderedList": {
+      "children": [
+        "listItem"
+      ],
+      "min": 1,
+      "attrs": {
+        "start": [
+          "integer",
+          1,
+          1000000
+        ],
+        "type": [
+          "null"
+        ]
+      }
+    },
+    "listItem": {
+      "children": [
+        "paragraph",
+        "heading",
+        "blockquote",
+        "bulletList",
+        "orderedList",
+        "taskList",
+        "codeBlock",
+        "horizontalRule",
+        "image",
+        "attachment"
+      ],
+      "min": 1,
+      "attrs": {}
+    },
+    "taskList": {
+      "children": [
+        "taskItem"
+      ],
+      "min": 1,
+      "attrs": {}
+    },
+    "taskItem": {
+      "children": [
+        "paragraph",
+        "heading",
+        "blockquote",
+        "bulletList",
+        "orderedList",
+        "taskList",
+        "codeBlock",
+        "horizontalRule",
+        "image",
+        "attachment"
+      ],
+      "min": 1,
+      "attrs": {
+        "checked": [
+          "boolean"
+        ]
+      }
+    },
+    "codeBlock": {
+      "children": [
+        "text"
+      ],
+      "min": 0,
+      "attrs": {
+        "language": [
+          "string",
+          80
+        ]
+      }
+    },
+    "horizontalRule": {
+      "children": [],
+      "min": 0,
+      "attrs": {}
+    },
+    "hardBreak": {
+      "children": [],
+      "min": 0,
+      "attrs": {}
+    },
+    "text": {
+      "children": [],
+      "min": 0,
+      "attrs": {}
+    },
+    "image": {
+      "children": [],
+      "min": 0,
+      "attrs": {
+        "assetId": [
+          "asset"
+        ],
+        "alt": [
+          "string",
+          1000
+        ],
+        "width": [
+          "integer",
+          1,
+          10000
+        ],
+        "height": [
+          "integer",
+          1,
+          10000
+        ]
+      }
+    },
+    "attachment": {
+      "children": [],
+      "min": 0,
+      "attrs": {
+        "assetId": [
+          "asset"
+        ],
+        "name": [
+          "string",
+          180
+        ],
+        "mime": [
+          "string",
+          120
+        ],
+        "size": [
+          "integer",
+          0,
+          5242880
+        ]
+      }
+    }
+  },
+  "marks": {
+    "bold": {},
+    "italic": {},
+    "underline": {},
+    "strike": {},
+    "code": {},
+    "highlight": {
+      "color": [
+        "color"
+      ]
+    },
+    "textColor": {
+      "color": [
+        "color"
+      ]
+    },
+    "link": {
+      "href": [
+        "url"
+      ],
+      "target": [
+        "target"
+      ],
+      "rel": [
+        "rel"
+      ],
+      "class": [
+        "null"
+      ],
+      "title": [
+        "string",
+        200
+      ]
+    }
+  }
+}

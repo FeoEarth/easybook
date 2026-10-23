@@ -1,3 +1,7 @@
+# Easybook 0.8.0 Test
+
+Current development work: versioned JSON document, native SQLite / Web IndexedDB, CAS and idempotent sync. See [phase 2 evidence](docs/phase-two-0.8.0.md). No legacy HTML migration; old data is retained but not loaded into the JSON document store.
+
 # Easybook
 
 参考 iOS 备忘录布局的轻量 Android 文本笔记应用，使用 Cloudflare Workers + D1 跨设备同步。

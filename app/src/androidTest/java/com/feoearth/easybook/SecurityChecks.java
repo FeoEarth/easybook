@@ -26,10 +26,11 @@ final class SecurityChecks {
             db.secureCredentials();db.rollbackSecurity();require(db.active().equals(key)&&db.rows(db.activeSpace(),"note").length()==1,"repeat and encrypted rollback preserve notes");require(!db.snapshot(db.activeSpace()).toString().contains(key),"sanitized snapshot");
             // Simulated missing Keystore alias: must retain data and block sync credentials.
             KeyStore store=KeyStore.getInstance("AndroidKeyStore");store.load(null);store.deleteEntry(v.currentAlias());require(!db.securityStatus().getBoolean("paired"),"missing key requires re-pair");require(db.rows(db.activeSpace(),"note").length()==1,"missing key retains offline data");
-            JSONObject edit=db.row(db.activeSpace(),"note",n.getString("id"));String base=edit.getString("mutation");edit.put("body","密钥失效仍可离线编辑").put("mutation",NoteRepository.id());DataLayerChecks.save(db,db.activeSpace(),edit,base);try{db.credential(db.activeSpace());throw new AssertionError("missing key silently recreated");}catch(CredentialVault.KeyUnavailable expected){}
+            JSONObject edit=db.row(db.activeSpace(),"note",n.getString("id"));String base=edit.getString("mutation");edit.put("document",DataLayerChecks.document("密钥失效仍可离线编辑")).put("mutation",NoteRepository.id());DataLayerChecks.save(db,db.activeSpace(),edit,base);try{db.credential(db.activeSpace());throw new AssertionError("missing key silently recreated");}catch(CredentialVault.KeyUnavailable expected){}
             db.pair(key,true);require(db.credential(db.activeSpace()).equals(key)&&DataLayerChecks.findBody(db.rows(db.activeSpace(),"note"),"密钥失效仍可离线编辑")!=null,"same-key native re-pair preserves workspace");
             // Invalid plaintext migration is atomic and retryable.
             String bad=NoteRepository.newKey();raw.put("credential",bad);db.getWritableDatabase().update("spaces",raw,"key=?",new String[]{ref});try{db.secureCredentials();throw new AssertionError("identity mismatch accepted");}catch(SecurityException expected){}try(Cursor c=db.getReadableDatabase().rawQuery("SELECT credential FROM spaces WHERE key=?",new String[]{ref})){c.moveToFirst();require(c.getString(0).equals(bad),"failed migration leaves original for retry");}raw.put("credential",key);db.getWritableDatabase().update("spaces",raw,"key=?",new String[]{ref});db.secureCredentials();require(db.active().equals(key),"migration retry succeeds");
         }finally{db.close();context.deleteDatabase(name);}
     }
 }
+

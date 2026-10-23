@@ -14,3 +14,6 @@ iOS 26 Notes-inspired hierarchy and controls; Android/Web responsive behavior, d
 Run tests and staged deployment on isolated Test D1/R2/Worker; manually verify backups and destructive scope. Production deployment requires explicit separate authorization. No migration or old-format compatibility required, but never purge live resources implicitly.
 ## Phase 2 entry criteria
 Approved ADRs, explicit isolated Test environment/resource IDs, verified current bindings, clean baseline CI, JSON schema fixtures, security owner review, backup/rollback procedure, acceptance thresholds and no unapproved live data deletion.
+
+## Phase 2 scope revision — 2026-10-24
+The user's latest instruction includes canonical JSON, native/Web local storage and sync protocol in phase 2. It supersedes the former phase 2 editor-UI scope and pulls core protocol work from phase 4 forward. The user waived isolated infrastructure: current Cloudflare resources are development resources. No purge, permanent R2 deletion or key reset authorized. See phase-two-0.8.0.md for implementation and evidence. Complete editor UI, attachment preview and note management remain later work.
