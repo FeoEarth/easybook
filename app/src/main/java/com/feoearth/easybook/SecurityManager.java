@@ -24,6 +24,10 @@ public final class SecurityManager {
             case "commit":fields=fields("key","changes");break;
             case "search":fields=fields("key","query","category","everywhere");break;
             case "sync":fields=fields("key");break;
+            case "rich.original":fields=fields("key","noteId");break;
+            case "attachment.restore":fields=fields("key","files");break;
+            case "attachment.pick":fields=fields("key","noteId");break;
+            case "attachment.get":case "attachment.export":fields=fields("key","id");break;
             case "device.theme":fields=fields("value");break;
             case "device.copy":fields=fields("value");break;
             case "device.share":fields=fields("title","text");break;

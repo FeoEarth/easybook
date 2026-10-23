@@ -26,6 +26,7 @@ public class MainActivity extends Activity {
     private SecurityManager security;
     private static final ExecutorService syncIo=Executors.newSingleThreadExecutor();
     private String pendingExport;
+    private String attachmentSpace,attachmentNote,attachmentExportName;private long attachmentGeneration;private byte[] attachmentExport;
     private final ExecutorService io = Executors.newSingleThreadExecutor();
     private static final String LOCAL = "https://appassets.androidplatform.net/index.html";
     @Override public void onCreate(Bundle state) {
@@ -75,12 +76,13 @@ public class MainActivity extends Activity {
             try{JSONObject envelope=new JSONObject(text);String requestId=envelope.getString("id"),method=envelope.getString("method");JSONObject args=envelope.optJSONObject("args");if(args==null)args=new JSONObject();final JSONObject input=args;final long generation=documentGeneration;
                 if(!requestId.matches("[a-zA-Z0-9-]{1,80}"))return;
                 Runnable operation=()->{try{if(destroyed||generation!=documentGeneration)throw new SecurityException();security.authorize(method,input,generation);JSONObject output=dispatch(method,input,generation);respond(reply,generation,new JSONObject().put("id",requestId).put("ok",true).put("result",output));}catch(Exception e){try{respond(reply,generation,new JSONObject().put("id",requestId).put("ok",false).put("error","操作未完成，数据已保留；可重试或导出备份").put("code",e instanceof CredentialVault.KeyUnavailable?"CREDENTIAL_UNAVAILABLE":"OPERATION_FAILED"));}catch(Exception ignored){}}};
-                if(method.equals("sync"))syncIo.execute(operation);else io.execute(operation);
+                if(method.equals("sync")||method.equals("attachment.get"))syncIo.execute(operation);else io.execute(operation);
             }catch(Exception ignored){}
         });
         web.setWebViewClient(new WebViewClient() {
             @Override public WebResourceResponse shouldInterceptRequest(WebView v, WebResourceRequest r) {
                 Uri u = r.getUrl();
+                if ("https://appassets.androidplatform.net/editor.js".equals(u.toString())) {try{return new WebResourceResponse("application/javascript","UTF-8",new ByteArrayInputStream(readAsset("editor.js").getBytes(StandardCharsets.UTF_8)));}catch(IOException e){return new WebResourceResponse("text/plain","UTF-8",new ByteArrayInputStream(new byte[0]));}}
                 if (LOCAL.equals(u.toString())) {
                     try {
                         boolean legacy=false;
@@ -112,6 +114,11 @@ public class MainActivity extends Activity {
             case "search":{if(!args.getString("key").equals(active))throw new IllegalStateException("Workspace changed");return new JSONObject().put("notes",repository.search(active,bounded(args,"query",2000),bounded(args,"category",80),args.optBoolean("everywhere")));}
             case "snapshot":return repository.snapshot(active);
             case "sync":{if(!repository.securityStatus().getBoolean("paired"))throw new CredentialVault.KeyUnavailable();String k=args.getString("key");if(!k.equals(active))throw new IllegalStateException("Workspace changed");return new NativeSync(repository,new NativeSync.HttpsTransport(new DataProtection.Plaintext())).run(k);}
+            case "rich.original":{String noteId=bounded(args,"noteId",36);JSONObject original=repository.row(repository.activeSpace(),"rich-original",noteId);return new JSONObject().put("original",original==null?JSONObject.NULL:original);}
+            case "attachment.pick":{String space=repository.activeSpace(),noteId=bounded(args,"noteId",36);if(repository.row(space,"note",noteId)==null)throw new SecurityException();runOnUiThread(()->{if(destroyed||generation!=documentGeneration)return;attachmentSpace=space;attachmentNote=noteId;attachmentGeneration=generation;Intent i=new Intent(Intent.ACTION_OPEN_DOCUMENT);i.addCategory(Intent.CATEGORY_OPENABLE);i.setType("*/*");startActivityForResult(i,83);});return new JSONObject().put("picker",true);}
+            case "attachment.get":{String space=repository.activeSpace(),id=bounded(args,"id",64);requireAttachmentReference(space,id);return repository.attachments.get(space,id);}
+            case "attachment.restore":{String space=repository.activeSpace();JSONArray files=args.getJSONArray("files");if(files.length()>100)throw new IllegalArgumentException();for(int i=0;i<files.length();i++){JSONObject f=files.getJSONObject(i);repository.attachments.accept(space,f.getString("id"),f);repository.saveAttachment(space,new JSONObject(f.toString()).put("data",JSONObject.NULL).put("dirty",true));}return new JSONObject().put("restored",files.length());}
+            case "attachment.export":{String space=repository.activeSpace(),id=bounded(args,"id",64);requireAttachmentReference(space,id);JSONObject f=repository.attachments.get(space,id);byte[] bytes=android.util.Base64.decode(f.getString("data"),android.util.Base64.NO_WRAP);runOnUiThread(()->{if(destroyed||generation!=documentGeneration)return;attachmentExport=bytes;attachmentExportName=AttachmentStore.cleanName(f.optString("name","附件"));Intent i=new Intent(Intent.ACTION_CREATE_DOCUMENT);i.addCategory(Intent.CATEGORY_OPENABLE);i.setType("application/octet-stream");i.putExtra(Intent.EXTRA_TITLE,attachmentExportName);startActivityForResult(i,84);});return new JSONObject().put("picker",true);}
             case "security.pair":security.pairing(()->{if(!destroyed&&generation==documentGeneration)web.reload();});return new JSONObject().put("nativeDialog",true);
             case "security.status":return repository.securityStatus();
             case "migration.cleaned":if(!repository.setting("rendererCredentials","").equals("cleared")){repository.scrubDeletedPages();repository.setSetting("rendererCredentials","cleared");}return new JSONObject().put("verified",true);
@@ -123,12 +130,13 @@ public class MainActivity extends Activity {
             case "device.haptic":runOnUiThread(()->web.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP));break;
             case "device.copy":new DeviceActions().copy(bounded(args,"value",100000));break;
             case "device.share":new DeviceActions().share(bounded(args,"title",200),bounded(args,"text",60500));break;
-            case "device.exportNotes":{JSONObject snapshot=repository.snapshot(active);new DeviceActions().exportNotes(new JSONObject().put("format","easybook-v1").put("notes",snapshot.getJSONArray("notes")).put("folders",snapshot.getJSONArray("folders")).toString());break;}
+            case "device.exportNotes":{JSONObject snapshot=repository.snapshot(active);JSONArray files=new JSONArray(),metas=repository.rows(active,"attachment");for(int i=0;i<metas.length();i++)files.put(repository.attachments.payload(active,metas.getJSONObject(i).getString("id")));new DeviceActions().exportNotes(new JSONObject().put("format","easybook-v1").put("notes",snapshot.getJSONArray("notes")).put("folders",snapshot.getJSONArray("folders")).put("attachments",files).put("richOriginals",repository.rows(active,"rich-original")).toString());break;}
             case "device.importNotes":new DeviceActions().importNotes();break;
             default:throw new IllegalArgumentException("Unknown method");
         }
         return new JSONObject();
     }
+    private void requireAttachmentReference(String space,String id)throws Exception{AttachmentStore.validId(id);JSONArray notes=repository.rows(space,"note");for(int i=0;i<notes.length();i++)if(notes.getJSONObject(i).optString("body").contains("attachment:"+id))return;throw new SecurityException("Unreferenced attachment");}
     public class DeviceActions {
         public void theme(String value) { runOnUiThread(() -> {
             boolean dark = "dark".equals(value) || (!"light".equals(value) && (getResources().getConfiguration().uiMode & Configuration.UI_MODE_NIGHT_MASK) == Configuration.UI_MODE_NIGHT_YES);
@@ -146,7 +154,7 @@ public class MainActivity extends Activity {
             startActivity(Intent.createChooser(i,"分享笔记"));
         }); }
         public void exportNotes(String value) { runOnUiThread(() -> {
-            if (value.length() > 10000000) { notifyJs("备份过大，请分批整理"); return; }
+            if (value.length() > 50000000) { notifyJs("备份过大，请分批整理"); return; }
             pendingExport = value;
             Intent i = new Intent(Intent.ACTION_CREATE_DOCUMENT); i.addCategory(Intent.CATEGORY_OPENABLE);
             i.setType("application/json"); i.putExtra(Intent.EXTRA_TITLE,"Easybook-backup.json");
@@ -161,8 +169,11 @@ public class MainActivity extends Activity {
     @Override protected void onActivityResult(int request, int result, Intent data) {
         super.onActivityResult(request, result, data);
         if (request == 81 && (result != RESULT_OK || data == null)) {pendingExport = null; return;}
+        if(request==84&&(result!=RESULT_OK||data==null)){attachmentExport=null;return;}
         if (result != RESULT_OK || data == null || data.getData() == null) return;
         Uri uri = data.getData();
+        if(request==83){final String space=attachmentSpace,noteId=attachmentNote;final long generation=attachmentGeneration;attachmentSpace=null;attachmentNote=null;if(space==null)return;io.execute(()->{try(InputStream in=getContentResolver().openInputStream(uri)){if(in==null)throw new IOException();String name="附件";try(android.database.Cursor cursor=getContentResolver().query(uri,new String[]{android.provider.OpenableColumns.DISPLAY_NAME},null,null,null)){if(cursor!=null&&cursor.moveToFirst())name=cursor.getString(0);}JSONObject meta=repository.attachments.save(space,name,getContentResolver().getType(uri),AttachmentStore.read(in),true);runOnUiThread(()->{if(!destroyed&&generation==documentGeneration)web.evaluateJavascript("window.receiveAttachment("+JSONObject.quote(space)+","+JSONObject.quote(noteId)+","+meta.toString()+")",null);});}catch(Exception e){runOnUiThread(()->notifyJs("附件未添加：请选择不超过 5 MB 的文件并重试"));}});return;}
+        if(request==84){final byte[] bytes=attachmentExport;attachmentExport=null;if(bytes==null)return;io.execute(()->{try(OutputStream out=getContentResolver().openOutputStream(uri)){if(out==null)throw new IOException();out.write(bytes);runOnUiThread(()->notifyJs("附件已保存"));}catch(Exception e){runOnUiThread(()->notifyJs("附件保存失败，可重试"));}});return;}
         if (request == 81 && pendingExport != null) {
             final String value = pendingExport; pendingExport = null;
             io.execute(() -> { try (OutputStream out = getContentResolver().openOutputStream(uri)) {
@@ -172,10 +183,10 @@ public class MainActivity extends Activity {
         } else if (request == 82) io.execute(() -> {
             try (InputStream in = getContentResolver().openInputStream(uri); ByteArrayOutputStream out = new ByteArrayOutputStream()) {
                 if (in == null) throw new IOException(); byte[] buf = new byte[8192]; int n;
-                while ((n=in.read(buf))!=-1) { if (out.size()+n>10000000) throw new IOException(); out.write(buf,0,n); }
+                while ((n=in.read(buf))!=-1) { if (out.size()+n>50000000) throw new IOException(); out.write(buf,0,n); }
                 String text = out.toString("UTF-8");
                 runOnUiThread(() -> web.evaluateJavascript("window.importBackupText("+JSONObject.quote(text)+")",null));
-            } catch (IOException e) {runOnUiThread(() -> notifyJs("无法读取文件或备份超过 10 MB"));}
+            } catch (IOException e) {runOnUiThread(() -> notifyJs("无法读取文件或备份超过 50 MB"));}
         });
     }
     private void receiveShare(Intent i) {

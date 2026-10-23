@@ -1,17 +1,21 @@
 import html from './ui.mjs';
+import editor from './editor.mjs';
+import {attachments} from './attachments.mjs';
 const headers = {'Access-Control-Allow-Origin':'*','Access-Control-Allow-Headers':'Authorization, Content-Type','Access-Control-Allow-Methods':'GET, PUT, OPTIONS','Cache-Control':'no-store','X-Content-Type-Options':'nosniff'};
 const json = (data, status=200) => Response.json(data, {status, headers});
 export default {
  async fetch(request, env) {
   const url = new URL(request.url);
   if(request.method === 'OPTIONS') return new Response(null,{status:204,headers});
-  if(url.pathname === '/health') return json({ok:true,app:'Easybook',version:'0.4.0'});
+  if(url.pathname === '/editor.js' && request.method === 'GET')return new Response(editor,{headers:{'Content-Type':'application/javascript; charset=utf-8','X-Content-Type-Options':'nosniff','Cache-Control':'no-cache'}});
+  if(url.pathname === '/health') return json({ok:true,app:'Easybook',version:'0.7.0'});
   if(url.pathname === '/' && request.method === 'GET') return new Response(html,{headers:{'Content-Type':'text/html; charset=utf-8','X-Content-Type-Options':'nosniff','Referrer-Policy':'no-referrer','Cache-Control':'no-cache'}});
   if(!url.pathname.startsWith('/api/')) return json({error:'Not found'},404);
   const token = (request.headers.get('Authorization')||'').replace(/^Bearer /,'');
   if(!/^[a-f0-9]{64}$/.test(token)) return json({error:'Invalid workspace key'},401);
   const workspace = Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256',new TextEncoder().encode(token)))).map(x=>x.toString(16).padStart(2,'0')).join('');
   try {
+   const attachmentId=url.pathname.match(/^\/api\/attachments\/([a-f0-9]{64})$/)?.[1];if(attachmentId)return await attachments(request,env,workspace,attachmentId,headers);
    if(url.pathname === '/api/notes' && request.method === 'GET') {
     const after = url.searchParams.get('after')||'';
     if(after.length>80) return json({error:'Invalid cursor'},400);

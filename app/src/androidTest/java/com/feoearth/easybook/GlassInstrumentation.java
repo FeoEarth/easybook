@@ -142,7 +142,7 @@ public class GlassInstrumentation extends Instrumentation {
     @Override public void onStart() {
         Bundle result=new Bundle();
         try {
-            SecurityChecks.run(getTargetContext());
+            SecurityChecks.run(getTargetContext());AttachmentChecks.run(getTargetContext());
             DataLayerChecks.run(getTargetContext(),!offlineChecks);
             getUiAutomation().executeShellCommand("cmd connectivity airplane-mode enable").close();
             launch();seedLegacy();bridgeSecurity();checkSafeArea();check("document.getElementById('heading').textContent==='全部备忘录'","Home");shot("home.png");
@@ -161,11 +161,15 @@ public class GlassInstrumentation extends Instrumentation {
             js("document.getElementById('back').querySelector('span').textContent='很长很长的文件夹名称测试导航宽度';document.querySelector('.editor-header').style.width='320px'");
             check("(()=>{const h=document.querySelector('.editor-header').getBoundingClientRect(),a=document.getElementById('back').getBoundingClientRect(),b=document.getElementById('editorShare').getBoundingClientRect(),d=document.getElementById('done').getBoundingClientRect();return a.right<=b.left&&d.right<=h.right&&d.height===44&&document.documentElement.scrollWidth===innerWidth})()","320px header controls do not collide or overflow");
             shot("header-narrow.png");js("document.querySelector('.editor-header').style.width='';document.getElementById('back').querySelector('span').textContent='全部备忘录'");
+            check("!document.getElementById('meta') && document.querySelector('#richEditor .tiptap')!==null", "Date removed and rich editor active");
             checkKeyboard();
             js("document.getElementById('previewButton').click()");
             check("document.querySelectorAll('#preview [role=checkbox]').length===2","Todo rendering");shot("editor.png");
             js("document.querySelector('#preview [role=checkbox]').click()");
             check("document.querySelector('#preview [role=checkbox]').getAttribute('aria-checked')==='true'","Todo toggle");
+            js("document.getElementById('previewButton').click();window.easybookRich.editor.commands.selectAll();window.easybookRich.editor.commands.toggleBold()");
+            check("document.getElementById('body').value.startsWith('<!--easybook-rich-v1-->') && document.getElementById('body').value.includes('<strong>')", "Rich formatting persists canonical content");
+            shot("rich-editor.png");
             js("document.getElementById('moreButton').click();document.getElementById('favoriteButton').click();window.persistNow();window.goHome()");
             check("!document.body.classList.contains('editing')","Back navigation");
             flush();runOnMainSync(()->activity.finish());Thread.sleep(500);launch();

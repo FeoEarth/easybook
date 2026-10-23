@@ -1,0 +1,19 @@
+import {Editor,Extension} from '@tiptap/core';
+import StarterKit from '@tiptap/starter-kit';
+import TaskList from '@tiptap/extension-task-list';
+import TaskItem from '@tiptap/extension-task-item';
+import DOMPurify from 'dompurify';
+import {Plugin} from '@tiptap/pm/state';
+import {DOMSerializer} from '@tiptap/pm/model';
+const PREFIX='<!--easybook-rich-v1-->\n';
+const esc=s=>String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+function sanitize(html){return DOMPurify.sanitize(html,{ALLOWED_TAGS:['p','br','strong','em','s','u','h1','h2','h3','blockquote','pre','code','ul','ol','li','a','label','input','span','div'],ALLOWED_ATTR:['href','data-type','data-checked','type','checked','start'],ALLOW_DATA_ATTR:false,ADD_ATTR:['data-type','data-checked'],ALLOWED_URI_REGEXP:/^(?:(?:https?|mailto):|attachment:[a-f0-9]{64}$)/i});}
+function legacy(raw){let out='',list='';for(const line of raw.split('\n')){let type=/^- \[[ xX]\] /.test(line)?'taskList':/^- /.test(line)?'ul':/^\d+\. /.test(line)?'ol':'';if(type!==list){if(list)out+=list==='taskList'?'</ul>':`</${list}>`;if(type)out+=type==='taskList'?'<ul data-type="taskList">':`<${type}>`;list=type;}if(type==='taskList')out+=`<li data-type="taskItem" data-checked="${/[xX]/.test(line[3])}"><p>${esc(line.slice(6))}</p></li>`;else if(type)out+='<li><p>'+esc(line.replace(/^(?:- |\d+\. )/,''))+'</p></li>';else if(/^#{1,3} /.test(line)){const level=Math.min(3,line.indexOf(' '));out+=`<h${level}>${esc(line.slice(level+1))}</h${level}>`;}else if(/^> /.test(line))out+='<blockquote><p>'+esc(line.slice(2))+'</p></blockquote>';else out+='<p>'+esc(line)+'</p>';}if(list)out+=list==='taskList'?'</ul>':`</${list}>`;return out||'<p></p>';}
+function html(raw){return raw.startsWith(PREFIX)?sanitize(raw.slice(PREFIX.length)):legacy(raw);}
+function plain(raw){if(!raw.startsWith(PREFIX))return raw;const t=document.createElement('div');t.innerHTML=sanitize(raw.slice(PREFIX.length));for(const el of t.querySelectorAll('p,h1,h2,h3,li,blockquote,pre'))el.appendChild(document.createTextNode('\n'));return (t.textContent||'').trim();}
+window.RichNotes={PREFIX,html,plain,sanitize,create(element,onChange,onLimit){
+ const limit=Extension.create({name:'safeSize',addProseMirrorPlugins(){return [new Plugin({filterTransaction(tr){if(loading||!tr.docChanged)return true;const el=document.createElement('div');el.appendChild(DOMSerializer.fromSchema(tr.doc.type.schema).serializeFragment(tr.doc.content));if(PREFIX.length+el.innerHTML.length>60000){onLimit();return false;}return true;}})];}});
+ let loading=false;
+ const editor=new Editor({element,extensions:[StarterKit.configure({link:{openOnClick:false,protocols:['attachment']},heading:{levels:[1,2,3]}}),TaskList,TaskItem.configure({nested:true,onReadOnlyChecked:()=>true}),limit],content:'<p></p>',editorProps:{attributes:{class:'rich-content',role:'textbox','aria-label':'笔记正文','aria-multiline':'true'},handlePaste(view,event){const data=event.clipboardData;if(!data)return false;const rich=data.getData('text/html');if(rich){event.preventDefault();editor.commands.insertContent(sanitize(rich));return true;}return false;}},onUpdate(){if(!loading)onChange(PREFIX+sanitize(editor.getHTML()));}});
+ return {editor,load(raw){loading=true;editor.commands.setContent(html(raw),{emitUpdate:false,parseOptions:{preserveWhitespace:'full'}});loading=false;},value(){return PREFIX+sanitize(editor.getHTML());},plain(){return editor.getText({blockSeparator:'\n'});},command(name){editor.chain().focus()[name]().run();},readonly(value){editor.setEditable(!value);},attachment(id,name){editor.chain().focus().insertContent({type:'paragraph',content:[{type:'text',text:name,marks:[{type:'link',attrs:{href:'attachment:'+id}}]}]}).run();},tasks(){let total=0,done=0;editor.state.doc.descendants(n=>{if(n.type.name==='taskItem'){total++;if(n.attrs.checked)done++;}});return {total,done};}};
+}};

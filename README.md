@@ -4,7 +4,7 @@
 
 ## 安装
 
-打开本仓库 **Releases**，下载 `Easybook-0.6.3.apk`。支持 Android 8.0 及以上。APK 为非调试 Release 构建，沿用旧版兼容签名。首次安装需要允许来自浏览器的应用安装。
+打开本仓库 **Releases**，下载 `Easybook-0.7.0.apk`。支持 Android 8.0 及以上。APK 为非调试 Release 构建，沿用旧版兼容签名。首次安装需要允许来自浏览器的应用安装。
 
 ## 旧版迁移
 
@@ -33,3 +33,7 @@ GitHub Actions 在推送 main 后构建并发布带 SHA-256 校验文件的 APK�
 ## 后端
 
 `worker/schema.sql` 为 D1 表结构，`worker/index.mjs` 实现版本条件写入和幂等重试。`worker/ui.mjs` 由 Android HTML 生成，两个端共享同一界面。修改 HTML 后执行 `node scripts/generate-ui.mjs`。`worker/wrangler.jsonc` 提供部署配置；Cloudflare 认证凭据不要提交到仓库。
+
+## 富文本、待办与附件（0.7.0）
+
+Tiptap 离线富文本，支持标题、粗体、斜体、下划线、列表、链接和撤销。待办可直接勾选、嵌套、缩进并隐藏已完成项。附件单个最大 5 MB，支持本机离线保存、图片预览及跨设备同步，云端存于私有 R2。旧版正文首次编辑前保留原稿，可在格式菜单恢复为副本。旧版客户端可能把富文本显示为标记，请使用 0.7.0 及以上编辑。详见 `docs/rich-editor-attachments.md`。
