@@ -86,20 +86,22 @@ public class GlassInstrumentation extends Instrumentation {
     }
     private void checkKeyboard() throws Exception {checkKeyboard("title");}
     private void checkKeyboard(String input) throws Exception {
+        js("document.getElementById('"+input+"').focus()");Thread.sleep(250);
         double viewport=Double.parseDouble(js("window.innerWidth")),cssY=Double.parseDouble(js("document.getElementById('"+input+"').getBoundingClientRect().top+20"));
         int[] point=new int[2];runOnMainSync(()->{int[] origin=new int[2];web.getLocationOnScreen(origin);point[0]=origin[0]+web.getWidth()/2;point[1]=origin[1]+(int)(cssY*web.getWidth()/viewport);});
         long now=android.os.SystemClock.uptimeMillis();android.view.MotionEvent down=android.view.MotionEvent.obtain(now,now,android.view.MotionEvent.ACTION_DOWN,point[0],point[1],0),up=android.view.MotionEvent.obtain(now,now+80,android.view.MotionEvent.ACTION_UP,point[0],point[1],0);down.setSource(android.view.InputDevice.SOURCE_TOUCHSCREEN);up.setSource(android.view.InputDevice.SOURCE_TOUCHSCREEN);sendPointerSync(down);sendPointerSync(up);down.recycle();up.recycle();
+        Thread.sleep(250);
         runOnMainSync(() -> {
             web.requestFocus();
             ((android.view.inputmethod.InputMethodManager)activity.getSystemService(android.content.Context.INPUT_METHOD_SERVICE)).showSoftInput(web, android.view.inputmethod.InputMethodManager.SHOW_IMPLICIT);
         });
         boolean visible=false;
-        for(int i=0;i<30;i++){
+        for(int i=0;i<80;i++){
             AtomicReference<Boolean> shown=new AtomicReference<>(false);
             runOnMainSync(() -> shown.set(web.getRootWindowInsets().isVisible(android.view.WindowInsets.Type.ime())));
             if(shown.get()){visible=true;break;}Thread.sleep(100);
         }
-        if(!visible)throw new AssertionError("Keyboard did not open");
+        if(!visible)throw new AssertionError("Keyboard did not open for "+input+"; focused="+js("document.activeElement.id"));
         Thread.sleep(400);checkSafeArea();
         if(input.equals("folderName")){
             check("(()=>{const d=document.getElementById('newFolderDialog').getBoundingClientRect();return d.top>=0&&d.bottom<=innerHeight})()", "Folder sheet remains above Android keyboard");shot("new-folder-keyboard.png");
