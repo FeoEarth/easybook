@@ -43,7 +43,13 @@ public class GlassInstrumentation extends Instrumentation {
         });
         if(!frame.await(10,TimeUnit.SECONDS))throw new AssertionError("WebView visual frame timed out");
         Thread.sleep(500);
-        Bitmap image=getUiAutomation().takeScreenshot();
+        AtomicReference<Bitmap> capture=new AtomicReference<>();
+        runOnMainSync(() -> {
+            Bitmap bitmap=Bitmap.createBitmap(web.getWidth(),web.getHeight(),Bitmap.Config.ARGB_8888);
+            web.draw(new android.graphics.Canvas(bitmap));
+            capture.set(bitmap);
+        });
+        Bitmap image=capture.get();
         if(image==null)throw new AssertionError("Android screenshot unavailable");
         java.util.HashSet<Integer> colors=new java.util.HashSet<>();
         for(int y=110;y<image.getHeight()-110 && colors.size()<30;y+=6)
