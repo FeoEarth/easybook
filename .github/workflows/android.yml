@@ -43,7 +43,7 @@ jobs:
           api-level: 35
           emulator-boot-timeout: 180
           arch: x86_64
-          target: aosp_atd
+          target: google_apis
           profile: pixel_2
           disable-animations: true
           emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
