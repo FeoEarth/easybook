@@ -4,7 +4,7 @@
 
 ## 安装
 
-打开本仓库 **Releases**，下载 `Easybook-0.6.0.apk`。支持 Android 8.0 及以上。APK 为非调试 Release 构建，沿用旧版兼容签名。首次安装需要允许来自浏览器的应用安装。
+打开本仓库 **Releases**，下载 `Easybook-0.6.1.apk`。支持 Android 8.0 及以上。APK 为非调试 Release 构建，沿用旧版兼容签名。首次安装需要允许来自浏览器的应用安装。
 
 ## 旧版迁移
 

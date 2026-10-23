@@ -11,7 +11,8 @@ final class DataLayerChecks {
     static JSONObject source(String key,JSONArray notes,JSONArray folders)throws Exception{return new JSONObject().put("active",key).put("storage",new JSONObject().put("easybook-"+key,notes.toString()).put("easybook-folders-"+key,folders.toString()));}
     static void save(NoteRepository db,String k,JSONObject n,String base)throws Exception{db.commit(k,new JSONObject().put("notes",new JSONArray().put(new JSONObject().put("note",n).put("baseMutation",base))).put("folders",new JSONArray()));}
     static JSONObject findBody(JSONArray a,String body)throws Exception{for(int i=0;i<a.length();i++)if(a.getJSONObject(i).optString("body").equals(body))return a.getJSONObject(i);return null;}
-    static void run(Context context)throws Exception{
+    static void run(Context context)throws Exception{run(context,true);}
+    static void run(Context context,boolean live)throws Exception{
         String name="native-data-tests-"+NoteRepository.id()+".db";NoteRepository db=new NoteRepository(context,name);
         try{
             String key=NoteRepository.newKey(),other=NoteRepository.newKey(),empty=NoteRepository.newKey(),folderId=NoteRepository.id();JSONObject f=new JSONObject().put("id",folderId).put("name","历史").put("dirty",true).put("updated",1);JSONObject old=note(NoteRepository.id(),"保留正文").put("folder_id",folderId).put("favorite",1);JSONObject deleted=note(NoteRepository.id(),"回收站").put("deleted",1);
@@ -29,7 +30,7 @@ final class DataLayerChecks {
             JSONObject remote=NoteRepository.copy(sent).put("body","远端版本").put("mutation",NoteRepository.id()).put("version",2);db.syncResult(key,after,new JSONObject().put("note",remote),409);require(findBody(db.rows(key,"note"),"远端版本")!=null&&findBody(db.rows(key,"note"),"上传时继续编辑")!=null,"sync conflict preserves remote and latest local");
             require(new DataProtection.Plaintext().encodeLocal("plain").equals("plain"),"stage one does not claim encryption");
         }finally{db.close();context.deleteDatabase(name);}
-        liveSync(context);
+        if(live)liveSync(context);
     }
     private static void liveSync(Context context)throws Exception{
         String aName="native-live-a-"+NoteRepository.id()+".db",bName="native-live-b-"+NoteRepository.id()+".db";NoteRepository a=new NoteRepository(context,aName),b=new NoteRepository(context,bName);

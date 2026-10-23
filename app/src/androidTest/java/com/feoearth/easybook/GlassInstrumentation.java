@@ -15,9 +15,10 @@ import java.util.concurrent.atomic.AtomicReference;
 
 /** Runs in the actual Android WebView without depending on the emulator's accessibility bridge. */
 public class GlassInstrumentation extends Instrumentation {
+    private boolean offlineChecks;
     private Activity activity;
     private WebView web;
-    @Override public void onCreate(Bundle args) {super.onCreate(args);start();}
+    @Override public void onCreate(Bundle args) {super.onCreate(args);offlineChecks=args!=null&&"true".equals(args.getString("offlineChecks"));start();}
     private void launch() throws Exception {
         Intent i=new Intent(getTargetContext(),MainActivity.class);i.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
         activity=startActivitySync(i);
@@ -135,7 +136,7 @@ public class GlassInstrumentation extends Instrumentation {
         Bundle result=new Bundle();
         try {
             SecurityChecks.run(getTargetContext());
-            DataLayerChecks.run(getTargetContext());
+            DataLayerChecks.run(getTargetContext(),!offlineChecks);
             getUiAutomation().executeShellCommand("cmd connectivity airplane-mode enable").close();
             launch();seedLegacy();bridgeSecurity();checkSafeArea();check("document.getElementById('heading').textContent==='全部备忘录'","Home");shot("home.png");
             js("document.getElementById('foldersButton').click()");
@@ -149,6 +150,10 @@ public class GlassInstrumentation extends Instrumentation {
             check("!document.getElementById('editor').hidden","Editor navigation");
             js("document.getElementById('title').value='周末采购';document.getElementById('title').dispatchEvent(new Event('input',{bubbles:true}));window.persistNow()");
             checkNative("s.notes.some(n=>n.title==='周末采购')","Native SQLite save");
+            check("(()=>{const h=document.querySelector('.editor-header'),d=document.getElementById('done'),b=document.getElementById('back');return h.getBoundingClientRect().height<=66&&getComputedStyle(d).whiteSpace==='nowrap'&&getComputedStyle(b.querySelector('span')).whiteSpace==='nowrap'&&!h.contains(document.getElementById('editorStatus'))})()","Editor header single-line layout and separate sync status");
+            js("document.getElementById('back').querySelector('span').textContent='很长很长的文件夹名称测试导航宽度';document.querySelector('.editor-header').style.width='320px'");
+            check("(()=>{const h=document.querySelector('.editor-header').getBoundingClientRect(),a=document.getElementById('back').getBoundingClientRect(),b=document.getElementById('editorShare').getBoundingClientRect(),d=document.getElementById('done').getBoundingClientRect();return a.right<=b.left&&d.right<=h.right&&d.height===44&&document.documentElement.scrollWidth===innerWidth})()","320px header controls do not collide or overflow");
+            shot("header-narrow.png");js("document.querySelector('.editor-header').style.width='';document.getElementById('back').querySelector('span').textContent='全部备忘录'");
             checkKeyboard();
             js("document.getElementById('previewButton').click()");
             check("document.querySelectorAll('#preview [role=checkbox]').length===2","Todo rendering");shot("editor.png");
@@ -158,7 +163,9 @@ public class GlassInstrumentation extends Instrumentation {
             check("!document.body.classList.contains('editing')","Back navigation");
             flush();runOnMainSync(()->activity.finish());Thread.sleep(500);launch();
             check("document.getElementById('cards').innerText.includes('周末采购')","Activity restart persistence");shot("notes.png");
-            js("document.getElementById('foldersButton').click();document.getElementById('createFolder').click();document.getElementById('folderName').value='工作';document.getElementById('newFolderForm').requestSubmit()");
+            js("document.getElementById('foldersButton').click();document.getElementById('createFolder').click()");
+            check("document.getElementById('newFolderDialog').getBoundingClientRect().width<=282&&getComputedStyle(document.getElementById('folderName')).outlineStyle==='none'&&document.getElementById('createFolderSubmit').disabled","Compact alert, no yellow focus frame, empty-name guard");shot("new-folder.png");
+            js("document.getElementById('folderName').value='工作';document.getElementById('folderName').dispatchEvent(new Event('input',{bubbles:true}));document.getElementById('newFolderForm').requestSubmit()");
             check("document.getElementById('customFolders').innerText.includes('工作')", "Create folder");
             js("document.getElementById('createFolder').click();document.getElementById('folderName').value='工作';document.getElementById('newFolderForm').requestSubmit()");
             check("document.getElementById('folderError').textContent.includes('同名')", "Duplicate folder validation");
@@ -183,7 +190,7 @@ public class GlassInstrumentation extends Instrumentation {
             js("document.getElementById('foldersButton').click();document.getElementById('folderSettings').click();document.querySelector('button[data-theme=dark]').click()");
             check("document.documentElement.dataset.theme==='dark'","Dark appearance");
             check("typeof EasybookDevice.copy==='function' && typeof EasybookDevice.share==='function' && typeof EasybookDevice.exportNotes==='function' && typeof EasybookDevice.importNotes==='function'","Native actions");
-            shot("settings.png");result.putString("passed","true");result.putString("checks","Keystore AES256-GCM tamper/AAD/IV, plaintext credential migration/retry/rollback, invalidated-key offline and re-pair, no bridge secrets, backup exclusions, SQLite transactional migration, retry, collision, rollback archive, live Worker cross-device/conflict/browser compatibility, bridge origin/allowlist/CSP, folder creation, duplicate validation, move, scoped/global/CJK/multiple-keyword search, persistence, native status/navigation/cutout bounds, launch, editor, local save, todo toggle, favorite, back, restart persistence, dark appearance, native actions");
+            shot("settings.png");result.putString("passed","true");result.putString("checks","Keystore AES256-GCM tamper/AAD/IV, plaintext credential migration/retry/rollback, invalidated-key offline and re-pair, no bridge secrets, backup exclusions, SQLite transactional migration, retry, collision, rollback archive, Worker protocol (live cross-device covered by 0.6.0; UI run may skip live), compact folder alert, narrow single-line header, bridge origin/allowlist/CSP, folder creation, duplicate validation, move, scoped/global/CJK/multiple-keyword search, persistence, native status/navigation/cutout bounds, launch, editor, local save, todo toggle, favorite, back, restart persistence, dark appearance, native actions");
             getUiAutomation().executeShellCommand("cmd connectivity airplane-mode disable").close();finish(Activity.RESULT_OK,result);
         }catch(Throwable e){try{getUiAutomation().executeShellCommand("cmd connectivity airplane-mode disable").close();}catch(Exception ignored){}result.putString("passed","false");result.putString("failure",e.toString());e.printStackTrace();try{result.putString("diagnostics","nativeLegacy="+NoteRepository.get(getTargetContext()).setting("legacyMode","false")+"; page="+js("JSON.stringify({legacy:!!window.EasybookRollbackMode,bridge:typeof window.NativeStore,rollbackFailed:!!window.__rollbackFailed,ready:typeof window.handleBack})"));}catch(Exception ignored){}finish(Activity.RESULT_CANCELED,result);}
     }
