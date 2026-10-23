@@ -100,7 +100,10 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           TAG="build-${GITHUB_RUN_NUMBER}"
-          gh release create "$TAG" Easybook-0.6.0.apk SHA256SUMS.txt --target "$GITHUB_SHA" --title "Easybook 0.5.0 · build ${GITHUB_RUN_NUMBER}" --notes "Android 8+ 可安装测试版。第二阶段原生安全重构：Keystore AES-256-GCM 凭据存储、受限 Bridge、原生配对、可验证迁移及安全检查点回滚。笔记正文与云端数据尚未端到端加密。Release 构建，沿用兼容旧版的签名。"
+          if [ "${GITHUB_RUN_NUMBER}" = "33" ]; then
+            gh release edit build-32 --title "Easybook 0.6.0 · build 32"
+          fi
+          gh release create "$TAG" Easybook-0.6.0.apk SHA256SUMS.txt --target "$GITHUB_SHA" --title "Easybook 0.6.0 · build ${GITHUB_RUN_NUMBER}" --notes "Android 8+ Release。第二阶段原生安全重构：Keystore AES-256-GCM 凭据存储、受限 Bridge、原生配对、可验证迁移及安全检查点回滚。笔记正文与云端数据尚未端到端加密。Release 构建，沿用兼容旧版的签名。"
       - name: Keep latest APK available through repository downloads
         env:
           GH_TOKEN: ${{ github.token }}
