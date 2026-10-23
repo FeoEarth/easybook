@@ -42,12 +42,18 @@ public class GlassInstrumentation extends Instrumentation {
         JSONObject n=DataLayerChecks.note(NoteRepository.id(),"从 localStorage 迁移的正文").put("title","旧版笔记").put("folder_id",folderId).put("updated",1);
         JSONObject data=DataLayerChecks.source(k,new JSONArray().put(n),new JSONArray().put(folder));data.getJSONObject("storage").put("easybook-"+other,new JSONArray().put(DataLayerChecks.note(NoteRepository.id(),"非活动空间旧笔记")).toString());
         js("(()=>{const s="+data.toString()+";for(const [name,value]of Object.entries(s.storage))localStorage.setItem(name,value);localStorage.setItem('easybook-key',s.active)})()");
-        NoteRepository.get(getTargetContext()).setting("active","");runOnMainSync(()->activity.finish());Thread.sleep(300);launch();
+        NoteRepository.get(getTargetContext()).setSetting("active","");runOnMainSync(()->activity.finish());Thread.sleep(300);launch();
         checkNative("s.notes.some(n=>n.body==='从 localStorage 迁移的正文') && s.folders.some(f=>f.name==='历史')","Actual WebView legacy notes and folders migrated");
         check("JSON.parse(localStorage.getItem('easybook-'+localStorage.getItem('easybook-key')))[0].body==='从 localStorage 迁移的正文'","Original legacy storage retained");
         // Native data must survive loss of the renderer's storage cache.
         js("localStorage.clear()");runOnMainSync(()->activity.finish());Thread.sleep(300);launch();
         checkNative("s.notes.some(n=>n.title==='旧版笔记')","SQLite survives WebView storage clearing");
+        js("window.rollbackNativeMigration().catch(()=>window.__rollbackFailed=true)");
+        check("window.EasybookRollbackMode===true && typeof window.handleBack==='function'", "Verified rollback enters legacy mode");
+        check("JSON.parse(localStorage.getItem('easybook-'+localStorage.getItem('easybook-key'))).some(n=>n.title==='旧版笔记')", "Rollback restores latest native records to legacy storage");
+        js("window.retryNativeMigration()");
+        check("!window.EasybookRollbackMode && typeof window.handleBack==='function'", "Retry returns to native mode");
+        checkNative("s.notes.filter(n=>n.title==='旧版笔记').length===1", "Rollback/retry does not duplicate or lose records");
     }
     private void bridgeSecurity()throws Exception{
         js("window.__denied=false;window.NativeStore.call('executeSql',{sql:'DROP TABLE records'}).catch(()=>window.__denied=true)");check("window.__denied===true","Bridge method allowlist");

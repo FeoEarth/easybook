@@ -107,8 +107,8 @@ public class MainActivity extends Activity {
             case "snapshot":return repository.snapshot(active);
             case "sync":{String k=args.getString("key");if(!k.equals(active))throw new IllegalStateException("Workspace changed");return new NativeSync(repository,new NativeSync.HttpsTransport(new DataProtection.Plaintext())).run(k);}
             case "activate":repository.activate(bounded(args,"key",64));return repository.snapshot(repository.active());
-            case "migration.enableLegacy":repository.setting("legacyMode","true");return new JSONObject();
-            case "migration.resume":repository.setting("legacyMode","false");return new JSONObject();
+            case "migration.enableLegacy":repository.setSetting("legacyMode","true");return new JSONObject();
+            case "migration.resume":repository.setSetting("legacyMode","false");return new JSONObject();
             case "migration.status":return new JSONObject().put("reports",repository.migrationReports()).put("protection","plaintext-stage-1");
             case "migration.rollback":return repository.rollbackArchive();
             case "ui.ready":runOnUiThread(()->{ready=true;receiveShare(getIntent());});return new JSONObject();

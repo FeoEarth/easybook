@@ -36,9 +36,9 @@ public final class NoteRepository extends SQLiteOpenHelper {
     }
     static void validFolder(JSONObject f)throws Exception{if(!f.getString("id").matches("[a-f0-9-]{36}")||f.getString("name").trim().isEmpty()||f.getString("name").length()>60)throw new IllegalArgumentException("Invalid folder");}
     public synchronized String setting(String name,String fallback){try(Cursor c=getReadableDatabase().rawQuery("SELECT value FROM settings WHERE name=?",new String[]{name})){return c.moveToFirst()?c.getString(0):fallback;}}
-    public synchronized void setting(String name,String value){ContentValues v=new ContentValues();v.put("name",name);v.put("value",value);getWritableDatabase().insertWithOnConflict("settings",null,v,SQLiteDatabase.CONFLICT_REPLACE);}
-    public synchronized String active(){String s=setting("active","");if(s.isEmpty()){s=newKey();setting("active",s);}return s;}
-    public synchronized void activate(String k){key(k);setting("active",k);}
+    public synchronized void setSetting(String name,String value){ContentValues v=new ContentValues();v.put("name",name);v.put("value",value);getWritableDatabase().insertWithOnConflict("settings",null,v,SQLiteDatabase.CONFLICT_REPLACE);}
+    public synchronized String active(){String s=setting("active","");if(s.isEmpty()){s=newKey();setSetting("active",s);}return s;}
+    public synchronized void activate(String k){key(k);setSetting("active",k);}
     public synchronized JSONArray rows(String space,String kind)throws Exception{key(space);JSONArray a=new JSONArray();try(Cursor c=getReadableDatabase().rawQuery("SELECT payload,rev FROM records WHERE space=? AND kind=? ORDER BY id",new String[]{space,kind})){while(c.moveToNext())a.put(new JSONObject(protection.decodeLocal(c.getString(0))).put("_rev",c.getLong(1)));}return a;}
     public synchronized JSONObject row(String space,String kind,String id)throws Exception{try(Cursor c=getReadableDatabase().rawQuery("SELECT payload,rev FROM records WHERE space=? AND kind=? AND id=?",new String[]{space,kind,id})){return c.moveToFirst()?new JSONObject(protection.decodeLocal(c.getString(0))).put("_rev",c.getLong(1)):null;}}
     private void put(String space,String kind,JSONObject value)throws Exception{JSONObject n=copy(value);JSONObject old=row(space,kind,n.getString("id"));long rev=old==null?1:old.getLong("_rev")+1;n.remove("_rev");ContentValues v=new ContentValues();v.put("space",space);v.put("kind",kind);v.put("id",n.getString("id"));v.put("payload",protection.encodeLocal(n.toString()));v.put("rev",rev);getWritableDatabase().insertWithOnConflict("records",null,v,SQLiteDatabase.CONFLICT_REPLACE);}
@@ -62,7 +62,7 @@ public final class NoteRepository extends SQLiteOpenHelper {
                     JSONObject stored=row(k,"note",n.getString("id"));if(stored==null||!sameContent(stored,n))throw new IllegalStateException("Migration verification failed");noteCount++;
                 }
             }
-            String previous=setting("active","");if(previous.isEmpty()&&!selected.isEmpty())setting("active",selected);
+            String previous=setting("active","");if(previous.isEmpty()&&!selected.isEmpty())setSetting("active",selected);
             JSONObject report=new JSONObject().put("state","verified").put("digest",digest).put("spaces",new HashSet<>(spaces).size()).put("notes",noteCount).put("folders",folderCount).put("preservedCopies",copies).put("created",System.currentTimeMillis());
             ContentValues journal=new ContentValues();journal.put("digest",digest);journal.put("source",source.toString());journal.put("state","verified");journal.put("report",report.toString());journal.put("created",System.currentTimeMillis());db.insertOrThrow("migration_journal",null,journal);db.setTransactionSuccessful();return report;
         }finally{db.endTransaction();}
