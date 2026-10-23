@@ -22,7 +22,7 @@ public class MainActivity extends Activity {
     @Override public void onCreate(Bundle state) {
         super.onCreate(state);
         boolean dark = (getResources().getConfiguration().uiMode & Configuration.UI_MODE_NIGHT_MASK) == Configuration.UI_MODE_NIGHT_YES;
-        int color = dark ? 0xff111824 : 0xffeef3fb;
+        int color = dark ? 0xff000000 : 0xfff2f2f7;
         getWindow().setStatusBarColor(color);
         getWindow().setNavigationBarColor(color);
         getWindow().getDecorView().setSystemUiVisibility(dark ? 0 : View.SYSTEM_UI_FLAG_LIGHT_STATUS_BAR | View.SYSTEM_UI_FLAG_LIGHT_NAVIGATION_BAR);
@@ -61,7 +61,7 @@ public class MainActivity extends Activity {
     public class DeviceActions {
         @JavascriptInterface public void theme(String value) { runOnUiThread(() -> {
             boolean dark = "dark".equals(value) || (!"light".equals(value) && (getResources().getConfiguration().uiMode & Configuration.UI_MODE_NIGHT_MASK) == Configuration.UI_MODE_NIGHT_YES);
-            int color = dark ? 0xff111824 : 0xffeef3fb;
+            int color = dark ? 0xff000000 : 0xfff2f2f7;
             web.setBackgroundColor(color); getWindow().setStatusBarColor(color); getWindow().setNavigationBarColor(color);
             getWindow().getDecorView().setSystemUiVisibility(dark ? 0 : View.SYSTEM_UI_FLAG_LIGHT_STATUS_BAR | View.SYSTEM_UI_FLAG_LIGHT_NAVIGATION_BAR);
         }); }

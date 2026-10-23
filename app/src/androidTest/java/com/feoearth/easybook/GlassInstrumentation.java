@@ -42,11 +42,11 @@ public class GlassInstrumentation extends Instrumentation {
     @Override public void onStart() {
         Bundle result=new Bundle();
         try {
-            launch();check("document.getElementById('heading').textContent==='我的笔记'","Home");shot("home.png");
-            js("window.receiveSharedText('## Android 验证\\n- [ ] 本机保存\\n- [ ] 跨设备同步')");
+            launch();check("document.getElementById('heading').textContent==='备忘录'","Home");shot("home.png");
+            js("window.receiveSharedText('## 清单\\n- [ ] 牛奶\\n- [ ] 鸡蛋')");
             check("!document.getElementById('editor').hidden","Editor navigation");
-            js("document.getElementById('title').value='灵感，从这里开始';document.getElementById('title').dispatchEvent(new Event('input',{bubbles:true}));window.persistNow()");
-            check("JSON.parse(localStorage.getItem('easybook-'+localStorage.getItem('easybook-key'))).some(n=>n.title==='灵感，从这里开始')","Local save");
+            js("document.getElementById('title').value='周末采购';document.getElementById('title').dispatchEvent(new Event('input',{bubbles:true}));window.persistNow()");
+            check("JSON.parse(localStorage.getItem('easybook-'+localStorage.getItem('easybook-key'))).some(n=>n.title==='周末采购')","Local save");
             js("document.getElementById('previewButton').click()");
             check("document.querySelectorAll('#preview [role=checkbox]').length===2","Todo rendering");shot("editor.png");
             js("document.querySelector('#preview [role=checkbox]').click()");
@@ -54,7 +54,7 @@ public class GlassInstrumentation extends Instrumentation {
             js("document.getElementById('moreButton').click();document.getElementById('favoriteButton').click();window.persistNow();window.goHome()");
             check("!document.body.classList.contains('editing')","Back navigation");
             runOnMainSync(()->activity.finish());Thread.sleep(500);launch();
-            check("document.getElementById('cards').innerText.includes('灵感，从这里开始')","Activity restart persistence");shot("notes.png");
+            check("document.getElementById('cards').innerText.includes('周末采购')","Activity restart persistence");shot("notes.png");
             js("document.querySelector('[data-tab=settings]').click();document.querySelector('button[data-theme=dark]').click()");
             check("document.documentElement.dataset.theme==='dark'","Dark appearance");
             check("typeof EasybookDevice.copy==='function' && typeof EasybookDevice.share==='function' && typeof EasybookDevice.exportNotes==='function' && typeof EasybookDevice.importNotes==='function'","Native actions");
