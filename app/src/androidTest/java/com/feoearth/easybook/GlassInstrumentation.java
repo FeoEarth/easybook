@@ -6,6 +6,7 @@ import android.os.Bundle;
 import android.view.ViewGroup;
 import android.webkit.WebView;
 import android.graphics.Bitmap;
+import org.json.*;
 import java.io.File;
 import java.io.FileOutputStream;
 import java.util.concurrent.CountDownLatch;
@@ -31,7 +32,29 @@ public class GlassInstrumentation extends Instrumentation {
         return value.get();
     }
     private void check(String script,String label) throws Exception {
-        if(!"true".equals(js(script)))throw new AssertionError(label+": "+js("document.body.innerText.slice(0,300)"));
+        for(int i=0;i<100;i++){if("true".equals(js(script)))return;Thread.sleep(100);}
+        throw new AssertionError(label+": "+js("document.body.innerText.slice(0,300)"));
+    }
+    private void flush()throws Exception{js("window.__flushed=false;window.flushNative().then(()=>window.__flushed=true)");check("window.__flushed===true","Native transaction acknowledged");}
+    private void checkNative(String expression,String label)throws Exception{flush();js("window.__nativeCheck=false;window.NativeStore.call('snapshot').then(s=>window.__nativeCheck=("+expression+"))");check("window.__nativeCheck===true",label);}
+    private void seedLegacy()throws Exception{
+        String k=NoteRepository.newKey(),other=NoteRepository.newKey(),folderId=NoteRepository.id();JSONObject folder=new JSONObject().put("id",folderId).put("name","历史").put("updated",1).put("dirty",true);
+        JSONObject n=DataLayerChecks.note(NoteRepository.id(),"从 localStorage 迁移的正文").put("title","旧版笔记").put("folder_id",folderId).put("updated",1);
+        JSONObject data=DataLayerChecks.source(k,new JSONArray().put(n),new JSONArray().put(folder));data.getJSONObject("storage").put("easybook-"+other,new JSONArray().put(DataLayerChecks.note(NoteRepository.id(),"非活动空间旧笔记")).toString());
+        js("(()=>{const s="+data.toString()+";for(const [name,value]of Object.entries(s.storage))localStorage.setItem(name,value);localStorage.setItem('easybook-key',s.active)})()");
+        NoteRepository.get(getTargetContext()).setting("active","");runOnMainSync(()->activity.finish());Thread.sleep(300);launch();
+        checkNative("s.notes.some(n=>n.body==='从 localStorage 迁移的正文') && s.folders.some(f=>f.name==='历史')","Actual WebView legacy notes and folders migrated");
+        check("JSON.parse(localStorage.getItem('easybook-'+localStorage.getItem('easybook-key')))[0].body==='从 localStorage 迁移的正文'","Original legacy storage retained");
+        // Native data must survive loss of the renderer's storage cache.
+        js("localStorage.clear()");runOnMainSync(()->activity.finish());Thread.sleep(300);launch();
+        checkNative("s.notes.some(n=>n.title==='旧版笔记')","SQLite survives WebView storage clearing");
+    }
+    private void bridgeSecurity()throws Exception{
+        js("window.__denied=false;window.NativeStore.call('executeSql',{sql:'DROP TABLE records'}).catch(()=>window.__denied=true)");check("window.__denied===true","Bridge method allowlist");
+        js("window.__blocked=false;fetch('https://easybook-sync.1902521952.workers.dev/health').catch(()=>window.__blocked=true)");check("window.__blocked===true","Android UI cannot perform sync HTTP");
+        runOnMainSync(()->web.loadDataWithBaseURL("https://untrusted.invalid/","<html><body>Untrusted origin</body></html>","text/html","UTF-8",null));Thread.sleep(500);
+        check("typeof window.EasybookNative==='undefined'","Native bridge absent on foreign origin");
+        runOnMainSync(()->activity.finish());Thread.sleep(300);launch();
     }
     private void checkSafeArea() throws Exception {
         AtomicReference<String> error = new AtomicReference<>();
@@ -98,7 +121,9 @@ public class GlassInstrumentation extends Instrumentation {
     @Override public void onStart() {
         Bundle result=new Bundle();
         try {
-            launch();checkSafeArea();check("document.getElementById('heading').textContent==='全部备忘录'","Home");shot("home.png");
+            DataLayerChecks.run(getTargetContext());
+            getUiAutomation().executeShellCommand("cmd connectivity airplane-mode enable").close();
+            launch();seedLegacy();bridgeSecurity();checkSafeArea();check("document.getElementById('heading').textContent==='全部备忘录'","Home");shot("home.png");
             js("document.getElementById('foldersButton').click()");
             check("document.body.dataset.page==='folders' && !document.getElementById('folders').hidden && !document.querySelector('dialog[open]')", "Folders is a page, not a dialog");shot("folders.png");
             js("document.querySelector('[data-tab=all]').click()");
@@ -109,7 +134,7 @@ public class GlassInstrumentation extends Instrumentation {
             js("window.receiveSharedText('## 清单\\n- [ ] 牛奶\\n- [ ] 鸡蛋')");
             check("!document.getElementById('editor').hidden","Editor navigation");
             js("document.getElementById('title').value='周末采购';document.getElementById('title').dispatchEvent(new Event('input',{bubbles:true}));window.persistNow()");
-            check("JSON.parse(localStorage.getItem('easybook-'+localStorage.getItem('easybook-key'))).some(n=>n.title==='周末采购')","Local save");
+            checkNative("s.notes.some(n=>n.title==='周末采购')","Native SQLite save");
             checkKeyboard();
             js("document.getElementById('previewButton').click()");
             check("document.querySelectorAll('#preview [role=checkbox]').length===2","Todo rendering");shot("editor.png");
@@ -117,15 +142,17 @@ public class GlassInstrumentation extends Instrumentation {
             check("document.querySelector('#preview [role=checkbox]').getAttribute('aria-checked')==='true'","Todo toggle");
             js("document.getElementById('moreButton').click();document.getElementById('favoriteButton').click();window.persistNow();window.goHome()");
             check("!document.body.classList.contains('editing')","Back navigation");
-            runOnMainSync(()->activity.finish());Thread.sleep(500);launch();
+            flush();runOnMainSync(()->activity.finish());Thread.sleep(500);launch();
             check("document.getElementById('cards').innerText.includes('周末采购')","Activity restart persistence");shot("notes.png");
             js("document.getElementById('foldersButton').click();document.getElementById('createFolder').click();document.getElementById('folderName').value='工作';document.getElementById('newFolderForm').requestSubmit()");
             check("document.getElementById('customFolders').innerText.includes('工作')", "Create folder");
             js("document.getElementById('createFolder').click();document.getElementById('folderName').value='工作';document.getElementById('newFolderForm').requestSubmit()");
             check("document.getElementById('folderError').textContent.includes('同名')", "Duplicate folder validation");
-            js("document.getElementById('newFolderDialog').close();document.querySelector('[data-tab=all]').click();document.querySelector('#cards [data-id]').click();document.getElementById('moreButton').click();document.getElementById('moveButton').click();document.querySelector('#moveFolders [data-move-folder]:not([data-move-folder=\"\"])').click();window.goHome();document.getElementById('foldersButton').click()");
-            check("JSON.parse(localStorage.getItem('easybook-'+localStorage.getItem('easybook-key'))).find(n=>n.title==='周末采购').folder_id.length===36", "Move note persists assignment");shot("folders.png");
-            js("document.querySelector('[data-tab=all]').click();window.receiveSharedText('咖啡 收据');document.getElementById('title').value='ＡＢＣ 报销';document.getElementById('title').dispatchEvent(new Event('input',{bubbles:true}));window.persistNow();window.goHome();document.getElementById('foldersButton').click();document.querySelector('#customFolders [data-folder-tab^=folder]').click()");
+            js("document.getElementById('newFolderDialog').close();document.querySelector('[data-tab=all]').click()");
+            check("document.querySelector('#cards [data-id]')!==null", "Notes list rendered");
+            js("document.querySelector('#cards [data-id]').click();document.getElementById('moreButton').click();document.getElementById('moveButton').click();[...document.querySelectorAll('#moveFolders [data-move-folder]')].find(b=>b.textContent.trim()==='工作').click();window.goHome();document.getElementById('foldersButton').click()");
+            checkNative("s.notes.find(n=>n.title==='周末采购').folder_id.length===36", "Move note persists assignment");shot("folders.png");
+            js("document.querySelector('[data-tab=all]').click();window.receiveSharedText('咖啡 收据');document.getElementById('title').value='ＡＢＣ 报销';document.getElementById('title').dispatchEvent(new Event('input',{bubbles:true}));window.persistNow();window.goHome();document.getElementById('foldersButton').click();[...document.querySelectorAll('#customFolders [data-folder-tab]')].find(b=>b.textContent.startsWith('工作')).click()");
             js("document.getElementById('search').value='报销';document.getElementById('search').dispatchEvent(new Event('input',{bubbles:true}))");
             check("document.querySelectorAll('#cards [data-id]').length===0", "Current folder search excludes other folder");
             js("document.getElementById('scopeAll').click()");
@@ -137,13 +164,13 @@ public class GlassInstrumentation extends Instrumentation {
             js("document.getElementById('foldersButton').click();document.getElementById('search').value='牛奶';document.getElementById('search').dispatchEvent(new Event('compositionend',{bubbles:true}))");
             check("document.getElementById('folders').hidden && document.querySelectorAll('#cards [data-id]').length===1", "Folder root searches note body");
             js("document.getElementById('clearSearch').click()");check("!document.getElementById('folders').hidden && document.getElementById('home').hidden", "Clear root search restores folders");
-            runOnMainSync(()->activity.finish());Thread.sleep(500);launch();
-            check("JSON.parse(localStorage.getItem('easybook-folders-'+localStorage.getItem('easybook-key'))).some(f=>f.name==='工作') && JSON.parse(localStorage.getItem('easybook-'+localStorage.getItem('easybook-key'))).find(n=>n.title==='周末采购').folder_id.length===36", "Folder and assignment survive Activity restart");
+            flush();runOnMainSync(()->activity.finish());Thread.sleep(500);launch();
+            checkNative("s.folders.some(f=>f.name==='工作') && s.notes.find(n=>n.title==='周末采购').folder_id.length===36", "Folder and assignment survive Activity restart");
             js("document.getElementById('foldersButton').click();document.getElementById('folderSettings').click();document.querySelector('button[data-theme=dark]').click()");
             check("document.documentElement.dataset.theme==='dark'","Dark appearance");
             check("typeof EasybookDevice.copy==='function' && typeof EasybookDevice.share==='function' && typeof EasybookDevice.exportNotes==='function' && typeof EasybookDevice.importNotes==='function'","Native actions");
-            shot("settings.png");result.putString("passed","true");result.putString("checks","folder creation, duplicate validation, move, scoped/global/CJK/multiple-keyword search, persistence, native status/navigation/cutout bounds, launch, editor, local save, todo toggle, favorite, back, restart persistence, dark appearance, native actions");
-            finish(Activity.RESULT_OK,result);
-        }catch(Throwable e){result.putString("passed","false");result.putString("failure",e.toString());finish(Activity.RESULT_CANCELED,result);}
+            shot("settings.png");result.putString("passed","true");result.putString("checks","SQLite transactional migration, retry, collision, rollback archive, live Worker cross-device/conflict/browser compatibility, bridge origin/allowlist/CSP, folder creation, duplicate validation, move, scoped/global/CJK/multiple-keyword search, persistence, native status/navigation/cutout bounds, launch, editor, local save, todo toggle, favorite, back, restart persistence, dark appearance, native actions");
+            getUiAutomation().executeShellCommand("cmd connectivity airplane-mode disable").close();finish(Activity.RESULT_OK,result);
+        }catch(Throwable e){try{getUiAutomation().executeShellCommand("cmd connectivity airplane-mode disable").close();}catch(Exception ignored){}result.putString("passed","false");result.putString("failure",e.toString());finish(Activity.RESULT_CANCELED,result);}
     }
 }
