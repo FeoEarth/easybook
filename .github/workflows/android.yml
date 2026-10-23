@@ -64,20 +64,20 @@ jobs:
         run: '"$ANDROID_HOME/build-tools/35.0.0/apksigner" verify --verbose --print-certs app/build/outputs/apk/debug/app-debug.apk'
       - name: Prepare APK
         run: |
-          cp app/build/outputs/apk/debug/app-debug.apk Easybook-0.3.1.apk
-          sha256sum Easybook-0.3.1.apk > SHA256SUMS.txt
+          cp app/build/outputs/apk/debug/app-debug.apk Easybook-0.3.2.apk
+          sha256sum Easybook-0.3.2.apk > SHA256SUMS.txt
       - uses: actions/upload-artifact@v4
         with:
           name: Easybook-APK
           path: |
-            Easybook-0.3.1.apk
+            Easybook-0.3.2.apk
             SHA256SUMS.txt
       - name: Publish APK download
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           TAG="build-${GITHUB_RUN_NUMBER}"
-          gh release create "$TAG" Easybook-0.3.1.apk SHA256SUMS.txt --target "$GITHUB_SHA" --title "Easybook 0.3.1 · build ${GITHUB_RUN_NUMBER}" --notes "Android 8+ 可安装测试版。修复 Android 状态栏遮挡顶部按钮，适配系统导航栏、刘海和键盘安全区。开发签名；非应用商店正式发行版。"
+          gh release create "$TAG" Easybook-0.3.2.apk SHA256SUMS.txt --target "$GITHUB_SHA" --title "Easybook 0.3.2 · build ${GITHUB_RUN_NUMBER}" --notes "Android 8+ 可安装测试版。独立文件夹页面、逐层返回和页面过渡，保留 Android 系统安全区修复。开发签名；非应用商店正式发行版。"
       - name: Keep latest APK available through repository downloads
         env:
           GH_TOKEN: ${{ github.token }}
@@ -85,15 +85,15 @@ jobs:
           if ! gh api "repos/$GITHUB_REPOSITORY/git/ref/heads/apk-download" >/dev/null 2>&1; then
             gh api "repos/$GITHUB_REPOSITORY/git/refs" -f ref=refs/heads/apk-download -f sha="$GITHUB_SHA"
           fi
-          EXISTING_SHA=$(gh api "repos/$GITHUB_REPOSITORY/contents/downloads/Easybook-0.3.1.apk?ref=apk-download" --jq .sha 2>/dev/null || true)
+          EXISTING_SHA=$(gh api "repos/$GITHUB_REPOSITORY/contents/downloads/Easybook-0.3.2.apk?ref=apk-download" --jq .sha 2>/dev/null || true)
           export EXISTING_SHA
           python3 - <<'PY'
           import os, json, base64
-          body = dict(message='Publish installable APK', branch='apk-download', content=base64.b64encode(open('Easybook-0.3.1.apk','rb').read()).decode())
+          body = dict(message='Publish installable APK', branch='apk-download', content=base64.b64encode(open('Easybook-0.3.2.apk','rb').read()).decode())
           if os.environ.get('EXISTING_SHA'): body['sha'] = os.environ['EXISTING_SHA']
           with open('/tmp/apk-upload.json','w') as f: json.dump(body,f)
           PY
-          gh api "repos/$GITHUB_REPOSITORY/contents/downloads/Easybook-0.3.1.apk" --method PUT --input /tmp/apk-upload.json --jq .commit.sha
+          gh api "repos/$GITHUB_REPOSITORY/contents/downloads/Easybook-0.3.2.apk" --method PUT --input /tmp/apk-upload.json --jq .commit.sha
           python3 - <<'PYSHOTS'
           import pathlib,subprocess,json,base64,os
           repo=os.environ['GITHUB_REPOSITORY']

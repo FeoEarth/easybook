@@ -95,6 +95,13 @@ public class GlassInstrumentation extends Instrumentation {
         Bundle result=new Bundle();
         try {
             launch();checkSafeArea();check("document.getElementById('heading').textContent==='备忘录'","Home");shot("home.png");
+            js("document.getElementById('foldersButton').click()");
+            check("document.body.dataset.page==='folders' && !document.getElementById('folders').hidden && !document.querySelector('dialog[open]')", "Folders is a page, not a dialog");shot("folders.png");
+            js("document.querySelector('[data-tab=all]').click()");
+            check("document.body.dataset.page==='all' && document.getElementById('folders').hidden", "Folder opens notes list");
+            js("window.handleBack()");check("document.body.dataset.page==='folders'", "Android back goes to folders");
+            check("window.handleBack()===false", "Folders is navigation root");
+            js("document.querySelector('[data-tab=all]').click()");
             js("window.receiveSharedText('## 清单\\n- [ ] 牛奶\\n- [ ] 鸡蛋')");
             check("!document.getElementById('editor').hidden","Editor navigation");
             js("document.getElementById('title').value='周末采购';document.getElementById('title').dispatchEvent(new Event('input',{bubbles:true}));window.persistNow()");
@@ -108,10 +115,10 @@ public class GlassInstrumentation extends Instrumentation {
             check("!document.body.classList.contains('editing')","Back navigation");
             runOnMainSync(()->activity.finish());Thread.sleep(500);launch();
             check("document.getElementById('cards').innerText.includes('周末采购')","Activity restart persistence");shot("notes.png");
-            js("document.querySelector('[data-tab=settings]').click();document.querySelector('button[data-theme=dark]').click()");
+            js("document.getElementById('foldersButton').click();document.getElementById('folderSettings').click();document.querySelector('button[data-theme=dark]').click()");
             check("document.documentElement.dataset.theme==='dark'","Dark appearance");
             check("typeof EasybookDevice.copy==='function' && typeof EasybookDevice.share==='function' && typeof EasybookDevice.exportNotes==='function' && typeof EasybookDevice.importNotes==='function'","Native actions");
-            shot("settings.png");result.putString("passed","true");result.putString("checks","native status/navigation/cutout bounds, launch, editor, local save, todo toggle, favorite, back, restart persistence, dark appearance, native actions");
+            shot("settings.png");result.putString("passed","true");result.putString("checks","folder page hierarchy and Android back, native status/navigation/cutout bounds, launch, editor, local save, todo toggle, favorite, back, restart persistence, dark appearance, native actions");
             finish(Activity.RESULT_OK,result);
         }catch(Throwable e){result.putString("passed","false");result.putString("failure",e.toString());finish(Activity.RESULT_CANCELED,result);}
     }
