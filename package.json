@@ -7,7 +7,8 @@
   },
   "scripts": {
     "build:editor": "node scripts/build-editor.mjs && node scripts/generate-ui.mjs",
-    "test": "node scripts/check.mjs && node scripts/document-test.mjs && node scripts/rich-editor-test.mjs && node scripts/worker-integration.mjs && node scripts/web-store-test.mjs && node scripts/attachment-test.mjs"
+    "test": "node scripts/check.mjs && node scripts/document-test.mjs && node scripts/rich-editor-test.mjs && node scripts/format-editor-test.mjs && node scripts/worker-integration.mjs && node scripts/web-store-test.mjs && node scripts/attachment-test.mjs",
+    "test:editor": "node scripts/format-editor-test.mjs && node scripts/rich-editor-test.mjs"
   },
   "keywords": [],
   "author": "",
@@ -19,7 +20,9 @@
     "@tiptap/extension-task-list": "3.32.0",
     "@tiptap/starter-kit": "3.32.0",
     "dompurify": "3.4.17",
-    "esbuild": "0.28.2"
+    "esbuild": "0.28.2",
+    "markdown-it": "14.1.0",
+    "@tiptap/extension-code": "3.32.0"
   },
   "devDependencies": {
     "fake-indexeddb": "6.2.4",

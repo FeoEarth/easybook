@@ -17,3 +17,6 @@ Approved ADRs, explicit isolated Test environment/resource IDs, verified current
 
 ## Phase 2 scope revision — 2026-10-24
 The user's latest instruction includes canonical JSON, native/Web local storage and sync protocol in phase 2. It supersedes the former phase 2 editor-UI scope and pulls core protocol work from phase 4 forward. The user waived isolated infrastructure: current Cloudflare resources are development resources. No purge, permanent R2 deletion or key reset authorized. See phase-two-0.8.0.md for implementation and evidence. Complete editor UI, attachment preview and note management remain later work.
+
+## Phase 3 scope revision — 2026-10-24
+The user's current phase 3 is rich text and formatting, reusing phase 2's deployed JSON model. It supersedes the original phase 3 media/management scope. See phase-three-0.8.0.md. Validation is limited to editor formats, selection, local save/restore and basic input; no full E2E, release APK rebuild or Cloudflare deployment. Media preview and note management remain future work.

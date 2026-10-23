@@ -30,3 +30,14 @@ No core code changed; no Worker deployed; no D1/R2 objects or secrets deleted in
 - [x] Current development Worker deployed; D1 additive schema and independent pin state verified.
 - [x] Deployed Worker/D1 real-network JSON, CAS, delayed replay, cursor and tombstone smoke passed in CI.
 - [x] R2 and native/remote secrets not deleted or reset.
+
+## Phase 3 editor evidence — 2026-10-24
+- [x] Actual phase 2 JSON editor/store path confirmed at main f3afd679.
+- [x] Single WYSIWYG surface; shared Aa controls and all requested structural/text formats.
+- [x] Five highlight colors, remove/recolor, partial/multiline ranges, independent text color and combined marks.
+- [x] Saved dialog selection, link entry, stored mark inheritance, undo/redo and note history isolation.
+- [x] Safe styled paste, Markdown import/export and explicit downgrade rules.
+- [x] Editor JSON and offline IndexedDB save/restore tested through actual page handlers.
+- [x] Basic Enter/Backspace and simulated composition completion tested.
+- [ ] Real Android Chinese IME/keyboard visual acceptance; shared viewport/caret handling implemented, no device run in this phase.
+- [ ] New Cloudflare deployment / release APK: deliberately outside the current request.
