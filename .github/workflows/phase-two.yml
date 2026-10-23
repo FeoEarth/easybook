@@ -1,8 +1,5 @@
 name: Phase two JSON and Android validation
 on:
-  push:
-    branches: [easybook-0.8.0-phase2]
-    paths-ignore: ['docs/**', 'README.md']
   workflow_dispatch:
 permissions:
   contents: read
