@@ -58,8 +58,8 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          TAG="v0.8.0"
-          gh release create "$TAG" Easybook-0.8.0.apk SHA256SUMS.txt --target "$GITHUB_SHA" --title "Easybook 0.8.0 · build ${GITHUB_RUN_NUMBER}" --notes "第二阶段发行版：统一 JSON 文档模型、本地持久化、幂等同步、版本冲突保护。保留原生凭据隔离。已通过既有基础回归；跨端模拟器长测尚未完成，本次不作为发布门槛。旧 HTML 笔记不迁移，新旧客户端同步协议不兼容。"
+          TAG="v0.8.0-build16"
+          gh release create "$TAG" Easybook-0.8.0.apk SHA256SUMS.txt --target "$GITHUB_SHA" --title "Easybook 0.8.0 · build ${GITHUB_RUN_NUMBER}" --notes "第三阶段发行版 build16：所见即所得编辑、Aa 格式面板、五色高亮、独立字体颜色、选区保留、安全富文本粘贴及 Markdown 导入导出。关键编辑器测试已通过；真实 Android 输入法效果待实机确认。沿用现有签名和 JSON 同步协议。"
       - name: Keep latest APK available through repository downloads
         env:
           GH_TOKEN: ${{ github.token }}
