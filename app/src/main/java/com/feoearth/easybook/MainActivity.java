@@ -20,9 +20,10 @@ public class MainActivity extends Activity {
     private WebView web;
     private android.widget.FrameLayout safeArea;
     private boolean ready;
-    private boolean destroyed;
-    private long documentGeneration;
+    private volatile boolean destroyed;
+    private volatile long documentGeneration;
     private NoteRepository repository;
+    private SecurityManager security;
     private static final ExecutorService syncIo=Executors.newSingleThreadExecutor();
     private String pendingExport;
     private final ExecutorService io = Executors.newSingleThreadExecutor();
@@ -30,6 +31,7 @@ public class MainActivity extends Activity {
     @Override public void onCreate(Bundle state) {
         super.onCreate(state);
         repository=NoteRepository.get(this);
+        security=new SecurityManager(this,repository,io);
         boolean dark = (getResources().getConfiguration().uiMode & Configuration.UI_MODE_NIGHT_MASK) == Configuration.UI_MODE_NIGHT_YES;
         int color = dark ? 0xff000000 : 0xfff2f2f7;
         getWindow().setStatusBarColor(color);
@@ -57,6 +59,9 @@ public class MainActivity extends Activity {
         WebSettings s = web.getSettings();
         s.setJavaScriptEnabled(true); s.setDomStorageEnabled(true);
         s.setAllowFileAccess(false); s.setAllowContentAccess(false);
+        s.setAllowFileAccessFromFileURLs(false);s.setAllowUniversalAccessFromFileURLs(false);s.setJavaScriptCanOpenWindowsAutomatically(false);s.setSupportMultipleWindows(false);s.setSaveFormData(false);
+        android.webkit.CookieManager.getInstance().setAcceptCookie(false);android.webkit.CookieManager.getInstance().setAcceptThirdPartyCookies(web,false);
+        WebView.setWebContentsDebuggingEnabled(false);
         s.setMixedContentMode(WebSettings.MIXED_CONTENT_NEVER_ALLOW);
         s.setMediaPlaybackRequiresUserGesture(true);
         if(!WebViewFeature.isFeatureSupported(WebViewFeature.WEB_MESSAGE_LISTENER)){
@@ -69,7 +74,7 @@ public class MainActivity extends Activity {
             if(text==null||text.length()>16*1024*1024)return;
             try{JSONObject envelope=new JSONObject(text);String requestId=envelope.getString("id"),method=envelope.getString("method");JSONObject args=envelope.optJSONObject("args");if(args==null)args=new JSONObject();final JSONObject input=args;final long generation=documentGeneration;
                 if(!requestId.matches("[a-zA-Z0-9-]{1,80}"))return;
-                Runnable operation=()->{try{JSONObject output=dispatch(method,input,generation);respond(reply,generation,new JSONObject().put("id",requestId).put("ok",true).put("result",output));}catch(Exception e){try{respond(reply,generation,new JSONObject().put("id",requestId).put("ok",false).put("error","操作未完成，数据已保留；可重试或导出备份"));}catch(Exception ignored){}}};
+                Runnable operation=()->{try{if(destroyed||generation!=documentGeneration)throw new SecurityException();security.authorize(method,input,generation);JSONObject output=dispatch(method,input,generation);respond(reply,generation,new JSONObject().put("id",requestId).put("ok",true).put("result",output));}catch(Exception e){try{respond(reply,generation,new JSONObject().put("id",requestId).put("ok",false).put("error","操作未完成，数据已保留；可重试或导出备份"));}catch(Exception ignored){}}};
                 if(method.equals("sync"))syncIo.execute(operation);else io.execute(operation);
             }catch(Exception ignored){}
         });
@@ -78,7 +83,7 @@ public class MainActivity extends Activity {
                 Uri u = r.getUrl();
                 if (LOCAL.equals(u.toString())) {
                     try {
-                        boolean legacy=repository.setting("legacyMode","false").equals("true");
+                        boolean legacy=false;
                         String html=readAsset("index.html");if(!legacy)html=html.replace("connect-src https://easybook-sync.1902521952.workers.dev","connect-src 'none'");
                         html=html.replace("<script>","<script>"+(legacy?"window.EasybookRollbackMode=true;":"")+readAsset("native-api.js")+"</script><script>");
                         return new WebResourceResponse("text/html","UTF-8",200,"OK",Collections.singletonMap("Cache-Control","no-store"),new ByteArrayInputStream(html.getBytes(StandardCharsets.UTF_8)));
@@ -86,7 +91,7 @@ public class MainActivity extends Activity {
                     catch (IOException e) { return new WebResourceResponse("text/plain", "UTF-8", new ByteArrayInputStream(new byte[0])); }
                 }
 
-                if(repository.setting("legacyMode","false").equals("true")&&"https".equals(u.getScheme())&&"easybook-sync.1902521952.workers.dev".equals(u.getHost())&&u.getPath().startsWith("/api/"))return null;
+
                 return new WebResourceResponse("text/plain", "UTF-8", new ByteArrayInputStream(new byte[0]));
             }
             @Override public boolean shouldOverrideUrlLoading(WebView v, WebResourceRequest r) { return !r.isForMainFrame() || !LOCAL.equals(r.getUrl().toString()); }
@@ -96,29 +101,29 @@ public class MainActivity extends Activity {
     }
     private String readAsset(String name)throws IOException {try(InputStream in=getAssets().open(name);ByteArrayOutputStream out=new ByteArrayOutputStream()){byte[] b=new byte[8192];int n;while((n=in.read(b))!=-1)out.write(b,0,n);return out.toString("UTF-8");}}
     private void respond(JavaScriptReplyProxy reply,long generation,JSONObject value){runOnUiThread(()->{if(!destroyed&&generation==documentGeneration&&LOCAL.equals(web.getUrl()))try{reply.postMessage(value.toString());}catch(IllegalStateException ignored){}});}
-    private String bounded(JSONObject args,String name,int max)throws Exception{String s=args.getString(name);if(s.length()>max)throw new IllegalArgumentException("Value too large");return s;}
+    private String bounded(JSONObject args,String name,int max)throws Exception{if(!(args.get(name) instanceof String))throw new IllegalArgumentException();String s=args.getString(name);if(s.length()>max)throw new IllegalArgumentException("Value too large");return s;}
     private JSONObject dispatch(String method,JSONObject args,long generation)throws Exception {
-        String active=(method.equals("commit")||method.equals("search")||method.equals("snapshot")||method.equals("sync")||method.equals("device.exportNotes"))?repository.active():"";
+        String active=(method.equals("commit")||method.equals("search")||method.equals("snapshot")||method.equals("sync")||method.equals("device.exportNotes"))?repository.activeSpace():"";
         switch(method){
             case "bootstrap":{
-                JSONObject report=repository.migrate(args.getJSONObject("legacy"));return repository.snapshot(repository.active()).put("migration",report);
+                repository.secureCredentials();JSONObject legacy=args.getJSONObject("legacy");JSONObject report=legacy.getJSONObject("storage").length()==0&&legacy.optString("active","").isEmpty()?new JSONObject().put("state","not-needed"):repository.migrate(legacy);repository.secureCredentials();security.initialized(generation);return repository.snapshot(repository.activeSpace()).put("migration",report).put("security",repository.securityStatus());
             }
             case "commit":{String k=args.getString("key");if(!k.equals(active))throw new IllegalStateException("Workspace changed");return repository.commit(k,args.getJSONObject("changes"));}
             case "search":{if(!args.getString("key").equals(active))throw new IllegalStateException("Workspace changed");return new JSONObject().put("notes",repository.search(active,bounded(args,"query",2000),bounded(args,"category",80),args.optBoolean("everywhere")));}
             case "snapshot":return repository.snapshot(active);
             case "sync":{String k=args.getString("key");if(!k.equals(active))throw new IllegalStateException("Workspace changed");return new NativeSync(repository,new NativeSync.HttpsTransport(new DataProtection.Plaintext())).run(k);}
-            case "activate":repository.activate(bounded(args,"key",64));return repository.snapshot(repository.active());
-            case "migration.enableLegacy":repository.setSetting("legacyMode","true");return new JSONObject();
-            case "migration.resume":repository.setSetting("legacyMode","false");return new JSONObject();
-            case "migration.status":return new JSONObject().put("reports",repository.migrationReports()).put("protection","plaintext-stage-1");
-            case "migration.rollback":return repository.rollbackArchive();
+            case "security.pair":security.pairing(()->{if(!destroyed&&generation==documentGeneration)web.reload();});return new JSONObject().put("nativeDialog",true);
+            case "security.status":return repository.securityStatus();
+            case "migration.cleaned":if(!repository.setting("rendererCredentials","").equals("cleared")){repository.scrubDeletedPages();repository.setSetting("rendererCredentials","cleared");}return new JSONObject().put("verified",true);
+            case "migration.retry":return repository.secureCredentials();
+            case "migration.status":return new JSONObject().put("reports",repository.migrationReports()).put("security",repository.securityStatus()).put("rendererCredentials",repository.setting("rendererCredentials","pending"));
+            case "migration.rollback":repository.rollbackSecurity();return new JSONObject().put("verified",true).put("mode","native-encrypted");
             case "ui.ready":runOnUiThread(()->{if(!destroyed&&generation==documentGeneration){ready=true;receiveShare(getIntent());}});return new JSONObject();
             case "device.theme":{String mode=bounded(args,"value",10);if(!mode.matches("auto|light|dark"))throw new IllegalArgumentException();new DeviceActions().theme(mode);break;}
             case "device.haptic":runOnUiThread(()->web.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP));break;
             case "device.copy":new DeviceActions().copy(bounded(args,"value",100000));break;
             case "device.share":new DeviceActions().share(bounded(args,"title",200),bounded(args,"text",60500));break;
             case "device.exportNotes":{JSONObject snapshot=repository.snapshot(active);new DeviceActions().exportNotes(new JSONObject().put("format","easybook-v1").put("notes",snapshot.getJSONArray("notes")).put("folders",snapshot.getJSONArray("folders")).toString());break;}
-            case "device.exportLegacy":{if(!repository.setting("legacyMode","false").equals("true"))throw new IllegalStateException();new DeviceActions().exportNotes(bounded(args,"value",10000000));break;}
             case "device.importNotes":new DeviceActions().importNotes();break;
             default:throw new IllegalArgumentException("Unknown method");
         }

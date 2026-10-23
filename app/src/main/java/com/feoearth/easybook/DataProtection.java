@@ -1,7 +1,7 @@
 package com.feoearth.easybook;
 
-/** Stage one is explicitly plaintext. Future implementations can wrap keys in Keystore
- * and encrypt local values/wire envelopes without changing repository callers. */
+/** CredentialVault protects credentials in stage two. Local note payloads and
+ * transport envelopes remain plaintext seams for future E2EE implementations. */
 public interface DataProtection {
     String wrapCredential(String credential) throws Exception;
     String unwrapCredential(String stored) throws Exception;

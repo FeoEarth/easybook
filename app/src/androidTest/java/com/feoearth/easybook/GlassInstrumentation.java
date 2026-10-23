@@ -44,19 +44,23 @@ public class GlassInstrumentation extends Instrumentation {
         js("(()=>{const s="+data.toString()+";for(const [name,value]of Object.entries(s.storage))localStorage.setItem(name,value);localStorage.setItem('easybook-key',s.active)})()");
         NoteRepository.get(getTargetContext()).activate(k);runOnMainSync(()->activity.finish());Thread.sleep(300);launch();
         checkNative("s.notes.some(n=>n.body==='从 localStorage 迁移的正文') && s.folders.some(f=>f.name==='历史')","Actual WebView legacy notes and folders migrated");
-        check("JSON.parse(localStorage.getItem('easybook-'+localStorage.getItem('easybook-key')))[0].body==='从 localStorage 迁移的正文'","Original legacy storage retained");
+        check("!localStorage.getItem('easybook-key') && !Object.keys(localStorage).some(k=>/^easybook-(?:folders-)?[a-f0-9]{64}$/.test(k))","Legacy credentials and key-bearing names removed after verification");
+        checkNative("s.key.startsWith('space:') && !JSON.stringify(s).includes('"+k+"')", "No credential in native response");
         // Native data must survive loss of the renderer's storage cache.
         js("localStorage.clear()");runOnMainSync(()->activity.finish());Thread.sleep(300);launch();
         checkNative("s.notes.some(n=>n.title==='旧版笔记')","SQLite survives WebView storage clearing");
-        js("window.rollbackNativeMigration().catch(()=>window.__rollbackFailed=true)");
-        check("window.EasybookRollbackMode===true && typeof window.handleBack==='function'", "Verified rollback enters legacy mode");
-        check("JSON.parse(localStorage.getItem('easybook-'+localStorage.getItem('easybook-key'))).some(n=>n.title==='旧版笔记')", "Rollback restores latest native records to legacy storage");
-        js("window.retryNativeMigration()");
-        check("!window.EasybookRollbackMode && typeof window.handleBack==='function'", "Retry returns to native mode");
+        js("window.__rolled=false;window.rollbackNativeMigration().then(()=>window.__rolled=true)");
+        check("window.__rolled===true && !localStorage.getItem('easybook-key')", "Native encrypted rollback never restores renderer credentials");
+        js("window.retryNativeMigration()");Thread.sleep(500);
+        check("typeof window.handleBack==='function'", "Retry remains native");
         checkNative("s.notes.filter(n=>n.title==='旧版笔记').length===1", "Rollback/retry does not duplicate or lose records");
     }
     private void bridgeSecurity()throws Exception{
         js("window.__denied=false;window.NativeStore.call('executeSql',{sql:'DROP TABLE records'}).catch(()=>window.__denied=true)");check("window.__denied===true","Bridge method allowlist");
+        for(String method:new String[]{"activate","migration.enableLegacy","device.exportLegacy","credential.get"}){js("window.__denied=false;window.NativeStore.call("+JSONObject.quote(method)+").catch(()=>window.__denied=true)");check("window.__denied===true","Secret/legacy operation denied");}
+        js("window.__denied=false;window.NativeStore.call('snapshot',{unexpected:true}).catch(()=>window.__denied=true)");check("window.__denied===true","Unexpected parameters denied");
+        js("window.__denied=false;window.NativeStore.call('sync',{key:'wrong'}).catch(()=>window.__denied=true)");check("window.__denied===true","Wrong workspace denied");
+        check("!document.getElementById('pairKey') && !localStorage.getItem('easybook-key')", "Native pairing has no renderer secret field");
         js("window.__blocked=false;fetch('https://easybook-sync.1902521952.workers.dev/health').catch(()=>window.__blocked=true)");check("window.__blocked===true","Android UI cannot perform sync HTTP");
         runOnMainSync(()->web.loadDataWithBaseURL("https://untrusted.invalid/","<html><body>Untrusted origin</body></html>","text/html","UTF-8",null));Thread.sleep(500);
         check("typeof window.EasybookNative==='undefined'","Native bridge absent on foreign origin");
@@ -127,6 +131,7 @@ public class GlassInstrumentation extends Instrumentation {
     @Override public void onStart() {
         Bundle result=new Bundle();
         try {
+            SecurityChecks.run(getTargetContext());
             DataLayerChecks.run(getTargetContext());
             getUiAutomation().executeShellCommand("cmd connectivity airplane-mode enable").close();
             launch();seedLegacy();bridgeSecurity();checkSafeArea();check("document.getElementById('heading').textContent==='全部备忘录'","Home");shot("home.png");
@@ -175,7 +180,7 @@ public class GlassInstrumentation extends Instrumentation {
             js("document.getElementById('foldersButton').click();document.getElementById('folderSettings').click();document.querySelector('button[data-theme=dark]').click()");
             check("document.documentElement.dataset.theme==='dark'","Dark appearance");
             check("typeof EasybookDevice.copy==='function' && typeof EasybookDevice.share==='function' && typeof EasybookDevice.exportNotes==='function' && typeof EasybookDevice.importNotes==='function'","Native actions");
-            shot("settings.png");result.putString("passed","true");result.putString("checks","SQLite transactional migration, retry, collision, rollback archive, live Worker cross-device/conflict/browser compatibility, bridge origin/allowlist/CSP, folder creation, duplicate validation, move, scoped/global/CJK/multiple-keyword search, persistence, native status/navigation/cutout bounds, launch, editor, local save, todo toggle, favorite, back, restart persistence, dark appearance, native actions");
+            shot("settings.png");result.putString("passed","true");result.putString("checks","Keystore AES256-GCM tamper/AAD/IV, plaintext credential migration/retry/rollback, invalidated-key offline and re-pair, no bridge secrets, backup exclusions, SQLite transactional migration, retry, collision, rollback archive, live Worker cross-device/conflict/browser compatibility, bridge origin/allowlist/CSP, folder creation, duplicate validation, move, scoped/global/CJK/multiple-keyword search, persistence, native status/navigation/cutout bounds, launch, editor, local save, todo toggle, favorite, back, restart persistence, dark appearance, native actions");
             getUiAutomation().executeShellCommand("cmd connectivity airplane-mode disable").close();finish(Activity.RESULT_OK,result);
         }catch(Throwable e){try{getUiAutomation().executeShellCommand("cmd connectivity airplane-mode disable").close();}catch(Exception ignored){}result.putString("passed","false");result.putString("failure",e.toString());try{result.putString("diagnostics","nativeLegacy="+NoteRepository.get(getTargetContext()).setting("legacyMode","false")+"; page="+js("JSON.stringify({legacy:!!window.EasybookRollbackMode,bridge:typeof window.NativeStore,rollbackFailed:!!window.__rollbackFailed,ready:typeof window.handleBack})"));}catch(Exception ignored){}finish(Activity.RESULT_CANCELED,result);}
     }

@@ -38,7 +38,7 @@ jobs:
           node scripts/check.mjs
           node scripts/worker-integration.mjs
       - name: Build installable APK
-        run: gradle :app:assembleDebug :app:assembleDebugAndroidTest --no-daemon --stacktrace
+        run: gradle :app:assembleRelease :app:assembleDebugAndroidTest --no-daemon --stacktrace
       - name: Enable emulator hardware acceleration
         run: |
           echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
@@ -63,16 +63,16 @@ jobs:
           name: Android-smoke-screenshots
           path: smoke/
       - name: Verify APK signing
-        run: '"$ANDROID_HOME/build-tools/35.0.0/apksigner" verify --verbose --print-certs app/build/outputs/apk/debug/app-debug.apk'
+        run: '"$ANDROID_HOME/build-tools/35.0.0/apksigner" verify --verbose --print-certs app/build/outputs/apk/release/app-release.apk'
       - name: Prepare APK
         run: |
-          cp app/build/outputs/apk/debug/app-debug.apk Easybook-0.5.0.apk
-          sha256sum Easybook-0.5.0.apk > SHA256SUMS.txt
+          cp app/build/outputs/apk/release/app-release.apk Easybook-0.6.0.apk
+          sha256sum Easybook-0.6.0.apk > SHA256SUMS.txt
       - uses: actions/upload-artifact@v4
         with:
           name: Easybook-APK
           path: |
-            Easybook-0.5.0.apk
+            Easybook-0.6.0.apk
             SHA256SUMS.txt
       - name: Publish APK download
         if: github.ref == 'refs/heads/main'
@@ -80,7 +80,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           TAG="build-${GITHUB_RUN_NUMBER}"
-          gh release create "$TAG" Easybook-0.5.0.apk SHA256SUMS.txt --target "$GITHUB_SHA" --title "Easybook 0.5.0 · build ${GITHUB_RUN_NUMBER}" --notes "Android 8+ 可安装测试版。第一阶段原生 SQLite 数据层、事务迁移、原生同步与受限 WebView 通信。未实现本地加密或端到端加密。开发签名；非应用商店正式发行版。"
+          gh release create "$TAG" Easybook-0.6.0.apk SHA256SUMS.txt --target "$GITHUB_SHA" --title "Easybook 0.5.0 · build ${GITHUB_RUN_NUMBER}" --notes "Android 8+ 可安装测试版。第二阶段原生安全重构：Keystore AES-256-GCM 凭据存储、受限 Bridge、原生配对、可验证迁移及安全检查点回滚。笔记正文与云端数据尚未端到端加密。Release 构建，沿用兼容旧版的签名。"
       - name: Keep latest APK available through repository downloads
         env:
           GH_TOKEN: ${{ github.token }}
@@ -88,15 +88,15 @@ jobs:
           if ! gh api "repos/$GITHUB_REPOSITORY/git/ref/heads/apk-download" >/dev/null 2>&1; then
             gh api "repos/$GITHUB_REPOSITORY/git/refs" -f ref=refs/heads/apk-download -f sha="$GITHUB_SHA"
           fi
-          EXISTING_SHA=$(gh api "repos/$GITHUB_REPOSITORY/contents/downloads/Easybook-0.5.0.apk?ref=apk-download" --jq .sha 2>/dev/null || true)
+          EXISTING_SHA=$(gh api "repos/$GITHUB_REPOSITORY/contents/downloads/Easybook-0.6.0.apk?ref=apk-download" --jq .sha 2>/dev/null || true)
           export EXISTING_SHA
           python3 - <<'PY'
           import os, json, base64
-          body = dict(message='Publish installable APK', branch='apk-download', content=base64.b64encode(open('Easybook-0.5.0.apk','rb').read()).decode())
+          body = dict(message='Publish installable APK', branch='apk-download', content=base64.b64encode(open('Easybook-0.6.0.apk','rb').read()).decode())
           if os.environ.get('EXISTING_SHA'): body['sha'] = os.environ['EXISTING_SHA']
           with open('/tmp/apk-upload.json','w') as f: json.dump(body,f)
           PY
-          gh api "repos/$GITHUB_REPOSITORY/contents/downloads/Easybook-0.5.0.apk" --method PUT --input /tmp/apk-upload.json --jq .commit.sha
+          gh api "repos/$GITHUB_REPOSITORY/contents/downloads/Easybook-0.6.0.apk" --method PUT --input /tmp/apk-upload.json --jq .commit.sha
           python3 - <<'PYSHOTS'
           import pathlib,subprocess,json,base64,os
           repo=os.environ['GITHUB_REPOSITORY']
