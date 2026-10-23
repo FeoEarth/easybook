@@ -33,11 +33,24 @@ public class GlassInstrumentation extends Instrumentation {
     private void check(String script,String label) throws Exception {
         if(!"true".equals(js(script)))throw new AssertionError(label+": "+js("document.body.innerText.slice(0,300)"));
     }
-    private void shot(String name) {
-        try {Bitmap image=getUiAutomation().takeScreenshot();if(image==null)return;
-            File dir=new File(getTargetContext().getExternalFilesDir(null),"smoke");dir.mkdirs();
-            try(FileOutputStream out=new FileOutputStream(new File(dir,name))){image.compress(Bitmap.CompressFormat.PNG,100,out);}image.recycle();
-        }catch(Exception ignored){}
+    private void shot(String name) throws Exception {
+        CountDownLatch frame = new CountDownLatch(1);
+        runOnMainSync(() -> {
+            web.postVisualStateCallback(android.os.SystemClock.uptimeMillis(), new WebView.VisualStateCallback() {
+                @Override public void onComplete(long id) {frame.countDown();}
+            });
+            web.invalidate();
+        });
+        if(!frame.await(10,TimeUnit.SECONDS))throw new AssertionError("WebView visual frame timed out");
+        Thread.sleep(500);
+        Bitmap image=getUiAutomation().takeScreenshot();
+        if(image==null)throw new AssertionError("Android screenshot unavailable");
+        java.util.HashSet<Integer> colors=new java.util.HashSet<>();
+        for(int y=110;y<image.getHeight()-110 && colors.size()<30;y+=6)
+            for(int x=15;x<image.getWidth()-15 && colors.size()<30;x+=6)colors.add(image.getPixel(x,y));
+        if(colors.size()<12)throw new AssertionError("App content has not been painted: "+name);
+        File dir=new File(getTargetContext().getExternalFilesDir(null),"smoke");dir.mkdirs();
+        try(FileOutputStream out=new FileOutputStream(new File(dir,name))){image.compress(Bitmap.CompressFormat.PNG,100,out);}image.recycle();
     }
     @Override public void onStart() {
         Bundle result=new Bundle();
