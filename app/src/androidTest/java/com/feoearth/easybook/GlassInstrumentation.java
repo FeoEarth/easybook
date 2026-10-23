@@ -42,7 +42,7 @@ public class GlassInstrumentation extends Instrumentation {
         JSONObject n=DataLayerChecks.note(NoteRepository.id(),"从 localStorage 迁移的正文").put("title","旧版笔记").put("folder_id",folderId).put("updated",1);
         JSONObject data=DataLayerChecks.source(k,new JSONArray().put(n),new JSONArray().put(folder));data.getJSONObject("storage").put("easybook-"+other,new JSONArray().put(DataLayerChecks.note(NoteRepository.id(),"非活动空间旧笔记")).toString());
         js("(()=>{const s="+data.toString()+";for(const [name,value]of Object.entries(s.storage))localStorage.setItem(name,value);localStorage.setItem('easybook-key',s.active)})()");
-        NoteRepository.get(getTargetContext()).setSetting("active","");runOnMainSync(()->activity.finish());Thread.sleep(300);launch();
+        NoteRepository.get(getTargetContext()).activate(k);runOnMainSync(()->activity.finish());Thread.sleep(300);launch();
         checkNative("s.notes.some(n=>n.body==='从 localStorage 迁移的正文') && s.folders.some(f=>f.name==='历史')","Actual WebView legacy notes and folders migrated");
         check("JSON.parse(localStorage.getItem('easybook-'+localStorage.getItem('easybook-key')))[0].body==='从 localStorage 迁移的正文'","Original legacy storage retained");
         // Native data must survive loss of the renderer's storage cache.

@@ -98,7 +98,7 @@ public class MainActivity extends Activity {
     private void respond(JavaScriptReplyProxy reply,long generation,JSONObject value){runOnUiThread(()->{if(!destroyed&&generation==documentGeneration&&LOCAL.equals(web.getUrl()))try{reply.postMessage(value.toString());}catch(IllegalStateException ignored){}});}
     private String bounded(JSONObject args,String name,int max)throws Exception{String s=args.getString(name);if(s.length()>max)throw new IllegalArgumentException("Value too large");return s;}
     private JSONObject dispatch(String method,JSONObject args,long generation)throws Exception {
-        String active=method.equals("bootstrap")?"":repository.active();
+        String active=(method.equals("commit")||method.equals("search")||method.equals("snapshot")||method.equals("sync")||method.equals("device.exportNotes"))?repository.active():"";
         switch(method){
             case "bootstrap":{
                 JSONObject report=repository.migrate(args.getJSONObject("legacy"));return repository.snapshot(repository.active()).put("migration",report);
