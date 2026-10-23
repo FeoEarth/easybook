@@ -32,7 +32,7 @@ Unacknowledged input is shown as saving. As with any asynchronous editor, an OS 
 
 `WebViewCompat.addWebMessageListener` is limited to the exact appassets HTTPS origin and rejects subframes; MainActivity additionally checks the top-level URL and validates operation names, identifiers, bounded payloads and native record schemas. External navigation and UI network requests are blocked. Old WebView providers without the required message-listener feature fail closed with update guidance; legacy data remains intact.
 
-`DataProtection` separates local and transport encoding for a future Keystore-backed implementation and encrypted wire envelopes. Its stage-one implementation is explicitly plaintext. Credentials, database values, migration snapshots and backups are **not encrypted**. Device revocation and end-to-end encryption are out of scope. A trusted-page script compromise can still access whatever the trusted UI may access.
+`DataProtection` separates credential wrapping, local payload encoding and transport encoding for a future Keystore-backed implementation and encrypted wire envelopes. Its stage-one implementation is explicitly plaintext. Workspace row identifiers are SHA-256 references; credentials remain plaintext behind the wrapping seam. Credentials, database values, migration snapshots and backups are **not encrypted**. Device revocation and end-to-end encryption are out of scope. A trusted-page script compromise can still access whatever the trusted UI may access.
 
 ## Automated evidence
 
