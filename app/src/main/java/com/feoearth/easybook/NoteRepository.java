@@ -37,7 +37,7 @@ public final class NoteRepository extends SQLiteOpenHelper {
         if(!n.getString("id").matches("[a-f0-9-]{36}")||n.getString("title").length()>200||n.optString("icon","📄").length()>16)throw new IllegalArgumentException("Invalid note");
         if(n.optDouble("version",0)!=n.optLong("version",0)||n.optLong("version",0)<0||!n.optString("mutation").matches("[a-f0-9-]{36}"))throw new IllegalArgumentException("Invalid note revision");
         String f=n.optString("folder_id","");if(!f.isEmpty()&&!f.matches("[a-f0-9-]{36}"))throw new IllegalArgumentException("Invalid folder assignment");
-        for(String field:new String[]{"favorite","deleted"})if(n.optInt(field,0)!=0&&n.optInt(field,0)!=1)throw new IllegalArgumentException("Invalid flag");
+        for(String field:new String[]{"favorite","pinned","deleted"})if(!(n.get(field) instanceof Number)||(n.getDouble(field)!=0&&n.getDouble(field)!=1))throw new IllegalArgumentException("Invalid flag");
     }
     static void validFolder(JSONObject f)throws Exception{if(!(f.get("id") instanceof String)||!(f.get("name") instanceof String))throw new IllegalArgumentException("Invalid folder field type");if(!f.getString("id").matches("[a-f0-9-]{36}")||f.getString("name").trim().isEmpty()||f.getString("name").length()>60)throw new IllegalArgumentException("Invalid folder");}
     public synchronized String setting(String name,String fallback){try(Cursor c=getReadableDatabase().rawQuery("SELECT value FROM settings WHERE name=?",new String[]{name})){return c.moveToFirst()?c.getString(0):fallback;}}

@@ -26,11 +26,11 @@ try{
  sql(readFileSync('worker/schema.sql','utf8'),[],true);
  const {fixture}=await import('./document-test.mjs');
  assert.equal((await request('/api/folders/'+fid,{name:'工作'})).status,200);
- let n={title:'采购',document:fixture,icon:'📄',folder_id:fid,favorite:0,deleted:0,version:0,mutation:crypto.randomUUID()};
+ let n={title:'采购',document:fixture,icon:'📄',folder_id:fid,favorite:0,pinned:0,deleted:0,version:0,mutation:crypto.randomUUID()};
  let r=await request('/api/notes/'+id,n);assert.equal(r.status,200);assert.deepEqual(r.note.document,fixture);assert.equal(r.note.version,1);
  const first=n,firstReply=r.note;
  const retry=await request('/api/notes/'+id,n);assert.equal(retry.status,200);assert.equal(retry.note.version,1);
- n={...r.note,title:'下一版',favorite:1,mutation:crypto.randomUUID()};r=await request('/api/notes/'+id,n);assert.equal(r.status,200);assert.equal(r.note.version,2);
+ n={...r.note,title:'下一版',favorite:1,pinned:1,mutation:crypto.randomUUID()};r=await request('/api/notes/'+id,n);assert.equal(r.status,200);assert.equal(r.note.version,2);
  // A delayed retry must return its immutable receipt even after later successful edits.
  const delayed=await request('/api/notes/'+id,first);assert.equal(delayed.status,200);assert.deepEqual(delayed.note,firstReply);
  assert.equal((await request('/api/notes/'+id,{...first,title:'payload tampered'})).status,409);

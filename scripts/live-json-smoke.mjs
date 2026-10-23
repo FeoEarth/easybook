@@ -4,7 +4,7 @@ const origin=process.env.EASYBOOK_TEST_ORIGIN||'https://easybook-sync.1902521952
 const key=Array.from(crypto.getRandomValues(new Uint8Array(32)),b=>b.toString(16).padStart(2,'0')).join('');
 const id=crypto.randomUUID();async function request(path,data){const r=await fetch(origin+path,{method:data?'PUT':'GET',headers:{Authorization:'Bearer '+key,'Content-Type':'application/json'},body:data?JSON.stringify(data):undefined,signal:AbortSignal.timeout(20000)});return {status:r.status,...await r.json()}}
 assert.equal((await request('/health')).schemaVersion,1);
-const n={title:'Phase 2 protocol smoke',document:fixture,icon:'📄',favorite:0,deleted:0,folder_id:'',version:0,mutation:crypto.randomUUID()};
+const n={title:'Phase 2 protocol smoke',document:fixture,icon:'📄',favorite:0,pinned:0,deleted:0,folder_id:'',version:0,mutation:crypto.randomUUID()};
 const first=await request('/api/notes/'+id,n);assert.equal(first.status,200);assert.deepEqual(first.note.document,fixture);assert.equal(first.note.version,1);
 const next=await request('/api/notes/'+id,{...first.note,title:'verified',mutation:crypto.randomUUID()});assert.equal(next.status,200);assert.equal(next.note.version,2);
 const replay=await request('/api/notes/'+id,n);assert.equal(replay.note.version,1);assert.equal(replay.replayed,true);

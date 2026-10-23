@@ -1,7 +1,7 @@
 -- Additive development-stage schema. Never drops or imports legacy HTML notes.
 CREATE TABLE IF NOT EXISTS notes_json (
  workspace TEXT NOT NULL,id TEXT NOT NULL,title TEXT NOT NULL,document TEXT NOT NULL CHECK(json_valid(document)),
- icon TEXT NOT NULL,favorite INTEGER NOT NULL CHECK(favorite IN (0,1)),deleted INTEGER NOT NULL CHECK(deleted IN (0,1)),
+ icon TEXT NOT NULL,pinned INTEGER NOT NULL DEFAULT 0 CHECK(pinned IN (0,1)),favorite INTEGER NOT NULL CHECK(favorite IN (0,1)),deleted INTEGER NOT NULL CHECK(deleted IN (0,1)),
  folder_id TEXT NOT NULL DEFAULT '',version INTEGER NOT NULL CHECK(version>0),mutation TEXT NOT NULL,updated INTEGER NOT NULL,
  PRIMARY KEY(workspace,id)
 );
