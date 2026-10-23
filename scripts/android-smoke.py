@@ -8,10 +8,11 @@ adb('shell','svc','power','stayon','true')
 adb('shell','settings','put','secure','show_ime_with_hard_keyboard','1')
 print(adb('install','-r','app/build/outputs/apk/release/app-release.apk'))
 print(adb('install','-r','app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk'))
-result=adb('shell','am','instrument','-w','-e','offlineChecks','true','com.feoearth.easybook.notes.test/com.feoearth.easybook.GlassInstrumentation')
+result=adb('shell','am','instrument','-w','-e','offlineChecks','true','com.feoearth.easybook.notes.test/com.feoearth.easybook.PhaseTwoInstrumentation')
 print(result)
 pathlib.Path('smoke').mkdir(exist_ok=True)
 subprocess.run(['adb','pull','/sdcard/Android/data/com.feoearth.easybook.notes/files/smoke/.','smoke/'],check=False)
 print(adb('shell','logcat','-d','-s','AndroidRuntime:E','chromium:E'))
 assert 'passed=true' in result, 'Android WebView instrumentation failed'
-print('PASS Android: launch, editor, local save, todo toggle, favorite, back, restart persistence, dark appearance, native actions')
+print('PASS Android: shared document fixtures, SQLite recovery/outbox/conflicts, attachment isolation, native vault security')
+

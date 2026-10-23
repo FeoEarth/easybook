@@ -1,0 +1,50 @@
+name: Phase two JSON and Android validation
+on:
+  push:
+    branches: [easybook-0.8.0-phase2]
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+      - run: npm ci
+      - run: npm run build:editor && npm test
+      - name: Generated assets match source
+        run: git diff --exit-code -- app/src/main/assets/editor.js app/src/main/assets/editor.js.LEGAL.txt worker/ui.mjs worker/editor.mjs
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: android-actions/setup-android@v3
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.9'
+      - name: Prepare development signature
+        run: |
+          mkdir -p "$HOME/.easybook-signing"
+          keytool -genkeypair -keystore "$HOME/.easybook-signing/development.keystore" -storepass android -alias androiddebugkey -keypass android -dname "CN=Easybook Test" -keyalg RSA -keysize 2048 -validity 10000
+      - run: gradle :app:assembleRelease :app:assembleDebugAndroidTest --no-daemon
+      - name: Enable KVM
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+      - uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 35
+          arch: x86_64
+          target: google_apis
+          profile: pixel_2
+          disable-animations: true
+          script: python3 scripts/android-smoke.py
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Easybook-0.8.0-Test-APK
+          path: app/build/outputs/apk/release/app-release.apk

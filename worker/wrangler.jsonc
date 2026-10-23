@@ -1,7 +1,0 @@
-{
- "name":"easybook-sync", "main":"index.mjs", "compatibility_date":"2026-10-23",
- "compatibility_flags":["nodejs_compat"], "workers_dev":true,
- "observability":{"enabled":true,"head_sampling_rate":1},
- "r2_buckets":[{"binding":"ATTACHMENTS","bucket_name":"easybook-attachments"}],
- "d1_databases":[{"binding":"DB","database_name":"easybook-data","database_id":"af430aed-01b5-41ca-9653-31212bed3f9f"}]
-}

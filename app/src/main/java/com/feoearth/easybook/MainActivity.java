@@ -108,13 +108,12 @@ public class MainActivity extends Activity {
         String active=(method.equals("commit")||method.equals("search")||method.equals("snapshot")||method.equals("sync")||method.equals("device.exportNotes"))?repository.activeSpace():"";
         switch(method){
             case "bootstrap":{
-                repository.secureCredentials();JSONObject legacy=args.getJSONObject("legacy");JSONObject report=legacy.getJSONObject("storage").length()==0&&legacy.optString("active","").isEmpty()?new JSONObject().put("state","not-needed"):repository.migrate(legacy);repository.secureCredentials();security.initialized(generation);return repository.snapshot(repository.activeSpace()).put("migration",report).put("security",repository.securityStatus());
+                repository.secureCredentials();JSONObject report=new JSONObject().put("state","not-needed");repository.secureCredentials();security.initialized(generation);return repository.snapshot(repository.activeSpace()).put("migration",report).put("security",repository.securityStatus());
             }
             case "commit":{String k=args.getString("key");if(!k.equals(active))throw new IllegalStateException("Workspace changed");return repository.commit(k,args.getJSONObject("changes"));}
             case "search":{if(!args.getString("key").equals(active))throw new IllegalStateException("Workspace changed");return new JSONObject().put("notes",repository.search(active,bounded(args,"query",2000),bounded(args,"category",80),args.optBoolean("everywhere")));}
             case "snapshot":return repository.snapshot(active);
             case "sync":{if(!repository.securityStatus().getBoolean("paired"))throw new CredentialVault.KeyUnavailable();String k=args.getString("key");if(!k.equals(active))throw new IllegalStateException("Workspace changed");return new NativeSync(repository,new NativeSync.HttpsTransport(new DataProtection.Plaintext())).run(k);}
-            case "rich.original":{String noteId=bounded(args,"noteId",36);JSONObject original=repository.row(repository.activeSpace(),"rich-original",noteId);return new JSONObject().put("original",original==null?JSONObject.NULL:original);}
             case "attachment.pick":{String space=repository.activeSpace(),noteId=bounded(args,"noteId",36);if(repository.row(space,"note",noteId)==null)throw new SecurityException();runOnUiThread(()->{if(destroyed||generation!=documentGeneration)return;attachmentSpace=space;attachmentNote=noteId;attachmentGeneration=generation;Intent i=new Intent(Intent.ACTION_OPEN_DOCUMENT);i.addCategory(Intent.CATEGORY_OPENABLE);i.setType("*/*");startActivityForResult(i,83);});return new JSONObject().put("picker",true);}
             case "attachment.get":{String space=repository.activeSpace(),id=bounded(args,"id",64);requireAttachmentReference(space,id);return repository.attachments.get(space,id);}
             case "attachment.restore":{String space=repository.activeSpace();JSONArray files=args.getJSONArray("files");if(files.length()>100)throw new IllegalArgumentException();for(int i=0;i<files.length();i++){JSONObject f=files.getJSONObject(i);repository.attachments.accept(space,f.getString("id"),f);repository.saveAttachment(space,new JSONObject(f.toString()).put("data",JSONObject.NULL).put("dirty",true));}return new JSONObject().put("restored",files.length());}
@@ -130,13 +129,13 @@ public class MainActivity extends Activity {
             case "device.haptic":runOnUiThread(()->web.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP));break;
             case "device.copy":new DeviceActions().copy(bounded(args,"value",100000));break;
             case "device.share":new DeviceActions().share(bounded(args,"title",200),bounded(args,"text",60500));break;
-            case "device.exportNotes":{JSONObject snapshot=repository.snapshot(active);JSONArray files=new JSONArray(),metas=repository.rows(active,"attachment");for(int i=0;i<metas.length();i++)files.put(repository.attachments.payload(active,metas.getJSONObject(i).getString("id")));new DeviceActions().exportNotes(new JSONObject().put("format","easybook-v1").put("notes",snapshot.getJSONArray("notes")).put("folders",snapshot.getJSONArray("folders")).put("attachments",files).put("richOriginals",repository.rows(active,"rich-original")).toString());break;}
+            case "device.exportNotes":{JSONObject snapshot=repository.snapshot(active);JSONArray files=new JSONArray(),metas=repository.rows(active,"attachment");for(int i=0;i<metas.length();i++)files.put(repository.attachments.payload(active,metas.getJSONObject(i).getString("id")));new DeviceActions().exportNotes(new JSONObject().put("format","easybook-json-v1").put("notes",snapshot.getJSONArray("notes")).put("folders",snapshot.getJSONArray("folders")).put("attachments",files).toString());break;}
             case "device.importNotes":new DeviceActions().importNotes();break;
             default:throw new IllegalArgumentException("Unknown method");
         }
         return new JSONObject();
     }
-    private void requireAttachmentReference(String space,String id)throws Exception{AttachmentStore.validId(id);JSONArray notes=repository.rows(space,"note");for(int i=0;i<notes.length();i++)if(notes.getJSONObject(i).optString("body").contains("attachment:"+id))return;throw new SecurityException("Unreferenced attachment");}
+    private void requireAttachmentReference(String space,String id)throws Exception{AttachmentStore.validId(id);JSONArray notes=repository.rows(space,"note");for(int i=0;i<notes.length();i++)if(DocumentModel.assets(notes.getJSONObject(i).getJSONObject("document")).contains(id))return;throw new SecurityException("Unreferenced attachment");}
     public class DeviceActions {
         public void theme(String value) { runOnUiThread(() -> {
             boolean dark = "dark".equals(value) || (!"light".equals(value) && (getResources().getConfiguration().uiMode & Configuration.UI_MODE_NIGHT_MASK) == Configuration.UI_MODE_NIGHT_YES);
@@ -204,3 +203,4 @@ public class MainActivity extends Activity {
     @Override protected void onPause() { web.evaluateJavascript("window.persistNow && window.persistNow()", null); super.onPause(); }
     @Override protected void onDestroy() { ready=false; destroyed=true;if(WebViewFeature.isFeatureSupported(WebViewFeature.WEB_MESSAGE_LISTENER))WebViewCompat.removeWebMessageListener(web,"EasybookNative");web.destroy();io.shutdown();super.onDestroy(); }
 }
+
