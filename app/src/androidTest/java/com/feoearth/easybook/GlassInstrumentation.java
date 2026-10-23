@@ -84,7 +84,9 @@ public class GlassInstrumentation extends Instrumentation {
         if(error.get()!=null)throw new AssertionError(error.get());
     }
     private void checkKeyboard() throws Exception {
-        js("document.getElementById('title').focus()");
+        double viewport=Double.parseDouble(js("window.innerWidth")),cssY=Double.parseDouble(js("document.getElementById('title').getBoundingClientRect().top+20"));
+        int[] point=new int[2];runOnMainSync(()->{int[] origin=new int[2];web.getLocationOnScreen(origin);point[0]=origin[0]+web.getWidth()/2;point[1]=origin[1]+(int)(cssY*web.getWidth()/viewport);});
+        long now=android.os.SystemClock.uptimeMillis();android.view.MotionEvent down=android.view.MotionEvent.obtain(now,now,android.view.MotionEvent.ACTION_DOWN,point[0],point[1],0),up=android.view.MotionEvent.obtain(now,now+80,android.view.MotionEvent.ACTION_UP,point[0],point[1],0);down.setSource(android.view.InputDevice.SOURCE_TOUCHSCREEN);up.setSource(android.view.InputDevice.SOURCE_TOUCHSCREEN);sendPointerSync(down);sendPointerSync(up);down.recycle();up.recycle();
         runOnMainSync(() -> {
             web.requestFocus();
             ((android.view.inputmethod.InputMethodManager)activity.getSystemService(android.content.Context.INPUT_METHOD_SERVICE)).showSoftInput(web, android.view.inputmethod.InputMethodManager.SHOW_IMPLICIT);
