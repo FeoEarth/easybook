@@ -5,18 +5,17 @@
   const rich=window.easybookRich;if(!rich)return false;
   const find=selector=>track.querySelector(selector);
   const key=element=>element.id||element.dataset.command;
-  const styles=document.createElement('style');styles.textContent='#formatTrack .highlight-quick{display:flex;flex:0 0 auto;align-items:center;gap:0}#formatTrack .highlight-quick>button:first-child{border-radius:16px 0 0 16px}#formatTrack .highlight-quick>button:last-child{min-width:28px;width:28px;padding-inline:2px;border-radius:0 16px 16px 0;font-size:16px}#formatTrack>[hidden]{display:none!important}';document.head.append(styles);
+  const styles=document.createElement('style');styles.textContent='#formatTrack button{white-space:nowrap;flex-shrink:0;line-height:1}#formatTrack #formatButton{padding-inline:4px}#formatTrack .highlight-quick{display:flex;flex:0 0 auto;align-items:center;gap:0}#formatTrack .highlight-quick>button:first-child{border-radius:16px 0 0 16px}#formatTrack .highlight-quick>button:last-child{min-width:44px;width:44px;padding-inline:2px;border-radius:0 16px 16px 0;font-size:16px}#formatTrack>[hidden]{display:none!important}';document.head.append(styles);
   const aa=find('#formatButton');aa.textContent='Aa';aa.setAttribute('aria-label','完整格式');
   const high=find('#highlightButton'),palette=find('#highlightPalette'),cluster=document.createElement('div');cluster.className='highlight-quick';cluster.id='quickHighlight';high.before(cluster);cluster.append(high,palette);palette.textContent='⌄';palette.setAttribute('aria-label','选择高亮颜色');
-  const paragraph=document.createElement('button');paragraph.type='button';paragraph.id='quickParagraph';paragraph.textContent='正文';paragraph.setAttribute('aria-label','切换为正文');paragraph.onclick=()=>{if(!rich.isComposing())document.querySelector('#formatDialog [data-command="setParagraph"]').click()};paragraph.onpointerdown=()=>{if(!rich.isComposing())rich.captureSelection()};track.append(paragraph);
   // Low-frequency actions remain in the existing complete panel, not deleted.
-  const low=new Set(['textColorPalette','undoButton','redoButton','toolbarLink','toggleStrike','toggleBlockquote','toggleBulletList','toggleOrderedList','toolbarIndent','toolbarOutdent','quickParagraph']);
+  const low=new Set(['textColorPalette','undoButton','redoButton','toolbarLink','toggleStrike','toggleBlockquote','toggleBulletList','toggleOrderedList','toolbarIndent','toolbarOutdent']);
   const groups={
    text:['formatButton','toggleBold','toggleItalic','toggleUnderline','quickHighlight','toggleTaskList','attachmentButton'],
    selection:['toggleBold','toggleItalic','toggleUnderline','toggleStrike','quickHighlight','toolbarLink','formatButton','toggleTaskList','attachmentButton'],
    list:['toggleBulletList','toggleOrderedList','toggleTaskList','toolbarOutdent','toolbarIndent','formatButton','toggleBold','toggleItalic','toggleUnderline','quickHighlight','attachmentButton'],
    multiline:['toggleBulletList','toggleOrderedList','toolbarOutdent','toolbarIndent','toggleBlockquote','formatButton','toggleBold','toggleItalic','toggleUnderline','quickHighlight','toggleTaskList','attachmentButton'],
-   heading:['formatButton','toggleBold','toggleItalic','toggleUnderline','quickParagraph','quickHighlight','toggleTaskList','attachmentButton']
+   heading:['formatButton','toggleBold','toggleItalic','toggleUnderline','quickHighlight','toggleTaskList','attachmentButton']
   };
   let current='',pending='',timer=0,pressed=false,scrolling=false,scrollTimer=0;
   const entries=[...track.children];
@@ -29,8 +28,10 @@
   function apply(){
    if(!pending||pending===current)return;
    if(pressed||scrolling||rich.isComposing())return;
-   const order=groups[pending],rect=track.getBoundingClientRect(),atStart=track.scrollLeft<3;
-   const anchor=entries.find(el=>!el.hidden&&el.getBoundingClientRect().right>rect.left+1),offset=anchor?anchor.getBoundingClientRect().left-rect.left:0;
+   const order=groups[pending];
+   if(current&&groups[current].join()===order.join()){current=pending;pending='';track.dataset.context=current;return}
+   const rect=track.getBoundingClientRect(),atStart=track.scrollLeft<3;
+   const anchor=[...track.children].find(el=>!el.hidden&&el.getBoundingClientRect().right>rect.left+1&&el.getBoundingClientRect().left<rect.right),offset=anchor?anchor.getBoundingClientRect().left-rect.left:0;
    current=pending;pending='';
    for(const el of entries)el.hidden=low.has(key(el))&&!order.includes(key(el));
    for(const id of order){const el=entries.find(el=>key(el)===id);if(el)track.append(el)}
@@ -45,7 +46,6 @@
   window.addEventListener('pointerup',release,true);window.addEventListener('pointercancel',release,true);
   track.addEventListener('scroll',()=>{scrolling=true;clearTimeout(scrollTimer);scrollTimer=setTimeout(()=>{scrolling=false;apply()},240)},{passive:true});
   rich.editor.view.dom.addEventListener('compositionend',()=>{clearTimeout(timer);timer=setTimeout(()=>{schedule();apply()},200)});
-  track.addEventListener('mousedown',event=>{if(event.target.closest('#quickParagraph'))event.preventDefault()});
   // The original toolbar release microtask runs first. Preserve the bookmark
   // for the asynchronous Android attachment menu/picker after that release.
   track.addEventListener('click',event=>{if(event.target.closest('#attachmentButton'))queueMicrotask(()=>{if(!rich.isComposing())rich.captureSelection()})},true);
