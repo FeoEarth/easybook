@@ -129,7 +129,7 @@ public class MainActivity extends Activity {
                 return new WebResourceResponse("text/plain", "UTF-8", new ByteArrayInputStream(new byte[0]));
             }
             @Override public boolean shouldOverrideUrlLoading(WebView v, WebResourceRequest r) { return !r.isForMainFrame() || !LOCAL.equals(r.getUrl().toString()); }
-            @Override public void onPageStarted(WebView v,String url,android.graphics.Bitmap icon){ready=false;documentGeneration++;if(nativeGlass!=null)nativeGlass.dismiss(true);}
+            @Override public void onPageStarted(WebView v,String url,android.graphics.Bitmap icon){ready=false;documentGeneration++;if(nativeGlass!=null){nativeGlass.clearFormatFrame();nativeGlass.dismiss(true);}}
         });
         web.loadUrl(LOCAL);
     }
@@ -166,6 +166,19 @@ public class MainActivity extends Activity {
                 if(nativeGlass!=null)runOnUiThread(()->{if(!destroyed && ready && generation==documentGeneration)nativeGlass.refreshBackdrop();});
                 return new JSONObject();
             }
+            case "ui.glass.format":{
+                boolean available=BuildConfig.NATIVE_GLASS_PROTOTYPE && android.os.Build.VERSION.SDK_INT>=33 && nativeGlass!=null;
+                if(!available)return new JSONObject().put("accepted",false);
+                if(!(args.get("visible") instanceof Boolean))throw new IllegalArgumentException();
+                if(args.getBoolean("visible")){
+                    for(String field:new String[]{"left","top","width","height","viewportWidth"}){
+                        double value=args.getDouble(field);if(!Double.isFinite(value)||Math.abs(value)>10000)throw new IllegalArgumentException();
+                    }
+                    if(args.getDouble("width")<1||args.getDouble("height")<1||args.getDouble("viewportWidth")<1||!(args.get("dark") instanceof Boolean))throw new IllegalArgumentException();
+                }
+                runOnUiThread(()->{if(!destroyed && ready && generation==documentGeneration){glassGeneration=generation;nativeGlass.updateFormatFrame(args);}});
+                return new JSONObject().put("accepted",true);
+            }
             case "ui.glass.menu":{
                 boolean available=BuildConfig.NATIVE_GLASS_PROTOTYPE && android.os.Build.VERSION.SDK_INT>=33 && nativeGlass!=null;
                 if(!available)return new JSONObject().put("accepted",false);
@@ -173,7 +186,7 @@ public class MainActivity extends Activity {
                 if(!Double.isFinite(right)||!Double.isFinite(bottom)||!Double.isFinite(width)||right<0||bottom<0||width<1||width>10000||right>width+1||bottom>10000)throw new IllegalArgumentException();
                 if(!args.getString("layout").matches("list|grid")||!args.getString("sort").matches("title|updated")||!(args.get("dark") instanceof Boolean))throw new IllegalArgumentException();
                 String kind=args.optString("kind","list");
-                if(!kind.matches("list|format|link|actions|move|attachment"))throw new IllegalArgumentException();
+                if(!kind.matches("list|link|actions|move|attachment"))throw new IllegalArgumentException();
                 if(args.optString("title").length()>120||args.optString("value").length()>2048)throw new IllegalArgumentException();
                 if(!kind.equals("list")){
                     org.json.JSONArray items=args.getJSONArray("items");if(items.length()>96)throw new IllegalArgumentException();
@@ -267,7 +280,7 @@ public class MainActivity extends Activity {
         web.evaluateJavascript("window.handleBack()", handled -> {if (!"true".equals(handled)) MainActivity.super.onBackPressed();});
     }
     @Override protected void onPause() { if(nativeGlass!=null)nativeGlass.dismiss(true);web.evaluateJavascript("window.persistNow && window.persistNow()", null); super.onPause(); }
-    @Override protected void onDestroy() { if(nativeGlass!=null)nativeGlass.dismiss(true);ready=false; destroyed=true;if(WebViewFeature.isFeatureSupported(WebViewFeature.WEB_MESSAGE_LISTENER))WebViewCompat.removeWebMessageListener(web,"EasybookNative");web.destroy();io.shutdown();super.onDestroy(); }
+    @Override protected void onDestroy() { if(nativeGlass!=null){nativeGlass.clearFormatFrame();nativeGlass.dismiss(true);}ready=false; destroyed=true;if(WebViewFeature.isFeatureSupported(WebViewFeature.WEB_MESSAGE_LISTENER))WebViewCompat.removeWebMessageListener(web,"EasybookNative");web.destroy();io.shutdown();super.onDestroy(); }
 }
 
 

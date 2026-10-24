@@ -1,5 +1,9 @@
 # Android Liquid Glass: QWEA0 delivery
 
+> Superseded for the format panel: see `format-panel-restoration.md`. The native
+> three-column format grid below is historical and has been removed; the original
+> DOM panel owns its layout/commands, with a material-only QWEA0 edge adapter.
+
 This release replaces the production AGSL shader with QWEA0/Liquid-Glass-Android
 MIT LENS_AGSL at 16afe4d8b5d08a370d3f8c50b08d7f5c6eb5da4d. The Java adapter
 keeps the existing GlassBackdrop/GlassSurface/GlassMaterial architecture. There

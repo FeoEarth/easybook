@@ -4,14 +4,31 @@
  let bypass=false,queued=false,source=null,active=false,serial=0,actions=new Map(),acting=false;
  const blocked=new WeakSet();
  const style=document.createElement('style');style.textContent='.native-glass-source{visibility:hidden!important}.native-glass-source::backdrop{background:transparent!important}';document.head.append(style);
- const managed=['formatDialog','linkDialog','menuDialog','contextDialog','folderMenu','folderMoveDialog','moveDialog','nativeAttachmentMenu'];
+ // Protected historical format layout is never flattened into native menu items.
+ const managed=['linkDialog','menuDialog','contextDialog','folderMenu','folderMoveDialog','moveDialog','nativeAttachmentMenu'];
  const restore=()=>{if(source)source.classList.remove('native-glass-source')};
  const options=rect=>{
   const theme=document.documentElement.dataset.theme;
   return {right:Math.max(0,Math.min(document.documentElement.clientWidth,rect.right)),bottom:Math.max(0,rect.bottom),viewportWidth:document.documentElement.clientWidth,dark:theme==='dark'||theme!=='light'&&matchMedia('(prefers-color-scheme:dark)').matches,layout:$('cards').classList.contains('grid')?'grid':'list',sort:localStorage.getItem('easybook-note-sort')||'updated'};
  };
- const dirty=()=>{if(active)window.NativeStore.call('ui.glass.invalidate').catch(()=>{})};
- const schedule=()=>{if(queued)return;queued=true;requestAnimationFrame(()=>{queued=false;dirty();if(!acting)discover()})};
+ const dirty=()=>{if(active||$('formatDialog').open)window.NativeStore.call('ui.glass.invalidate').catch(()=>{})};
+ const schedule=()=>{if(queued)return;queued=true;requestAnimationFrame(()=>{queued=false;syncFormatFrame();dirty();if(!acting)discover()})};
+ // DOM remains the only format-panel layout and interaction owner. Native
+ // rendering receives bounds only, never buttons, commands or editor selection.
+ const formatDialog=$('formatDialog');let frameKey='{"visible":false}',frameDisabled=false;
+ function syncFormatFrame(){
+  if(frameDisabled)return;
+  const rect=formatDialog.getBoundingClientRect(),css=getComputedStyle(formatDialog);
+  const visible=formatDialog.open&&rect.width>0&&rect.height>0&&Number(css.opacity)>.99&&!source&&document.documentElement.dataset.glass!=='reduced'&&!matchMedia('(prefers-reduced-transparency:reduce)').matches;
+  const params=visible?{visible:true,left:rect.left,top:rect.top,width:rect.width,height:rect.height,viewportWidth:document.documentElement.clientWidth,dark:options(rect).dark}:{visible:false};
+  const key=JSON.stringify(params);if(key===frameKey)return;frameKey=key;
+  window.NativeStore.call('ui.glass.format',params).then(result=>{if(!result.accepted)frameDisabled=true}).catch(()=>{frameDisabled=true});
+ }
+ if(window.ResizeObserver)new ResizeObserver(schedule).observe(formatDialog);
+ formatDialog.addEventListener('transitionend',schedule);
+ formatDialog.addEventListener('close',schedule);
+ window.visualViewport?.addEventListener('resize',schedule);
+ window.visualViewport?.addEventListener('scroll',schedule);
  const visible=element=>element.getClientRects().length&&!element.closest('[hidden]');
  const describe=dialog=>{
   const elements=[...dialog.querySelectorAll('button,summary')].filter(visible).filter(b=>!b.matches('[data-close],#moveCancel'));
@@ -30,7 +47,7 @@
   const dialog=managed.map($).filter(d=>d?.open&&d.dataset.state!=='closing'&&!blocked.has(d)).at(-1);if(!dialog)return;
   const items=describe(dialog);if(!items)return;
   source=dialog;const rect=(dialog.id==='contextDialog'?$('contextSurface'):dialog).getBoundingClientRect();
-  const kind=dialog.id==='formatDialog'?'format':dialog.id==='linkDialog'?'link':dialog.id==='moveDialog'||dialog.id==='folderMoveDialog'?'move':dialog.id==='nativeAttachmentMenu'?'attachment':'actions';
+  const kind=dialog.id==='linkDialog'?'link':dialog.id==='moveDialog'||dialog.id==='folderMoveDialog'?'move':dialog.id==='nativeAttachmentMenu'?'attachment':'actions';
   const title=(dialog.querySelector('h2')?.textContent||(dialog.id==='contextDialog'?$('contextTitle').textContent:'操作')).slice(0,120);
   // Hide only the duplicated container, retaining its DOM, modal lifetime and handlers.
   dialog.classList.add('native-glass-source');active=true;

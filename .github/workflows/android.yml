@@ -59,7 +59,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           TAG="v0.8.0-build${GITHUB_RUN_NUMBER}"
-          gh release create "$TAG" Easybook-0.8.0.apk SHA256SUMS.txt --target "$GITHUB_SHA" --title "Easybook 0.8.0 · build ${GITHUB_RUN_NUMBER}" --notes "Android 原生 Liquid Glass：移植 QWEA0 MIT GPU 透镜、折射、色散、高光与按压反馈，扩展 Aa/颜色、链接、附件插入、笔记和文件夹操作及移动面板。仅完成 APK 编译、打包和签名验证。本次跳过所有测试，实际视觉效果和运行体验由用户安装 APK 后自行验收。"
+          gh release create "$TAG" Easybook-0.8.0.apk SHA256SUMS.txt --target "$GITHUB_SHA" --title "Easybook 0.8.0 · build ${GITHUB_RUN_NUMBER}" --notes "修复 Android 格式面板 UI 退化：恢复历史段落样式横向条、字符格式分段控件、列表与缩进分组、颜色子面板及更多菜单；删除通用三列网格替换。保留底部格式工具栏和 QWEA0 共享渲染，原生材质只装饰格式面板外缘，不接管内容与触摸。仅完成 APK 编译、打包、签名及产物完整性检查；未执行测试，实际视觉与交互由用户安装验收。"
       - name: Keep latest APK available through repository downloads
         env:
           GH_TOKEN: ${{ github.token }}

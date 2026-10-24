@@ -26,6 +26,7 @@ public final class NativeGlassMenu {
     private JSONObject state;
     private boolean sort,closing,disabled,renderingFailed;
     private View oldFocus;
+    private final FormatGlassFrame formatFrame;
     private EditText linkInput;
     private String pendingCommand;
     private String pendingValue;
@@ -33,10 +34,12 @@ public final class NativeGlassMenu {
     public NativeGlassMenu(Activity activity,FrameLayout root,WebView web,BooleanSupplier valid){
         this.activity=activity;this.root=root;this.web=web;this.valid=valid;
         backdrop=new GlassBackdrop(activity);
+        formatFrame=new FormatGlassFrame(activity,root,web,backdrop,this::captureCurrent);
     }
     private int dp(float x){return Math.round(x*activity.getResources().getDisplayMetrics().density);}
     public boolean isShowing(){return shield!=null;}
     public boolean show(JSONObject input){
+        if("format".equals(input.optString("kind")))return false;
         if(disabled||!valid.getAsBoolean()||!root.isHardwareAccelerated()||web.getWidth()<dp(240)||web.getHeight()<dp(280)||((PowerManager)activity.getSystemService(Activity.POWER_SERVICE)).isPowerSaveMode())return false;
         if(isShowing())return true;
         state=input;sort=false;closing=false;pendingCommand=null;linkInput=null;boolean dark=input.optBoolean("dark");
@@ -49,14 +52,14 @@ public final class NativeGlassMenu {
         ScrollView scroll=new ScrollView(activity);scroll.setFillViewport(false);scroll.setVerticalScrollBarEnabled(false);scroll.addView(rows);
         surface.addView(scroll,new FrameLayout.LayoutParams(-1,-1));
         populate();
-        int width=Math.min(dp(panel()&&input.optString("kind").equals("format")?340:292),web.getWidth()-dp(24));
+        int width=Math.min(dp(292),web.getWidth()-dp(24));
         rows.measure(View.MeasureSpec.makeMeasureSpec(width,View.MeasureSpec.EXACTLY),View.MeasureSpec.makeMeasureSpec(web.getHeight()-dp(24),View.MeasureSpec.AT_MOST));
         int height=Math.min(rows.getMeasuredHeight(),web.getHeight()-dp(24));
         float scale=web.getWidth()/(float)Math.max(1,input.optDouble("viewportWidth",web.getWidth()));
         int x=Math.max(dp(12),Math.min(web.getWidth()-width-dp(12),Math.round((float)input.optDouble("right")*scale)-width));
         int y=Math.max(dp(12),Math.min(web.getHeight()-height-dp(12),Math.round((float)input.optDouble("bottom")*scale)+dp(8)));
         FrameLayout.LayoutParams lp=new FrameLayout.LayoutParams(width,height);lp.leftMargin=x;lp.topMargin=y;shield.addView(surface,lp);
-        root.addView(shield,new FrameLayout.LayoutParams(-1,-1));backdrop.captureFor(surface);if(!panel())shield.requestFocus();
+        root.addView(shield,new FrameLayout.LayoutParams(-1,-1));captureCurrent();if(!panel())shield.requestFocus();
         surface.setPivotX(width-dp(22));surface.setPivotY(0);surface.setAlpha(0);surface.setScaleX(.94f);surface.setScaleY(.94f);
         surface.animate().alpha(1).scaleX(1).scaleY(1).setDuration(ValueAnimator.areAnimatorsEnabled()?GlassMaterial.OPEN_MS:0).setInterpolator(new PathInterpolator(.2f,.75f,.25f,1)).start();
         web.evaluateJavascript("document.getElementById('listMore').setAttribute('aria-expanded','true')",null);return true;
@@ -90,7 +93,13 @@ public final class NativeGlassMenu {
         rows.addView(row,new LinearLayout.LayoutParams(-1,-2));
     }
     public boolean back(){if(!isShowing())return false;if(sort){sort=false;populate();}else dismiss(false);return true;}
-    public void refreshBackdrop(){if(isShowing()&&!closing){web.invalidate();backdrop.invalidate();surface.invalidate();}}
+    public void refreshBackdrop(){
+        if(isShowing()&&!closing){web.invalidate();backdrop.invalidate();surface.invalidate();}
+        else if(formatFrame.surface()!=null){web.invalidate();backdrop.invalidate();formatFrame.surface().invalidate();}
+    }
+    public void updateFormatFrame(JSONObject args){if(valid.getAsBoolean())formatFrame.update(args);}
+    public void clearFormatFrame(){formatFrame.clear();}
+    private void captureCurrent(){backdrop.captureFor(isShowing()?surface:formatFrame.surface());}
     public void onBoundsChanged(){
         if(!isShowing())return;
         if(!panel()){dismiss(true);return;}
@@ -121,24 +130,12 @@ public final class NativeGlassMenu {
             LinearLayout.LayoutParams inputLp=new LinearLayout.LayoutParams(-1,dp(52));inputLp.setMargins(dp(12),0,dp(12),dp(10));rows.addView(linkInput,inputLp);
         }
         JSONArray items=state.optJSONArray("items");if(items==null)return;
-        boolean format=state.optString("kind").equals("format");
-        LinearLayout grid=null;
         for(int i=0;i<items.length();i++){
             JSONObject item=items.optJSONObject(i);if(item==null)continue;
             String id=item.optString("id"),label=item.optString("label");
-            if(format){
-                if(i%3==0){grid=new LinearLayout(activity);grid.setPadding(dp(4),dp(2),dp(4),dp(2));rows.addView(grid,new LinearLayout.LayoutParams(-1,-2));}
-                TextView button=new TextView(activity);button.setText(label);button.setTextSize(14);button.setTextColor(item.optBoolean("checked")?0xffb18a16:ink());button.setGravity(Gravity.CENTER);button.setMinHeight(dp(48));button.setPadding(dp(4),dp(6),dp(4),dp(6));button.setEnabled(!item.optBoolean("disabled"));button.setAlpha(button.isEnabled()?1f:.4f);button.setContentDescription(label+(item.optBoolean("checked")?"，已选中":""));
-                GradientDrawable fill=new GradientDrawable();fill.setCornerRadius(dp(16));fill.setColor(item.optBoolean("checked")?0x28b18a16:state.optBoolean("dark")?0x16ffffff:0x0d000000);button.setBackground(fill);button.setOnClickListener(v->command(id));
-                if(item.optString("color").matches("#[0-9a-fA-F]{6}")){
-                    GradientDrawable swatch=new GradientDrawable();swatch.setShape(GradientDrawable.OVAL);swatch.setColor(Color.parseColor(item.optString("color")));swatch.setStroke(dp(1),state.optBoolean("dark")?0x55ffffff:0x33000000);swatch.setSize(dp(20),dp(20));button.setCompoundDrawablesWithIntrinsicBounds(null,swatch,null,null);button.setCompoundDrawablePadding(dp(4));
-                }
-                LinearLayout.LayoutParams cell=new LinearLayout.LayoutParams(0,-2,1);cell.setMargins(dp(2),0,dp(2),0);grid.addView(button,cell);
-            }else{
-                row(label,item.optString("subtitle"),id,()->command(id),item.optBoolean("checked"));
-                View row=rows.getChildAt(rows.getChildCount()-1);row.setEnabled(!item.optBoolean("disabled"));row.setAlpha(row.isEnabled()?1f:.4f);
-                if(item.optBoolean("danger")){LinearLayout text=(LinearLayout)((LinearLayout)row).getChildAt(0);((TextView)text.getChildAt(0)).setTextColor(0xffe5484d);}
-            }
+            row(label,item.optString("subtitle"),id,()->command(id),item.optBoolean("checked"));
+            View row=rows.getChildAt(rows.getChildCount()-1);row.setEnabled(!item.optBoolean("disabled"));row.setAlpha(row.isEnabled()?1f:.4f);
+            if(item.optBoolean("danger")){LinearLayout text=(LinearLayout)((LinearLayout)row).getChildAt(0);((TextView)text.getChildAt(0)).setTextColor(0xffe5484d);}
         }
     }
     public void dismiss(boolean immediate){
@@ -146,8 +143,9 @@ public final class NativeGlassMenu {
         FrameLayout previous=shield;GlassSurface glass=surface;
         String command=pendingCommand,value=pendingValue;
         Runnable done=()->{
-            root.removeView(previous);backdrop.captureFor(null);
+            root.removeView(previous);
             if(shield==previous){shield=null;surface=null;closing=false;pendingCommand=null;linkInput=null;}
+            captureCurrent();
             if(oldFocus!=null&&oldFocus.isAttachedToWindow())oldFocus.requestFocus();
             if(valid.getAsBoolean()&&!renderingFailed){
                 web.evaluateJavascript("document.getElementById('listMore').setAttribute('aria-expanded','false');window.easybookNativeGlassClosed&&window.easybookNativeGlassClosed("+(command!=null)+")",null);
