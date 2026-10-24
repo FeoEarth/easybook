@@ -19,6 +19,10 @@ public final class GlassSurface extends FrameLayout {
     private boolean broken,effectDirty=true;
     private int effectWidth=-1,effectHeight=-1;
     private float press,touchX,touchY;
+    private boolean frameOnly;
+    private float cornerDp=GlassMaterial.CORNER;
+    private final Path clearCenter=new Path();
+    private RenderNode frameLayer;
     private android.animation.ValueAnimator pressAnimator;
     private float refraction=GlassMaterial.REFRACTION;
     public long frames, drawNanos;
@@ -29,16 +33,36 @@ public final class GlassSurface extends FrameLayout {
             shader=new RuntimeShader(bytes.toString(StandardCharsets.UTF_8.name()));
         }
         setWillNotDraw(false);setElevation(dp(18));
-        setOutlineProvider(new ViewOutlineProvider(){@Override public void getOutline(View v,Outline o){o.setRoundRect(0,0,v.getWidth(),v.getHeight(),dp(GlassMaterial.CORNER));}});
+        setOutlineProvider(new ViewOutlineProvider(){@Override public void getOutline(View v,Outline o){o.setRoundRect(0,0,v.getWidth(),v.getHeight(),dp(cornerDp));}});
         setClipToOutline(true);fallback.setColor(dark?0xff25252b:0xfff9f9fc);
     }
     private float dp(float value){return value*getResources().getDisplayMetrics().density;}
     public void setRefractionForProbe(float value){refraction=value;effectDirty=true;invalidate();}
     public boolean isBroken(){return broken;}
+    public void useFormatFrame(){
+        frameOnly=true;cornerDp=32f;frameLayer=new RenderNode("EasybookFormatMaterialLayer");frameLayer.setUseCompositingLayer(true,null);setElevation(0);setClickable(false);setFocusable(false);
+        setImportantForAccessibility(IMPORTANT_FOR_ACCESSIBILITY_NO);effectDirty=true;invalidateOutline();invalidate();
+    }
     @Override protected void onDraw(Canvas canvas){
-        super.onDraw(canvas);long started=System.nanoTime();
+        super.onDraw(canvas);
+        if(!frameOnly){drawGlass(canvas);return;}
+        // QWEA0 material belongs only to the outer shell. Never filter glyphs,
+        // controls or selection, and never draw an opaque native card over them.
+        if(getWidth()==0||getHeight()==0||!canvas.isHardwareAccelerated())return;
+        // Render the complete lens into its GPU compositing layer BEFORE the
+        // outer rim clip. AGSL inward samples must still access the center.
+        frameLayer.setPosition(0,0,getWidth(),getHeight());
+        Canvas material=frameLayer.beginRecording(getWidth(),getHeight());
+        try{drawGlass(material);}finally{frameLayer.endRecording();}
+        int save=canvas.save();float inset=dp(12);
+        clearCenter.rewind();clearCenter.addRoundRect(inset,inset,Math.max(inset,getWidth()-inset),Math.max(inset,getHeight()-inset),dp(cornerDp-12),dp(cornerDp-12),Path.Direction.CW);
+        canvas.clipOutPath(clearCenter);
+        try{canvas.drawRenderNode(frameLayer);}finally{canvas.restoreToCount(save);}
+    }
+    private void drawGlass(Canvas canvas){
+        long started=System.nanoTime();
         if(broken||!canvas.isHardwareAccelerated()||!source.recording().hasDisplayList()){
-            canvas.drawRoundRect(0,0,getWidth(),getHeight(),dp(GlassMaterial.CORNER),dp(GlassMaterial.CORNER),fallback);return;
+            canvas.drawRoundRect(0,0,getWidth(),getHeight(),dp(cornerDp),dp(cornerDp),fallback);return;
         }
         try{
             int margin=(int)Math.ceil(dp(GlassMaterial.BLUR*2+GlassMaterial.REFRACTION+4));
@@ -50,7 +74,7 @@ public final class GlassSurface extends FrameLayout {
             if(effectDirty||effectWidth!=getWidth()||effectHeight!=getHeight()){
             shader.setFloatUniform("margin",(float)margin);
             shader.setFloatUniform("viewSize",(float)getWidth(),(float)getHeight());
-            float cx=getWidth()/2f,cy=getHeight()/2f,corner=dp(GlassMaterial.CORNER);
+            float cx=getWidth()/2f,cy=getHeight()/2f,corner=dp(cornerDp);
             shader.setFloatUniform("shape1",cx,cy,cx,cy);
             shader.setFloatUniform("shape1L",cx,cy,cx,cy);
             shader.setFloatUniform("radii1",corner,corner,corner,corner);
@@ -78,6 +102,7 @@ public final class GlassSurface extends FrameLayout {
         drawNanos+=System.nanoTime()-started;
     }
     @Override public boolean dispatchTouchEvent(MotionEvent event){
+        if(frameOnly)return false; // Let the original WebView receive every gesture.
         touchX=event.getX();touchY=event.getY();
         int action=event.getActionMasked();
         if(action==MotionEvent.ACTION_DOWN||action==MotionEvent.ACTION_UP||action==MotionEvent.ACTION_CANCEL){
@@ -91,5 +116,5 @@ public final class GlassSurface extends FrameLayout {
         }else if(action==MotionEvent.ACTION_MOVE&&press>0){effectDirty=true;invalidate();}
         return super.dispatchTouchEvent(event);
     }
-    @Override protected void onDetachedFromWindow(){if(pressAnimator!=null)pressAnimator.cancel();slice.discardDisplayList();super.onDetachedFromWindow();}
+    @Override protected void onDetachedFromWindow(){if(pressAnimator!=null)pressAnimator.cancel();slice.discardDisplayList();if(frameLayer!=null)frameLayer.discardDisplayList();super.onDetachedFromWindow();}
 }
