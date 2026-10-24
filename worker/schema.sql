@@ -23,3 +23,8 @@ CREATE TRIGGER IF NOT EXISTS notes_json_update AFTER UPDATE ON notes_json BEGIN
  INSERT INTO note_changes(workspace,note_id,note_version) VALUES(NEW.workspace,NEW.id,NEW.version);
 END;
 
+
+
+-- Additive metadata only: no note, folder or attachment row is rewritten.
+CREATE TABLE IF NOT EXISTS management_state(workspace TEXT PRIMARY KEY,version INTEGER NOT NULL DEFAULT 0,items TEXT NOT NULL DEFAULT '{}');
+CREATE TABLE IF NOT EXISTS management_receipts(workspace TEXT NOT NULL,mutation TEXT NOT NULL,payload TEXT NOT NULL,PRIMARY KEY(workspace,mutation));
