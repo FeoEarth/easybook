@@ -19,7 +19,7 @@ for(const native of [false,true]){
  let w=await open(),$=id=>w.document.getElementById(id);
  try{
  assert.equal($('noteSort'),null);assert.equal(w.localStorage.getItem('easybook-note-sort'),'updated');assert.equal(w.document.querySelector('[data-note-sort="custom"]'),null);
- $('listMore').click();assert.equal($('listDialog').open,true);assert.equal($('listDialog').querySelector('select'),null);w.document.querySelector('[data-note-sort="title"]').click();assert.equal($('listDialog').open,false);assert.equal(w.document.querySelector('[data-note-sort="title"]').getAttribute('aria-checked'),'true');
+ $('listMore').click();assert.equal($('listDialog').open,true);assert.equal($('listDialog').querySelector('select'),null);$('listSortOpen').click();w.document.querySelector('[data-note-sort="title"]').click();assert.equal($('listDialog').open,false);assert.equal(w.document.querySelector('[data-note-sort="title"]').getAttribute('aria-checked'),'true');
  $('foldersButton').click();await wait();const row=()=>w.document.querySelector('[data-folder-id="'+b+'"] button');
  const pointer=(el,type,x,y)=>{const e=new w.MouseEvent(type,{bubbles:true,cancelable:true,button:0,clientX:x,clientY:y});Object.defineProperties(e,{isPrimary:{value:true},pointerId:{value:1}});el.dispatchEvent(e)};
  const target=w.document.querySelector('[data-folder-id="'+a+'"]');target.getBoundingClientRect=()=>({top:50,bottom:110,left:0,width:300,height:60});w.document.elementFromPoint=()=>target;
