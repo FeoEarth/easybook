@@ -36,7 +36,7 @@ jobs:
           mkdir -p "$HOME/.easybook-signing"
           keytool -genkeypair -keystore "$HOME/.easybook-signing/development.keystore" -storepass android -alias androiddebugkey -keypass android -dname "CN=Easybook CI" -keyalg RSA -keysize 2048 -validity 10000
       - name: Build native integration and instrumentation
-        run: gradle :app:assembleDebug :app:assembleDebugAndroidTest --no-daemon
+        run: gradle :app:assembleRelease :app:assembleDebugAndroidTest --no-daemon
       - name: Enable KVM
         run: |
           echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
@@ -50,7 +50,7 @@ jobs:
           profile: pixel_2
           disable-animations: true
           script: |
-            adb install -r app/build/outputs/apk/debug/app-debug.apk
+            adb install -r app/build/outputs/apk/release/app-release.apk
             adb install -r app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk
             adb shell am instrument -w com.feoearth.easybook.notes.test/com.feoearth.easybook.PhaseTwoInstrumentation | tee /tmp/easybook-native-checks.txt
             grep -q 'passed=true' /tmp/easybook-native-checks.txt
