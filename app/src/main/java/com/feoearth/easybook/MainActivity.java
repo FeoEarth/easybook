@@ -119,7 +119,7 @@ public class MainActivity extends Activity {
                         boolean legacy=false;
                         String html=readAsset("index.html");if(!legacy)html=html.replace("connect-src https://easybook-sync.1902521952.workers.dev","connect-src 'none'");
                         html=html.replace("<script>","<script>"+(legacy?"window.EasybookRollbackMode=true;":"")+readAsset("native-api.js")+"</script><script>");
-                        if(BuildConfig.NATIVE_GLASS_PROTOTYPE && android.os.Build.VERSION.SDK_INT>=33)html=html.replace("</body>","<script>"+readAsset("native-glass/menu.js")+"</script></body>");
+                        if(BuildConfig.NATIVE_GLASS_PROTOTYPE && android.os.Build.VERSION.SDK_INT>=33)html=html.replace("</body>","<script>"+readAsset("native-glass/format-surface.js")+";"+readAsset("native-glass/menu.js")+"</script></body>");
                         return new WebResourceResponse("text/html","UTF-8",200,"OK",Collections.singletonMap("Cache-Control","no-store"),new ByteArrayInputStream(html.getBytes(StandardCharsets.UTF_8)));
                     }
                     catch (IOException e) { return new WebResourceResponse("text/plain", "UTF-8", new ByteArrayInputStream(new byte[0])); }
@@ -171,10 +171,19 @@ public class MainActivity extends Activity {
                 if(!available)return new JSONObject().put("accepted",false);
                 if(!(args.get("visible") instanceof Boolean))throw new IllegalArgumentException();
                 if(args.getBoolean("visible")){
-                    for(String field:new String[]{"left","top","width","height","viewportWidth"}){
+                    for(String field:new String[]{"left","top","width","height","viewportWidth","opacity","corner"}){
                         double value=args.getDouble(field);if(!Double.isFinite(value)||Math.abs(value)>10000)throw new IllegalArgumentException();
                     }
                     if(args.getDouble("width")<1||args.getDouble("height")<1||args.getDouble("viewportWidth")<1||!(args.get("dark") instanceof Boolean))throw new IllegalArgumentException();
+                    if(args.getDouble("opacity")<0||args.getDouble("opacity")>1||args.getDouble("corner")<0)throw new IllegalArgumentException();
+                    if(!(args.get("mounted") instanceof Boolean)||args.optInt("revision",-1)<0)throw new IllegalArgumentException();
+                    if(args.has("content")){
+                        JSONObject content=args.getJSONObject("content");
+                        for(String field:new String[]{"html","css","symbols","rootStyle","bodyClass","panel","theme"}){
+                            if(!(content.get(field) instanceof String)||content.getString(field).length()>180000)throw new IllegalArgumentException();
+                        }
+                        if(content.toString().length()>260000)throw new IllegalArgumentException();
+                    }
                 }
                 runOnUiThread(()->{if(!destroyed && ready && generation==documentGeneration){glassGeneration=generation;nativeGlass.updateFormatFrame(args);}});
                 return new JSONObject().put("accepted",true);

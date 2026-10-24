@@ -34,7 +34,7 @@ public final class NativeGlassMenu {
     public NativeGlassMenu(Activity activity,FrameLayout root,WebView web,BooleanSupplier valid){
         this.activity=activity;this.root=root;this.web=web;this.valid=valid;
         backdrop=new GlassBackdrop(activity);
-        formatFrame=new FormatGlassFrame(activity,root,web,backdrop,this::captureCurrent);
+        formatFrame=new FormatGlassFrame(activity,root,web,backdrop,this::captureCurrent,valid);
     }
     private int dp(float x){return Math.round(x*activity.getResources().getDisplayMetrics().density);}
     public boolean isShowing(){return shield!=null;}
@@ -98,9 +98,10 @@ public final class NativeGlassMenu {
         else if(formatFrame.surface()!=null){web.invalidate();backdrop.invalidate();formatFrame.surface().invalidate();}
     }
     public void updateFormatFrame(JSONObject args){if(valid.getAsBoolean())formatFrame.update(args);}
-    public void clearFormatFrame(){formatFrame.clear();}
+    public void clearFormatFrame(){formatFrame.dispose();}
     private void captureCurrent(){backdrop.captureFor(isShowing()?surface:formatFrame.surface());}
     public void onBoundsChanged(){
+        formatFrame.boundsChanged();
         if(!isShowing())return;
         if(!panel()){dismiss(true);return;}
         // Keep native URL input and IME alive while safe-area/keyboard bounds move.

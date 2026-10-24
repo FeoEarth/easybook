@@ -12,23 +12,7 @@
   return {right:Math.max(0,Math.min(document.documentElement.clientWidth,rect.right)),bottom:Math.max(0,rect.bottom),viewportWidth:document.documentElement.clientWidth,dark:theme==='dark'||theme!=='light'&&matchMedia('(prefers-color-scheme:dark)').matches,layout:$('cards').classList.contains('grid')?'grid':'list',sort:localStorage.getItem('easybook-note-sort')||'updated'};
  };
  const dirty=()=>{if(active||$('formatDialog').open)window.NativeStore.call('ui.glass.invalidate').catch(()=>{})};
- const schedule=()=>{if(queued)return;queued=true;requestAnimationFrame(()=>{queued=false;syncFormatFrame();dirty();if(!acting)discover()})};
- // DOM remains the only format-panel layout and interaction owner. Native
- // rendering receives bounds only, never buttons, commands or editor selection.
- const formatDialog=$('formatDialog');let frameKey='{"visible":false}',frameDisabled=false;
- function syncFormatFrame(){
-  if(frameDisabled)return;
-  const rect=formatDialog.getBoundingClientRect(),css=getComputedStyle(formatDialog);
-  const visible=formatDialog.open&&rect.width>0&&rect.height>0&&Number(css.opacity)>.99&&!source&&document.documentElement.dataset.glass!=='reduced'&&!matchMedia('(prefers-reduced-transparency:reduce)').matches;
-  const params=visible?{visible:true,left:rect.left,top:rect.top,width:rect.width,height:rect.height,viewportWidth:document.documentElement.clientWidth,dark:options(rect).dark}:{visible:false};
-  const key=JSON.stringify(params);if(key===frameKey)return;frameKey=key;
-  window.NativeStore.call('ui.glass.format',params).then(result=>{if(!result.accepted)frameDisabled=true}).catch(()=>{frameDisabled=true});
- }
- if(window.ResizeObserver)new ResizeObserver(schedule).observe(formatDialog);
- formatDialog.addEventListener('transitionend',schedule);
- formatDialog.addEventListener('close',schedule);
- window.visualViewport?.addEventListener('resize',schedule);
- window.visualViewport?.addEventListener('scroll',schedule);
+ const schedule=()=>{if(queued)return;queued=true;requestAnimationFrame(()=>{queued=false;window.easybookSyncFormatSurface?.();dirty();if(!acting)discover()})};
  const visible=element=>element.getClientRects().length&&!element.closest('[hidden]');
  const describe=dialog=>{
   const elements=[...dialog.querySelectorAll('button,summary')].filter(visible).filter(b=>!b.matches('[data-close],#moveCancel'));
