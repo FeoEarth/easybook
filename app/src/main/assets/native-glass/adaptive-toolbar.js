@@ -42,6 +42,7 @@
   function schedule(){const next=context();if(next===current){pending='';clearTimeout(timer);return}if(next===pending)return;pending=next;clearTimeout(timer);timer=setTimeout(apply,180)}
   rich.editor.on('selectionUpdate',schedule);rich.editor.on('transaction',schedule);
   track.addEventListener('pointerdown',()=>{pressed=true},{passive:true});
+  window.addEventListener('easybook-native-toolbar-gesture',event=>{pressed=event.detail;if(!pressed){clearTimeout(timer);timer=setTimeout(apply,200)}});
   const release=()=>{pressed=false;clearTimeout(timer);timer=setTimeout(apply,200)};
   window.addEventListener('pointerup',release,true);window.addEventListener('pointercancel',release,true);
   track.addEventListener('scroll',()=>{scrolling=true;clearTimeout(scrollTimer);scrollTimer=setTimeout(()=>{scrolling=false;apply()},240)},{passive:true});

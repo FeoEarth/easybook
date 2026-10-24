@@ -26,7 +26,7 @@ public final class NativeGlassMenu {
     private JSONObject state;
     private boolean sort,closing,disabled,renderingFailed;
     private View oldFocus;
-    private final FormatGlassFrame formatFrame;
+    private final FormatGlassFrame formatFrame,toolbarFrame;
     private EditText linkInput;
     private final java.util.ArrayList<PaletteSwatch> paletteSwatches=new java.util.ArrayList<>();
     private String pendingCommand;
@@ -36,6 +36,7 @@ public final class NativeGlassMenu {
         this.activity=activity;this.root=root;this.web=web;this.valid=valid;
         backdrop=new GlassBackdrop(activity);
         formatFrame=new FormatGlassFrame(activity,root,web,backdrop,this::captureCurrent,valid);
+        toolbarFrame=new FormatGlassFrame(activity,root,web,backdrop,this::captureCurrent,valid,true);
     }
     private int dp(float x){return Math.round(x*activity.getResources().getDisplayMetrics().density);}
     public boolean isShowing(){return shield!=null;}
@@ -97,12 +98,14 @@ public final class NativeGlassMenu {
     public void refreshBackdrop(){
         if(isShowing()&&!closing){web.invalidate();backdrop.invalidate();surface.invalidate();}
         else if(formatFrame.surface()!=null){web.invalidate();backdrop.invalidate();formatFrame.surface().invalidate();}
+        if(toolbarFrame.surface()!=null){web.invalidate();backdrop.invalidate();toolbarFrame.surface().invalidate();}
     }
+    public void updateToolbarFrame(JSONObject args){if(valid.getAsBoolean())toolbarFrame.update(args);}
     public void updateFormatFrame(JSONObject args){if(valid.getAsBoolean())formatFrame.update(args);}
-    public void clearFormatFrame(){formatFrame.dispose();}
-    private void captureCurrent(){backdrop.captureFor(isShowing()?surface:formatFrame.surface());}
+    public void clearFormatFrame(){formatFrame.dispose();toolbarFrame.dispose();}
+    private void captureCurrent(){android.view.View primary=isShowing()?surface:formatFrame.surface(),bar=toolbarFrame.surface();backdrop.captureFor(primary!=null?primary:bar,primary!=null?bar:null);}
     public void onBoundsChanged(){
-        formatFrame.boundsChanged();
+        formatFrame.boundsChanged();toolbarFrame.boundsChanged();
         if(!isShowing())return;
         if(anchored()){
             root.post(()->{if(!isShowing()||closing)return;positionAnchored();if(valid.getAsBoolean())web.evaluateJavascript("window.easybookNativeGlassReanchor&&window.easybookNativeGlassReanchor()",null);});return;

@@ -19,7 +19,7 @@ public final class GlassSurface extends FrameLayout {
     private boolean broken,effectDirty=true;
     private int effectWidth=-1,effectHeight=-1;
     private float press,touchX,touchY;
-    private boolean formatSurface;
+    private boolean formatSurface,toolbarSurface;
     private float cornerDp=GlassMaterial.CORNER;
     private android.animation.ValueAnimator pressAnimator;
     private float refraction=GlassMaterial.REFRACTION;
@@ -40,6 +40,7 @@ public final class GlassSurface extends FrameLayout {
     public void useFormatSurface(){
         formatSurface=true;setElevation(0);setFocusable(false);effectDirty=true;invalidate();
     }
+    public void useToolbarSurface(){useFormatSurface();toolbarSurface=true;setElevation(dp(8));}
     public void setFormatCorner(float pixels){
         float value=pixels/getResources().getDisplayMetrics().density;
         if(cornerDp!=value){cornerDp=value;effectDirty=true;invalidateOutline();invalidate();}
@@ -51,7 +52,7 @@ public final class GlassSurface extends FrameLayout {
             if(!formatSurface)canvas.drawRoundRect(0,0,getWidth(),getHeight(),dp(cornerDp),dp(cornerDp),fallback);return;
         }
         try{
-            float blurRadius=dp(formatSurface?10f:GlassMaterial.BLUR);
+            float blurRadius=dp(toolbarSurface?8f:formatSurface?10f:GlassMaterial.BLUR);
             int margin=(int)Math.ceil(blurRadius*2+dp(GlassMaterial.REFRACTION+4));
             int w=getWidth()+2*margin,h=getHeight()+2*margin;
             getLocationInWindow(here);source.getLocationInWindow(there);
@@ -67,8 +68,8 @@ public final class GlassSurface extends FrameLayout {
             shader.setFloatUniform("radii1",corner,corner,corner,corner);
             shader.setFloatUniform("shape2",0f,0f,0f,0f);
             shader.setFloatUniform("radius2",0f);shader.setFloatUniform("blendK",0f);
-            shader.setFloatUniform("rimSoft",dp(.6f));shader.setFloatUniform("bevel",dp(GlassMaterial.EDGE));
-            shader.setFloatUniform("refractPx",dp(formatSurface?10f:refraction));shader.setFloatUniform("falloff",1.6f);
+            shader.setFloatUniform("rimSoft",dp(.6f));shader.setFloatUniform("bevel",dp(toolbarSurface?10f:GlassMaterial.EDGE));
+            shader.setFloatUniform("refractPx",dp(toolbarSurface?7f:formatSurface?10f:refraction));shader.setFloatUniform("falloff",1.6f);
             shader.setFloatUniform("refractDir",-1f);
             shader.setFloatUniform("sampleLo",margin+1f,margin+1f);
             shader.setFloatUniform("sampleHi",margin+getWidth()-1f,margin+getHeight()-1f);
