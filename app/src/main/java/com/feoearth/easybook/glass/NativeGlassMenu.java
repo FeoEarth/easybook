@@ -133,10 +133,12 @@ public final class NativeGlassMenu {
         int width=Math.min(dp("palette".equals(state.optString("kind"))?280:292),availableWidth-dp(24));if(width<1||availableHeight<dp(40))return;
         rows.measure(View.MeasureSpec.makeMeasureSpec(width,View.MeasureSpec.EXACTLY),View.MeasureSpec.makeMeasureSpec(0,View.MeasureSpec.UNSPECIFIED));
         int natural=rows.getMeasuredHeight();
+        boolean context="context".equals(state.optString("kind"));
+        if(context&&valid.getAsBoolean())web.evaluateJavascript("window.easybookNativeContextHeight&&window.easybookNativeContextHeight("+(natural/scale)+")",null);
         int left=Math.round((float)state.optDouble("anchorLeft")*scale),right=Math.round((float)state.optDouble("anchorRight")*scale);
         int top=Math.round((float)state.optDouble("anchorTop")*scale),bottom=Math.round((float)state.optDouble("anchorBottom")*scale);
         int above=Math.max(0,top-dp(20)),below=Math.max(0,availableHeight-bottom-dp(20));
-        boolean up="above".equals(state.optString("placement"))?(above>=natural||above>=below):(below<natural&&above>below);
+        boolean up=!context&&("above".equals(state.optString("placement"))?(above>=natural||above>=below):(below<natural&&above>below));
         int height=Math.max(1,Math.min(natural,up?above:below));
         int x=Math.max(dp(12),Math.min(availableWidth-width-dp(12),"palette".equals(state.optString("kind"))?(left+right-width)/2:right-width));
         int y=Math.max(dp(12),Math.min(availableHeight-height-dp(12),up?top-height-dp(8):bottom+dp(8)));

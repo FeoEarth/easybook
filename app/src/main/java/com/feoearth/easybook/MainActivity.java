@@ -215,7 +215,7 @@ public class MainActivity extends Activity {
                     if(args.getDouble("viewportHeight")<1)throw new IllegalArgumentException();
                 }
                 String kind=args.optString("kind","list");
-                if(!kind.matches("list|link|actions|move|attachment|palette"))throw new IllegalArgumentException();
+                if(!kind.matches("list|link|actions|move|attachment|palette|context"))throw new IllegalArgumentException();
                 if(args.optString("title").length()>120||args.optString("value").length()>2048)throw new IllegalArgumentException();
                 if(!kind.equals("list")){
                     org.json.JSONArray items=args.getJSONArray("items");if(items.length()>96)throw new IllegalArgumentException();
