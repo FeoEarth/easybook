@@ -53,3 +53,7 @@ versionCode32 / versionName0.8.0。仅 Android 编译、APK打包、签名和发
 Android 注入样式为按钮补充 nowrap、flex-shrink:0和统一line-height；Aa仅减少水平内边距以容纳字形。高亮展开按钮明确44px触控宽度，父轨道高度和胶囊圆角不动。标题/正文同排列切换不重新挂载节点；滚动锚点从实时DOM顺序选择实际可见按钮，避免沿用初始化顺序误定位。原有功能、事件、命令、组合输入和手势延后机制保持。menu.js、全部原生组件与玻璃渲染零修改。
 
 静态检查仅 node --check；发布只执行APK编译、打包、签名和产物检查。不执行UI、模拟器或截图对比，最终视觉由用户验收。
+
+## build65 高亮独立面板
+
+箭头已改为 SVG 并委托 `highlight-palette.js`，不再执行 openFormats(highlight)。独立原生色块调色板复用完整面板的颜色按钮及原命令，详见 `highlight-quick-palette.md`。五种上下文识别与排列不变，仅在调色板打开期间延后应用排列变化。

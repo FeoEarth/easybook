@@ -7,7 +7,7 @@
   const key=element=>element.id||element.dataset.command;
   const styles=document.createElement('style');styles.textContent='#formatTrack button{white-space:nowrap;flex-shrink:0;line-height:1}#formatTrack #formatButton{padding-inline:4px}#formatTrack .highlight-quick{display:flex;flex:0 0 auto;align-items:center;gap:0}#formatTrack .highlight-quick>button:first-child{border-radius:16px 0 0 16px}#formatTrack .highlight-quick>button:last-child{min-width:44px;width:44px;padding-inline:2px;border-radius:0 16px 16px 0;font-size:16px}#formatTrack>[hidden]{display:none!important}';document.head.append(styles);
   const aa=find('#formatButton');aa.textContent='Aa';aa.setAttribute('aria-label','完整格式');
-  const high=find('#highlightButton'),palette=find('#highlightPalette'),cluster=document.createElement('div');cluster.className='highlight-quick';cluster.id='quickHighlight';high.before(cluster);cluster.append(high,palette);palette.textContent='⌄';palette.setAttribute('aria-label','选择高亮颜色');
+  const high=find('#highlightButton'),palette=find('#highlightPalette'),cluster=document.createElement('div');cluster.className='highlight-quick';cluster.id='quickHighlight';high.before(cluster);cluster.append(high,palette);palette.innerHTML='<svg viewBox="0 0 24 24" aria-hidden="true"><path d="m7 10 5 5 5-5"/></svg>'; palette.setAttribute('aria-label','选择高亮颜色');
   // Low-frequency actions remain in the existing complete panel, not deleted.
   const low=new Set(['textColorPalette','undoButton','redoButton','toolbarLink','toggleStrike','toggleBlockquote','toggleBulletList','toggleOrderedList','toolbarIndent','toolbarOutdent']);
   const groups={
@@ -27,7 +27,7 @@
   }
   function apply(){
    if(!pending||pending===current)return;
-   if(pressed||scrolling||rich.isComposing())return;
+   if(pressed||scrolling||rich.isComposing()||document.getElementById('nativeHighlightPalette')?.open)return;
    const order=groups[pending];
    if(current&&groups[current].join()===order.join()){current=pending;pending='';track.dataset.context=current;return}
    const rect=track.getBoundingClientRect(),atStart=track.scrollLeft<3;
@@ -52,6 +52,8 @@
   const more=document.getElementById('moreButton'),showMore=more.onclick;
   more.addEventListener('mousedown',event=>event.preventDefault());
   more.onclick=function(event){const focused=rich.editor.isFocused;showMore?.call(this,event);if(focused)rich.editor.commands.focus(undefined,{scrollIntoView:false})};
+  window.installEasybookHighlightPalette?.(rich,high,palette,cluster);
+  window.addEventListener('easybook-highlight-palette-closed',()=>{schedule();clearTimeout(timer);timer=setTimeout(apply,200)});
   pending=context();apply();return true;
  }
  if(start())return;
