@@ -28,7 +28,7 @@ public final class NativeSync {
     public NativeSync(NoteRepository db,Transport transport){this.db=db;this.transport=transport;}
     public JSONObject run(String key)throws Exception{
         NoteRepository.key(key);String credential=key.startsWith("space:")?db.credential(key):key;int conflicts=0;JSONObject mappings=new JSONObject();
-        JSONArray fs=db.rows(key,"folder");for(int i=0;i<fs.length();i++){JSONObject f=fs.getJSONObject(i);if(f.optBoolean("dirty"))db.acknowledgeFolder(key,transport.request("/api/folders/"+f.getString("id"),new JSONObject().put("name",f.getString("name")),credential).getJSONObject("folder"));}
+        JSONArray fs=db.rows(key,"folder");for(int i=0;i<fs.length();i++){JSONObject f=fs.getJSONObject(i);if(f.optBoolean("dirty"))db.acknowledgeFolder(key,transport.request("/api/folders/"+f.getString("id"),new JSONObject().put("name",f.getString("name")).put("updated",f.optLong("updated")).put("deleted",f.optInt("deleted")),credential).getJSONObject("folder"));}
         String after="";Set<String> seen=new HashSet<>();do{JSONObject res=transport.request("/api/folders"+(after.isEmpty()?"":"?after="+after),null,credential);JSONArray rows=res.getJSONArray("folders");for(int i=0;i<rows.length();i++)db.mergeFolder(key,rows.getJSONObject(i));after=res.isNull("next")?"":res.optString("next","");if(!after.isEmpty()&&!seen.add(after))throw new IOException("Invalid folder pagination");}while(!after.isEmpty());
         JSONArray files=db.rows(key,"attachment");for(int i=0;i<files.length();i++){JSONObject f=files.getJSONObject(i);if(f.optBoolean("dirty")){JSONObject sent=db.attachments.payload(key,f.getString("id"));JSONObject ack=transport.request("/api/attachments/"+f.getString("id"),sent,credential);if(!ack.getString("id").equals(f.getString("id"))||ack.getLong("size")!=f.getLong("size"))throw new IOException("Invalid attachment acknowledgement");db.saveAttachment(key,new JSONObject(f.toString()).put("dirty",false));}}
         JSONArray ns=db.rows(key,"note");for(int i=0;i<ns.length();i++){JSONObject n=ns.getJSONObject(i);if(!n.optBoolean("dirty"))continue;JSONObject sent=db.pending(key,n);JSONObject res=transport.request("/api/notes/"+n.getString("id"),sent,credential);int status=res.optInt("httpStatus",200);if(status==409)conflicts++;String copy=db.syncResult(key,sent,res,status);if(!copy.isEmpty())mappings.put(sent.getString("id"),copy);}
@@ -37,4 +37,5 @@ public final class NativeSync {
         return db.snapshot(key).put("conflicts",conflicts).put("mappings",mappings);
     }
 }
+
 

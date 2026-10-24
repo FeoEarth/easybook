@@ -21,7 +21,7 @@ export default {
    if(url.pathname === '/api/folders' && request.method === 'GET') {
     const after=url.searchParams.get('after')||'';
     if(after.length>80)return json({error:'Invalid cursor'},400);
-    const {results}=await env.DB.prepare('SELECT id,name,updated FROM folders WHERE workspace=? AND id>? ORDER BY id LIMIT 100').bind(workspace,after).all();
+    const {results}=await env.DB.prepare('SELECT id,name,updated,deleted FROM folders WHERE workspace=? AND id>? ORDER BY id LIMIT 100').bind(workspace,after).all();
     return json({folders:results,next:results.length===100?results.at(-1).id:null});
    }
    const folderId=url.pathname.match(/^\/api\/folders\/([a-f0-9-]{36})$/)?.[1];
@@ -35,12 +35,14 @@ export default {
    if(!n||typeof n!=='object'||Array.isArray(n))return json({error:'Invalid JSON object'},400);
    if(folderId){
     if(typeof n.name!=='string'||!n.name.trim()||n.name.length>60)return json({error:'Invalid folder'},400);
-    await env.DB.prepare('INSERT INTO folders(workspace,id,name,updated) VALUES(?,?,?,?) ON CONFLICT(workspace,id) DO NOTHING').bind(workspace,folderId,n.name.trim(),Date.now()).run();
-    const folder=await env.DB.prepare('SELECT id,name,updated FROM folders WHERE workspace=? AND id=?').bind(workspace,folderId).first();
+    if(n.deleted!==undefined&&![0,1].includes(n.deleted)||n.updated!==undefined&&(!Number.isSafeInteger(n.updated)||n.updated<0||n.updated>Date.now()+86400000))return json({error:'Invalid folder revision'},400);
+    await env.DB.prepare('INSERT INTO folders(workspace,id,name,updated,deleted) VALUES(?,?,?,?,?) ON CONFLICT(workspace,id) DO UPDATE SET name=CASE WHEN folders.deleted=0 AND excluded.updated>folders.updated THEN excluded.name ELSE folders.name END,updated=MAX(folders.updated,excluded.updated),deleted=MAX(folders.deleted,excluded.deleted)').bind(workspace,folderId,n.name.trim(),n.updated??Date.now(),n.deleted||0).run();
+    const folder=await env.DB.prepare('SELECT id,name,updated,deleted FROM folders WHERE workspace=? AND id=?').bind(workspace,folderId).first();
     return json({folder});
    }
    return json({error:'Not found'},404);
   } catch(e) { console.error(JSON.stringify({event:'request_failed',name:e.name})); return json({error:'Service temporarily unavailable'},503); }
  }
 };
+
 
