@@ -13,7 +13,7 @@
 | 全屏预览 | 双击/滚轮/双指缩放、拖动、左右切换及滑动、关闭清理 Blob URL |
 | 分类预览 | 图片、TXT 安全文本、浏览器 PDF、原生 PDF 阅读器、音视频、其他文件保存/外部打开 |
 | 保存与分享 | Web 下载及受支持浏览器 Web Share；Android 私有 FileProvider 临时只读授权与系统保存/分享 |
-| 附件一致性 | schema v1 SHA-256 引用、私有缓存/R2、5 MiB 现有限制、下载哈希与大小校验、去重、离线缓存、原 outbox |
+| 附件一致性 | schema v1 SHA-256 引用、私有缓存/R2、5 MiB 现有限制、下载哈希与大小校验、损坏缓存原子修复、去重、离线缓存、原 outbox |
 | 同步活动 | PR #4 原版独立页面，返回导航、sticky 导航、整体状态、成功时间、分组任务、真实传输字节/已知长度百分比、不确定进度、失败原因/重试、最近活动、冲突与离线恢复 |
 | 原生同步 | NativeSync 实际流读写进度、SyncJournal 持久化观察、附件确认落盘后完成 |
 | 文件夹同步 | 补充 Web/Android 文件夹活动与待同步数量；保留 main 的 updated/deleted 协议 |
@@ -36,7 +36,7 @@
 - test:notes：Chromium 实际触控长按/滑动、画廊、多选、文件夹、撤销/终结删除、搜索、320/390/768 浅色/深色。
 - sync-page-browser-test：320/390/1024 浅色/深色、无横向溢出、自然滚动、sticky 导航与浏览器导航。
 - task-node-test、note-management-api-test、native bridge 测试。
-- PR 工作流编译 Java 与 Android manifest；main 工作流构建并验证 APK 签名。
+- PR 工作流编译 Java/Android manifest，并在隔离模拟器运行原生数据层、附件缓存修复、鉴权与安全检查；main 工作流构建并验证 APK 签名。
 
 ## 验证边界
 DOM 与模拟传输不等于 Android 真机系统功能验证。真实 Android PDF 手势/分页、文件选择/系统保存/分享、实际 Android↔Web 附件联测、真实中文输入法未验证。Web Share 和 PDF 插件取决于浏览器支持，保留保存后打开方式。进度是实际 JSON/base64 传输字节，不是原始文件字节；只有回执与本机持久化完成后确认成功。
