@@ -48,6 +48,8 @@ jobs:
           arch: x86_64
           target: google_apis
           profile: pixel_2
+          disk-size: 2048M
+          emulator-boot-timeout: 180
           disable-animations: true
           script: |
             adb install -r app/build/outputs/apk/release/app-release.apk
