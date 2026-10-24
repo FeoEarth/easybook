@@ -28,6 +28,21 @@ public class MainActivity extends Activity {
     private String pendingExport;
     private String attachmentSpace,attachmentNote,attachmentExportName;private long attachmentGeneration;private byte[] attachmentExport;
     private final ExecutorService io = Executors.newSingleThreadExecutor();
+    private static String operationErrorCode(Exception e){
+        if(e instanceof CredentialVault.KeyUnavailable)return "CREDENTIAL_UNAVAILABLE";
+        if(e instanceof android.database.sqlite.SQLiteFullException)return "STORAGE_FULL";
+        if(e instanceof android.database.sqlite.SQLiteDatabaseLockedException)return "STORAGE_BUSY";
+        if(e instanceof android.database.sqlite.SQLiteReadOnlyDatabaseException)return "STORAGE_READ_ONLY";
+        return "OPERATION_FAILED";
+    }
+    private static String operationErrorMessage(Exception e){
+        switch(operationErrorCode(e)){
+            case "STORAGE_FULL":return "本机存储空间不足，请释放空间后重试";
+            case "STORAGE_BUSY":return "本机数据库暂时被占用，请稍后重试";
+            case "STORAGE_READ_ONLY":return "本机数据库当前只读，无法保存移动操作";
+            default:return "操作未完成，数据已保留；可重试或导出备份";
+        }
+    }
     private static final String LOCAL = "https://appassets.androidplatform.net/index.html";
     @Override public void onCreate(Bundle state) {
         super.onCreate(state);
@@ -75,7 +90,7 @@ public class MainActivity extends Activity {
             if(text==null||text.length()>16*1024*1024)return;
             try{JSONObject envelope=new JSONObject(text);String requestId=envelope.getString("id"),method=envelope.getString("method");JSONObject args=envelope.optJSONObject("args");if(args==null)args=new JSONObject();final JSONObject input=args;final long generation=documentGeneration;
                 if(!requestId.matches("[a-zA-Z0-9-]{1,80}"))return;
-                Runnable operation=()->{try{if(destroyed||generation!=documentGeneration)throw new SecurityException();security.authorize(method,input,generation);JSONObject output=dispatch(method,input,generation);respond(reply,generation,new JSONObject().put("id",requestId).put("ok",true).put("result",output));}catch(Exception e){try{respond(reply,generation,new JSONObject().put("id",requestId).put("ok",false).put("error","操作未完成，数据已保留；可重试或导出备份").put("code",e instanceof CredentialVault.KeyUnavailable?"CREDENTIAL_UNAVAILABLE":"OPERATION_FAILED"));}catch(Exception ignored){}}};
+                Runnable operation=()->{try{if(destroyed||generation!=documentGeneration)throw new SecurityException();security.authorize(method,input,generation);JSONObject output=dispatch(method,input,generation);respond(reply,generation,new JSONObject().put("id",requestId).put("ok",true).put("result",output));}catch(Exception e){try{respond(reply,generation,new JSONObject().put("id",requestId).put("ok",false).put("error",operationErrorMessage(e)).put("code",operationErrorCode(e)));}catch(Exception ignored){}}};
                 if(method.equals("sync")||method.equals("attachment.get")||method.equals("attachment.open")||method.equals("attachment.share")||method.equals("attachment.export"))syncIo.execute(operation);else io.execute(operation);
             }catch(Exception ignored){}
         });
