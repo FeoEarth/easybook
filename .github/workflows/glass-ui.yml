@@ -6,7 +6,7 @@ permissions:
   contents: read
 jobs:
   ui:
-    if: github.head_ref == 'ui-liquid-glass-consistency'
+    if: startsWith(github.head_ref, 'ui-liquid-glass-')
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
