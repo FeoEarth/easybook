@@ -120,7 +120,7 @@ public class MainActivity extends Activity {
                         String html=readAsset("index.html");if(!legacy)html=html.replace("connect-src https://easybook-sync.1902521952.workers.dev","connect-src 'none'");
                         html=html.replace("<script>","<script>"+(legacy?"window.EasybookRollbackMode=true;":"")+readAsset("native-api.js")+"</script><script>");
                         if(BuildConfig.NATIVE_GLASS_PROTOTYPE && android.os.Build.VERSION.SDK_INT>=33)html=html.replace("</body>","<script>"+readAsset("native-glass/format-surface.js")+";"+readAsset("native-glass/menu.js")+"</script></body>");
-                        html=html.replace("</body>","<script>"+readAsset("native-glass/adaptive-toolbar.js")+"</script></body>");
+                        html=html.replace("</body>","<script>"+readAsset("native-glass/highlight-palette.js")+";"+readAsset("native-glass/adaptive-toolbar.js")+"</script></body>");
                         return new WebResourceResponse("text/html","UTF-8",200,"OK",Collections.singletonMap("Cache-Control","no-store"),new ByteArrayInputStream(html.getBytes(StandardCharsets.UTF_8)));
                     }
                     catch (IOException e) { return new WebResourceResponse("text/plain", "UTF-8", new ByteArrayInputStream(new byte[0])); }
@@ -189,6 +189,10 @@ public class MainActivity extends Activity {
                 runOnUiThread(()->{if(!destroyed && ready && generation==documentGeneration){glassGeneration=generation;nativeGlass.updateFormatFrame(args);}});
                 return new JSONObject().put("accepted",true);
             }
+            case "ui.glass.palette":{
+                String color=bounded(args,"color",7);if(!color.matches("(?:#[0-9a-fA-F]{6})?"))throw new IllegalArgumentException();
+                if(nativeGlass!=null)runOnUiThread(()->{if(!destroyed&&ready&&generation==documentGeneration)nativeGlass.updatePaletteSelection(color);});return new JSONObject();
+            }
             case "ui.glass.anchor":{
                 for(String field:new String[]{"anchorLeft","anchorTop","anchorRight","anchorBottom","viewportWidth","viewportHeight"}){
                     double value=args.getDouble(field);if(!Double.isFinite(value)||value<0||value>10000)throw new IllegalArgumentException();
@@ -210,10 +214,14 @@ public class MainActivity extends Activity {
                     if(args.getDouble("viewportHeight")<1)throw new IllegalArgumentException();
                 }
                 String kind=args.optString("kind","list");
-                if(!kind.matches("list|link|actions|move|attachment"))throw new IllegalArgumentException();
+                if(!kind.matches("list|link|actions|move|attachment|palette"))throw new IllegalArgumentException();
                 if(args.optString("title").length()>120||args.optString("value").length()>2048)throw new IllegalArgumentException();
                 if(!kind.equals("list")){
                     org.json.JSONArray items=args.getJSONArray("items");if(items.length()>96)throw new IllegalArgumentException();
+                    if(kind.equals("palette")){
+                        if(items.length()>16)throw new IllegalArgumentException();
+                        for(int i=0;i<items.length();i++)if(!items.getJSONObject(i).optString("color").matches("(?:#[0-9a-fA-F]{6})?"))throw new IllegalArgumentException();
+                    }
                     for(int i=0;i<items.length();i++){JSONObject item=items.getJSONObject(i);
                         if(!item.getString("id").matches("panel-[0-9]{1,4}-[0-9]{1,3}")||item.getString("label").length()>120||item.optString("subtitle").length()>160)throw new IllegalArgumentException();}
                 }

@@ -28,6 +28,7 @@ public final class NativeGlassMenu {
     private View oldFocus;
     private final FormatGlassFrame formatFrame;
     private EditText linkInput;
+    private final java.util.ArrayList<PaletteSwatch> paletteSwatches=new java.util.ArrayList<>();
     private String pendingCommand;
     private String pendingValue;
     private boolean panel(){return state!=null&&!state.optString("kind","list").equals("list");}
@@ -52,7 +53,7 @@ public final class NativeGlassMenu {
         ScrollView scroll=new ScrollView(activity);scroll.setFillViewport(false);scroll.setVerticalScrollBarEnabled(false);scroll.addView(rows);
         surface.addView(scroll,new FrameLayout.LayoutParams(-1,-1));
         populate();
-        int width=Math.min(dp(292),web.getWidth()-dp(24));
+        int width=Math.min(dp("palette".equals(state.optString("kind"))?280:292),web.getWidth()-dp(24));
         rows.measure(View.MeasureSpec.makeMeasureSpec(width,View.MeasureSpec.EXACTLY),View.MeasureSpec.makeMeasureSpec(web.getHeight()-dp(24),View.MeasureSpec.AT_MOST));
         int height=Math.min(rows.getMeasuredHeight(),web.getHeight()-dp(24));
         float scale=web.getWidth()/(float)Math.max(1,input.optDouble("viewportWidth",web.getWidth()));
@@ -126,7 +127,7 @@ public final class NativeGlassMenu {
         if(surface==null||rows==null||!anchored())return;
         float scale=web.getWidth()/(float)Math.max(1,state.optDouble("viewportWidth",web.getWidth()));
         int availableWidth=web.getWidth(),availableHeight=Math.min(web.getHeight(),Math.round((float)state.optDouble("viewportHeight",web.getHeight()/scale)*scale));
-        int width=Math.min(dp(292),availableWidth-dp(24));if(width<1||availableHeight<dp(40))return;
+        int width=Math.min(dp("palette".equals(state.optString("kind"))?280:292),availableWidth-dp(24));if(width<1||availableHeight<dp(40))return;
         rows.measure(View.MeasureSpec.makeMeasureSpec(width,View.MeasureSpec.EXACTLY),View.MeasureSpec.makeMeasureSpec(0,View.MeasureSpec.UNSPECIFIED));
         int natural=rows.getMeasuredHeight();
         int left=Math.round((float)state.optDouble("anchorLeft")*scale),right=Math.round((float)state.optDouble("anchorRight")*scale);
@@ -134,7 +135,7 @@ public final class NativeGlassMenu {
         int above=Math.max(0,top-dp(20)),below=Math.max(0,availableHeight-bottom-dp(20));
         boolean up="above".equals(state.optString("placement"))?(above>=natural||above>=below):(below<natural&&above>below);
         int height=Math.max(1,Math.min(natural,up?above:below));
-        int x=Math.max(dp(12),Math.min(availableWidth-width-dp(12),right-width));
+        int x=Math.max(dp(12),Math.min(availableWidth-width-dp(12),"palette".equals(state.optString("kind"))?(left+right-width)/2:right-width));
         int y=Math.max(dp(12),Math.min(availableHeight-height-dp(12),up?top-height-dp(8):bottom+dp(8)));
         FrameLayout.LayoutParams lp=new FrameLayout.LayoutParams(width,height);lp.leftMargin=x;lp.topMargin=y;surface.setLayoutParams(lp);
         surface.setPivotX(Math.max(0,Math.min(width,(left+right)/2f-x)));surface.setPivotY(up?height:0);
@@ -144,11 +145,46 @@ public final class NativeGlassMenu {
         if(closing)return;
         pendingCommand=id;pendingValue=linkInput==null?"":linkInput.getText().toString();dismiss(false);
     }
+    public void updatePaletteSelection(String color){
+        if(!isShowing()||!"palette".equals(state.optString("kind")))return;
+        for(PaletteSwatch swatch:paletteSwatches)swatch.choose(swatch.color.equalsIgnoreCase(color));
+    }
+    private void populatePalette(){
+        paletteSwatches.clear();JSONArray items=state.optJSONArray("items");if(items==null)return;
+        int width=Math.min(dp(280),web.getWidth()-dp(24));
+        int columns=Math.max(1,Math.min(5,(width-dp(32))/dp(44)));
+        GridLayout grid=new GridLayout(activity);grid.setColumnCount(columns);grid.setPadding(dp(4),0,dp(4),dp(4));rows.addView(grid,new LinearLayout.LayoutParams(-1,-2));
+        JSONObject remove=null;int count=0;
+        for(int i=0;i<items.length();i++){
+            JSONObject item=items.optJSONObject(i);if(item==null)continue;
+            String color=item.optString("color");if(color.isEmpty()){remove=item;continue;}
+            PaletteSwatch swatch=new PaletteSwatch(color,item.optString("label"),item.optBoolean("checked"));
+            swatch.setOnClickListener(v->command(item.optString("id")));paletteSwatches.add(swatch);
+            GridLayout.LayoutParams cell=new GridLayout.LayoutParams(GridLayout.spec(count/columns),GridLayout.spec(count%columns,1f));cell.width=0;cell.height=dp(48);grid.addView(swatch,cell);count++;
+        }
+        if(remove!=null){String id=remove.optString("id");row("移除高亮","",id,()->command(id),false);}
+    }
+    private final class PaletteSwatch extends View {
+        final String color,label;private final Paint paint=new Paint(Paint.ANTI_ALIAS_FLAG);private final Path check=new Path();private boolean chosen;
+        PaletteSwatch(String color,String label,boolean checked){
+            super(activity);this.color=color;this.label=label;setMinimumWidth(dp(44));setFocusable(true);setClickable(true);
+            GradientDrawable mask=new GradientDrawable();mask.setShape(GradientDrawable.OVAL);mask.setColor(Color.WHITE);
+            setBackground(new RippleDrawable(android.content.res.ColorStateList.valueOf(state.optBoolean("dark")?0x24ffffff:0x18000000),null,mask));choose(checked);
+        }
+        void choose(boolean value){chosen=value;setSelected(value);setContentDescription(label+(value?"，已选中":""));invalidate();}
+        @Override protected void onDraw(Canvas canvas){
+            super.onDraw(canvas);float x=getWidth()/2f,y=getHeight()/2f;
+            paint.setStyle(Paint.Style.FILL);paint.setColor(Color.parseColor(color));canvas.drawCircle(x,y,dp(13),paint);
+            paint.setStyle(Paint.Style.STROKE);paint.setStrokeWidth(dp(chosen?1.8f:.6f));paint.setColor(chosen?ink():0x55888888);canvas.drawCircle(x,y,dp(chosen?17:13),paint);
+            if(chosen){paint.setColor(0xff1c1c1e);paint.setStrokeWidth(dp(1.7f));paint.setStrokeCap(Paint.Cap.ROUND);paint.setStrokeJoin(Paint.Join.ROUND);check.rewind();check.moveTo(x-dp(5),y);check.lineTo(x-dp(1),y+dp(4));check.lineTo(x+dp(6),y-dp(4));canvas.drawPath(check,paint);}
+        }
+    }
     private void populatePanel(){
         LinearLayout header=new LinearLayout(activity);header.setGravity(Gravity.CENTER_VERTICAL);header.setPadding(dp(12),dp(4),dp(4),dp(6));
         TextView title=new TextView(activity);title.setText(state.optString("title","操作"));title.setTextColor(ink());title.setTextSize(18);title.setTypeface(null,Typeface.BOLD);
         header.addView(title,new LinearLayout.LayoutParams(0,-2,1));
         TextView close=new TextView(activity);close.setText("×");close.setTextSize(25);close.setTextColor(ink());close.setGravity(Gravity.CENTER);close.setContentDescription("关闭");close.setOnClickListener(v->dismiss(false));header.addView(close,new LinearLayout.LayoutParams(dp(44),dp(44)));rows.addView(header);
+        if(state.optString("kind").equals("palette")){populatePalette();return;}
         if(state.optString("kind").equals("link")){
             linkInput=new EditText(activity);linkInput.setSingleLine(true);linkInput.setText(state.optString("value"));linkInput.setTextColor(ink());linkInput.setHintTextColor(state.optBoolean("dark")?0xffaaaab0:0xff66666c);linkInput.setHint("https://");linkInput.setTextSize(16);
             linkInput.setInputType(android.text.InputType.TYPE_CLASS_TEXT|android.text.InputType.TYPE_TEXT_VARIATION_URI);
@@ -172,7 +208,7 @@ public final class NativeGlassMenu {
         Runnable done=()->{
             root.removeView(previous);
             if(shield==previous){shield=null;surface=null;closing=false;pendingCommand=null;linkInput=null;}
-            captureCurrent();
+            paletteSwatches.clear();captureCurrent();
             if(oldFocus!=null&&oldFocus.isAttachedToWindow())oldFocus.requestFocus();
             if(valid.getAsBoolean()&&!renderingFailed){
                 web.evaluateJavascript("document.getElementById('listMore').setAttribute('aria-expanded','false');window.easybookNativeGlassClosed&&window.easybookNativeGlassClosed("+(command!=null)+")",null);

@@ -5,7 +5,7 @@
  const blocked=new WeakSet();
  const style=document.createElement('style');style.textContent='.native-glass-source{visibility:hidden!important}.native-glass-source::backdrop{background:transparent!important}.native-anchored-menu{position:fixed!important;right:auto!important;bottom:auto!important;margin:0!important;overflow:auto!important;width:min(292px,calc(100vw - 24px))!important}';document.head.append(style);
  // Protected historical format layout is never flattened into native menu items.
- const managed=['linkDialog','menuDialog','contextDialog','folderMenu','folderMoveDialog','moveDialog','nativeAttachmentMenu'];
+ const managed=['linkDialog','menuDialog','contextDialog','folderMenu','folderMoveDialog','moveDialog','nativeAttachmentMenu','nativeHighlightPalette'];
  const restore=()=>{if(source)source.classList.remove('native-glass-source')};
  const options=rect=>{
   const theme=document.documentElement.dataset.theme;
@@ -13,20 +13,20 @@
  };
  const dirty=()=>{if(active||$('formatDialog').open)window.NativeStore.call('ui.glass.invalidate').catch(()=>{})};
  const schedule=()=>{if(queued)return;queued=true;requestAnimationFrame(()=>{queued=false;window.easybookSyncFormatSurface?.();dirty();if(!acting)discover();reanchor();if(fallbackSource?.open){const bounds=anchor(fallbackSource),key=JSON.stringify(bounds);if(bounds&&key!==fallbackKey){fallbackKey=key;positionFallback(fallbackSource,bounds)}}else fallbackSource=null})};
- const trigger=dialog=>dialog?.id==='menuDialog'?$('moreButton'):dialog?.id==='nativeAttachmentMenu'?$('attachmentButton'):null;
+ const trigger=dialog=>dialog?.id==='menuDialog'?$('moreButton'):dialog?.id==='nativeAttachmentMenu'?$('attachmentButton'):dialog?.id==='nativeHighlightPalette'?$('quickHighlight'):null;
  function anchor(dialog){
   const button=trigger(dialog);if(!button)return null;
   const rect=button.getBoundingClientRect(),vp=window.visualViewport,width=vp?.width||document.documentElement.clientWidth,height=vp?.height||innerHeight,x=vp?.offsetLeft||0,y=vp?.offsetTop||0;
-  return {anchorLeft:Math.max(0,Math.min(width,rect.left-x)),anchorTop:Math.max(0,Math.min(height,rect.top-y)),anchorRight:Math.max(0,Math.min(width,rect.right-x)),anchorBottom:Math.max(0,Math.min(height,rect.bottom-y)),viewportWidth:width,viewportHeight:height,placement:dialog.id==='nativeAttachmentMenu'?'above':'below'};
+  return {anchorLeft:Math.max(0,Math.min(width,rect.left-x)),anchorTop:Math.max(0,Math.min(height,rect.top-y)),anchorRight:Math.max(0,Math.min(width,rect.right-x)),anchorBottom:Math.max(0,Math.min(height,rect.bottom-y)),viewportWidth:width,viewportHeight:height,placement:['nativeAttachmentMenu','nativeHighlightPalette'].includes(dialog.id)?'above':'below'};
  }
  function positionFallback(dialog,bounds){
   dialog.classList.add('native-anchored-menu');
   const vp=window.visualViewport,left=vp?.offsetLeft||0,top=vp?.offsetTop||0;
-  const width=Math.min(292,bounds.viewportWidth-24),natural=dialog.scrollHeight;
+  const width=Math.min(dialog.id==='nativeHighlightPalette'?280:292,bounds.viewportWidth-24),natural=dialog.scrollHeight;
   const above=Math.max(0,bounds.anchorTop-20),below=Math.max(0,bounds.viewportHeight-bounds.anchorBottom-20);
   const up=bounds.placement==='above'?(above>=natural||above>=below):below<natural&&above>below;
   const height=Math.max(1,Math.min(natural,up?above:below));
-  dialog.style.maxHeight=height+'px';dialog.style.left=left+Math.max(12,Math.min(bounds.viewportWidth-width-12,bounds.anchorRight-width))+'px';
+  dialog.style.maxHeight=height+'px';dialog.style.left=left+Math.max(12,Math.min(bounds.viewportWidth-width-12,(dialog.id==='nativeHighlightPalette'?(bounds.anchorLeft+bounds.anchorRight-width)/2:bounds.anchorRight-width)))+'px';
   dialog.style.top=top+Math.max(12,Math.min(bounds.viewportHeight-height-12,up?bounds.anchorTop-height-8:bounds.anchorBottom+8))+'px';
  }
  function reanchor(){
@@ -56,7 +56,7 @@
   const dialog=managed.map($).filter(d=>d?.open&&d.dataset.state!=='closing'&&!blocked.has(d)).at(-1);if(!dialog)return;
   const items=describe(dialog);if(!items)return;
   source=dialog;anchorKey='';const bounds=anchor(dialog);if(bounds)positionFallback(dialog,bounds);const rect=(dialog.id==='contextDialog'?$('contextSurface'):dialog).getBoundingClientRect();
-  const kind=dialog.id==='linkDialog'?'link':dialog.id==='moveDialog'||dialog.id==='folderMoveDialog'?'move':dialog.id==='nativeAttachmentMenu'?'attachment':'actions';
+  const kind=dialog.id==='linkDialog'?'link':dialog.id==='moveDialog'||dialog.id==='folderMoveDialog'?'move':dialog.id==='nativeAttachmentMenu'?'attachment':dialog.id==='nativeHighlightPalette'?'palette':'actions';
   const title=(dialog.querySelector('h2')?.textContent||(dialog.id==='contextDialog'?$('contextTitle').textContent:'操作')).slice(0,120);
   // Hide only the duplicated container, retaining its DOM, modal lifetime and handlers.
   dialog.classList.add('native-glass-source');active=true;
