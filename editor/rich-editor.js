@@ -1,3 +1,5 @@
+import * as FolderPlacement from '../shared/folder-placement.mjs';
+window.EasybookFolderPlacement=FolderPlacement;
 import {mediaView} from './media-view.js';
 import {SyncActivity} from '../shared/sync-activity.mjs';
 window.EasybookSyncActivity=SyncActivity;

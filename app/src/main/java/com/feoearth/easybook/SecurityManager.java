@@ -23,7 +23,8 @@ public final class SecurityManager {
             case "bootstrap":if(initialized==generation)throw new SecurityException("Already initialized");fields=fields("legacy");break;
             case "commit":fields=fields("key","changes");break;
             case "search":fields=fields("key","query","category","everywhere");break;
-            case "sync.activity":case "sync":fields=fields("key");break;
+            case "sync.activity":fields=fields("key");break;
+            case "sync":fields=fields("key","manual");break;
             case "attachment.restore":fields=fields("key","files");break;
             case "attachment.pick":fields=fields("key","noteId");break;
             case "attachment.open":case "attachment.share":case "attachment.get":case "attachment.export":fields=fields("key","id");break;
@@ -36,7 +37,8 @@ public final class SecurityManager {
         Iterator<String> names=args.keys();while(names.hasNext())if(!fields.contains(names.next()))throw new SecurityException("Unexpected parameter");
         if(!method.equals("bootstrap")&&!method.equals("device.theme")&&!method.equals("device.haptic")&&!method.equals("migration.status")&&initialized!=generation)throw new SecurityException("Bootstrap required");
         if(args.has("key")&&(!(args.get("key") instanceof String)||!args.getString("key").equals(db.activeSpace())))throw new SecurityException("Workspace changed");
-        if(method.equals("commit")){JSONObject c=args.getJSONObject("changes");Iterator<String> keys=c.keys();while(keys.hasNext())if(!fields("notes","folders").contains(keys.next()))throw new SecurityException();for(String name:new String[]{"notes","folders"}){JSONArray a=c.optJSONArray(name);if(a!=null&&a.length()>5000)throw new SecurityException("Batch too large");}}
+        if(method.equals("commit"))FolderPlacement.validateCommit(args.getJSONObject("changes"));
+        if(method.equals("sync")&&args.has("manual")&&!(args.get("manual") instanceof Boolean))throw new SecurityException("Invalid retry flag");
     }
     synchronized void initialized(long generation){initialized=generation;}
     void pairing(Runnable changed){activity.runOnUiThread(()->{
