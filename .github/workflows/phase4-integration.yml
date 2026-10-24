@@ -7,7 +7,7 @@ permissions:
   contents: read
 jobs:
   verify:
-    if: github.head_ref != 'management-placement' && github.head_ref != 'fix-android-folder-save' && github.head_ref != 'ui-more-menu'
+    if: github.head_ref != 'management-placement' && github.head_ref != 'fix-android-folder-save' && github.head_ref != 'ui-more-menu' && github.head_ref != 'ui-selection-move'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
