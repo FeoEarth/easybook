@@ -130,7 +130,7 @@ button:active:not(:disabled){scale:.97;opacity:.78}button:disabled{cursor:defaul
 .sync-page{--sync-tint:var(--accent)}:root[data-theme=dark] .sync-page{--sync-tint:var(--accent)}
 @media(prefers-color-scheme:dark){:root[data-theme=auto] .sync-page{--sync-tint:var(--accent)}}
 .sync-nav{background:var(--bg)}.sync-action{background:var(--control-fill)}
-dialog:not(.media-viewer):not(#contextDialog){border-radius:var(--radius-surface);max-height:calc(var(--viewport-height,100dvh) - 24px);overscroll-behavior:contain;animation:sheet var(--motion-present) var(--ease-ui)}
+dialog:where(:not(.media-viewer):not(#contextDialog)){border-radius:var(--radius-surface);max-height:calc(var(--viewport-height,100dvh) - 24px);overscroll-behavior:contain;animation:sheet var(--motion-present) var(--ease-ui)}
 dialog::backdrop{background:var(--scrim)}
 .dialog-title{gap:12px;min-height:44px}.dialog-title h2{min-width:0;overflow-wrap:anywhere}.dialog-title>button,#formatDialog .dialog-title button{display:grid;place-items:center;flex:0 0 44px;width:44px;height:44px;min-width:44px;min-height:44px;border-radius:50%;background:var(--control-fill);color:var(--ink)}
 :is(.folder-input,.key-field){border-radius:16px;background:var(--bg);border:1px solid var(--border)}

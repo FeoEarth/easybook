@@ -14,7 +14,7 @@ const {chromium}=require('playwright'),fs=require('node:fs'),assert=require('nod
   await page.locator('#listSortOpen').click();await page.waitForTimeout(260);await bounds('#listDialog');
   await page.evaluate(()=>handleBack());await page.waitForTimeout(200);
  }
- await page.locator('#newTop').click();await page.locator('#title').fill('材质检查');await page.waitForTimeout(280);
+ await page.setViewportSize({width:320,height:640});await page.locator('#newTop').click();await page.locator('#title').fill('材质检查');await page.waitForTimeout(280);
  await bounds('.editor-header');
  const nav=await page.locator('.editor-header').evaluate(e=>({w:e.scrollWidth,c:e.clientWidth}));assert.ok(nav.w<=nav.c);
  await page.locator('#formatButton').click();await page.waitForTimeout(260);await bounds('#formatDialog');
@@ -23,6 +23,9 @@ const {chromium}=require('playwright'),fs=require('node:fs'),assert=require('nod
  await page.locator('#batchMove').click();await page.waitForTimeout(300);await bounds('#moveDialog');await page.locator('#moveCancel').click();await page.waitForTimeout(300);await page.locator('#cancelSelection').click();
  await page.locator('#foldersButton').click();await page.locator('#createFolder').click();await bounds('#newFolderDialog');await page.locator('#folderName').fill('玻璃检查');await page.locator('#createFolderSubmit').click();
  const row=await page.locator('.folder-entry').first().evaluate(e=>({row:e.clientWidth,action:e.lastElementChild.getBoundingClientRect().width}));assert.ok(Math.abs(row.row-row.action)<2,'folder keeps its full-width touch target');
+ await page.locator('#folderSettings').click();await page.waitForTimeout(280);await bounds('.topbar');
+ await page.locator('#activityEntry').click();await page.waitForTimeout(280);await bounds('.sync-nav');
+ await page.locator('#syncBack').click();await page.waitForTimeout(280);assert.equal(await page.locator('#settings').isVisible(),true);
  // One fallback contract across every material role, including generated notices.
  for(const mode of ['normal','reduced']){
   await page.evaluate(mode=>document.documentElement.dataset.glass=mode,mode);
