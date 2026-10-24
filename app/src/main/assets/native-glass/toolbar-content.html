@@ -1,0 +1,31 @@
+<!doctype html><html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src data:; base-uri 'none'; form-action 'none'"><style id="originalStyles"></style><style>
+html:root,body{background:transparent!important;min-height:0!important;overflow:hidden!important;margin:0!important}
+#formatbar{position:fixed!important;right:auto!important;bottom:auto!important;margin:0!important;opacity:1!important;transform:none!important;transition:none!important;animation:none!important;background:transparent!important;backdrop-filter:none!important;-webkit-backdrop-filter:none!important;box-shadow:none!important;border-color:transparent!important;visibility:visible!important}
+</style></head><body><svg aria-hidden="true" style="position:absolute;width:0;height:0;overflow:hidden" id="symbols"></svg><div id="formatbar" class="formatbar glass" role="toolbar" aria-label="富文本格式工具栏"></div><script>
+(()=>{
+ const panel=document.getElementById('formatbar');let signature='',gesture=null,pending=null,scrollQueued=false,scrollUntil=0;
+ const send=event=>FormatActions.postMessage(JSON.stringify(event));
+ window.renderFormat=(content,geometry)=>{
+  if(gesture&&content){pending=[content,geometry];return}
+  if(content){const next=JSON.stringify(content);if(next!==signature){
+   document.getElementById('originalStyles').textContent=content.css;document.documentElement.dataset.theme=content.theme;document.documentElement.style.cssText=content.rootStyle;document.body.className=content.bodyClass;document.getElementById('symbols').innerHTML=content.symbols;panel.innerHTML=content.html;
+   for(const element of panel.querySelectorAll('*')){
+    if(['SCRIPT','IFRAME','OBJECT','EMBED','LINK','META','FORM','INPUT','TEXTAREA'].includes(element.tagName.toUpperCase())){element.remove();continue}
+    for(const attr of [...element.attributes])if(/^on/i.test(attr.name)||/^(src|href|xlink:href)$/i.test(attr.name)&&!attr.value.startsWith('#'))element.removeAttribute(attr.name);
+   }
+   signature=next;
+  }}
+  panel.style.left=geometry.left+'px';panel.style.top=geometry.top+'px';panel.style.width=geometry.width+'px';
+  if(!gesture&&performance.now()>=scrollUntil){const track=document.getElementById('formatTrack');if(track&&Math.abs(track.scrollLeft-geometry.scrollLeft)>1)track.scrollLeft=geometry.scrollLeft}
+  if(content)send({type:'ready',revision:geometry.revision});
+ };
+ panel.addEventListener('mousedown',event=>event.preventDefault());
+ panel.addEventListener('pointerdown',event=>{gesture={x:event.clientX,y:event.clientY,left:document.getElementById('formatTrack')?.scrollLeft||0,moved:false};send({type:'gesture',active:true})},{passive:true});
+ panel.addEventListener('pointermove',event=>{if(gesture&&(Math.abs(event.clientX-gesture.x)>8||Math.abs(event.clientY-gesture.y)>8))gesture.moved=true},{passive:true});
+ let suppress=false;
+ const release=event=>{const current=gesture;gesture=null;suppress=event.type==='pointercancel'||!!current&&(current.moved||Math.abs((document.getElementById('formatTrack')?.scrollLeft||0)-current.left)>8);send({type:'gesture',active:false});requestAnimationFrame(()=>{if(pending){const args=pending;pending=null;window.renderFormat(...args)}})};
+ window.addEventListener('pointerup',release,true);window.addEventListener('pointercancel',release,true);
+ panel.addEventListener('click',event=>{const target=event.target.closest('[data-format-token]');if(!target)return;event.preventDefault();event.stopImmediatePropagation();if(!suppress&&!target.disabled)send({type:'click',token:target.dataset.formatToken});suppress=false},true);
+ panel.addEventListener('scroll',event=>{if(event.target.id!=='formatTrack')return;scrollUntil=performance.now()+250;if(scrollQueued)return;scrollQueued=true;requestAnimationFrame(()=>{scrollQueued=false;send({type:'scroll',left:document.getElementById('formatTrack')?.scrollLeft||0})})},true);
+})();
+</script></body></html>
