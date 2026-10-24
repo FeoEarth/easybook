@@ -1,0 +1,58 @@
+name: Media and sync integration
+on:
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+      - run: npm ci
+      - run: npm run build:editor
+      - run: git diff --exit-code -- app/src/main/assets/editor.js worker/editor.mjs worker/ui.mjs
+      - run: npm test && npm run test:media && npm run test:sync-ui && node scripts/sync-activity-test.mjs && node scripts/task-node-test.mjs && node scripts/note-management-api-test.mjs
+      - run: npx playwright install --with-deps chromium
+      - run: npm run test:notes && node scripts/sync-page-browser-test.mjs
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: android-actions/setup-android@v3
+        with:
+          packages: platform-tools platforms;android-35 build-tools;35.0.0
+          log-accepted-android-sdk-licenses: false
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.9'
+      - name: Prepare ephemeral emulator signing key
+        run: |
+          mkdir -p "$HOME/.easybook-signing"
+          keytool -genkeypair -keystore "$HOME/.easybook-signing/development.keystore" -storepass android -alias androiddebugkey -keypass android -dname "CN=Easybook CI" -keyalg RSA -keysize 2048 -validity 10000
+      - name: Build native integration and instrumentation
+        run: gradle :app:assembleRelease :app:assembleDebugAndroidTest --no-daemon
+      - name: Enable KVM
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+      - uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 35
+          arch: x86_64
+          target: google_apis
+          profile: pixel_2
+          disk-size: 2048M
+          emulator-boot-timeout: 180
+          disable-animations: true
+          script: |
+            adb install -r app/build/outputs/apk/release/app-release.apk
+            adb install -r app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk
+            adb shell am instrument -w com.feoearth.easybook.notes.test/com.feoearth.easybook.PhaseTwoInstrumentation | tee /tmp/easybook-native-checks.txt
+            grep -q 'passed=true' /tmp/easybook-native-checks.txt

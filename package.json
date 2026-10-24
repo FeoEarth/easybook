@@ -10,7 +10,9 @@
     "test": "node scripts/check.mjs && node scripts/document-test.mjs && node scripts/rich-editor-test.mjs && node scripts/format-editor-test.mjs && node scripts/worker-integration.mjs && node scripts/web-store-test.mjs && node scripts/attachment-test.mjs",
     "test:editor": "node scripts/format-editor-test.mjs && node scripts/rich-editor-test.mjs",
     "test:management": "node scripts/note-management-api-test.mjs && node scripts/note-management-ui-test.cjs",
-    "test:notes": "node scripts/note-management-ui-test.cjs && node scripts/note-browsing-test.cjs && node scripts/note-management-native-bridge-test.mjs"
+    "test:notes": "node scripts/note-management-ui-test.cjs && node scripts/note-browsing-test.cjs && node scripts/note-management-native-bridge-test.mjs",
+    "test:media": "node scripts/media-sync-test.mjs && node scripts/attachment-test.mjs",
+    "test:sync-ui": "node scripts/sync-page-test.mjs"
   },
   "keywords": [],
   "author": "",
