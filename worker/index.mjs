@@ -10,7 +10,7 @@ export default {
   const url = new URL(request.url);
   if(request.method === 'OPTIONS') return new Response(null,{status:204,headers});
   if(url.pathname === '/editor.js' && request.method === 'GET')return new Response(editor,{headers:{'Content-Type':'application/javascript; charset=utf-8','X-Content-Type-Options':'nosniff','Cache-Control':'no-cache'}});
-  if(url.pathname === '/health') return json({ok:true,app:'Easybook',version:'0.8.0',build:23,commit:env.RELEASE_SHA||'',schemaVersion:1});
+  if(url.pathname === '/health') return json({ok:true,app:'Easybook',version:'0.8.0',build:24,commit:env.RELEASE_SHA||'',schemaVersion:1});
   if(url.pathname === '/' && request.method === 'GET') return new Response(html,{headers:{'Content-Type':'text/html; charset=utf-8','X-Content-Type-Options':'nosniff','Referrer-Policy':'no-referrer','Cache-Control':'no-cache'}});
   if(!url.pathname.startsWith('/api/')) return json({error:'Not found'},404);
   const token = (request.headers.get('Authorization')||'').replace(/^Bearer /,'');
@@ -46,6 +46,7 @@ export default {
   } catch(e) { console.error(JSON.stringify({event:'request_failed',name:e.name})); return json({error:'Service temporarily unavailable'},503); }
  }
 };
+
 
 
 
