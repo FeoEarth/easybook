@@ -20,13 +20,14 @@ final class AttachmentStore {
   if(bytes.length>MAX)throw new IOException("Attachment exceeds 5 MB");String id=digest(bytes);File target=file(key,id);target.getParentFile().mkdirs();
   if(!target.exists()){File tmp=new File(target.getParentFile(),id+"."+UUID.randomUUID()+".tmp");try{try(FileOutputStream out=new FileOutputStream(tmp)){out.write(bytes);out.getFD().sync();}Files.move(tmp.toPath(),target.toPath(),StandardCopyOption.REPLACE_EXISTING,StandardCopyOption.ATOMIC_MOVE);}finally{tmp.delete();}}
   try(InputStream in=new FileInputStream(target)){if(!digest(read(in)).equals(id))throw new IOException("Attachment verification failed");}
-  JSONObject old=db.row(key,"attachment",id);JSONObject meta=new JSONObject().put("id",id).put("name",cleanName(name)).put("mime",mime!=null&&mime.matches("[a-zA-Z0-9.+-]+/[a-zA-Z0-9.+-]+")?mime:"application/octet-stream").put("size",bytes.length).put("dirty",dirty||(old!=null&&old.optBoolean("dirty")));
+  JSONObject old=db.row(key,"attachment",id);JSONObject meta=new JSONObject().put("id",id).put("name",cleanName(name)).put("mime",mime!=null&&mime.matches("[a-zA-Z0-9.+-]+/[a-zA-Z0-9.+-]+")?mime:"application/octet-stream").put("size",bytes.length).put("dirty",(dirty&&old==null)||(old!=null&&old.optBoolean("dirty")));
   db.saveAttachment(key,meta);return meta;
  }
- static String cleanName(String name){if(name==null)name="附件";name=name.replaceAll("[\\p{Cntrl}/\\\\]","_");return name.substring(0,Math.min(name.length(),180));}
+ static String cleanName(String name){if(name==null)name="附件";name=name.replaceAll("[\\p{Cntrl}/\\\\]","_");if(name.trim().isEmpty()||name.equals(".")||name.equals(".."))name="附件";return name.substring(0,Math.min(name.length(),180));}
  JSONObject payload(String key,String id)throws Exception{JSONObject meta=db.row(key,"attachment",id);if(meta==null)throw new IOException("Attachment missing");try(InputStream in=new FileInputStream(file(key,id))){byte[] bytes=read(in);if(!digest(bytes).equals(id))throw new IOException("Attachment corrupted");return new JSONObject(meta.toString()).put("data",Base64.encodeToString(bytes,Base64.NO_WRAP));}}
  JSONObject accept(String key,String id,JSONObject remote)throws Exception{validId(id);byte[] bytes=Base64.decode(remote.getString("data"),Base64.NO_WRAP);if(!id.equals(digest(bytes))||remote.getLong("size")!=bytes.length)throw new IOException("Attachment hash mismatch");return save(key,remote.getString("name"),remote.getString("mime"),bytes,false);}
  JSONObject get(String key,String id)throws Exception{try{return payload(key,id);}catch(FileNotFoundException e){}catch(IOException e){if(db.row(key,"attachment",id)!=null&&db.row(key,"attachment",id).optBoolean("dirty"))throw e;}
-  JSONObject remote=new NativeSync.HttpsTransport(new DataProtection.Plaintext()).request("/api/attachments/"+id,null,db.credential(key));accept(key,id,remote);return payload(key,id);
+  SyncJournal journal=new SyncJournal(db,key);try{JSONObject remote=journal.request(new NativeSync.HttpsTransport(new DataProtection.Plaintext()),"/api/attachments/"+id,null,db.credential(key));accept(key,id,remote);journal.complete(remote.optString("_activityId"),"done");return payload(key,id);}catch(Exception e){journal.failRunning();throw e;}
  }
 }
+
