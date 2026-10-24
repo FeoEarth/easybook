@@ -5,7 +5,7 @@
  const blocked=new WeakSet();
  const style=document.createElement('style');style.textContent='.native-glass-source{visibility:hidden!important}.native-glass-source::backdrop{background:transparent!important}#contextDialog.native-glass-source{visibility:visible!important}#contextDialog.native-glass-source .context-actions{visibility:hidden!important}.native-anchored-menu{position:fixed!important;right:auto!important;bottom:auto!important;margin:0!important;overflow:auto!important;width:min(292px,calc(100vw - 24px))!important}';document.head.append(style);
  // Protected historical format layout is never flattened into native menu items.
- const managed=['linkDialog','menuDialog','contextDialog','folderMenu','folderMoveDialog','moveDialog','nativeAttachmentMenu','nativeHighlightPalette'];
+ const managed=['linkDialog','menuDialog','contextDialog','folderMenu','folderMoveDialog','nativeAttachmentMenu','nativeHighlightPalette'];
  const restore=()=>{if(source){source.classList.remove('native-glass-source');if(source.id==='contextDialog'){source.querySelector('.context-actions').style.minHeight='';window.easybookPositionContext?.()}}};
  window.easybookNativeContextHeight=height=>{if(source?.id!=='contextDialog'||!source.open||!Number.isFinite(height))return;const actions=source.querySelector('.context-actions'),value=Math.max(0,Math.min(10000,height))+'px';if(actions.style.minHeight!==value){actions.style.minHeight=value;window.easybookPositionContext?.();anchorKey='';schedule()}};
  const options=rect=>{
