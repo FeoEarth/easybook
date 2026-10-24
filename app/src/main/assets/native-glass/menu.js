@@ -27,7 +27,7 @@
   for(const id of managed){const d=$(id);if(d&&!d.open)blocked.delete(d)}
   if(source){if(!source.open){restore();source=null;actions.clear();window.NativeStore.call('ui.glass.dismiss').catch(()=>{});}return}
   if(active)return;
-  const dialog=managed.map($).filter(d=>d?.open&&!blocked.has(d)).at(-1);if(!dialog)return;
+  const dialog=managed.map($).filter(d=>d?.open&&d.dataset.state!=='closing'&&!blocked.has(d)).at(-1);if(!dialog)return;
   const items=describe(dialog);if(!items)return;
   source=dialog;const rect=(dialog.id==='contextDialog'?$('contextSurface'):dialog).getBoundingClientRect();
   const kind=dialog.id==='formatDialog'?'format':dialog.id==='linkDialog'?'link':dialog.id==='moveDialog'||dialog.id==='folderMoveDialog'?'move':dialog.id==='nativeAttachmentMenu'?'attachment':'actions';
@@ -45,7 +45,7 @@
   active=false;
   if(command)return;
   const previous=source;restore();source=null;actions.clear();
-  if(previous?.open){if(previous.id==='moveDialog')$('moveCancel').click();else previous.close()}
+  if(previous?.open){blocked.add(previous);if(previous.id==='moveDialog')$('moveCancel').click();else previous.close()}
  };
  const commands={layout:'viewToggle',select:'selectNotes',checklist:'template'};
  window.easybookNativeGlassCommand=(id,value)=>{

@@ -56,4 +56,4 @@ performance benchmark or regression suite was executed. Only APK compilation,
 packaging and signature verification are to run through the existing Android
 release workflow. Do not interpret historical release-template test wording as
 results for this change. The user installs and accepts actual visuals/behavior.
-VersionName stays 0.8.0; versionCode advances from 25 to 26. No Cloudflare deploy.
+VersionName stays 0.8.0; versionCode advances from 25 to 27 (including the closing-sheet guard follow-up). No Cloudflare deploy.
