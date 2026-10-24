@@ -1,7 +1,16 @@
 // Injected only into the origin-scoped Android prototype; Web stays unchanged.
 (()=>{
  const button=document.getElementById('listMore');if(!button)return;
- let bypass=false;
+ let bypass=false,dirtyQueued=false;
+ const dirty=()=>{
+  if(dirtyQueued||button.getAttribute('aria-expanded')!=='true')return;
+  dirtyQueued=true;requestAnimationFrame(()=>{dirtyQueued=false;if(button.getAttribute('aria-expanded')==='true')window.NativeStore.call('ui.glass.invalidate').catch(()=>{})});
+ };
+ // Hardware-layer WebViews may not propagate compositor invalidation into a
+ // sibling RenderNode. Notify only on actual DOM/load changes; never poll pixels.
+ new MutationObserver(dirty).observe(document.documentElement,{subtree:true,childList:true,attributes:true,characterData:true});
+ document.addEventListener('load',dirty,true);
+ window.addEventListener('resize',dirty);
  window.easybookNativeGlassFallback=()=>{bypass=true;button.click();bypass=false};
  const commands={layout:'viewToggle',select:'selectNotes',checklist:'template'};
  window.easybookNativeGlassCommand=id=>{

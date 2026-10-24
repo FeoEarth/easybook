@@ -23,7 +23,7 @@ public final class NativeGlassMenu {
     public GlassSurface surface;
     private LinearLayout rows;
     private JSONObject state;
-    private boolean sort,closing;
+    private boolean sort,closing,disabled;
     private View oldFocus;
     public NativeGlassMenu(Activity activity,FrameLayout root,WebView web,BooleanSupplier valid){
         this.activity=activity;this.root=root;this.web=web;this.valid=valid;
@@ -32,13 +32,13 @@ public final class NativeGlassMenu {
     private int dp(float x){return Math.round(x*activity.getResources().getDisplayMetrics().density);}
     public boolean isShowing(){return shield!=null;}
     public boolean show(JSONObject input){
-        if(!valid.getAsBoolean()||!root.isHardwareAccelerated()||web.getWidth()<dp(240)||web.getHeight()<dp(280)||((PowerManager)activity.getSystemService(Activity.POWER_SERVICE)).isPowerSaveMode())return false;
+        if(disabled||!valid.getAsBoolean()||!root.isHardwareAccelerated()||web.getWidth()<dp(240)||web.getHeight()<dp(280)||((PowerManager)activity.getSystemService(Activity.POWER_SERVICE)).isPowerSaveMode())return false;
         if(isShowing())return true;
         state=input;sort=false;closing=false;boolean dark=input.optBoolean("dark");
         oldFocus=root.findFocus();
         shield=new FrameLayout(activity);shield.setTag("native-glass-shield");shield.setFocusableInTouchMode(true);shield.setClickable(true);
         shield.setOnClickListener(v->dismiss(false));
-        try{surface=new GlassSurface(activity,backdrop,dark,()->{dismiss(true);fallback();});}catch(Exception|LinkageError error){shield=null;surface=null;return false;}
+        try{surface=new GlassSurface(activity,backdrop,dark,()->{disabled=true;dismiss(true);fallback();});}catch(Exception|LinkageError error){disabled=true;shield=null;surface=null;return false;}
         surface.setTag("native-glass-menu");surface.setClickable(true);surface.setOnClickListener(v->{});
         rows=new LinearLayout(activity);rows.setOrientation(LinearLayout.VERTICAL);rows.setPadding(dp(8),dp(8),dp(8),dp(8));
         ScrollView scroll=new ScrollView(activity);scroll.setFillViewport(false);scroll.setVerticalScrollBarEnabled(false);scroll.addView(rows);
@@ -84,6 +84,7 @@ public final class NativeGlassMenu {
         rows.addView(row,new LinearLayout.LayoutParams(-1,-2));
     }
     public boolean back(){if(!isShowing())return false;if(sort){sort=false;populate();}else dismiss(false);return true;}
+    public void refreshBackdrop(){if(isShowing()&&!closing){web.invalidate();backdrop.invalidate();surface.invalidate();}}
     public void onBoundsChanged(){if(isShowing())dismiss(true);}
     private void fallback(){if(valid.getAsBoolean())web.evaluateJavascript("window.easybookNativeGlassFallback && window.easybookNativeGlassFallback()",null);}
     private void command(String id){if(closing)return;dismiss(false);if(valid.getAsBoolean())web.evaluateJavascript("window.easybookNativeGlassCommand && window.easybookNativeGlassCommand("+JSONObject.quote(id)+")",null);}

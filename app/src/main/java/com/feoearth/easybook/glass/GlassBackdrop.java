@@ -14,6 +14,10 @@ public final class GlassBackdrop extends FrameLayout {
     public GlassBackdrop(Context context){super(context);setClipChildren(false);}
     public RenderNode recording(){return node;}
     public void captureFor(android.view.View view){consumer=view;capturing=view!=null;if(!capturing)node.discardDisplayList();invalidate();}
+    @Override public void onDescendantInvalidated(android.view.View child,android.view.View target){
+        super.onDescendantInvalidated(child,target);
+        if(capturing && consumer!=null){invalidate();consumer.postInvalidateOnAnimation();}
+    }
     @Override protected void dispatchDraw(Canvas canvas){
         if(!capturing||!canvas.isHardwareAccelerated()||getWidth()==0||getHeight()==0){super.dispatchDraw(canvas);return;}
         long started=System.nanoTime();

@@ -28,6 +28,7 @@ public final class SecurityManager {
             case "attachment.restore":fields=fields("key","files");break;
             case "attachment.pick":fields=fields("key","noteId");break;
             case "attachment.open":case "attachment.share":case "attachment.get":case "attachment.export":fields=fields("key","id");break;
+            case "ui.glass.invalidate":fields=Collections.emptySet();break;
             case "ui.glass.menu":fields=fields("right","bottom","viewportWidth","dark","layout","sort");break;
             case "device.theme":fields=fields("value");break;
             case "device.copy":fields=fields("value");break;

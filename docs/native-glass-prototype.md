@@ -19,6 +19,7 @@ The selected Apache license and source attribution live in `third_party/liquidgl
 - Enable with `gradle :app:assembleDebug -PnativeGlassPrototype`. Release builds hard-code the feature off. API<33, power saver, unsupported shader and unsuitable bounds use the existing Web menu.
 - Only the list More menu is intercepted. Editor, long-press, Aa and bottom controls retain their existing implementation. No separate reading mode.
 - Native UI is a sibling above a dedicated hardware WebView backdrop, not a child of the sampled subtree. WebView hardware-layer caching avoids executing its drawing functor twice with different transforms.
+- A coalesced, menu-only DOM/load notification and native WebView scroll listener invalidate the GPU layer when content changes. This hybrid is necessary because the first emulator probe found a stale hardware-layer backdrop after DOM updates. There is no clock-driven refresh loop; arbitrary compositor-only video/canvas animation is not yet validated.
 - The backdrop records only during normal invalidation while a menu is visible; it releases its display list on close. No polling capture loop, `PixelCopy`, software Canvas capture, Bitmap conversion, or GPU-to-CPU readback is used by rendering.
 - The GPU chain blurs/saturates input, displaces samples within an SDF rim, splits RGB sample coordinates and adds specular edges. Tint alpha is kept low. One `GlassMaterial` holds parameters.
 - The native bridge remains restricted to the exact local origin/main frame/document generation; it only accepts bounded geometry, theme, layout and sort enums. It never changes SQL, keys, document payloads or sync.
@@ -34,4 +35,6 @@ API26 verifies the original Web menu still opens. It does not claim AGSL on olde
 
 GPU driver diversity, physical-device battery/thermal impact and prolonged editing/selection sessions remain unverified even if both emulator jobs pass. Do not roll out beyond this menu or merge merely because Java compilation passes. Review the screenshots and metrics before deciding whether the prototype is acceptable.
 
-Current status: awaiting targeted CI and visual inspection; keep PR draft until assessed.
+First probe (`36675426`): both API builds compiled. API35 rendered a native refracting menu and passed the zero/nonzero edge difference and idle-recording checks, but live-background difference was only 1.096/255 and failed (threshold 8). Actual screenshots show both the WebView hardware layer and sampled material stayed on old red/blue bars after HTML changed to green/yellow. An event-driven invalidation fix is under validation. API26's bundled WebView lacks the app's required message-listener feature and shows its existing update prompt; the initial test harness wrongly assumed a WebView remained attached. Treat this as environment-blocked, not a passing fallback interaction test. No emulator boot retry is needed.
+
+Current status: draft; no rollout or merge. The validation job accepts an explicit environment-blocked report to retain diagnostics, but this must never be counted as a functional pass.

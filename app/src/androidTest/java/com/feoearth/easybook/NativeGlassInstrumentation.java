@@ -35,13 +35,21 @@ public final class NativeGlassInstrumentation extends Instrumentation {
         evidence=new File(getTargetContext().getExternalFilesDir(null),"native-glass-evidence");evidence.mkdirs();
         activity=(MainActivity)startActivitySync(new Intent(getTargetContext(),MainActivity.class).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK));
         ui(()->web=activity.getWindow().getDecorView().findViewWithTag("notes-webview"));
+        if(web==null && Build.VERSION.SDK_INT<33){
+            check(activity.nativeGlass==null,"native prototype disabled on old API");
+            screenshot("api26-webview-update-required").recycle();
+            result.put("environmentBlocked","bundled WebView lacks WEB_MESSAGE_LISTENER; app correctly requests a WebView update");
+            try(FileOutputStream out=new FileOutputStream(new File(evidence,"result.json"))){out.write(result.toString(2).getBytes(java.nio.charset.StandardCharsets.UTF_8));}
+            status.putString("results","environment_blocked=true "+result);finish(Activity.RESULT_OK,status);return;
+        }
+        check(web!=null,"WebView present");
         until("!!window.easybookRich && !!document.getElementById('listMore').onclick");
         js("document.getElementById('newTop').click();document.getElementById('title').value='原生玻璃验证';document.getElementById('title').dispatchEvent(new Event('input'));window.easybookRich.editor.commands.insertContent('WebView 内容采样、搜索和多选保持原有实现');document.getElementById('back').click()");
         Thread.sleep(600);js("document.getElementById('listMore').click()");
         if(Build.VERSION.SDK_INT<33){
             until("!document.getElementById('listDialog').hidden");check(activity.nativeGlass==null,"lower API uses Web menu");screenshot("api"+Build.VERSION.SDK_INT+"-web-fallback").recycle();js("handleBack()");result.put("fallback",true);
         }else{
-            waitMenu();check(!activity.nativeGlass.surface.isBroken(),"AGSL compiled");Rect region=rect();
+            waitMenu();check(!activity.nativeGlass.surface.isBroken(),"AGSL compiled");Rect region=rect();screenshot("api33plus-menu-on-notes-light").recycle();
             // Deterministic HTML canvas-equivalent CSS bars remain inside the real WebView.
             js("var probe=document.createElement('div');probe.id='glass-probe';probe.style='position:fixed;inset:0;z-index:2147483647;pointer-events:none;background:repeating-linear-gradient(110deg,#f02030 0px,#f02030 12px,#2060f0 12px,#2060f0 24px)';document.body.append(probe)");Thread.sleep(500);
             ui(()->activity.nativeGlass.surface.setRefractionForProbe(0));Thread.sleep(250);Bitmap plain=screenshot("api33plus-no-refraction");
@@ -63,5 +71,5 @@ public final class NativeGlassInstrumentation extends Instrumentation {
         }
         try(FileOutputStream out=new FileOutputStream(new File(evidence,"result.json"))){out.write(result.toString(2).getBytes(java.nio.charset.StandardCharsets.UTF_8));}
         status.putString("results","passed=true "+result);finish(Activity.RESULT_OK,status);
-    }catch(Throwable failure){try{if(evidence!=null)screenshot("failure").recycle();}catch(Exception ignored){}status.putString("results","passed=false "+android.util.Log.getStackTraceString(failure));finish(Activity.RESULT_CANCELED,status);}}
+    }catch(Throwable failure){try{if(evidence!=null){screenshot("failure").recycle();result.put("failure",failure.toString());try(FileOutputStream out=new FileOutputStream(new File(evidence,"result.json"))){out.write(result.toString(2).getBytes(java.nio.charset.StandardCharsets.UTF_8));}}}catch(Exception ignored){}status.putString("results","passed=false "+android.util.Log.getStackTraceString(failure));finish(Activity.RESULT_CANCELED,status);}}
 }

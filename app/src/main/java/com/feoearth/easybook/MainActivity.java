@@ -66,6 +66,7 @@ public class MainActivity extends Activity {
         if(BuildConfig.NATIVE_GLASS_PROTOTYPE && android.os.Build.VERSION.SDK_INT>=33){
             nativeGlass=new com.feoearth.easybook.glass.NativeGlassMenu(this,safeArea,web,()->!destroyed && ready && glassGeneration==documentGeneration && LOCAL.equals(web.getUrl()));
             web.setLayerType(View.LAYER_TYPE_HARDWARE,null);
+            web.setOnScrollChangeListener((v,x,y,oldX,oldY)->nativeGlass.refreshBackdrop());
             nativeGlass.backdrop.addView(web,new android.widget.FrameLayout.LayoutParams(-1,-1));
             safeArea.addView(nativeGlass.backdrop,new android.widget.FrameLayout.LayoutParams(-1,-1));
             safeArea.addOnLayoutChangeListener((v,l,t,r,b,ol,ot,or,ob)->{if(nativeGlass!=null && (r-l!=or-ol||b-t!=ob-ot))nativeGlass.onBoundsChanged();});
@@ -151,6 +152,10 @@ public class MainActivity extends Activity {
             case "migration.retry":return repository.secureCredentials();
             case "migration.status":return new JSONObject().put("reports",repository.migrationReports()).put("security",repository.securityStatus()).put("rendererCredentials",repository.setting("rendererCredentials","pending"));
             case "migration.rollback":repository.rollbackSecurity();return new JSONObject().put("verified",true).put("mode","native-encrypted");
+            case "ui.glass.invalidate":{
+                if(nativeGlass!=null)runOnUiThread(()->{if(!destroyed && ready && generation==documentGeneration)nativeGlass.refreshBackdrop();});
+                return new JSONObject();
+            }
             case "ui.glass.menu":{
                 boolean available=BuildConfig.NATIVE_GLASS_PROTOTYPE && android.os.Build.VERSION.SDK_INT>=33 && nativeGlass!=null;
                 if(!available)return new JSONObject().put("accepted",false);
