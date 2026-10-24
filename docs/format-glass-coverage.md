@@ -26,7 +26,7 @@
 
 - DOM getBoundingClientRect 扣除 visualViewport offset 后提供可视 CSS viewport 矩形，按 main WebView 实际像素宽度/viewportWidth 转换一次；然后加入 WebView 与 root 的 window 坐标差。Shader 继续只使用自身局部像素、margin 和实际 Surface 宽高。
 - 同一矩形同时决定玻璃 View、前景裁剪、透明内容位置、圆角及 alpha。复用 RuntimeShader，仅几何/材质改变时重建 RenderEffect；背景平移在 RenderNode 录制坐标中更新。
-- ResizeObserver、DOM 内容/状态、scroll、visualViewport、窗口布局/Insets 驱动更新。打开与实际 CSS/viewport 动画仅运行最长500ms的有限几何 rAF，结束即停止；不运行常驻逐帧循环。
+- ResizeObserver、DOM 内容/状态、scroll、visualViewport、窗口布局/Insets 驱动更新。打开与实际 CSS/viewport 动画仅运行最长500ms的有限几何 rAF，关闭期间若 DOM 仍有可见淡出矩形则跟随至 opacity 为0或 display消失，再移除原生表面；结束即停止，不运行常驻逐帧循环。
 - DOM/CSS 内容只在实际变化时发送，几何/opacity 更新独立发送。WebView/GPU surface 在关闭后保留复用，页面导航/销毁时释放。
 - 格式面板专属参数：10dp GPU blur、10dp边缘位移、低透明度主题染色与1.02饱和度；普通菜单的原参数和布局不变。
 
@@ -34,4 +34,4 @@
 
 ## 交付
 
-versionCode29 / versionName0.8.0。仅编译、打包、签名与发布产物检查。不执行 UI、模拟器、Instrumentation、截图、A/B、性能基准、回归或无关扫描。未执行项目不报告通过；用户安装 APK 后验收。未修改 Worker、D1、R2、同步协议、数据模型或底部工具栏，不部署 Cloudflare。
+versionCode30 / versionName0.8.0。仅编译、打包、签名与发布产物检查。不执行 UI、模拟器、Instrumentation、截图、A/B、性能基准、回归或无关扫描。未执行项目不报告通过；用户安装 APK 后验收。未修改 Worker、D1、R2、同步协议、数据模型或底部工具栏，不部署 Cloudflare。

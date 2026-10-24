@@ -29,7 +29,8 @@
   if(disabled)return;
   const rect=panel.getBoundingClientRect(),css=getComputedStyle(panel),viewport=window.visualViewport;
   const blocked=document.documentElement.dataset.glass==='reduced'||matchMedia('(prefers-reduced-transparency:reduce)').matches;
-  if(!panel.open||rect.width<1||rect.height<1||blocked||Math.abs((viewport?.scale||1)-1)>.01||document.querySelector('.native-glass-source')){hide();return}
+  const closing=!panel.open&&mounted&&rect.width>0&&rect.height>0&&Number(css.opacity)>0;
+  if(!panel.open&&!closing||rect.width<1||rect.height<1||blocked||Math.abs((viewport?.scale||1)-1)>.01||document.querySelector('.native-glass-source')){hide();return}
   let changed=false;
   if(contentDirty||!content){const data=describe(),sig=JSON.stringify(data);changed=sig!==signature;contentDirty=false;if(changed){signature=sig;content=data;revision++}}
   const data=content;
@@ -41,7 +42,7 @@
   if(changed||!mounted)params.content=content;
   window.NativeStore.call('ui.glass.format',params).then(result=>{if(!result.accepted)window.easybookFormatSurfaceFallback()}).catch(window.easybookFormatSurfaceFallback);
  }
- function tick(){queued=false;sync();if(panel.open&&performance.now()<until){queued=true;requestAnimationFrame(tick)}}
+ function tick(){queued=false;sync();if((panel.open||mounted)&&performance.now()<until){queued=true;requestAnimationFrame(tick)}}
  function schedule(){if(queued)return;queued=true;requestAnimationFrame(tick)}
  function track(){until=Math.max(until,performance.now()+500);schedule()}
  window.easybookSyncFormatSurface=schedule;
