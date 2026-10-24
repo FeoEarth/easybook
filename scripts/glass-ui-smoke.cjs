@@ -7,7 +7,7 @@ const {chromium}=require('playwright'),fs=require('node:fs'),assert=require('nod
  await page.addInitScript(()=>Object.defineProperty(navigator,'onLine',{value:false}));
  await page.route('https://easybook.test/**',r=>r.fulfill({contentType:r.request().url().endsWith('/editor.js')?'text/javascript':'text/html',body:fs.readFileSync(r.request().url().endsWith('/editor.js')?'app/src/main/assets/editor.js':'app/src/main/assets/index.html')}));
  await page.goto('https://easybook.test');await page.waitForFunction(()=>window.easybookRich);
- const bounds=async selector=>{const r=await page.locator(selector).boundingBox(),v=page.viewportSize();assert.ok(r&&r.x>=-1&&r.y>=-1&&r.x+r.width<=v.width+1&&r.y+r.height<=v.height+1,selector+' stays in viewport '+JSON.stringify({r,v}))};
+ const bounds=async selector=>{await page.locator(selector).evaluate(async e=>{const animations=[];for(let n=e;n;n=n.parentElement)animations.push(...n.getAnimations());await Promise.all(animations.filter(a=>a.effect.getTiming().iterations!==Infinity).map(a=>a.finished.catch(()=>{})))});const r=await page.locator(selector).boundingBox(),v=page.viewportSize();assert.ok(r&&r.x>=-1&&r.y>=-1&&r.x+r.width<=v.width+1&&r.y+r.height<=v.height+1,selector+' stays in viewport '+JSON.stringify({r,v}))};
  for(const width of [320,390])for(const theme of ['light','dark']){
   await page.setViewportSize({width,height:640});await page.evaluate(t=>document.documentElement.dataset.theme=t,theme);
   await page.locator('#listMore').click();await page.waitForTimeout(260);await bounds('#listDialog');
