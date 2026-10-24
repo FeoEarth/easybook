@@ -158,6 +158,10 @@ public class MainActivity extends Activity {
             case "migration.retry":return repository.secureCredentials();
             case "migration.status":return new JSONObject().put("reports",repository.migrationReports()).put("security",repository.securityStatus()).put("rendererCredentials",repository.setting("rendererCredentials","pending"));
             case "migration.rollback":repository.rollbackSecurity();return new JSONObject().put("verified",true).put("mode","native-encrypted");
+            case "ui.glass.dismiss":{
+                if(nativeGlass!=null)runOnUiThread(()->{if(!destroyed && ready && generation==documentGeneration)nativeGlass.dismiss(true);});
+                return new JSONObject();
+            }
             case "ui.glass.invalidate":{
                 if(nativeGlass!=null)runOnUiThread(()->{if(!destroyed && ready && generation==documentGeneration)nativeGlass.refreshBackdrop();});
                 return new JSONObject();
@@ -168,6 +172,14 @@ public class MainActivity extends Activity {
                 double right=args.getDouble("right"),bottom=args.getDouble("bottom"),width=args.getDouble("viewportWidth");
                 if(!Double.isFinite(right)||!Double.isFinite(bottom)||!Double.isFinite(width)||right<0||bottom<0||width<1||width>10000||right>width+1||bottom>10000)throw new IllegalArgumentException();
                 if(!args.getString("layout").matches("list|grid")||!args.getString("sort").matches("title|updated")||!(args.get("dark") instanceof Boolean))throw new IllegalArgumentException();
+                String kind=args.optString("kind","list");
+                if(!kind.matches("list|format|link|actions|move|attachment"))throw new IllegalArgumentException();
+                if(args.optString("title").length()>120||args.optString("value").length()>2048)throw new IllegalArgumentException();
+                if(!kind.equals("list")){
+                    org.json.JSONArray items=args.getJSONArray("items");if(items.length()>96)throw new IllegalArgumentException();
+                    for(int i=0;i<items.length();i++){JSONObject item=items.getJSONObject(i);
+                        if(!item.getString("id").matches("panel-[0-9]{1,4}-[0-9]{1,3}")||item.getString("label").length()>120||item.optString("subtitle").length()>160)throw new IllegalArgumentException();}
+                }
                 runOnUiThread(()->{if(!destroyed && ready && generation==documentGeneration){glassGeneration=generation;if(!nativeGlass.show(args))web.evaluateJavascript("window.easybookNativeGlassFallback && window.easybookNativeGlassFallback()",null);}});
                 return new JSONObject().put("accepted",true);
             }

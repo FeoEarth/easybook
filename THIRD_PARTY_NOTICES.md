@@ -10,4 +10,4 @@ The offline editor bundle is built from the exact versions in `package-lock.json
 Bundled notices are retained in `app/src/main/assets/editor.js.LEGAL.txt`. Build dependencies and their licenses remain recorded in the lockfile and upstream packages. No licensed Apple fonts or proprietary Liquid Glass renderer are included.
 
 
-Native glass prototype shader: Abdullajon1881/LiquidGlass (Apache-2.0), pinned at 72ad05c49628ea2270116b2943629cd81c0cc496. See third_party/liquidglass/NOTICE.md and LICENSE.
+Native glass production lens: QWEA0/Liquid-Glass-Android (MIT), pinned at 16afe4d8b5d08a370d3f8c50b08d7f5c6eb5da4d. See third_party/qwea0-liquid-glass/NOTICE.md and LICENSE. Historical initial adapter attribution: third_party/liquidglass (Apache-2.0); its shader is no longer shipped.

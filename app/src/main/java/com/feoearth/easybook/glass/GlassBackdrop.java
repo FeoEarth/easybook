@@ -5,7 +5,7 @@ import android.graphics.Canvas;
 import android.graphics.RenderNode;
 import android.widget.FrameLayout;
 
-/** API 33+ prototype only. Records the normal hardware draw once; never reads pixels. */
+/** Shared API 33+ GPU backdrop. Records the normal hardware draw once; never reads pixels. */
 public final class GlassBackdrop extends FrameLayout {
     private final RenderNode node=new RenderNode("EasybookWebViewBackdrop");
     private boolean capturing;
