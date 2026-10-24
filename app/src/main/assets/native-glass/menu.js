@@ -3,10 +3,11 @@
  const $=id=>document.getElementById(id),button=$('listMore');if(!button)return;
  let bypass=false,queued=false,source=null,active=false,serial=0,actions=new Map(),acting=false,anchorKey='',fallbackSource=null,fallbackKey='';
  const blocked=new WeakSet();
- const style=document.createElement('style');style.textContent='.native-glass-source{visibility:hidden!important}.native-glass-source::backdrop{background:transparent!important}.native-anchored-menu{position:fixed!important;right:auto!important;bottom:auto!important;margin:0!important;overflow:auto!important;width:min(292px,calc(100vw - 24px))!important}';document.head.append(style);
+ const style=document.createElement('style');style.textContent='.native-glass-source{visibility:hidden!important}.native-glass-source::backdrop{background:transparent!important}#contextDialog.native-glass-source{visibility:visible!important}#contextDialog.native-glass-source .context-actions{visibility:hidden!important}.native-anchored-menu{position:fixed!important;right:auto!important;bottom:auto!important;margin:0!important;overflow:auto!important;width:min(292px,calc(100vw - 24px))!important}';document.head.append(style);
  // Protected historical format layout is never flattened into native menu items.
  const managed=['linkDialog','menuDialog','contextDialog','folderMenu','folderMoveDialog','moveDialog','nativeAttachmentMenu','nativeHighlightPalette'];
- const restore=()=>{if(source)source.classList.remove('native-glass-source')};
+ const restore=()=>{if(source){source.classList.remove('native-glass-source');if(source.id==='contextDialog'){source.querySelector('.context-actions').style.minHeight='';window.positionContext?.()}}};
+ window.easybookNativeContextHeight=height=>{if(source?.id!=='contextDialog'||!source.open||!Number.isFinite(height))return;const actions=source.querySelector('.context-actions'),value=Math.max(0,Math.min(10000,height))+'px';if(actions.style.minHeight!==value){actions.style.minHeight=value;window.positionContext?.();anchorKey='';schedule()}};
  const options=rect=>{
   const theme=document.documentElement.dataset.theme;
   return {right:Math.max(0,Math.min(document.documentElement.clientWidth,rect.right)),bottom:Math.max(0,rect.bottom),viewportWidth:document.documentElement.clientWidth,dark:theme==='dark'||theme!=='light'&&matchMedia('(prefers-color-scheme:dark)').matches,layout:$('cards').classList.contains('grid')?'grid':'list',sort:localStorage.getItem('easybook-note-sort')||'updated'};
@@ -15,11 +16,12 @@
  const schedule=()=>{if(queued)return;queued=true;requestAnimationFrame(()=>{queued=false;window.easybookSyncFormatSurface?.();dirty();if(!acting)discover();reanchor();if(fallbackSource?.open){const bounds=anchor(fallbackSource),key=JSON.stringify(bounds);if(bounds&&key!==fallbackKey){fallbackKey=key;positionFallback(fallbackSource,bounds)}}else fallbackSource=null})};
  const trigger=dialog=>dialog?.id==='menuDialog'?$('moreButton'):dialog?.id==='nativeAttachmentMenu'?$('attachmentButton'):dialog?.id==='nativeHighlightPalette'?$('quickHighlight'):null;
  function anchor(dialog){
-  const button=trigger(dialog);if(!button)return null;
+  const context=dialog?.id==='contextDialog',button=context?dialog.querySelector('.context-actions'):trigger(dialog);if(!button)return null;
   const rect=button.getBoundingClientRect(),vp=window.visualViewport,width=vp?.width||document.documentElement.clientWidth,height=vp?.height||innerHeight,x=vp?.offsetLeft||0,y=vp?.offsetTop||0;
-  return {anchorLeft:Math.max(0,Math.min(width,rect.left-x)),anchorTop:Math.max(0,Math.min(height,rect.top-y)),anchorRight:Math.max(0,Math.min(width,rect.right-x)),anchorBottom:Math.max(0,Math.min(height,rect.bottom-y)),viewportWidth:width,viewportHeight:height,placement:['nativeAttachmentMenu','nativeHighlightPalette'].includes(dialog.id)?'above':'below'};
+  return {anchorLeft:Math.max(0,Math.min(width,rect.left-x)),anchorTop:Math.max(0,Math.min(height,rect.top-y-(context?8:0))),anchorRight:Math.max(0,Math.min(width,rect.right-x)),anchorBottom:Math.max(0,Math.min(height,(context?rect.top-8:rect.bottom)-y)),viewportWidth:width,viewportHeight:height,placement:['nativeAttachmentMenu','nativeHighlightPalette'].includes(dialog.id)?'above':'below'};
  }
  function positionFallback(dialog,bounds){
+  if(dialog.id==='contextDialog')return;
   dialog.classList.add('native-anchored-menu');
   const vp=window.visualViewport,left=vp?.offsetLeft||0,top=vp?.offsetTop||0;
   const width=Math.min(dialog.id==='nativeHighlightPalette'?280:292,bounds.viewportWidth-24),natural=dialog.scrollHeight;
@@ -56,7 +58,7 @@
   const dialog=managed.map($).filter(d=>d?.open&&d.dataset.state!=='closing'&&!blocked.has(d)).at(-1);if(!dialog)return;
   const items=describe(dialog);if(!items)return;
   source=dialog;anchorKey='';const bounds=anchor(dialog);if(bounds)positionFallback(dialog,bounds);const rect=(dialog.id==='contextDialog'?$('contextSurface'):dialog).getBoundingClientRect();
-  const kind=dialog.id==='linkDialog'?'link':dialog.id==='moveDialog'||dialog.id==='folderMoveDialog'?'move':dialog.id==='nativeAttachmentMenu'?'attachment':dialog.id==='nativeHighlightPalette'?'palette':'actions';
+  const kind=dialog.id==='contextDialog'?'context':dialog.id==='linkDialog'?'link':dialog.id==='moveDialog'||dialog.id==='folderMoveDialog'?'move':dialog.id==='nativeAttachmentMenu'?'attachment':dialog.id==='nativeHighlightPalette'?'palette':'actions';
   const title=(dialog.querySelector('h2')?.textContent||(dialog.id==='contextDialog'?$('contextTitle').textContent:'操作')).slice(0,120);
   // Hide only the duplicated container, retaining its DOM, modal lifetime and handlers.
   dialog.classList.add('native-glass-source');active=true;
@@ -97,5 +99,6 @@
  const cancel=document.createElement('button');cancel.textContent='取消';cancel.onclick=()=>attachment.close();attachment.append(cancel);document.body.append(attachment);
  $('attachmentButton').addEventListener('click',event=>{if(bypass||window.easybookRich?.isComposing())return;event.preventDefault();event.stopImmediatePropagation();window.easybookRich?.captureSelection();attachment.showModal()},true);
  new MutationObserver(schedule).observe(document.documentElement,{subtree:true,childList:true,attributes:true,characterData:true});
- document.addEventListener('load',schedule,true);document.addEventListener('scroll',schedule,true);window.addEventListener('resize',schedule);window.visualViewport?.addEventListener('resize',schedule);window.visualViewport?.addEventListener('scroll',schedule);
+ new ResizeObserver(schedule).observe($('contextSurface'));
+ document.addEventListener('animationend',schedule,true);document.addEventListener('load',schedule,true);document.addEventListener('scroll',schedule,true);window.addEventListener('resize',schedule);window.visualViewport?.addEventListener('resize',schedule);window.visualViewport?.addEventListener('scroll',schedule);
 })();
