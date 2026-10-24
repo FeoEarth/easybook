@@ -8,8 +8,8 @@
 
 点击以稳定token转发至原按钮.click()，此前捕获原编辑选区；前景不获取输入焦点。触摸阶段通知既有自适应延后机制，不在滑动时重排。前景横向滚动回写至原formatTrack，菜单仍从原按钮的实际矩形定位。惯性滚动期间不把回传位置写回前景，避免反馈抵消滚动。
 
-CSS viewport坐标扣除visualViewport偏移后转换一次至WebView像素；工具栏模式在root放置时扣除FrameLayout自身padding，避免重复安全区域。原样式决定高度和位置，键盘/窗口/滚动/DOM变化事件驱动同步。没有常驻刷新、Bitmap截图或PixelCopy。
+CSS viewport坐标扣除visualViewport偏移后转换一次至WebView像素；工具栏模式在root放置时扣除FrameLayout自身padding，避免重复安全区域。原样式决定高度和位置，键盘/窗口/滚动/DOM变化事件驱动同步。工具栏单独显示时，真实DOM/滚动变化也会合并触发既有 ui.glass.invalidate，刷新硬件WebView录制，避免仅依赖几何变化导致背景停留。没有常驻刷新、Bitmap截图或PixelCopy。
 
 GlassBackdrop仍只录制主WebView一次，可同时通知当前面板/菜单与工具栏消费者；不存在第二套玻璃引擎。关闭/导航时释放或复用已有资源。API33以下、GPU失败、省电、减少透明效果及页面缩放时恢复原CSS工具栏。
 
-versionCode34。仅node --check（工具栏源脚本、前景脚本、自适应脚本）、APK编译/打包/签名和产物检查。不运行UI/模拟器/截图/视觉对比/回归。新增透明工具栏WebView带来内存开销；真实设备字体、触摸/惯性滚动、IME与GPU表现未验证，由用户安装验收。未修改Worker、同步协议、文档模型；不部署Cloudflare。
+versionCode35。仅node --check（工具栏源脚本、前景脚本、自适应脚本）、APK编译/打包/签名和产物检查。不运行UI/模拟器/截图/视觉对比/回归。新增透明工具栏WebView带来内存开销；真实设备字体、触摸/惯性滚动、IME与GPU表现未验证，由用户安装验收。未修改Worker、同步协议、文档模型；不部署Cloudflare。

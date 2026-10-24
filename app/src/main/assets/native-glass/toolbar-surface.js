@@ -22,7 +22,7 @@
   const key=JSON.stringify(params);if(key===last&&!changed)return;last=key;if(changed||!mounted)params.content=content;
   window.NativeStore.call('ui.glass.toolbar',params).then(result=>{if(!result.accepted)window.easybookToolbarSurfaceFallback()}).catch(window.easybookToolbarSurfaceFallback);
  }
- function schedule(){if(queued)return;queued=true;requestAnimationFrame(()=>{queued=false;sync()})}
+ function schedule(){if(queued)return;queued=true;requestAnimationFrame(()=>{queued=false;sync();if(mounted)window.NativeStore.call('ui.glass.invalidate').catch(()=>{})})}
  window.easybookSyncToolbarSurface=schedule;
  new MutationObserver(records=>{for(const record of records){const target=record.target;if(panel.contains(target)&&!(target===panel&&['class','style','hidden'].includes(record.attributeName))||target===document.documentElement&&record.attributeName==='data-theme'||target===document.body&&record.attributeName==='class'||target.nodeType===1&&target.closest('style')||[...record.addedNodes].some(node=>node.nodeName==='STYLE'))dirty=true}schedule()}).observe(document.documentElement,{subtree:true,childList:true,attributes:true,characterData:true});
  if(window.ResizeObserver)new ResizeObserver(schedule).observe(panel);
