@@ -37,4 +37,23 @@ GPU driver diversity, physical-device battery/thermal impact and prolonged editi
 
 First probe (`36675426`): both API builds compiled. API35 rendered a native refracting menu and passed the zero/nonzero edge difference and idle-recording checks, but live-background difference was only 1.096/255 and failed (threshold 8). Actual screenshots show both the WebView hardware layer and sampled material stayed on old red/blue bars after HTML changed to green/yellow. An event-driven invalidation fix is under validation. API26's bundled WebView lacks the app's required message-listener feature and shows its existing update prompt; the initial test harness wrongly assumed a WebView remained attached. Treat this as environment-blocked, not a passing fallback interaction test. No emulator boot retry is needed.
 
-Current status: draft; no rollout or merge. The validation job accepts an explicit environment-blocked report to retain diagnostics, but this must never be counted as a functional pass.
+Final tested code: `d0ecc36ce0afd751abd3d0c8b2c9c43880ee5a80`. [API35 run](https://github.com/FeoEarth/easybook/actions/runs/40107482262), [actual screenshots and logs](https://github.com/FeoEarth/easybook/actions/runs/40107482262/artifacts/12564584251). The intermediate follow-up hit a 15-second cold WebView bootstrap timeout; the last run used a bounded 45-second wait and retained diagnostics. No blocked API26 emulator was re-booted.
+
+| Check | Actual result |
+| --- | --- |
+| Debug and instrumentation Java compilation | Passed, initial API26/API35 jobs and final API35 job |
+| Real WebView sampling / live content update | Passed after event-driven GPU invalidation; mean backdrop difference 103.100/255 after bars changed |
+| Refraction vs no-refraction | Passed: edge mean difference 12.153/255; independent screenshot inspection found zero difference in an inner control region and outside the menu, while the rims changed |
+| Idle feedback loop | 0 backdrop recordings during the 700ms static interval; not a battery benchmark |
+| Scroll invalidation | Passed provider-update assertion while native overlay stayed visible |
+| Native sorting / select / checklist / Android back | Passed before the final IME assertion |
+| Light/dark material | Actual native screenshots captured and inspected; system-bar theme behavior was not part of this fixture |
+| Soft keyboard | Failed `real IME visible`: editor had focus and caret, native overlay was closed, but the emulator screenshot showed no keyboard after programmatic focus/show request. Actual keyboard avoidance remains unverified; this is not counted as a pass. |
+| API26 | Compilation passed, runtime fallback interaction blocked by the bundled old WebView requiring update. Initial instrumentation crashed when it looked for the replaced WebView; this was a harness error, not a native renderer running on API26. |
+| Physical device / API31–33 diversity / thermal and battery | Not verified |
+
+The raw final instrumentation result is retained in `docs/evidence/native-glass-api35-result.json`. The CI conclusion remains **failure**, because the required IME assertion failed. Do not present partial successes as complete validation. The screenshots are emulator UI captures; no image generation or postprocessing was used.
+
+Visual follow-ups before rollout: native icon strokes remain heavier than the Web icons; submenu height/transition needs polish; the current scheme has no assurance for arbitrary compositor-only video/canvas animation. Do not introduce a frame-by-frame bitmap capture workaround.
+
+Current decision: **keep draft, do not merge or expand rollout**. Main retains the current WebView UI. No Cloudflare deployment or formal APK was produced by this prototype phase. The validation job accepts an explicit environment-blocked report to retain diagnostics, but this must never be counted as a functional pass.
