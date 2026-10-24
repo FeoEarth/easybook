@@ -1,7 +1,7 @@
 name: Build Android APK
 on:
   push:
-    branches: [main, easybook-native-data]
+    branches: [main, easybook-native-data, easybook-0.8.0-phase4]
     paths-ignore: ['README.md']
   workflow_dispatch:
 permissions:
