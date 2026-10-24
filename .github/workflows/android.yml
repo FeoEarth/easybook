@@ -59,7 +59,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           TAG="v0.8.0-build${GITHUB_RUN_NUMBER}"
-          gh release create "$TAG" Easybook-0.8.0.apk SHA256SUMS.txt --target "$GITHUB_SHA" --title "Easybook 0.8.0 · build ${GITHUB_RUN_NUMBER}" --notes "第五阶段笔记管理：长按与滑动快捷操作、置顶、多选批量移动和删除、最近删除恢复及永久删除、文件夹管理、笔记内查找；包含新版格式菜单。关键交互与同步删除状态测试通过，APK 签名验证通过；Android 真机体验尚未验证。"
+          gh release create "$TAG" Easybook-0.8.0.apk SHA256SUMS.txt --target "$GITHUB_SHA" --title "Easybook 0.8.0 · build ${GITHUB_RUN_NUMBER}" --notes "Android 原生 Liquid Glass：移植 QWEA0 MIT GPU 透镜、折射、色散、高光与按压反馈，扩展 Aa/颜色、链接、附件插入、笔记和文件夹操作及移动面板。仅完成 APK 编译、打包和签名验证。本次跳过所有测试，实际视觉效果和运行体验由用户安装 APK 后自行验收。"
       - name: Keep latest APK available through repository downloads
         env:
           GH_TOKEN: ${{ github.token }}
@@ -86,3 +86,4 @@ jobs:
               if old.returncode==0:payload['sha']=old.stdout.strip()
               subprocess.run(['gh','api',endpoint,'--method','PUT','--input','-','--jq','.commit.sha'],input=json.dumps(payload),text=True,check=True)
           PYSHOTS
+

@@ -7,7 +7,7 @@ import android.widget.FrameLayout;
 import java.io.*;
 import java.nio.charset.StandardCharsets;
 
-/** API 33+ GPU adapter for the attributed Apache-2.0 shader. No PixelCopy/Bitmap path. */
+/** API 33+ Java port of QWEA0 MIT GlassLensRenderer. No PixelCopy/Bitmap path. */
 public final class GlassSurface extends FrameLayout {
     private final GlassBackdrop source;
     private final RenderNode slice=new RenderNode("EasybookGlassSlice");
@@ -18,7 +18,8 @@ public final class GlassSurface extends FrameLayout {
     private final boolean dark;
     private boolean broken,effectDirty=true;
     private int effectWidth=-1,effectHeight=-1;
-    private final float[] shapes=new float[32],radii=new float[8];
+    private float press,touchX,touchY;
+    private android.animation.ValueAnimator pressAnimator;
     private float refraction=GlassMaterial.REFRACTION;
     public long frames, drawNanos;
     public GlassSurface(Context context,GlassBackdrop source,boolean dark,Runnable failed)throws IOException{
@@ -47,25 +48,48 @@ public final class GlassSurface extends FrameLayout {
             Canvas recording=slice.beginRecording(w,h);
             try{recording.translate(margin-(here[0]-there[0]),margin-(here[1]-there[1]));recording.drawRenderNode(source.recording());}finally{slice.endRecording();}
             if(effectDirty||effectWidth!=getWidth()||effectHeight!=getHeight()){
-            java.util.Arrays.fill(shapes,-1000000f);java.util.Arrays.fill(radii,0);
-            for(int i=0;i<8;i++){shapes[i*4+2]=0;shapes[i*4+3]=0;}
-            shapes[0]=getWidth()/2f+margin;shapes[1]=getHeight()/2f+margin;shapes[2]=getWidth()/2f;shapes[3]=getHeight()/2f;radii[0]=dp(GlassMaterial.CORNER);
-            shader.setFloatUniform("shapes",shapes);shader.setFloatUniform("shapeRadii",radii);
-            shader.setFloatUniform("mergeK",0f);shader.setFloatUniform("refractionHeight",dp(GlassMaterial.EDGE));
-            shader.setFloatUniform("refractionAmount",dp(refraction));shader.setFloatUniform("chromaticAberration",GlassMaterial.DISPERSION);
+            shader.setFloatUniform("margin",(float)margin);
+            shader.setFloatUniform("viewSize",(float)getWidth(),(float)getHeight());
+            float cx=getWidth()/2f,cy=getHeight()/2f,corner=dp(GlassMaterial.CORNER);
+            shader.setFloatUniform("shape1",cx,cy,cx,cy);
+            shader.setFloatUniform("shape1L",cx,cy,cx,cy);
+            shader.setFloatUniform("radii1",corner,corner,corner,corner);
+            shader.setFloatUniform("shape2",0f,0f,0f,0f);
+            shader.setFloatUniform("radius2",0f);shader.setFloatUniform("blendK",0f);
+            shader.setFloatUniform("rimSoft",dp(.6f));shader.setFloatUniform("bevel",dp(GlassMaterial.EDGE));
+            shader.setFloatUniform("refractPx",dp(refraction));shader.setFloatUniform("falloff",1.6f);
+            shader.setFloatUniform("refractDir",-1f);
+            shader.setFloatUniform("sampleLo",margin+1f,margin+1f);
+            shader.setFloatUniform("sampleHi",margin+getWidth()-1f,margin+getHeight()-1f);
+            shader.setFloatUniform("dispersion",GlassMaterial.DISPERSION);
+            shader.setFloatUniform("lightDir",-.7071f,-.7071f);
+            shader.setFloatUniform("specStrength",dark?.65f:.5f);shader.setFloatUniform("rimBandMax",dp(3));
             int tint=dark?GlassMaterial.DARK_TINT:GlassMaterial.LIGHT_TINT;
-            shader.setFloatUniform("tint",Color.red(tint)/255f,Color.green(tint)/255f,Color.blue(tint)/255f,Color.alpha(tint)/255f);
-            shader.setFloatUniform("noiseAlpha",.005f);shader.setFloatUniform("lightDir",-.7071f,-.7071f);
-            shader.setFloatUniform("highlightAlpha",dark?.24f:.34f);shader.setFloatUniform("highlightWidth",dp(1));
-            shader.setFloatUniform("pressAmount",0f);shader.setFloatUniform("pressPoint",0f,0f);
+            shader.setFloatUniform("tintColor",Color.red(tint)/255f,Color.green(tint)/255f,Color.blue(tint)/255f,Color.alpha(tint)/255f);
+            shader.setFloatUniform("adaptiveTint",0f);shader.setFloatUniform("glassTint",0f,0f,0f,0f);
+            shader.setFloatUniform("dimAmount",dark?.035f:0f);shader.setFloatUniform("satFactor",GlassMaterial.SATURATION);
+            shader.setFloatUniform("press",press);shader.setFloatUniform("touchPos",touchX,touchY);shader.setFloatUniform("touchAmp",press);
             RenderEffect lens=RenderEffect.createRuntimeShaderEffect(shader,"content");
-            ColorMatrix saturation=new ColorMatrix();saturation.setSaturation(GlassMaterial.SATURATION);
-            RenderEffect blur=RenderEffect.createColorFilterEffect(new ColorMatrixColorFilter(saturation),RenderEffect.createBlurEffect(dp(GlassMaterial.BLUR),dp(GlassMaterial.BLUR),Shader.TileMode.CLAMP));
+            RenderEffect blur=RenderEffect.createBlurEffect(dp(GlassMaterial.BLUR),dp(GlassMaterial.BLUR),Shader.TileMode.CLAMP);
             slice.setRenderEffect(RenderEffect.createChainEffect(lens,blur));effectWidth=getWidth();effectHeight=getHeight();effectDirty=false;
             }
             canvas.drawRenderNode(slice);frames++;
         }catch(RuntimeException ex){broken=true;post(failed);}
         drawNanos+=System.nanoTime()-started;
     }
-    @Override protected void onDetachedFromWindow(){slice.discardDisplayList();super.onDetachedFromWindow();}
+    @Override public boolean dispatchTouchEvent(MotionEvent event){
+        touchX=event.getX();touchY=event.getY();
+        int action=event.getActionMasked();
+        if(action==MotionEvent.ACTION_DOWN||action==MotionEvent.ACTION_UP||action==MotionEvent.ACTION_CANCEL){
+            if(pressAnimator!=null)pressAnimator.cancel();
+            float target=action==MotionEvent.ACTION_DOWN?1f:0f;
+            if(!android.animation.ValueAnimator.areAnimatorsEnabled()){press=target;effectDirty=true;invalidate();}
+            else {pressAnimator=android.animation.ValueAnimator.ofFloat(press,target);
+                pressAnimator.setDuration(target>0?GlassMaterial.PRESS_MS:GlassMaterial.RELEASE_MS);
+                pressAnimator.setInterpolator(new android.view.animation.DecelerateInterpolator());
+                pressAnimator.addUpdateListener(a->{press=(float)a.getAnimatedValue();effectDirty=true;invalidate();});pressAnimator.start();}
+        }else if(action==MotionEvent.ACTION_MOVE&&press>0){effectDirty=true;invalidate();}
+        return super.dispatchTouchEvent(event);
+    }
+    @Override protected void onDetachedFromWindow(){if(pressAnimator!=null)pressAnimator.cancel();slice.discardDisplayList();super.onDetachedFromWindow();}
 }
