@@ -120,6 +120,7 @@ public class MainActivity extends Activity {
                         String html=readAsset("index.html");if(!legacy)html=html.replace("connect-src https://easybook-sync.1902521952.workers.dev","connect-src 'none'");
                         html=html.replace("<script>","<script>"+(legacy?"window.EasybookRollbackMode=true;":"")+readAsset("native-api.js")+"</script><script>");
                         if(BuildConfig.NATIVE_GLASS_PROTOTYPE && android.os.Build.VERSION.SDK_INT>=33)html=html.replace("</body>","<script>"+readAsset("native-glass/format-surface.js")+";"+readAsset("native-glass/menu.js")+"</script></body>");
+                        html=html.replace("</body>","<script>"+readAsset("native-glass/adaptive-toolbar.js")+"</script></body>");
                         return new WebResourceResponse("text/html","UTF-8",200,"OK",Collections.singletonMap("Cache-Control","no-store"),new ByteArrayInputStream(html.getBytes(StandardCharsets.UTF_8)));
                     }
                     catch (IOException e) { return new WebResourceResponse("text/plain", "UTF-8", new ByteArrayInputStream(new byte[0])); }
@@ -188,12 +189,26 @@ public class MainActivity extends Activity {
                 runOnUiThread(()->{if(!destroyed && ready && generation==documentGeneration){glassGeneration=generation;nativeGlass.updateFormatFrame(args);}});
                 return new JSONObject().put("accepted",true);
             }
+            case "ui.glass.anchor":{
+                for(String field:new String[]{"anchorLeft","anchorTop","anchorRight","anchorBottom","viewportWidth","viewportHeight"}){
+                    double value=args.getDouble(field);if(!Double.isFinite(value)||value<0||value>10000)throw new IllegalArgumentException();
+                }
+                if(args.getDouble("viewportWidth")<1||args.getDouble("viewportHeight")<1)throw new IllegalArgumentException();
+                if(nativeGlass!=null)runOnUiThread(()->{if(!destroyed&&ready&&generation==documentGeneration)nativeGlass.updateMenuAnchor(args);});return new JSONObject();
+            }
             case "ui.glass.menu":{
                 boolean available=BuildConfig.NATIVE_GLASS_PROTOTYPE && android.os.Build.VERSION.SDK_INT>=33 && nativeGlass!=null;
                 if(!available)return new JSONObject().put("accepted",false);
                 double right=args.getDouble("right"),bottom=args.getDouble("bottom"),width=args.getDouble("viewportWidth");
                 if(!Double.isFinite(right)||!Double.isFinite(bottom)||!Double.isFinite(width)||right<0||bottom<0||width<1||width>10000||right>width+1||bottom>10000)throw new IllegalArgumentException();
                 if(!args.getString("layout").matches("list|grid")||!args.getString("sort").matches("title|updated")||!(args.get("dark") instanceof Boolean))throw new IllegalArgumentException();
+                if(args.has("placement")){
+                    if(!args.getString("placement").matches("above|below"))throw new IllegalArgumentException();
+                    for(String field:new String[]{"anchorLeft","anchorTop","anchorRight","anchorBottom","viewportHeight"}){
+                        double value=args.getDouble(field);if(!Double.isFinite(value)||value<0||value>10000)throw new IllegalArgumentException();
+                    }
+                    if(args.getDouble("viewportHeight")<1)throw new IllegalArgumentException();
+                }
                 String kind=args.optString("kind","list");
                 if(!kind.matches("list|link|actions|move|attachment"))throw new IllegalArgumentException();
                 if(args.optString("title").length()>120||args.optString("value").length()>2048)throw new IllegalArgumentException();
