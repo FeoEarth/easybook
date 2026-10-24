@@ -18,6 +18,8 @@ import java.util.concurrent.ExecutorService;
 
 public class MainActivity extends Activity {
     private WebView web;
+    public com.feoearth.easybook.glass.NativeGlassMenu nativeGlass;
+    private long glassGeneration=-1;
     private android.widget.FrameLayout safeArea;
     private boolean ready;
     private volatile boolean destroyed;
@@ -61,11 +63,19 @@ public class MainActivity extends Activity {
         // CSS position:fixed controls to the Android safe area.
         safeArea = new android.widget.FrameLayout(this);
         safeArea.setBackgroundColor(color);
-        safeArea.addView(web, new android.widget.FrameLayout.LayoutParams(
+        if(BuildConfig.NATIVE_GLASS_PROTOTYPE && android.os.Build.VERSION.SDK_INT>=33){
+            nativeGlass=new com.feoearth.easybook.glass.NativeGlassMenu(this,safeArea,web,()->!destroyed && ready && glassGeneration==documentGeneration && LOCAL.equals(web.getUrl()));
+            web.setLayerType(View.LAYER_TYPE_HARDWARE,null);
+            web.setOnScrollChangeListener((v,x,y,oldX,oldY)->nativeGlass.refreshBackdrop());
+            nativeGlass.backdrop.addView(web,new android.widget.FrameLayout.LayoutParams(-1,-1));
+            safeArea.addView(nativeGlass.backdrop,new android.widget.FrameLayout.LayoutParams(-1,-1));
+            safeArea.addOnLayoutChangeListener((v,l,t,r,b,ol,ot,or,ob)->{if(nativeGlass!=null && (r-l!=or-ol||b-t!=ob-ot))nativeGlass.onBoundsChanged();});
+        }else safeArea.addView(web, new android.widget.FrameLayout.LayoutParams(
             ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
         if (android.os.Build.VERSION.SDK_INT >= 30) safeArea.setOnApplyWindowInsetsListener((v, insets) -> {
             android.graphics.Insets bars = insets.getInsets(WindowInsets.Type.systemBars() | WindowInsets.Type.displayCutout());
             android.graphics.Insets ime = insets.getInsets(WindowInsets.Type.ime());
+            if(nativeGlass!=null && (v.getPaddingLeft()!=bars.left || v.getPaddingTop()!=bars.top || v.getPaddingRight()!=bars.right || v.getPaddingBottom()!=Math.max(bars.bottom,ime.bottom)))nativeGlass.onBoundsChanged();
             v.setPadding(bars.left, bars.top, bars.right, Math.max(bars.bottom, ime.bottom));
             web.evaluateJavascript("window.setKeyboardVisible && window.setKeyboardVisible(" + insets.isVisible(WindowInsets.Type.ime()) + ")", null);
             return WindowInsets.CONSUMED;
@@ -73,6 +83,12 @@ public class MainActivity extends Activity {
         setContentView(safeArea);
         safeArea.requestApplyInsets();
         WebSettings s = web.getSettings();
+        if(BuildConfig.NATIVE_GLASS_PROTOTYPE)web.setWebChromeClient(new WebChromeClient(){
+            @Override public boolean onConsoleMessage(ConsoleMessage message){
+                if(message.messageLevel()==ConsoleMessage.MessageLevel.ERROR)android.util.Log.e("NativeGlassProbe",message.message()+" at "+message.lineNumber());
+                return false;
+            }
+        });
         s.setJavaScriptEnabled(true); s.setDomStorageEnabled(true);
         s.setAllowFileAccess(false); s.setAllowContentAccess(false);
         s.setAllowFileAccessFromFileURLs(false);s.setAllowUniversalAccessFromFileURLs(false);s.setJavaScriptCanOpenWindowsAutomatically(false);s.setSupportMultipleWindows(false);s.setSaveFormData(false);
@@ -103,6 +119,7 @@ public class MainActivity extends Activity {
                         boolean legacy=false;
                         String html=readAsset("index.html");if(!legacy)html=html.replace("connect-src https://easybook-sync.1902521952.workers.dev","connect-src 'none'");
                         html=html.replace("<script>","<script>"+(legacy?"window.EasybookRollbackMode=true;":"")+readAsset("native-api.js")+"</script><script>");
+                        if(BuildConfig.NATIVE_GLASS_PROTOTYPE && android.os.Build.VERSION.SDK_INT>=33)html=html.replace("</body>","<script>"+readAsset("native-glass/menu.js")+"</script></body>");
                         return new WebResourceResponse("text/html","UTF-8",200,"OK",Collections.singletonMap("Cache-Control","no-store"),new ByteArrayInputStream(html.getBytes(StandardCharsets.UTF_8)));
                     }
                     catch (IOException e) { return new WebResourceResponse("text/plain", "UTF-8", new ByteArrayInputStream(new byte[0])); }
@@ -112,7 +129,7 @@ public class MainActivity extends Activity {
                 return new WebResourceResponse("text/plain", "UTF-8", new ByteArrayInputStream(new byte[0]));
             }
             @Override public boolean shouldOverrideUrlLoading(WebView v, WebResourceRequest r) { return !r.isForMainFrame() || !LOCAL.equals(r.getUrl().toString()); }
-            @Override public void onPageStarted(WebView v,String url,android.graphics.Bitmap icon){ready=false;documentGeneration++;}
+            @Override public void onPageStarted(WebView v,String url,android.graphics.Bitmap icon){ready=false;documentGeneration++;if(nativeGlass!=null)nativeGlass.dismiss(true);}
         });
         web.loadUrl(LOCAL);
     }
@@ -141,6 +158,19 @@ public class MainActivity extends Activity {
             case "migration.retry":return repository.secureCredentials();
             case "migration.status":return new JSONObject().put("reports",repository.migrationReports()).put("security",repository.securityStatus()).put("rendererCredentials",repository.setting("rendererCredentials","pending"));
             case "migration.rollback":repository.rollbackSecurity();return new JSONObject().put("verified",true).put("mode","native-encrypted");
+            case "ui.glass.invalidate":{
+                if(nativeGlass!=null)runOnUiThread(()->{if(!destroyed && ready && generation==documentGeneration)nativeGlass.refreshBackdrop();});
+                return new JSONObject();
+            }
+            case "ui.glass.menu":{
+                boolean available=BuildConfig.NATIVE_GLASS_PROTOTYPE && android.os.Build.VERSION.SDK_INT>=33 && nativeGlass!=null;
+                if(!available)return new JSONObject().put("accepted",false);
+                double right=args.getDouble("right"),bottom=args.getDouble("bottom"),width=args.getDouble("viewportWidth");
+                if(!Double.isFinite(right)||!Double.isFinite(bottom)||!Double.isFinite(width)||right<0||bottom<0||width<1||width>10000||right>width+1||bottom>10000)throw new IllegalArgumentException();
+                if(!args.getString("layout").matches("list|grid")||!args.getString("sort").matches("title|updated")||!(args.get("dark") instanceof Boolean))throw new IllegalArgumentException();
+                runOnUiThread(()->{if(!destroyed && ready && generation==documentGeneration){glassGeneration=generation;if(!nativeGlass.show(args))web.evaluateJavascript("window.easybookNativeGlassFallback && window.easybookNativeGlassFallback()",null);}});
+                return new JSONObject().put("accepted",true);
+            }
             case "ui.ready":runOnUiThread(()->{if(!destroyed&&generation==documentGeneration){ready=true;receiveShare(getIntent());}});return new JSONObject();
             case "device.theme":{String mode=bounded(args,"value",10);if(!mode.matches("auto|light|dark"))throw new IllegalArgumentException();new DeviceActions().theme(mode);break;}
             case "device.haptic":runOnUiThread(()->web.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP));break;
@@ -220,11 +250,13 @@ public class MainActivity extends Activity {
     }
     @Override protected void onNewIntent(Intent i) { super.onNewIntent(i); setIntent(i); receiveShare(i); }
     @Override public void onBackPressed() {
+        if(nativeGlass!=null && nativeGlass.back())return;
         if (!ready) {super.onBackPressed(); return;}
         web.evaluateJavascript("window.handleBack()", handled -> {if (!"true".equals(handled)) MainActivity.super.onBackPressed();});
     }
-    @Override protected void onPause() { web.evaluateJavascript("window.persistNow && window.persistNow()", null); super.onPause(); }
-    @Override protected void onDestroy() { ready=false; destroyed=true;if(WebViewFeature.isFeatureSupported(WebViewFeature.WEB_MESSAGE_LISTENER))WebViewCompat.removeWebMessageListener(web,"EasybookNative");web.destroy();io.shutdown();super.onDestroy(); }
+    @Override protected void onPause() { if(nativeGlass!=null)nativeGlass.dismiss(true);web.evaluateJavascript("window.persistNow && window.persistNow()", null); super.onPause(); }
+    @Override protected void onDestroy() { if(nativeGlass!=null)nativeGlass.dismiss(true);ready=false; destroyed=true;if(WebViewFeature.isFeatureSupported(WebViewFeature.WEB_MESSAGE_LISTENER))WebViewCompat.removeWebMessageListener(web,"EasybookNative");web.destroy();io.shutdown();super.onDestroy(); }
 }
+
 
 

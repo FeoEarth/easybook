@@ -2,7 +2,8 @@ plugins { id 'com.android.application' }
 android {
     namespace 'com.feoearth.easybook'
     compileSdk 35
-    defaultConfig { applicationId 'com.feoearth.easybook.notes'; minSdk 26; targetSdk 35; versionCode 24; versionName '0.8.0'; testInstrumentationRunner 'com.feoearth.easybook.PhaseTwoInstrumentation' }
+    buildFeatures { buildConfig true }
+    defaultConfig { applicationId 'com.feoearth.easybook.notes'; minSdk 26; targetSdk 35; versionCode 24; versionName '0.8.0'; testInstrumentationRunner (project.hasProperty('nativeGlassProbe') ? 'com.feoearth.easybook.NativeGlassInstrumentation' : 'com.feoearth.easybook.PhaseTwoInstrumentation') }
     signingConfigs {
         debug {
             storeFile file(System.getenv('EASYBOOK_DEBUG_STORE') ?: "${System.properties['user.home']}/.easybook-signing/development.keystore")
@@ -11,7 +12,9 @@ android {
             keyPassword 'android'
         }
     }
-    buildTypes { release { minifyEnabled false; debuggable false; signingConfig signingConfigs.debug } }
+    buildTypes {
+        debug { buildConfigField 'boolean', 'NATIVE_GLASS_PROTOTYPE', project.hasProperty('nativeGlassPrototype') ? 'true' : 'false' }
+        release { buildConfigField 'boolean', 'NATIVE_GLASS_PROTOTYPE', 'false'; minifyEnabled false; debuggable false; signingConfig signingConfigs.debug } }
     compileOptions { sourceCompatibility JavaVersion.VERSION_17; targetCompatibility JavaVersion.VERSION_17 }
 }
 

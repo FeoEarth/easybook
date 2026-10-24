@@ -1,0 +1,8 @@
+{
+  "edgeRefractionDifference": 12.152921470095576,
+  "idleRecordings700ms": 0,
+  "liveBackdropDifference": 103.10012473716098,
+  "scrollUpdates": true,
+  "failure": "java.lang.AssertionError: real IME visible",
+  "startupDiagnostic": "\"{\\\"ready\\\":\\\"complete\\\",\\\"bridge\\\":true,\\\"editor\\\":true,\\\"onclick\\\":true}\""
+}

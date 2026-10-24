@@ -1,0 +1,99 @@
+// Apache-2.0: Abdullajon1881/LiquidGlass, commit 72ad05c49628ea2270116b2943629cd81c0cc496
+// Extracted from LiquidGlassShaders.kt; uniform interpolation resolved.
+uniform shader content;
+uniform float4 shapes[8];
+uniform float shapeRadii[8];
+uniform float mergeK;
+uniform float refractionHeight;
+uniform float refractionAmount;
+uniform float chromaticAberration;
+uniform float4 tint;
+uniform float noiseAlpha;
+uniform float2 lightDir;
+uniform float highlightAlpha;
+uniform float highlightWidth;
+uniform float pressAmount;
+uniform float2 pressPoint;
+
+float sdRoundedBox(float2 p, float2 halfSize, float radius) {
+    float2 q = abs(p) - halfSize + radius;
+    return min(max(q.x, q.y), 0.0) + length(max(q, float2(0.0))) - radius;
+}
+
+float smin(float a, float b, float k) {
+    float kk = max(k, 0.0001);
+    float h = clamp(0.5 + 0.5 * (b - a) / kk, 0.0, 1.0);
+    return mix(b, a, h) - kk * h * (1.0 - h);
+}
+
+float sceneSd(float2 p) {
+    float d = 1000000.0;
+    for (int i = 0; i < 8; i++) {
+        float4 s = shapes[i];
+        d = smin(d, sdRoundedBox(p - s.xy, s.zw, shapeRadii[i]), mergeK);
+    }
+    return d;
+}
+
+float2 sceneNormal(float2 p) {
+    float2 e = float2(1.0, 0.0);
+    float gx = sceneSd(p + e.xy) - sceneSd(p - e.xy);
+    float gy = sceneSd(p + e.yx) - sceneSd(p - e.yx);
+    float2 g = float2(gx, gy);
+    float len = length(g);
+    if (len < 0.0001) {
+        return float2(0.0);
+    }
+    return g / len;
+}
+
+half4 main(float2 fragCoord) {
+    float2 p = fragCoord;
+    float sd = sceneSd(p);
+    float mask = 1.0 - smoothstep(-1.0, 1.0, sd);
+    if (mask <= 0.001) {
+        return half4(0.0);
+    }
+
+    float2 normal = sceneNormal(p);
+    float edgeDist = max(-sd, 0.0);
+
+    float lens = 0.0;
+    float2 sampleCoord = p;
+    if (edgeDist < refractionHeight) {
+        float x = 1.0 - edgeDist / max(refractionHeight, 0.0001);
+        lens = 1.0 - sqrt(max(1.0 - x * x, 0.0));
+        sampleCoord = p - normal * (refractionAmount * lens);
+    }
+
+    if (pressAmount > 0.001) {
+        float2 toPress = p - pressPoint;
+        float falloff = exp(-dot(toPress, toPress) / 8000.0);
+        sampleCoord -= toPress * (pressAmount * 0.08 * falloff);
+    }
+
+    float caShift = chromaticAberration * lens * abs(refractionAmount) * 0.12;
+    float4 color;
+    if (caShift > 0.001) {
+        float2 caOffset = normal * caShift;
+        float cr = float4(content.eval(sampleCoord - caOffset)).r;
+        float4 cg = float4(content.eval(sampleCoord));
+        float cb = float4(content.eval(sampleCoord + caOffset)).b;
+        color = float4(cr, cg.g, cb, cg.a);
+    } else {
+        color = float4(content.eval(sampleCoord));
+    }
+
+    color.rgb = mix(color.rgb, tint.rgb, tint.a);
+
+    float rim = 1.0 - smoothstep(0.0, max(highlightWidth, 0.0001), edgeDist);
+    float facing = pow(abs(dot(normal, lightDir)), 1.5);
+    float pressBoost = 1.0 + pressAmount * 0.6;
+    color.rgb += float3(rim * facing * highlightAlpha * pressBoost);
+
+    float noise = fract(sin(dot(p, float2(12.9898, 78.233))) * 43758.5453) - 0.5;
+    color.rgb += float3(noise * noiseAlpha);
+
+    color.rgb = clamp(color.rgb, 0.0, 1.0);
+    return half4(color * mask);
+}

@@ -8,3 +8,6 @@ The offline editor bundle is built from the exact versions in `package-lock.json
 - DOMPurify: Apache-2.0 OR MPL-2.0, https://github.com/cure53/DOMPurify
 
 Bundled notices are retained in `app/src/main/assets/editor.js.LEGAL.txt`. Build dependencies and their licenses remain recorded in the lockfile and upstream packages. No licensed Apple fonts or proprietary Liquid Glass renderer are included.
+
+
+Native glass prototype shader: Abdullajon1881/LiquidGlass (Apache-2.0), pinned at 72ad05c49628ea2270116b2943629cd81c0cc496. See third_party/liquidglass/NOTICE.md and LICENSE.
