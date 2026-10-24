@@ -35,8 +35,8 @@ const {chromium}=require('playwright'),fs=require('node:fs'),assert=require('nod
   await page.setViewportSize(size);
   await page.evaluate(async()=>{const canvas=document.createElement('canvas');canvas.width=600;canvas.height=1800;const c=canvas.getContext('2d');c.fillStyle='#e9b900';c.fillRect(0,0,600,1800);const img=document.getElementById('attachmentPreview');img.hidden=false;img.src=canvas.toDataURL();await img.decode();document.getElementById('attachmentTitle').textContent='长附件名称 '.repeat(10);document.getElementById('attachmentInfo').textContent='预览布局检查';document.querySelectorAll('.preview-actions button').forEach(b=>b.hidden=false);document.getElementById('attachmentDialog').showModal()});
   await bounds('#attachmentDialog');await bounds('.preview-actions');
-  const preview=await page.locator('#previewStage').boundingBox(),image=await page.locator('#attachmentPreview').boundingBox();assert.ok(image.height<=preview.height+1&&image.width<=preview.width+1);if(size.height===640)assert.ok(image.height>size.height*.5);
-  await page.locator('[data-close=attachmentDialog]').click();
+  const preview=await page.locator('#previewStage').boundingBox(),image=await page.locator('#attachmentPreview').boundingBox();assert.ok(preview&&image,JSON.stringify({size,preview,image}));assert.ok(image.height<=preview.height+1&&image.width<=preview.width+1);if(size.height===640)assert.ok(image.height>size.height*.5);
+  await page.locator('[data-close=attachmentDialog]').click();await page.waitForFunction(()=>document.getElementById('attachmentPreview').hidden);
  }
  await page.setViewportSize({width:320,height:640});await page.locator('#back').click();
  await page.locator('#listMore').click();await page.locator('#selectNotes').click();await page.locator('#selectAll').click();await bounds('#selectionHeader');await bounds('#batchbar');
