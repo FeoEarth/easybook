@@ -1,3 +1,4 @@
+import {management} from './management.mjs';
 import {notes} from './notes.mjs';
 import html from './ui.mjs';
 import editor from './editor.mjs';
@@ -9,13 +10,14 @@ export default {
   const url = new URL(request.url);
   if(request.method === 'OPTIONS') return new Response(null,{status:204,headers});
   if(url.pathname === '/editor.js' && request.method === 'GET')return new Response(editor,{headers:{'Content-Type':'application/javascript; charset=utf-8','X-Content-Type-Options':'nosniff','Cache-Control':'no-cache'}});
-  if(url.pathname === '/health') return json({ok:true,app:'Easybook',version:'0.8.0-test',schemaVersion:1});
+  if(url.pathname === '/health') return json({ok:true,app:'Easybook',version:'0.8.0',build:20,commit:env.RELEASE_SHA||'',schemaVersion:1});
   if(url.pathname === '/' && request.method === 'GET') return new Response(html,{headers:{'Content-Type':'text/html; charset=utf-8','X-Content-Type-Options':'nosniff','Referrer-Policy':'no-referrer','Cache-Control':'no-cache'}});
   if(!url.pathname.startsWith('/api/')) return json({error:'Not found'},404);
   const token = (request.headers.get('Authorization')||'').replace(/^Bearer /,'');
   if(!/^[a-f0-9]{64}$/.test(token)) return json({error:'Invalid workspace key'},401);
   const workspace = Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256',new TextEncoder().encode(token)))).map(x=>x.toString(16).padStart(2,'0')).join('');
   try {
+   if(url.pathname==='/api/management')return await management(request,env,workspace,json);
    const attachmentId=url.pathname.match(/^\/api\/attachments\/([a-f0-9]{64})$/)?.[1];if(attachmentId)return await attachments(request,env,workspace,attachmentId,headers);
    if(url.pathname==='/api/notes'||url.pathname.startsWith('/api/notes/'))return await notes(request,env,workspace,url,json);
    if(url.pathname === '/api/folders' && request.method === 'GET') {
@@ -44,5 +46,6 @@ export default {
   } catch(e) { console.error(JSON.stringify({event:'request_failed',name:e.name})); return json({error:'Service temporarily unavailable'},503); }
  }
 };
+
 
 

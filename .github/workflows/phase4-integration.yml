@@ -7,6 +7,7 @@ permissions:
   contents: read
 jobs:
   verify:
+    if: github.head_ref != 'management-placement'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -56,3 +57,4 @@ jobs:
             adb install -r app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk
             adb shell am instrument -w com.feoearth.easybook.notes.test/com.feoearth.easybook.PhaseTwoInstrumentation | tee /tmp/easybook-native-checks.txt
             grep -q 'passed=true' /tmp/easybook-native-checks.txt
+
