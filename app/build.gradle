@@ -2,7 +2,7 @@ plugins { id 'com.android.application' }
 android {
     namespace 'com.feoearth.easybook'
     compileSdk 35
-    defaultConfig { applicationId 'com.feoearth.easybook.notes'; minSdk 26; targetSdk 35; versionCode 21; versionName '0.8.0'; testInstrumentationRunner 'com.feoearth.easybook.PhaseTwoInstrumentation' }
+    defaultConfig { applicationId 'com.feoearth.easybook.notes'; minSdk 26; targetSdk 35; versionCode 22; versionName '0.8.0'; testInstrumentationRunner 'com.feoearth.easybook.PhaseTwoInstrumentation' }
     signingConfigs {
         debug {
             storeFile file(System.getenv('EASYBOOK_DEBUG_STORE') ?: "${System.properties['user.home']}/.easybook-signing/development.keystore")

@@ -1,0 +1,26 @@
+name: More menu UI
+on:
+  pull_request:
+    branches: [main]
+permissions:
+  contents: read
+jobs:
+  menu:
+    if: github.head_ref == 'ui-more-menu'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+      - run: npm ci
+      - run: node --check worker/ui.mjs && node --check scripts/list-menu-ui-test.cjs
+      - run: npx playwright install --with-deps chromium --only-shell
+      - run: node scripts/list-menu-ui-test.cjs
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: Menu-visual-review
+          path: menu-review/
+          if-no-files-found: ignore
