@@ -58,9 +58,9 @@ public final class NativeGlassMenu {
         float scale=web.getWidth()/(float)Math.max(1,input.optDouble("viewportWidth",web.getWidth()));
         int x=Math.max(dp(12),Math.min(web.getWidth()-width-dp(12),Math.round((float)input.optDouble("right")*scale)-width));
         int y=Math.max(dp(12),Math.min(web.getHeight()-height-dp(12),Math.round((float)input.optDouble("bottom")*scale)+dp(8)));
-        FrameLayout.LayoutParams lp=new FrameLayout.LayoutParams(width,height);lp.leftMargin=x;lp.topMargin=y;shield.addView(surface,lp);
+        FrameLayout.LayoutParams lp=new FrameLayout.LayoutParams(width,height);lp.leftMargin=x;lp.topMargin=y;shield.addView(surface,lp);if(anchored())positionAnchored();
         root.addView(shield,new FrameLayout.LayoutParams(-1,-1));captureCurrent();if(!panel())shield.requestFocus();
-        surface.setPivotX(width-dp(22));surface.setPivotY(0);surface.setAlpha(0);surface.setScaleX(.94f);surface.setScaleY(.94f);
+        if(!anchored()){surface.setPivotX(width-dp(22));surface.setPivotY(0);}surface.setAlpha(0);surface.setScaleX(.94f);surface.setScaleY(.94f);
         surface.animate().alpha(1).scaleX(1).scaleY(1).setDuration(ValueAnimator.areAnimatorsEnabled()?GlassMaterial.OPEN_MS:0).setInterpolator(new PathInterpolator(.2f,.75f,.25f,1)).start();
         web.evaluateJavascript("document.getElementById('listMore').setAttribute('aria-expanded','true')",null);return true;
     }
@@ -103,6 +103,9 @@ public final class NativeGlassMenu {
     public void onBoundsChanged(){
         formatFrame.boundsChanged();
         if(!isShowing())return;
+        if(anchored()){
+            root.post(()->{if(!isShowing()||closing)return;positionAnchored();if(valid.getAsBoolean())web.evaluateJavascript("window.easybookNativeGlassReanchor&&window.easybookNativeGlassReanchor()",null);});return;
+        }
         if(!panel()){dismiss(true);return;}
         // Keep native URL input and IME alive while safe-area/keyboard bounds move.
         root.post(()->{if(!isShowing()||closing)return;
@@ -112,6 +115,29 @@ public final class NativeGlassMenu {
             lp.height=Math.min(rows.getMeasuredHeight(),available);
             lp.topMargin=Math.max(dp(12),Math.min(lp.topMargin,web.getHeight()-lp.height-dp(12)));
             surface.setLayoutParams(lp);refreshBackdrop();});
+    }
+    private boolean anchored(){return state!=null&&state.has("placement");}
+    public void updateMenuAnchor(JSONObject input){
+        if(!isShowing()||closing||!anchored())return;
+        try{for(String field:new String[]{"anchorLeft","anchorTop","anchorRight","anchorBottom","viewportWidth","viewportHeight"})state.put(field,input.getDouble(field));}catch(Exception error){return;}
+        positionAnchored();refreshBackdrop();
+    }
+    private void positionAnchored(){
+        if(surface==null||rows==null||!anchored())return;
+        float scale=web.getWidth()/(float)Math.max(1,state.optDouble("viewportWidth",web.getWidth()));
+        int availableWidth=web.getWidth(),availableHeight=Math.min(web.getHeight(),Math.round((float)state.optDouble("viewportHeight",web.getHeight()/scale)*scale));
+        int width=Math.min(dp(292),availableWidth-dp(24));if(width<1||availableHeight<dp(40))return;
+        rows.measure(View.MeasureSpec.makeMeasureSpec(width,View.MeasureSpec.EXACTLY),View.MeasureSpec.makeMeasureSpec(0,View.MeasureSpec.UNSPECIFIED));
+        int natural=rows.getMeasuredHeight();
+        int left=Math.round((float)state.optDouble("anchorLeft")*scale),right=Math.round((float)state.optDouble("anchorRight")*scale);
+        int top=Math.round((float)state.optDouble("anchorTop")*scale),bottom=Math.round((float)state.optDouble("anchorBottom")*scale);
+        int above=Math.max(0,top-dp(20)),below=Math.max(0,availableHeight-bottom-dp(20));
+        boolean up="above".equals(state.optString("placement"))?(above>=natural||above>=below):(below<natural&&above>below);
+        int height=Math.max(1,Math.min(natural,up?above:below));
+        int x=Math.max(dp(12),Math.min(availableWidth-width-dp(12),right-width));
+        int y=Math.max(dp(12),Math.min(availableHeight-height-dp(12),up?top-height-dp(8):bottom+dp(8)));
+        FrameLayout.LayoutParams lp=new FrameLayout.LayoutParams(width,height);lp.leftMargin=x;lp.topMargin=y;surface.setLayoutParams(lp);
+        surface.setPivotX(Math.max(0,Math.min(width,(left+right)/2f-x)));surface.setPivotY(up?height:0);
     }
     private void fallback(){if(valid.getAsBoolean())web.evaluateJavascript("window.easybookNativeGlassFallback && window.easybookNativeGlassFallback()",null);}
     private void command(String id){
