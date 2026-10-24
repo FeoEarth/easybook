@@ -19,7 +19,8 @@ public final class GlassSurface extends FrameLayout {
     private boolean broken,effectDirty=true;
     private int effectWidth=-1,effectHeight=-1;
     private float press,touchX,touchY;
-    private boolean formatSurface,toolbarSurface;
+    private boolean formatSurface,toolbarSurface,moveSurface;
+    private float bottomCornerDp=-1;
     private float cornerDp=GlassMaterial.CORNER;
     private android.animation.ValueAnimator pressAnimator;
     private float refraction=GlassMaterial.REFRACTION;
@@ -31,7 +32,7 @@ public final class GlassSurface extends FrameLayout {
             shader=new RuntimeShader(bytes.toString(StandardCharsets.UTF_8.name()));
         }
         setWillNotDraw(false);setElevation(dp(18));
-        setOutlineProvider(new ViewOutlineProvider(){@Override public void getOutline(View v,Outline o){o.setRoundRect(0,0,v.getWidth(),v.getHeight(),dp(cornerDp));}});
+        setOutlineProvider(new ViewOutlineProvider(){@Override public void getOutline(View v,Outline o){if(bottomCornerDp<0)o.setRoundRect(0,0,v.getWidth(),v.getHeight(),dp(cornerDp));else{Path path=new Path();float t=dp(cornerDp),b=dp(bottomCornerDp);path.addRoundRect(new RectF(0,0,v.getWidth(),v.getHeight()),new float[]{t,t,t,t,b,b,b,b},Path.Direction.CW);o.setPath(path);}}});
         setClipToOutline(true);fallback.setColor(dark?0xff25252b:0xfff9f9fc);
     }
     private float dp(float value){return value*getResources().getDisplayMetrics().density;}
@@ -41,6 +42,8 @@ public final class GlassSurface extends FrameLayout {
         formatSurface=true;setElevation(0);setFocusable(false);effectDirty=true;invalidate();
     }
     public void useToolbarSurface(){useFormatSurface();toolbarSurface=true;setElevation(dp(8));}
+    public void useMoveSurface(){useFormatSurface();moveSurface=true;setElevation(dp(14));}
+    public void setMoveCorners(float top,float bottom){setFormatCorner(top);float value=bottom/getResources().getDisplayMetrics().density;if(bottomCornerDp!=value){bottomCornerDp=value;effectDirty=true;invalidateOutline();invalidate();}}
     public void setFormatCorner(float pixels){
         float value=pixels/getResources().getDisplayMetrics().density;
         if(cornerDp!=value){cornerDp=value;effectDirty=true;invalidateOutline();invalidate();}
@@ -52,7 +55,7 @@ public final class GlassSurface extends FrameLayout {
             if(!formatSurface)canvas.drawRoundRect(0,0,getWidth(),getHeight(),dp(cornerDp),dp(cornerDp),fallback);return;
         }
         try{
-            float blurRadius=dp(toolbarSurface?8f:formatSurface?10f:GlassMaterial.BLUR);
+            float blurRadius=dp(moveSurface?16f:toolbarSurface?8f:formatSurface?10f:GlassMaterial.BLUR);
             int margin=(int)Math.ceil(blurRadius*2+dp(GlassMaterial.REFRACTION+4));
             int w=getWidth()+2*margin,h=getHeight()+2*margin;
             getLocationInWindow(here);source.getLocationInWindow(there);
@@ -65,7 +68,8 @@ public final class GlassSurface extends FrameLayout {
             float cx=getWidth()/2f,cy=getHeight()/2f,corner=dp(cornerDp);
             shader.setFloatUniform("shape1",cx,cy,cx,cy);
             shader.setFloatUniform("shape1L",cx,cy,cx,cy);
-            shader.setFloatUniform("radii1",corner,corner,corner,corner);
+            float bottom=bottomCornerDp<0?corner:dp(bottomCornerDp);
+            shader.setFloatUniform("radii1",corner,corner,bottom,bottom);
             shader.setFloatUniform("shape2",0f,0f,0f,0f);
             shader.setFloatUniform("radius2",0f);shader.setFloatUniform("blendK",0f);
             shader.setFloatUniform("rimSoft",dp(.6f));shader.setFloatUniform("bevel",dp(toolbarSurface?10f:GlassMaterial.EDGE));

@@ -28,6 +28,7 @@ public final class SecurityManager {
             case "attachment.restore":fields=fields("key","files");break;
             case "attachment.pick":fields=fields("key","noteId");break;
             case "attachment.open":case "attachment.share":case "attachment.get":case "attachment.export":fields=fields("key","id");break;
+            case "ui.glass.move":fields=fields("visible","left","top","width","height","viewportWidth","dark","opacity","corner","bottomCorner","mounted","revision","content","scrollTop");break;
             case "ui.glass.toolbar":case "ui.glass.format":fields=fields("visible","left","top","width","height","viewportWidth","dark","opacity","corner","mounted","revision","content","scrollLeft");break;
             case "ui.glass.palette":fields=fields("color");break;
             case "ui.glass.anchor":fields=fields("anchorLeft","anchorTop","anchorRight","anchorBottom","viewportWidth","viewportHeight");break;
