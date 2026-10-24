@@ -2,6 +2,7 @@ name: Placement native compilation
 on:
   pull_request:
     branches: [main]
+    paths: ['app/src/main/java/**', 'app/build.gradle']
 permissions:
   contents: read
 jobs:
