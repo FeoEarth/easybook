@@ -30,12 +30,14 @@ try{
  assert.equal((await request()).management.version,0);
  const first=op('f:'+a,b),accepted=await request({version:0,op:first});assert.equal(accepted.accepted,true);
  assert.equal((await request({version:0,op:first})).accepted,true,'lost ack replay');
- const stale=await request({version:0,op:op('n:'+n,'',1024)});assert.equal(stale.status,409);assert.equal(stale.management.items['f:'+a].parent,b);
+ const stale=await request({version:0,op:op('f:'+n,'',1024)});assert.equal(stale.status,409);assert.equal(stale.management.items['f:'+a].parent,b);
  const cycle=await request({version:1,op:op('f:'+b,a)});assert.equal(cycle.rejected,true);assert.equal(cycle.management.version,1);
- const second=op('n:'+n,'',1024);assert.equal((await request({version:1,op:second})).accepted,true);
+ const second=op('f:'+n,'',1024);assert.equal((await request({version:1,op:second})).accepted,true);
  assert.equal((await request(null,'b'.repeat(64))).management.version,0,'workspace isolation');
- const saved=await request();assert.equal(saved.management.items['n:'+n].rank,1024);assert.equal(saved.management.items['f:'+a].parent,b);
+ const saved=await request();assert.equal(saved.management.items['f:'+n].rank,1024);assert.equal(saved.management.items['f:'+a].parent,b);
  assert.equal((await request({version:2,op:op('f:'+a,a)})).status,400);
  const before=JSON.stringify(saved.management);sql("INSERT INTO folders(workspace,id,name,updated,deleted) VALUES('legacy',?,'old client',1,0)",[a]);assert.equal(JSON.stringify((await request()).management),before,'legacy folder writes do not clear metadata');
+ const retired=await request({version:0,op:op('n:'+crypto.randomUUID())});assert.equal(retired.retired,true);assert.equal(retired.management.version,saved.management.version);
+ const workspace=Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256',new TextEncoder().encode(token))),b=>b.toString(16).padStart(2,'0')).join('');const oldItems={...saved.management.items,['n:'+n]:{rank:9}};sql('UPDATE management_state SET items=? WHERE workspace=?',[JSON.stringify(oldItems),workspace]);sql(readFileSync('worker/migrations/0007-retire-note-placement.sql','utf8'),[],true);const migrated=await request();assert.deepEqual(migrated.management.items,saved.management.items);assert.equal(migrated.management.version,saved.management.version+1);
  console.log('PASS management API: additive schema, CAS/rebase, idempotent lost ack, cycle rejection, workspace isolation, legacy writes preserve metadata');
 }finally{rmSync(dir,{recursive:true,force:true})}

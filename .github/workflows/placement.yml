@@ -2,12 +2,12 @@ name: Placement native compilation
 on:
   pull_request:
     branches: [main]
-    paths: ['app/src/main/java/**', 'app/build.gradle']
+    paths: ['app/src/main/java/**', 'app/src/test/**', 'app/build.gradle']
 permissions:
   contents: read
 jobs:
   compile:
-    if: github.head_ref == 'management-placement'
+    if: github.head_ref == 'management-placement' || github.head_ref == 'fix-android-folder-save'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -22,4 +22,4 @@ jobs:
       - uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: '8.9'
-      - run: gradle :app:compileReleaseJavaWithJavac --no-daemon
+      - run: gradle :app:testReleaseUnitTest --tests 'com.feoearth.easybook.FolderPlacementTest' :app:compileReleaseJavaWithJavac --no-daemon
