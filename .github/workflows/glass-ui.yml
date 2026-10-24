@@ -1,0 +1,22 @@
+name: Liquid Glass scoped UI
+on:
+  pull_request:
+    branches: [main]
+permissions:
+  contents: read
+jobs:
+  ui:
+    if: github.head_ref == 'ui-liquid-glass-consistency'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+      - run: npm ci
+      - run: node scripts/check.mjs && node scripts/build-worker.mjs
+      - name: Shared UI generated output matches Android source
+        run: node -e "const fs=require('fs');import('./worker/ui.mjs').then(m=>{if(m.default!==fs.readFileSync('app/src/main/assets/index.html','utf8'))process.exit(1)})"
+      - run: npx playwright install --with-deps chromium --only-shell
+      - run: node scripts/glass-ui-smoke.cjs
