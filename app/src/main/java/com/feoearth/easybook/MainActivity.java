@@ -83,7 +83,7 @@ public class MainActivity extends Activity {
         setContentView(safeArea);
         safeArea.requestApplyInsets();
         WebSettings s = web.getSettings();
-        if(BuildConfig.NATIVE_GLASS_PROTOTYPE)web.setWebChromeClient(new WebChromeClient(){
+        if(BuildConfig.DEBUG && BuildConfig.NATIVE_GLASS_PROTOTYPE)web.setWebChromeClient(new WebChromeClient(){
             @Override public boolean onConsoleMessage(ConsoleMessage message){
                 if(message.messageLevel()==ConsoleMessage.MessageLevel.ERROR)android.util.Log.e("NativeGlassProbe",message.message()+" at "+message.lineNumber());
                 return false;

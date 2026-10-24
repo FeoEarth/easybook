@@ -1,6 +1,6 @@
 # Android native Liquid Glass prototype
 
-Branch: `prototype-native-liquid-glass`. Production defaults to the existing WebView UI. No Worker, schema, protocol, folder ordering or editor changes.
+Branch: `prototype-native-liquid-glass` (merged per explicit user instruction). Release versionCode25 enables the native More menu on API33+, retaining the Web menu fallback on lower APIs or failed shader setup. No Worker, schema, protocol, folder ordering or editor changes.
 
 ## Source inspection (2026-10-24)
 
@@ -16,7 +16,7 @@ The selected Apache license and source attribution live in `third_party/liquidgl
 
 ## Prototype boundaries
 
-- Enable with `gradle :app:assembleDebug -PnativeGlassPrototype`. Release builds hard-code the feature off. API<33, power saver, unsupported shader and unsuitable bounds use the existing Web menu.
+- Enable with `gradle :app:assembleDebug -PnativeGlassPrototype`. The original prototype hard-coded release off; the user subsequently explicitly requested merge/release without more tests, so versionCode25 enables it. API<33, power saver, unsupported shader and unsuitable bounds use the existing Web menu.
 - Only the list More menu is intercepted. Editor, long-press, Aa and bottom controls retain their existing implementation. No separate reading mode.
 - Native UI is a sibling above a dedicated hardware WebView backdrop, not a child of the sampled subtree. WebView hardware-layer caching avoids executing its drawing functor twice with different transforms.
 - A coalesced, menu-only DOM/load notification and native WebView scroll listener invalidate the GPU layer when content changes. This hybrid is necessary because the first emulator probe found a stale hardware-layer backdrop after DOM updates. There is no clock-driven refresh loop; arbitrary compositor-only video/canvas animation is not yet validated.
@@ -57,3 +57,8 @@ The raw final instrumentation result is retained in `docs/evidence/native-glass-
 Visual follow-ups before rollout: native icon strokes remain heavier than the Web icons; submenu height/transition needs polish; the current scheme has no assurance for arbitrary compositor-only video/canvas animation. Do not introduce a frame-by-frame bitmap capture workaround.
 
 Current decision: **keep draft, do not merge or expand rollout**. Main retains the current WebView UI. No Cloudflare deployment or formal APK was produced by this prototype phase. The validation job accepts an explicit environment-blocked report to retain diagnostics, but this must never be counted as a functional pass.
+
+
+## User-directed release decision
+
+After reviewing the partial results, the user explicitly requested merging to main and publishing without additional tests. PR13 was merged; versionCode25 enables the API33+ native menu in release builds. Existing failed/unverified items above are retained and are not reclassified as passes. Only the necessary release compilation, signing verification and deployed-version checks are performed. Future testing should remain minimal and limited to the affected scope; no automatic emulator/full-regression runs for routine UI changes.
