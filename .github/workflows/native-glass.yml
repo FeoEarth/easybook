@@ -59,7 +59,7 @@ jobs:
             adb shell am instrument -w com.feoearth.easybook.notes.test/com.feoearth.easybook.NativeGlassInstrumentation | tee /tmp/native-glass-check.txt
             mkdir -p native-glass-evidence
             adb pull /sdcard/Android/data/com.feoearth.easybook.notes/files/native-glass-evidence native-glass-evidence/ || true
-            adb logcat -d -s AndroidRuntime chromium > native-glass-evidence/logcat.txt
+            adb logcat -d -s AndroidRuntime chromium NativeGlassProbe > native-glass-evidence/logcat.txt
             grep -Eq 'passed=true|environment_blocked=true' /tmp/native-glass-check.txt
       - uses: actions/upload-artifact@v4
         if: always()

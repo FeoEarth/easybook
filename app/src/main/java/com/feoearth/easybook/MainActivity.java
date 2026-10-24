@@ -83,6 +83,12 @@ public class MainActivity extends Activity {
         setContentView(safeArea);
         safeArea.requestApplyInsets();
         WebSettings s = web.getSettings();
+        if(BuildConfig.NATIVE_GLASS_PROTOTYPE)web.setWebChromeClient(new WebChromeClient(){
+            @Override public boolean onConsoleMessage(ConsoleMessage message){
+                if(message.messageLevel()==ConsoleMessage.MessageLevel.ERROR)android.util.Log.e("NativeGlassProbe",message.message()+" at "+message.lineNumber());
+                return false;
+            }
+        });
         s.setJavaScriptEnabled(true); s.setDomStorageEnabled(true);
         s.setAllowFileAccess(false); s.setAllowContentAccess(false);
         s.setAllowFileAccessFromFileURLs(false);s.setAllowUniversalAccessFromFileURLs(false);s.setJavaScriptCanOpenWindowsAutomatically(false);s.setSupportMultipleWindows(false);s.setSaveFormData(false);

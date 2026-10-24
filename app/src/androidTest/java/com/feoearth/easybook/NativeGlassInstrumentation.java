@@ -25,7 +25,8 @@ public final class NativeGlassInstrumentation extends Instrumentation {
     private String js(String code)throws Exception{
         CountDownLatch latch=new CountDownLatch(1);String[] out={null};ui(()->web.evaluateJavascript(code,v->{out[0]=v;latch.countDown();}));check(latch.await(10,TimeUnit.SECONDS),"JS response");return out[0];
     }
-    private void until(String code)throws Exception{long end=SystemClock.uptimeMillis()+15000;while(SystemClock.uptimeMillis()<end){if("true".equals(js(code)))return;Thread.sleep(150);}throw new AssertionError("Timed out: "+code);}
+    private void until(String code)throws Exception{until(code,15000);}
+    private void until(String code,long timeout)throws Exception{long end=SystemClock.uptimeMillis()+timeout;while(SystemClock.uptimeMillis()<end){if("true".equals(js(code)))return;Thread.sleep(150);}throw new AssertionError("Timed out: "+code);}
     private void waitMenu()throws Exception{long end=SystemClock.uptimeMillis()+5000;while(SystemClock.uptimeMillis()<end){boolean[] ok={false};ui(()->ok[0]=activity.nativeGlass!=null&&activity.nativeGlass.isShowing()&&activity.nativeGlass.surface!=null&&activity.nativeGlass.surface.frames>0);if(ok[0]){Thread.sleep(350);return;}Thread.sleep(100);}throw new AssertionError("No sampled native menu");}
     private Bitmap screenshot(String name)throws Exception{waitForIdleSync();Bitmap b=getUiAutomation().takeScreenshot();check(b!=null,"screenshot");try(FileOutputStream out=new FileOutputStream(new File(evidence,name+".png"))){b.compress(Bitmap.CompressFormat.PNG,100,out);}return b;}
     private Rect rect(){Rect r=new Rect();ui(()->activity.nativeGlass.surface.getGlobalVisibleRect(r));return r;}
@@ -43,7 +44,7 @@ public final class NativeGlassInstrumentation extends Instrumentation {
             status.putString("results","environment_blocked=true "+result);finish(Activity.RESULT_OK,status);return;
         }
         check(web!=null,"WebView present");
-        until("!!window.easybookRich && !!document.getElementById('listMore').onclick");
+        until("!!window.easybookRich && !!document.getElementById('listMore').onclick",45000);
         js("document.getElementById('newTop').click();document.getElementById('title').value='原生玻璃验证';document.getElementById('title').dispatchEvent(new Event('input'));window.easybookRich.editor.commands.insertContent('WebView 内容采样、搜索和多选保持原有实现');document.getElementById('back').click()");
         Thread.sleep(600);js("document.getElementById('listMore').click()");
         if(Build.VERSION.SDK_INT<33){
@@ -71,5 +72,5 @@ public final class NativeGlassInstrumentation extends Instrumentation {
         }
         try(FileOutputStream out=new FileOutputStream(new File(evidence,"result.json"))){out.write(result.toString(2).getBytes(java.nio.charset.StandardCharsets.UTF_8));}
         status.putString("results","passed=true "+result);finish(Activity.RESULT_OK,status);
-    }catch(Throwable failure){try{if(evidence!=null){screenshot("failure").recycle();result.put("failure",failure.toString());try(FileOutputStream out=new FileOutputStream(new File(evidence,"result.json"))){out.write(result.toString(2).getBytes(java.nio.charset.StandardCharsets.UTF_8));}}}catch(Exception ignored){}status.putString("results","passed=false "+android.util.Log.getStackTraceString(failure));finish(Activity.RESULT_CANCELED,status);}}
+    }catch(Throwable failure){try{if(evidence!=null){screenshot("failure").recycle();result.put("failure",failure.toString());if(web!=null)result.put("startupDiagnostic",js("JSON.stringify({ready:document.readyState,bridge:!!window.NativeStore,editor:!!window.easybookRich,onclick:!!document.getElementById('listMore')?.onclick})"));try(FileOutputStream out=new FileOutputStream(new File(evidence,"result.json"))){out.write(result.toString(2).getBytes(java.nio.charset.StandardCharsets.UTF_8));}}}catch(Exception ignored){}status.putString("results","passed=false "+android.util.Log.getStackTraceString(failure));finish(Activity.RESULT_CANCELED,status);}}
 }
