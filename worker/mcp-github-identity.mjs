@@ -14,9 +14,13 @@ export async function verifyGithubIdentity(accessToken, fetchImpl = fetch) {
     },
     redirect: 'error'
   });
-  if (!response.ok) throw new Error('GitHub identity verification failed');
+  if (!response.ok) {
+    console.error('GitHub identity API failure', {status:response.status});
+    throw new Error('GitHub identity API unavailable');
+  }
   const user = await response.json();
   if (user?.id !== ALLOWED_GITHUB_USER_ID || user?.type !== 'User') {
+    console.warn('GitHub identity denied', {expectedId:ALLOWED_GITHUB_USER_ID,receivedId:Number.isSafeInteger(user?.id)?user.id:null,receivedType:user?.type||null});
     throw new Error('GitHub account is not authorized for Easybook');
   }
   return {githubUserId: user.id, login: user.login};
