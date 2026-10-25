@@ -9,6 +9,11 @@ const oauthHandler = {
  async fetch(request,env) {
   const url = new URL(request.url);
   const oauth = env.OAUTH_PROVIDER;
+  if(url.pathname==='/pairing/complete' && request.method==='OPTIONS'){
+   const origin=request.headers.get('Origin');
+   if(origin!=='https://easybook-sync.1902521952.workers.dev')return new Response(null,{status:403});
+   return new Response(null,{status:204,headers:{'Access-Control-Allow-Origin':origin,'Access-Control-Allow-Methods':'POST, OPTIONS','Access-Control-Allow-Headers':'Content-Type','Access-Control-Max-Age':'600','Vary':'Origin'}});
+  }
   if(url.pathname==='/pairing/complete' && request.method==='POST'){
    if(!env.MCP_PAIRING_SIGNING_KEY)return new Response('Pairing unavailable',{status:503});
    let input;
@@ -22,7 +27,8 @@ const oauthHandler = {
    if(!challenge)return new Response('Pairing challenge expired',{status:409});
    await env.DB.prepare("INSERT INTO mcp_workspace_grants(id,github_user_id,oauth_client_id,workspace_id,scope,created_at) VALUES(?,?,?,?,?,?) ON CONFLICT(github_user_id,oauth_client_id,workspace_id) DO UPDATE SET revoked_at=NULL").bind(crypto.randomUUID(),challenge.github_user_id,challenge.oauth_client_id,workspace,'mcp:read',now).run();
    await env.DB.prepare('INSERT INTO mcp_active_workspaces(github_user_id,oauth_client_id,workspace_id,updated_at) VALUES(?,?,?,?) ON CONFLICT(github_user_id,oauth_client_id) DO UPDATE SET workspace_id=excluded.workspace_id,updated_at=excluded.updated_at').bind(challenge.github_user_id,challenge.oauth_client_id,workspace,now).run();
-   return Response.json({paired:true},{headers:{'Cache-Control':'no-store'}});
+   const origin=request.headers.get('Origin');
+   return Response.json({paired:true},{headers:{'Cache-Control':'no-store',...(origin==='https://easybook-sync.1902521952.workers.dev'?{'Access-Control-Allow-Origin':origin,'Vary':'Origin'}:{})}});
   }
   if (url.pathname === '/authorize' && request.method === 'GET') {
    const authRequest = await oauth.parseAuthRequest(request);
