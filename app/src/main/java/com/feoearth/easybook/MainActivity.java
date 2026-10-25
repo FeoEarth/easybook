@@ -119,7 +119,7 @@ public class MainActivity extends Activity {
                         boolean legacy=false;
                         String html=readAsset("index.html");if(!legacy)html=html.replace("connect-src https://easybook-sync.1902521952.workers.dev","connect-src 'none'");
                         html=html.replace("<script>","<script>"+(legacy?"window.EasybookRollbackMode=true;":"")+readAsset("native-api.js")+"</script><script>");
-                        if(BuildConfig.NATIVE_GLASS_PROTOTYPE && android.os.Build.VERSION.SDK_INT>=33)html=html.replace("</body>","<script>"+readAsset("native-glass/toolbar-surface.js")+";"+readAsset("native-glass/format-surface.js")+";"+readAsset("native-glass/move-surface.js")+";"+readAsset("native-glass/menu.js")+"</script></body>");
+                        if(BuildConfig.NATIVE_GLASS_PROTOTYPE && android.os.Build.VERSION.SDK_INT>=33)html=html.replace("</body>","<script>"+readAsset("native-glass/dock-surface.js")+";"+readAsset("native-glass/toolbar-surface.js")+";"+readAsset("native-glass/format-surface.js")+";"+readAsset("native-glass/move-surface.js")+";"+readAsset("native-glass/menu.js")+"</script></body>");
                         html=html.replace("</body>","<script>"+readAsset("native-glass/highlight-palette.js")+";"+readAsset("native-glass/adaptive-toolbar.js")+"</script></body>");
                         return new WebResourceResponse("text/html","UTF-8",200,"OK",Collections.singletonMap("Cache-Control","no-store"),new ByteArrayInputStream(html.getBytes(StandardCharsets.UTF_8)));
                     }
@@ -167,9 +167,10 @@ public class MainActivity extends Activity {
                 if(nativeGlass!=null)runOnUiThread(()->{if(!destroyed && ready && generation==documentGeneration)nativeGlass.refreshBackdrop();});
                 return new JSONObject();
             }
-            case "ui.glass.move":case "ui.glass.toolbar":case "ui.glass.format":{
+            case "ui.glass.dock":case "ui.glass.move":case "ui.glass.toolbar":case "ui.glass.format":{
                 boolean available=BuildConfig.NATIVE_GLASS_PROTOTYPE && android.os.Build.VERSION.SDK_INT>=33 && nativeGlass!=null;
                 if(!available)return new JSONObject().put("accepted",false);
+                if(method.equals("ui.glass.dock")&&(args.getInt("slot")<0||args.getInt("slot")>2))throw new IllegalArgumentException();
                 if(!(args.get("visible") instanceof Boolean))throw new IllegalArgumentException();
                 if(args.getBoolean("visible")){
                     if(method.equals("ui.glass.move")){double scroll=args.getDouble("scrollTop"),bottom=args.getDouble("bottomCorner");if(!Double.isFinite(scroll)||scroll<0||scroll>100000||!Double.isFinite(bottom)||bottom<0||bottom>10000)throw new IllegalArgumentException();}
@@ -188,7 +189,7 @@ public class MainActivity extends Activity {
                         if(content.toString().length()>260000)throw new IllegalArgumentException();
                     }
                 }
-                runOnUiThread(()->{if(!destroyed && ready && generation==documentGeneration){glassGeneration=generation;if(method.equals("ui.glass.move"))nativeGlass.updateMoveFrame(args);else if(method.equals("ui.glass.toolbar"))nativeGlass.updateToolbarFrame(args);else nativeGlass.updateFormatFrame(args);}});
+                runOnUiThread(()->{if(!destroyed && ready && generation==documentGeneration){glassGeneration=generation;if(method.equals("ui.glass.dock"))nativeGlass.updateDockFrame(args);else if(method.equals("ui.glass.move"))nativeGlass.updateMoveFrame(args);else if(method.equals("ui.glass.toolbar"))nativeGlass.updateToolbarFrame(args);else nativeGlass.updateFormatFrame(args);}});
                 return new JSONObject().put("accepted",true);
             }
             case "ui.glass.palette":{

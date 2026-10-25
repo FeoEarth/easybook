@@ -161,6 +161,13 @@ dialog::backdrop{background:var(--scrim)}
 .page-forward,.page-back{animation-duration:var(--motion-present);animation-timing-function:var(--ease-ui)}
 @media(prefers-reduced-motion:reduce){*,*::before,*::after{animation:none!important;transition:none!important;scroll-behavior:auto!important}button:active{scale:1}}
 
+/* Local browser fallback for the dock; native Android supplies the optical material. */
+#navigation{--dock-fill:rgba(255,255,255,.64)}#navigation :is(.searchbar,.compose).glass{background:linear-gradient(145deg,var(--material-sheen),transparent 58%),var(--dock-fill)}
+:root[data-theme=dark] #navigation{--dock-fill:rgba(34,34,42,.68)}
+@media(prefers-color-scheme:dark){:root:not([data-theme=light]) #navigation{--dock-fill:rgba(34,34,42,.68)}}
+:root[data-glass=reduced] #navigation{--dock-fill:var(--paper)}
+@media(prefers-reduced-transparency:reduce){#navigation{--dock-fill:var(--paper)}}
+@supports not ((backdrop-filter:blur(1px)) or (-webkit-backdrop-filter:blur(1px))){#navigation{--dock-fill:var(--paper)}}
 </style></head><body>
 <svg xmlns="http://www.w3.org/2000/svg" style="position:absolute;width:0;height:0;overflow:hidden" aria-hidden="true"><defs>
 <symbol id="i-folder" viewBox="0 0 24 24"><path d="M3 7V4h7l2 3h9v13H3z"/></symbol><symbol id="i-folder-add" viewBox="0 0 24 24"><path d="M3 7V4h7l2 3h9v13H3zM8 13h8M12 9v8"/></symbol><symbol id="i-note" viewBox="0 0 24 24"><rect x="5" y="3" width="15" height="18" rx="3"/><path d="M9 8h7M9 12h7M9 16h4M3 8h3M3 13h3M3 18h3"/></symbol>
