@@ -69,8 +69,14 @@ const oauthHandler = {
     request:upstream.request,userId:String(user.githubUserId),scope:['mcp:read'],
     metadata:{label:user.login},props:{githubUserId:user.githubUserId}
    });
-   upstream.headers.set('Location',completed.redirectTo);
-   return new Response(null,{status:302,headers:upstream.headers});
+   const destination=new URL(completed.redirectTo);
+   // Never log OAuth authorization codes, state, or full callback URLs.
+   console.info('MCP client authorization redirect', {destinationHost:destination.hostname,scheme:destination.protocol,status:303});
+   const callbackHeaders=new Headers(upstream.headers);
+   callbackHeaders.set('Location',completed.redirectTo);
+   callbackHeaders.set('Cache-Control','no-store');
+   // The browser should navigate with GET after the upstream GitHub callback.
+   return new Response(null,{status:303,headers:callbackHeaders});
   }
   return new Response('Not found',{status:404});
  }
