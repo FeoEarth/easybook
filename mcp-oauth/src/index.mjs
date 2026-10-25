@@ -21,10 +21,18 @@ const oauthHandler = {
    const handle = form.get('handle');
    if(typeof handle!=='string')return new Response('Invalid consent',{status:400});
    if(form.get('decision')!=='allow'){
-    const denied=await oauth.denyConsent(request,handle);
-    return denied;
+    try { return await oauth.denyConsent(request,handle); }
+    catch (error) {
+     if (error?.message?.includes('This authorization was not started in this browser')) return new Response('This authorization request has expired or was already submitted. Return to your MCP client and start a new connection.',{status:409,headers:htmlHeaders});
+     throw error;
+    }
    }
-   const approved=await oauth.approveConsent(request,handle);
+   let approved;
+   try { approved=await oauth.approveConsent(request,handle); }
+   catch (error) {
+    if (error?.message?.includes('This authorization was not started in this browser')) return new Response('This authorization request has expired or was already submitted. Return to your MCP client and start a new connection.',{status:409,headers:htmlHeaders});
+    throw error;
+   }
    const upstream=await oauth.beginUpstream(approved.request,{headers:approved.headers});
    const gh = new URL('https://github.com/login/oauth/authorize');
    gh.searchParams.set('client_id',env.GITHUB_CLIENT_ID);
