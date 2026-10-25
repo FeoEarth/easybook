@@ -11,7 +11,7 @@ permissions:
   actions: read
 jobs:
   apk:
-    if: github.event_name != 'pull_request' || (github.head_ref == 'fix/android-sync-policy-save' || github.head_ref == 'fix/sync-policies-active-space' || github.head_ref == 'fix/sync-policies-list-gestures')
+    if: github.event_name != 'pull_request' || (github.head_ref == 'fix/android-sync-policy-save' || github.head_ref == 'fix/sync-policies-active-space' || github.head_ref == 'fix/sync-policies-list-gestures' || github.head_ref == 'fix/sync-policies-list-hit-area')
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -62,7 +62,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           TAG="v0.8.0-build${GITHUB_RUN_NUMBER}"
-          gh release create "$TAG" Easybook-0.8.0.apk SHA256SUMS.txt --target "$GITHUB_SHA" --title "Easybook 0.8.0 · build ${GITHUB_RUN_NUMBER}" --notes "列表手势专项修复：左右滑动操作互斥、隐藏操作层不绘制不拦截点击、长按收起滑动并锁住底层手势、预览和菜单先定宽再测高。画廊与QWEA0材质不变。versionCode 49；仅JavaScript静态语法检查、Android编译和签名校验，未运行模拟器或UI自动化；本次不部署Cloudflare。"
+          gh release create "$TAG" Easybook-0.8.0.apk SHA256SUMS.txt --target "$GITHUB_SHA" --title "Easybook 0.8.0 · build ${GITHUB_RUN_NUMBER}" --notes "修复列表横滑只能从两侧触发：标题/摘要子元素向笔记卡片转交Pointer Capture时，冒泡的lostpointercapture被误判为取消。现在仅在卡片自身真正失去捕获时取消；阈值、画廊、长按、多选、Liquid Glass与系统边缘手势均未改动。versionCode 50；仅静态语法检查、Android编译与签名检查，未运行模拟器或UI自动化；不部署Cloudflare。"
       - name: Keep latest APK available through repository downloads
         if: github.ref == 'refs/heads/main'
         env:
