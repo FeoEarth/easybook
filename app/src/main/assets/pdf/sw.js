@@ -1,0 +1,4 @@
+const CACHE='easybook-pdfjs-6.4.299-v1';
+self.addEventListener('install',event=>event.waitUntil((async()=>{const manifest=await fetch('/pdf/manifest.json',{cache:'no-cache'}).then(r=>r.json()),cache=await caches.open(CACHE);const resources=['/','/editor.js',...manifest.assets];for(let i=0;i<resources.length;i+=8)await Promise.all(resources.slice(i,i+8).map(url=>cache.add(url)));await self.skipWaiting()})()));
+self.addEventListener('activate',event=>event.waitUntil(self.clients.claim()));
+self.addEventListener('fetch',event=>{const u=new URL(event.request.url);if(event.request.method!=='GET'||u.origin!==self.location.origin||!(u.pathname==='/'||u.pathname==='/editor.js'||u.pathname.startsWith('/pdf/')))return;event.respondWith(fetch(event.request).then(async r=>{if(r.ok)(await caches.open(CACHE)).put(event.request,r.clone());return r}).catch(async()=>await (await caches.open(CACHE)).match(event.request)||new Response('离线资源尚未缓存',{status:503})));});
