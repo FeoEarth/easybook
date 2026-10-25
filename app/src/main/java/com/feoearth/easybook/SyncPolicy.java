@@ -24,6 +24,24 @@ final class SyncPolicy {
 
  static String query(JSONObject p){if(p.optBoolean("all",true))return "";JSONArray a=p.optJSONArray("roots");List<String> ids=new ArrayList<>();if(a!=null)for(int i=0;i<a.length();i++){String id=a.optString(i);ids.add(id.isEmpty()?"0":id);}return "&scope="+(ids.isEmpty()?"none":String.join(",",ids));}
  static boolean network(JSONObject p){if(context==null)return p.optString("network","any").equals("any");ConnectivityManager cm=(ConnectivityManager)context.getSystemService(Context.CONNECTIVITY_SERVICE);NetworkCapabilities caps=cm.getNetworkCapabilities(cm.getActiveNetwork());if(caps==null||!caps.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET))return false;String n=p.optString("network","any");return n.equals("any")||n.equals("wifi")&&caps.hasTransport(NetworkCapabilities.TRANSPORT_WIFI)||n.equals("unmetered")&&caps.hasCapability(NetworkCapabilities.NET_CAPABILITY_NOT_METERED);}
- static JSONObject save(NoteRepository db,String key,JSONObject raw)throws Exception{JSONObject old=read(db,key),p=clean(raw);if(old.optBoolean("all")!=p.optBoolean("all")||!old.getJSONArray("roots").toString().equals(p.getJSONArray("roots").toString()))db.setSetting("cursor:"+NoteRepository.spaceId(key),"0");db.setSetting(name(key),p.toString());schedule(p);return p;}
- static void schedule(JSONObject p){if(context==null)return;JobScheduler jobs=(JobScheduler)context.getSystemService(Context.JOB_SCHEDULER_SERVICE);jobs.cancel(8030);long interval=p.optLong("interval");if(p.optBoolean("paused")||interval==0)return;JobInfo.Builder b=new JobInfo.Builder(8030,new ComponentName(context,SyncJobService.class)).setPeriodic(Math.max(900000,interval)).setRequiredNetworkType(p.optString("network").equals("unmetered")?JobInfo.NETWORK_TYPE_UNMETERED:JobInfo.NETWORK_TYPE_ANY).setBackoffCriteria(30000,JobInfo.BACKOFF_POLICY_EXPONENTIAL);jobs.schedule(b.build());}
+ static JSONObject save(NoteRepository db,String key,JSONObject raw)throws Exception{
+  JSONObject p=clean(raw);
+  synchronized(db){
+   JSONObject old=read(db,key);android.database.sqlite.SQLiteDatabase sql=db.getWritableDatabase();sql.beginTransaction();
+   try{
+    if(old.optBoolean("all")!=p.optBoolean("all")||!old.getJSONArray("roots").toString().equals(p.getJSONArray("roots").toString()))db.setSetting("cursor:"+NoteRepository.spaceId(key),"0");
+    db.setSetting(name(key),p.toString());
+    if(!db.setting(name(key),"").equals(p.toString()))throw new android.database.sqlite.SQLiteException("Policy write verification failed");
+    sql.setTransactionSuccessful();
+   }finally{sql.endTransaction();}
+  }
+  return p;
+ }
+ static String scheduleSafely(JSONObject p){
+  try{schedule(p);return "";}catch(RuntimeException e){
+   android.util.Log.w("EasybookSyncPolicy","background_schedule_failed:"+e.getClass().getSimpleName());
+   return "BACKGROUND_SCHEDULE_FAILED";
+  }
+ }
+ static void schedule(JSONObject p){if(context==null)return;JobScheduler jobs=(JobScheduler)context.getSystemService(Context.JOB_SCHEDULER_SERVICE);long interval=p.optLong("interval");if(p.optBoolean("paused")||interval==0){jobs.cancel(8030);return;}JobInfo.Builder b=new JobInfo.Builder(8030,new ComponentName(context,SyncJobService.class)).setPeriodic(Math.max(900000,interval)).setRequiredNetworkType(p.optString("network").equals("unmetered")?JobInfo.NETWORK_TYPE_UNMETERED:JobInfo.NETWORK_TYPE_ANY).setBackoffCriteria(30000,JobInfo.BACKOFF_POLICY_EXPONENTIAL);if(jobs.schedule(b.build())!=JobScheduler.RESULT_SUCCESS)throw new IllegalStateException("Background schedule rejected");}
 }
