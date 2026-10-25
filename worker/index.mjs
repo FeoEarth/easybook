@@ -35,7 +35,13 @@ export default {
   if(url.pathname === '/' && request.method === 'GET') return new Response(html,{headers:{'Content-Type':'text/html; charset=utf-8','X-Content-Type-Options':'nosniff','Referrer-Policy':'no-referrer','Cache-Control':'no-cache'}});
   if(!url.pathname.startsWith('/api/')) return json({error:'Not found'},404);
   const token = (request.headers.get('Authorization')||'').replace(/^Bearer /,'');
-  if(!/^[a-f0-9]{64}$/.test(token)) return json({error:'Invalid workspace key'},401);
+  if(!/^[a-f0-9]{64}$/.test(token)) {
+   const response=json({error:'Invalid workspace key'},401);
+   if(url.pathname!=='/api/mcp/attest')return response;
+   const h=new Headers(response.headers);
+   for(const [name,value] of Object.entries(pairingCors))h.set(name,value);
+   return new Response(response.body,{status:response.status,headers:h});
+  }
   const workspace = Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256',new TextEncoder().encode(token)))).map(x=>x.toString(16).padStart(2,'0')).join('');
   try {
    if(url.pathname==='/api/mcp/attest'){
