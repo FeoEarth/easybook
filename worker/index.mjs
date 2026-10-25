@@ -16,6 +16,7 @@ export default {
   const pairingOrigin=request.headers.get('Origin');
   const pairingAllowed=pairingOrigin==='https://easybook.loonxy.com'||pairingOrigin==='https://easybook-sync.1902521952.workers.dev';
   const pairingCors=pairingAllowed?{'Access-Control-Allow-Origin':pairingOrigin,'Access-Control-Allow-Headers':'Authorization, Content-Type','Access-Control-Allow-Methods':'POST, OPTIONS','Vary':'Origin'}:{};
+  const pairingResponse=(response)=>{const h=new Headers(response.headers);for(const [name,value] of Object.entries(pairingCors))h.set(name,value);h.set('Cache-Control','no-store');return new Response(response.body,{status:response.status,headers:h});};
   if(url.pathname==='/api/mcp/attest'&&request.method==='OPTIONS')
    return new Response(null,{status:pairingAllowed?204:403,headers:pairingCors});
   if(request.method === 'OPTIONS') return new Response(null,{status:204,headers});
@@ -37,18 +38,12 @@ export default {
   const token = (request.headers.get('Authorization')||'').replace(/^Bearer /,'');
   if(!/^[a-f0-9]{64}$/.test(token)) {
    const response=json({error:'Invalid workspace key'},401);
-   if(url.pathname!=='/api/mcp/attest')return response;
-   const h=new Headers(response.headers);
-   for(const [name,value] of Object.entries(pairingCors))h.set(name,value);
-   return new Response(response.body,{status:response.status,headers:h});
+   return url.pathname==='/api/mcp/attest'?pairingResponse(response):response;
   }
   const workspace = Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256',new TextEncoder().encode(token)))).map(x=>x.toString(16).padStart(2,'0')).join('');
   try {
    if(url.pathname==='/api/mcp/attest'){
-    const response=await attestMcpWorkspace(request,env,workspace);
-    const h=new Headers(response.headers);
-    for(const [name,value] of Object.entries(pairingCors))h.set(name,value);
-    return new Response(response.body,{status:response.status,headers:h});
+    return pairingResponse(await attestMcpWorkspace(request,env,workspace));
    }
    if(url.pathname==='/api/management')return await management(request,env,workspace,json);
    const attachmentId=url.pathname.match(/^\/api\/attachments\/([a-f0-9]{64})$/)?.[1];if(attachmentId)return await attachments(request,env,workspace,attachmentId,headers);
@@ -76,7 +71,7 @@ export default {
     return json({folder});
    }
    return json({error:'Not found'},404);
-  } catch(e) { console.error(JSON.stringify({event:'request_failed',name:e.name})); return json({error:'Service temporarily unavailable'},503); }
+  } catch(e) { console.error(JSON.stringify({event:'request_failed',name:e.name})); const response=json({error:'Service temporarily unavailable'},503); return url.pathname==='/api/mcp/attest'?pairingResponse(response):response; }
  }
 };
 
