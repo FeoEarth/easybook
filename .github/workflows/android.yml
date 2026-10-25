@@ -11,7 +11,7 @@ permissions:
   actions: read
 jobs:
   apk:
-    if: github.event_name != 'pull_request' || (github.head_ref == 'fix/android-sync-policy-save' || github.head_ref == 'fix/sync-policies-active-space' || github.head_ref == 'fix/sync-policies-list-gestures' || github.head_ref == 'fix/sync-policies-list-hit-area' || github.head_ref == 'fix/sync-policies-large-attachments')
+    if: github.event_name != 'pull_request' || (github.head_ref == 'fix/android-sync-policy-save' || github.head_ref == 'fix/sync-policies-active-space' || github.head_ref == 'fix/sync-policies-list-gestures' || github.head_ref == 'fix/sync-policies-list-hit-area' || github.head_ref == 'fix/sync-policies-large-attachments' || github.head_ref == 'fix/sync-policies-pdf-reader')
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -43,7 +43,7 @@ jobs:
           cache: npm
       - run: npm ci
       - name: Attachment protocol static checks
-        run: node --check shared/attachments.mjs && node --check worker/attachments.mjs
+        run: node --check shared/attachments.mjs && node --check worker/attachments.mjs && node --check app/src/main/assets/pdf/reader.mjs && node --check app/src/main/assets/pdf/glass.mjs
       - name: Build release APK
         run: gradle :app:assembleRelease --no-daemon
       - name: Verify APK signing
@@ -73,4 +73,4 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           TAG="v0.8.0-build${GITHUB_RUN_NUMBER}"
-          gh release create "$TAG" Easybook-0.8.0.apk SHA256SUMS.txt --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" --title "Easybook 0.8.0 · build ${GITHUB_RUN_NUMBER}" --notes "大附件与智能无损压缩：Android本地目标1 GB，Web按浏览器配额保存Blob；云端按压缩后文件大小硬性限制50 MB，4 MB分块传输，gzip无损压缩与SHA-256完整性校验。超限仅本地，正文和占位元数据继续同步。原文件保留，QWEA0玻璃实现不变。versionCode 51。必要完整性和静态检查已通过；未运行模拟器或UI自动化。按用户明确确认沿用现有开发签名。大附件须单独保存，旧JSON备份不会静默遗漏。"
+          gh release create "$TAG" Easybook-0.8.0.apk SHA256SUMS.txt --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" --title "Easybook 0.8.0 · build ${GITHUB_RUN_NUMBER}" --notes "PDF阅读器专项重构：参考iOS 26 Files，独立圆形导航、单行标题、自动隐藏页码胶囊、单行悬浮底栏、带首页缩略图的锚定文件菜单、沉浸阅读与搜索/缩放/跳页。Android复用现有QWEA0 GlassSurface投影PDF控件，不修改Shader或采样参数；PDF打开时隐藏编辑工具栏。versionCode 52。必要静态检查、Android编译及签名检查；未运行模拟器或UI自动化，真机视觉与手势待验收。本次不部署Cloudflare。"

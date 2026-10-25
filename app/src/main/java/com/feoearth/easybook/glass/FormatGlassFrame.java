@@ -19,8 +19,8 @@ final class FormatGlassFrame {
     private final GlassBackdrop backdrop;
     private final Runnable changed;
     private final BooleanSupplier valid;
-    private final boolean toolbar,move,dock,sync;private final String dockPrefix;
-    private String prefix(){return sync?"Sync":dock?dockPrefix:move?"Move":toolbar?"Toolbar":"Format";}
+    private final boolean toolbar,move,dock,sync,pdf;private final String dockPrefix;
+    private String prefix(){return pdf?dockPrefix:sync?"Sync":dock?dockPrefix:move?"Move":toolbar?"Toolbar":"Format";}
     private GlassSurface glass;
     private WebView controls;
     private FrameLayout moveShield;
@@ -35,7 +35,7 @@ final class FormatGlassFrame {
         this(activity,root,web,backdrop,changed,valid,toolbar?"toolbar":"format");
     }
     FormatGlassFrame(Activity activity,FrameLayout root,WebView web,GlassBackdrop backdrop,Runnable changed,BooleanSupplier valid,String kind){
-        this.activity=activity;this.root=root;this.web=web;this.backdrop=backdrop;this.changed=changed;this.valid=valid;this.toolbar="toolbar".equals(kind);this.move="move".equals(kind);this.sync="sync".equals(kind);this.dock=kind.startsWith("Dock");this.dockPrefix=dock?kind:"";
+        this.activity=activity;this.root=root;this.web=web;this.backdrop=backdrop;this.changed=changed;this.valid=valid;this.toolbar="toolbar".equals(kind);this.move="move".equals(kind);this.sync="sync".equals(kind);this.dock=kind.startsWith("Dock");this.pdf=kind.startsWith("Pdf");this.dockPrefix=dock||pdf?kind:"";
     }
     GlassSurface surface(){return attached?glass:null;}
     void clear(){
@@ -59,7 +59,7 @@ final class FormatGlassFrame {
         if(content==null){fail();return;}
         if(glass==null){
             try{
-                glass=new GlassSurface(activity,backdrop,newDark,this::fail);if(move||sync)glass.useMoveSurface();else if(toolbar||dock)glass.useToolbarSurface();else glass.useFormatSurface();glass.setTag(sync?"sync-glass-surface":move?"move-glass-surface":toolbar?"toolbar-glass-surface":"format-glass-surface");dark=newDark;
+                glass=new GlassSurface(activity,backdrop,newDark,this::fail);if(move||sync)glass.useMoveSurface();else if(toolbar||dock||pdf)glass.useToolbarSurface();else glass.useFormatSurface();glass.setTag(sync?"sync-glass-surface":move?"move-glass-surface":toolbar?"toolbar-glass-surface":"format-glass-surface");dark=newDark;
                 controls=new WebView(activity);controls.setBackgroundColor(Color.TRANSPARENT);controls.setFocusable(false);controls.setFocusableInTouchMode(false);controls.setOverScrollMode(View.OVER_SCROLL_NEVER);
                 controls.setImportantForAutofill(View.IMPORTANT_FOR_AUTOFILL_NO_EXCLUDE_DESCENDANTS);
                 WebSettings settings=controls.getSettings();settings.setJavaScriptEnabled(true);settings.setAllowFileAccess(false);settings.setAllowContentAccess(false);settings.setBlockNetworkLoads(true);settings.setBlockNetworkImage(true);settings.setSupportZoom(false);
@@ -74,7 +74,7 @@ final class FormatGlassFrame {
                     @Override public boolean onRenderProcessGone(WebView view,RenderProcessGoneDetail detail){fail();return true;}
                 });
                 glass.addView(controls,new FrameLayout.LayoutParams(1,1));
-                String html;try(InputStream in=activity.getAssets().open(sync?"native-glass/sync-content.html":dock?"native-glass/dock-content.html":move?"native-glass/move-content.html":toolbar?"native-glass/toolbar-content.html":"native-glass/format-content.html");ByteArrayOutputStream bytes=new ByteArrayOutputStream()){byte[] buffer=new byte[4096];int count;while((count=in.read(buffer))!=-1)bytes.write(buffer,0,count);html=bytes.toString(StandardCharsets.UTF_8.name());}
+                String html;try(InputStream in=activity.getAssets().open(pdf?"native-glass/pdf-content.html":sync?"native-glass/sync-content.html":dock?"native-glass/dock-content.html":move?"native-glass/move-content.html":toolbar?"native-glass/toolbar-content.html":"native-glass/format-content.html");ByteArrayOutputStream bytes=new ByteArrayOutputStream()){byte[] buffer=new byte[4096];int count;while((count=in.read(buffer))!=-1)bytes.write(buffer,0,count);html=bytes.toString(StandardCharsets.UTF_8.name());}
                 controls.loadDataWithBaseURL("https://format.easybook.invalid/",html,"text/html","UTF-8",null);
             }catch(Exception|LinkageError error){fail();return;}
         }
@@ -87,7 +87,7 @@ final class FormatGlassFrame {
         int left=Math.round((float)state.optDouble("left")*scale),top=Math.round((float)state.optDouble("top")*scale);
         int width=Math.max(1,Math.round((float)state.optDouble("width")*scale)),height=Math.max(1,Math.round((float)state.optDouble("height")*scale));
         web.getLocationInWindow(webAt);root.getLocationInWindow(rootAt);
-        FrameLayout.LayoutParams lp=new FrameLayout.LayoutParams(width,height);lp.leftMargin=left+webAt[0]-rootAt[0]-((toolbar||move||dock||sync)?root.getPaddingLeft():0);lp.topMargin=top+webAt[1]-rootAt[1]-((toolbar||move||dock||sync)?root.getPaddingTop():0);glass.setLayoutParams(lp);
+        FrameLayout.LayoutParams lp=new FrameLayout.LayoutParams(width,height);lp.leftMargin=left+webAt[0]-rootAt[0]-((toolbar||move||dock||sync||pdf)?root.getPaddingLeft():0);lp.topMargin=top+webAt[1]-rootAt[1]-((toolbar||move||dock||sync||pdf)?root.getPaddingTop():0);glass.setLayoutParams(lp);
         if(move||sync)glass.setMoveCorners((float)state.optDouble("corner")*scale,(float)state.optDouble("bottomCorner")*scale);else glass.setFormatCorner((float)state.optDouble("corner")*scale);glass.setAlpha((float)state.optDouble("opacity",1));
         // Full-size CSS viewport keeps original media queries/font metrics. The
         // panel is simply clipped out at its measured origin, never re-laid out.
@@ -114,8 +114,9 @@ final class FormatGlassFrame {
             if(attached&&state!=null&&valid.getAsBoolean()&&revision==state.optInt("revision"))web.evaluateJavascript("window.easybook"+prefix()+"SurfaceReady&&window.easybook"+prefix()+"SurfaceReady("+revision+")",null);
         });}
         public void click(String token){
-            if(token==null||!token.matches((sync?"s":dock?"d":move?"m":toolbar?"t":"f")+"-[0-9]{1,6}"))return;
+            if(token==null||!token.matches((pdf?"p":sync?"s":dock?"d":move?"m":toolbar?"t":"f")+"-[0-9]{1,6}"))return;
             activity.runOnUiThread(()->{if(attached&&state!=null&&state.optBoolean("mounted")&&valid.getAsBoolean())web.evaluateJavascript("window.easybook"+prefix()+"SurfaceClick&&window.easybook"+prefix()+"SurfaceClick("+JSONObject.quote(token)+")",null);});
         }
     }
 }
+

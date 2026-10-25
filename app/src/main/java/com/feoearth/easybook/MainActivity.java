@@ -199,9 +199,10 @@ public class MainActivity extends Activity {
                 if(nativeGlass!=null)runOnUiThread(()->{if(!destroyed && ready && generation==documentGeneration)nativeGlass.refreshBackdrop();});
                 return new JSONObject();
             }
-            case "ui.glass.sync":case "ui.glass.dock":case "ui.glass.move":case "ui.glass.toolbar":case "ui.glass.format":{
+            case "ui.glass.pdf":case "ui.glass.sync":case "ui.glass.dock":case "ui.glass.move":case "ui.glass.toolbar":case "ui.glass.format":{
                 boolean available=BuildConfig.NATIVE_GLASS_PROTOTYPE && android.os.Build.VERSION.SDK_INT>=33 && nativeGlass!=null;
                 if(!available)return new JSONObject().put("accepted",false);
+                if(method.equals("ui.glass.pdf")&&(args.getInt("slot")<0||args.getInt("slot")>5))throw new IllegalArgumentException();
                 if(method.equals("ui.glass.dock")&&(args.getInt("slot")<0||args.getInt("slot")>2))throw new IllegalArgumentException();
                 if(!(args.get("visible") instanceof Boolean))throw new IllegalArgumentException();
                 if(args.getBoolean("visible")){
@@ -221,7 +222,7 @@ public class MainActivity extends Activity {
                         if(content.toString().length()>260000)throw new IllegalArgumentException();
                     }
                 }
-                runOnUiThread(()->{if(!destroyed && ready && generation==documentGeneration){glassGeneration=generation;if(method.equals("ui.glass.sync"))nativeGlass.updateSyncFrame(args);else if(method.equals("ui.glass.dock"))nativeGlass.updateDockFrame(args);else if(method.equals("ui.glass.move"))nativeGlass.updateMoveFrame(args);else if(method.equals("ui.glass.toolbar"))nativeGlass.updateToolbarFrame(args);else nativeGlass.updateFormatFrame(args);}});
+                runOnUiThread(()->{if(!destroyed && ready && generation==documentGeneration){glassGeneration=generation;if(method.equals("ui.glass.pdf"))nativeGlass.updatePdfFrame(args);else if(method.equals("ui.glass.sync"))nativeGlass.updateSyncFrame(args);else if(method.equals("ui.glass.dock"))nativeGlass.updateDockFrame(args);else if(method.equals("ui.glass.move"))nativeGlass.updateMoveFrame(args);else if(method.equals("ui.glass.toolbar"))nativeGlass.updateToolbarFrame(args);else nativeGlass.updateFormatFrame(args);}});
                 return new JSONObject().put("accepted",true);
             }
             case "ui.glass.palette":{
@@ -349,6 +350,7 @@ public class MainActivity extends Activity {
     @Override protected void onPause() { if(nativeGlass!=null)nativeGlass.dismiss(true);web.evaluateJavascript("window.persistNow && window.persistNow()", null); super.onPause(); }
     @Override protected void onDestroy() { if(connectivity!=null&&networkCallback!=null)connectivity.unregisterNetworkCallback(networkCallback); if(nativeGlass!=null){nativeGlass.clearFormatFrame();nativeGlass.dismiss(true);}ready=false; destroyed=true;if(WebViewFeature.isFeatureSupported(WebViewFeature.WEB_MESSAGE_LISTENER))WebViewCompat.removeWebMessageListener(web,"EasybookNative");web.destroy();io.shutdown();super.onDestroy(); }
 }
+
 
 
 
