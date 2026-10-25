@@ -151,7 +151,7 @@ public class MainActivity extends Activity {
     private void respond(JavaScriptReplyProxy reply,long generation,JSONObject value){runOnUiThread(()->{if(!destroyed&&generation==documentGeneration&&LOCAL.equals(web.getUrl()))try{reply.postMessage(value.toString());}catch(IllegalStateException ignored){}});}
     private String bounded(JSONObject args,String name,int max)throws Exception{if(!(args.get(name) instanceof String))throw new IllegalArgumentException();String s=args.getString(name);if(s.length()>max)throw new IllegalArgumentException("Value too large");return s;}
     private JSONObject dispatch(String method,JSONObject args,long generation)throws Exception {
-        String active=(method.equals("commit")||method.equals("search")||method.equals("snapshot")||method.equals("sync")||method.equals("device.exportNotes"))?repository.activeSpace():"";
+        String active=(method.equals("commit")||method.equals("search")||method.equals("snapshot")||method.equals("sync.activity")||method.equals("sync")||method.equals("device.exportNotes"))?repository.activeSpace():"";
         switch(method){
             case "bootstrap":{
                 repository.secureCredentials();JSONObject report=new JSONObject().put("state","not-needed");repository.secureCredentials();security.initialized(generation);new SyncJournal(repository,repository.activeSpace()).recover();SyncPolicy.scheduleSafely(SyncPolicy.read(repository,repository.activeSpace()));return repository.snapshot(repository.activeSpace()).put("syncPolicy",SyncPolicy.read(repository,repository.activeSpace())).put("migration",report).put("security",repository.securityStatus());
