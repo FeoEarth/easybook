@@ -14,6 +14,7 @@ html:root,body{background:transparent!important;min-height:0!important;overflow:
    }
    const input=document.getElementById('search');if(input){input.readOnly=true;input.tabIndex=-1}signature=next;
   }FormatActions.postMessage(JSON.stringify({type:'ready',revision:geometry.revision}));}
+  const controls=[host.querySelector('.searchbar'),document.getElementById('createFolder'),document.getElementById('newTop')];controls.forEach((el,i)=>{if(el)el.style.visibility=i===geometry.dockSlot?'visible':'hidden'});const target=controls[geometry.dockSlot];if(target)for(const [key,value]of Object.entries({position:'fixed',left:geometry.left+'px',top:geometry.top+'px',right:'auto',bottom:'auto',width:geometry.width+'px',height:geometry.height+'px',margin:'0'}))target.style.setProperty(key,value,'important');
  };
  host.addEventListener('mousedown',e=>e.preventDefault());
  host.addEventListener('pointerdown',e=>{down={x:e.clientX,y:e.clientY}},{passive:true});

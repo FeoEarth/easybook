@@ -98,6 +98,7 @@ final class FormatGlassFrame {
         if(state==null||!attached||controls==null)return;
         try{
             JSONObject geometry=new JSONObject().put("left",state.optDouble("left")).put("top",state.optDouble("top")).put("width",state.optDouble("width")).put("height",state.optDouble("height")).put("revision",state.optInt("revision")).put("scrollLeft",state.optDouble("scrollLeft",0)).put("scrollTop",state.optDouble("scrollTop",0));
+            if(dock)geometry.put("dockSlot",state.optInt("slot"));
             controls.evaluateJavascript("window.renderFormat&&window.renderFormat("+(withContent?content.toString():"null")+","+geometry.toString()+")",null);
         }catch(Exception error){fail();}
     }
