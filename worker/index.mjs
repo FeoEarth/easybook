@@ -1,4 +1,5 @@
 import {mcp} from './mcp.mjs';
+import {attestMcpWorkspace} from './mcp-pairing.mjs';
 import {management} from './management.mjs';
 import {notes} from './notes.mjs';
 import html from './ui.mjs';
@@ -31,6 +32,7 @@ export default {
   if(!/^[a-f0-9]{64}$/.test(token)) return json({error:'Invalid workspace key'},401);
   const workspace = Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256',new TextEncoder().encode(token)))).map(x=>x.toString(16).padStart(2,'0')).join('');
   try {
+   if(url.pathname==='/api/mcp/attest')return await attestMcpWorkspace(request,env,workspace);
    if(url.pathname==='/api/management')return await management(request,env,workspace,json);
    const attachmentId=url.pathname.match(/^\/api\/attachments\/([a-f0-9]{64})$/)?.[1];if(attachmentId)return await attachments(request,env,workspace,attachmentId,headers);
    if(url.pathname==='/api/notes'||url.pathname.startsWith('/api/notes/'))return await notes(request,env,workspace,url,json);
