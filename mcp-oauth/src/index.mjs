@@ -112,7 +112,7 @@ const apiHandler={
    const reply=(value)=>Response.json({jsonrpc:'2.0',id:msg.id??null,result:value},{headers:{'Cache-Control':'no-store'}});
    if(msg.method==='tools/call' && msg.params?.name==='begin_workspace_pairing'){
     const bytes=crypto.getRandomValues(new Uint8Array(32));
-    const challenge=btoa(String.fromCharCode(...bytes)).replace(/\\+/g,'-').replace(/\\//g,'_').replace(/=+$/,'');
+    const challenge=btoa(String.fromCharCode(...bytes)).split('+').join('-').split('/').join('_').replace(/=+$/,'');
     const digest=await crypto.subtle.digest('SHA-256',new TextEncoder().encode(challenge));
     const hash=Array.from(new Uint8Array(digest),b=>b.toString(16).padStart(2,'0')).join('');
     const expires=Math.floor(Date.now()/1000)+300;
