@@ -1,0 +1,13 @@
+# Floating PDF reader UI
+
+PDF.js 6.4.299 remains the renderer. Independent round back/more controls, ellipsized title capsule, transient page counter, non-wrapping bottom capsule, anchored file menu with first-page thumbnail and share control replace the old multi-row toolbar. Real capabilities only: page jump/previous-next, width/page fit, zoom, saved position return, search, file information, save/share and exit. Unsupported rename/annotation/signature/form/print controls are omitted.
+
+Continuous vertical pages and the existing PDF.js TouchManager preserve pinch/pan. Single tap toggles chrome, scrolling hides navigation while briefly showing page position, and pinch suppresses taps. The menu/jump shield blocks the underlying PDF. Back dismisses a menu/search before exiting the attachment preview and restoring editor chrome. PDF-only full-screen CSS honors safe areas and the host Android WebView's existing insets.
+
+Android API 33+ uses six independent PDF projections through existing FormatGlassFrame and QWEA0 GlassSurface: back, title, more, page pill, bottom toolbar and file menu. The new origin-scoped ui.glass.pdf method accepts slots 0..5 and the same bounded geometry/content fields as current frames. Native controls delegate token clicks to original PDF DOM handlers. PDF surfaces join backdrop capture and clear/dispose lifecycle; no Shader, GlassBackdrop, GlassMaterial or GlassSurface code changes. Input forms remain in the primary WebView so keyboard/search/page entry work. Existing unsupported-device/power-saver fallback behavior remains unchanged; Web uses CSS material.
+
+PDF document bytes/canvas remain separate from chrome projection. First-page thumbnail is display-only. The reader's stale 5 MiB check was aligned to the pre-existing 50 MiB inline PDF path; attachment original/cloud limits, storage, compression and sync protocol are unchanged. PDF JavaScript/actions, external links and annotation editing remain disabled as before. Metadata enters textContent, projection sanitizes executable/network content, and preview/menu teardown aborts listeners and clears native surfaces.
+
+Validation: module/inline JavaScript static checks and Android release compilation/signature verification only. No emulator, UI automation or browser visual tests. Device acceptance remains necessary for visual fidelity, frame alignment during rotation/scroll/keyboard, pinch and Android back behavior. Native rendering uses the existing API 33+ engine, not CSS pretending to be native glass.
+
+Web source is committed with generated worker/ui.mjs, but this task does not deploy Cloudflare or change Worker APIs, D1 or R2. Actual native visual matching is unverified until installed.
