@@ -62,12 +62,15 @@ const oauthHandler = {
    gh.searchParams.set('redirect_uri',new URL('/callback',request.url).href);
    gh.searchParams.set('state',upstream.state);
    // No GitHub scopes: only /user identity is needed; never request repo access.
+   // Embedded OAuth browsers may suppress cross-origin redirects after a form POST.
+   // Render a real navigation target so the user can proceed even if automatic navigation is blocked.
    const redirectHeaders = new Headers(upstream.headers);
-   redirectHeaders.set('Location',gh.href);
-   redirectHeaders.set('Cache-Control','no-store');
-   console.info('MCP consent redirect', {stage:'github-upstream',destinationHost:gh.hostname,method:'GET',status:303});
-   // 303 explicitly converts the form POST into a GET on GitHub.
-   return new Response(null,{status:303,headers:redirectHeaders});
+   for (const [k,v] of Object.entries(htmlHeaders)) redirectHeaders.set(k,v);
+   redirectHeaders.set('Referrer-Policy','no-referrer');
+   const destination = escape(gh.href);
+   const page = `<!doctype html><html lang="en"><meta charset="utf-8"><meta name="referrer" content="no-referrer"><meta http-equiv="refresh" content="0;url=${destination}"><title>Continue with GitHub</title><body><h1>Continue with GitHub</h1><p>Read-only access approved. Continue to GitHub to verify your account.</p><p><a href="${destination}" rel="noreferrer">Continue with GitHub</a></p><p>If the page does not move automatically, tap the link above.</p></body></html>`;
+   console.info('MCP consent approved', {stage:'github-upstream',destinationHost:gh.hostname,status:200});
+   return new Response(page,{status:200,headers:redirectHeaders});
   }
   if(url.pathname==='/callback' && request.method==='GET'){
    const upstream=await oauth.finishUpstream(request);
