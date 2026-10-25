@@ -9,6 +9,15 @@ export default {
  async fetch(request, env) {
   const url = new URL(request.url);
   if(request.method === 'OPTIONS') return new Response(null,{status:204,headers});
+  // Compatibility-only static PDF resources; attachment/auth/sync routes are unchanged.
+  if(request.method==='GET'&&(url.pathname.startsWith('/pdf/')||url.pathname==='/pdf-sw.js')){
+   if(!env.PDF_ASSETS)return new Response('PDF assets unavailable',{status:503});
+   const assetUrl=new URL(request.url);assetUrl.pathname=url.pathname==='/pdf-sw.js'?'/sw.js':url.pathname.slice(4);
+   const response=await env.PDF_ASSETS.fetch(new Request(assetUrl,request));
+   const resourceHeaders=new Headers(response.headers);resourceHeaders.set('X-Content-Type-Options','nosniff');
+   if(url.pathname==='/pdf-sw.js'){resourceHeaders.set('Service-Worker-Allowed','/');resourceHeaders.set('Cache-Control','no-cache');}
+   return new Response(response.body,{status:response.status,headers:resourceHeaders});
+  }
   if(url.pathname === '/editor.js' && request.method === 'GET')return new Response(editor,{headers:{'Content-Type':'application/javascript; charset=utf-8','X-Content-Type-Options':'nosniff','Cache-Control':'no-cache'}});
   if(url.pathname === '/health') return json({ok:true,app:'Easybook',version:'0.8.0',build:25,commit:env.RELEASE_SHA||'',schemaVersion:1});
   if(url.pathname === '/' && request.method === 'GET') return new Response(html,{headers:{'Content-Type':'text/html; charset=utf-8','X-Content-Type-Options':'nosniff','Referrer-Policy':'no-referrer','Cache-Control':'no-cache'}});

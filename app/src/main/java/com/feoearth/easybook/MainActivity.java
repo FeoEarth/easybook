@@ -114,10 +114,14 @@ public class MainActivity extends Activity {
             @Override public WebResourceResponse shouldInterceptRequest(WebView v, WebResourceRequest r) {
                 Uri u = r.getUrl();
                 if ("https://appassets.androidplatform.net/editor.js".equals(u.toString())) {try{return new WebResourceResponse("application/javascript","UTF-8",new ByteArrayInputStream(readAsset("editor.js").getBytes(StandardCharsets.UTF_8)));}catch(IOException e){return new WebResourceResponse("text/plain","UTF-8",new ByteArrayInputStream(new byte[0]));}}
+                if("https".equals(u.getScheme())&&"appassets.androidplatform.net".equals(u.getHost())&&u.getPath()!=null&&u.getPath().startsWith("/pdf/")&&!u.getPath().contains("..")&&u.getPath().matches("/pdf/[A-Za-z0-9_./-]+")){
+                    String asset=u.getPath().substring(1),mime=asset.endsWith(".mjs")||asset.endsWith(".js")?"application/javascript":asset.endsWith(".css")?"text/css":asset.endsWith(".wasm")?"application/wasm":asset.endsWith(".json")?"application/json":asset.endsWith(".svg")?"image/svg+xml":asset.endsWith(".ttf")?"font/ttf":"application/octet-stream";
+                    try{return new WebResourceResponse(mime,null,200,"OK",Collections.singletonMap("X-Content-Type-Options","nosniff"),getAssets().open(asset));}catch(IOException error){return new WebResourceResponse("text/plain","UTF-8",404,"Not Found",Collections.emptyMap(),new ByteArrayInputStream(new byte[0]));}
+                }
                 if (LOCAL.equals(u.toString())) {
                     try {
                         boolean legacy=false;
-                        String html=readAsset("index.html");if(!legacy)html=html.replace("connect-src https://easybook-sync.1902521952.workers.dev","connect-src 'none'");
+                        String html=readAsset("index.html");if(!legacy)html=html.replace("connect-src 'self' https://easybook-sync.1902521952.workers.dev","connect-src 'self'");
                         html=html.replace("<script>","<script>"+(legacy?"window.EasybookRollbackMode=true;":"")+readAsset("native-api.js")+"</script><script>");
                         if(BuildConfig.NATIVE_GLASS_PROTOTYPE && android.os.Build.VERSION.SDK_INT>=33)html=html.replace("</body>","<script>"+readAsset("native-glass/dock-surface.js")+";"+readAsset("native-glass/toolbar-surface.js")+";"+readAsset("native-glass/format-surface.js")+";"+readAsset("native-glass/move-surface.js")+";"+readAsset("native-glass/menu.js")+"</script></body>");
                         html=html.replace("</body>","<script>"+readAsset("native-glass/highlight-palette.js")+";"+readAsset("native-glass/adaptive-toolbar.js")+"</script></body>");
@@ -246,7 +250,7 @@ public class MainActivity extends Activity {
         File dir=new File(getCacheDir(),"shared");dir.mkdirs();long cutoff=System.currentTimeMillis()-24L*60*60*1000;File[] stale=dir.listFiles();if(stale!=null)for(File file:stale)if(file.lastModified()<cutoff)file.delete();
         File group=new File(dir,f.getString("id"));group.mkdirs();File target=new File(group,AttachmentStore.cleanName(f.getString("name")));try(FileOutputStream out=new FileOutputStream(target)){out.write(android.util.Base64.decode(f.getString("data"),android.util.Base64.NO_WRAP));}
         Uri uri=androidx.core.content.FileProvider.getUriForFile(this,getPackageName()+".files",target);String mime=f.optString("mime","application/octet-stream");
-        runOnUiThread(()->{if(destroyed||generation!=documentGeneration)return;try{Intent intent;if(!share&&mime.equals("application/pdf")){intent=new Intent(this,PdfActivity.class);intent.setData(uri);}else if(share){intent=new Intent(Intent.ACTION_SEND);intent.setType(mime);intent.putExtra(Intent.EXTRA_STREAM,uri);intent.setClipData(ClipData.newRawUri("附件",uri));}else{intent=new Intent(Intent.ACTION_VIEW);intent.setDataAndType(uri,mime);}intent.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);startActivity(share?Intent.createChooser(intent,"分享附件"):intent);}catch(ActivityNotFoundException e){notifyJs("没有可用的查看应用，请保存后打开");}});
+        runOnUiThread(()->{if(destroyed||generation!=documentGeneration)return;try{Intent intent;if(share){intent=new Intent(Intent.ACTION_SEND);intent.setType(mime);intent.putExtra(Intent.EXTRA_STREAM,uri);intent.setClipData(ClipData.newRawUri("附件",uri));}else{intent=new Intent(Intent.ACTION_VIEW);intent.setDataAndType(uri,mime);}intent.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);startActivity(share?Intent.createChooser(intent,"分享附件"):intent);}catch(ActivityNotFoundException e){notifyJs("没有可用的查看应用，请保存后打开");}});
     }
     private void requireAttachmentReference(String space,String id)throws Exception{AttachmentStore.validId(id);JSONArray notes=repository.rows(space,"note");for(int i=0;i<notes.length();i++)if(DocumentModel.assets(notes.getJSONObject(i).getJSONObject("document")).contains(id))return;throw new SecurityException("Unreferenced attachment");}
     public class DeviceActions {
