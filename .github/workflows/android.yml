@@ -3,12 +3,15 @@ on:
   push:
     branches: [main, easybook-native-data]
     paths-ignore: ['README.md']
+  pull_request:
+    branches: [main]
   workflow_dispatch:
 permissions:
   contents: write
   actions: read
 jobs:
   apk:
+    if: github.event_name != 'pull_request' || github.head_ref == 'fix/android-sync-policy-save'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -61,6 +64,7 @@ jobs:
           TAG="v0.8.0-build${GITHUB_RUN_NUMBER}"
           gh release create "$TAG" Easybook-0.8.0.apk SHA256SUMS.txt --target "$GITHUB_SHA" --title "Easybook 0.8.0 · build ${GITHUB_RUN_NUMBER}" --notes "修复Android同步策略保存链路：SQLite事务与写入确认、保存响应独立于历史读取和系统调度、缓存失败不再误报保存失败。取消每次保存立即触发的同步检查。保留现有UI及QWEA0 Liquid Glass。versionCode 47。按用户要求未运行测试，仅构建及签名产物检查；真机重启持久化由用户验收。"
       - name: Keep latest APK available through repository downloads
+        if: github.ref == 'refs/heads/main'
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
