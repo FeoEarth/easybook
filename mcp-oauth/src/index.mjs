@@ -58,7 +58,13 @@ const oauthHandler = {
    if(!exchange.ok)return new Response('GitHub authorization failed',{status:502});
    const token=await exchange.json();
    if(!token.access_token || typeof token.access_token !== 'string')return new Response('GitHub authorization failed',{status:403});
-   let user;try{user=await verifyGithubIdentity(token.access_token)}catch{return new Response('Account not permitted',{status:403})}
+   let user;
+   try { user=await verifyGithubIdentity(token.access_token); }
+   catch (error) {
+    const denied=error?.message==='GitHub account is not authorized for Easybook';
+    console.error('GitHub OAuth identity verification failed', {reason:denied?'account-mismatch':'upstream-verification-error'});
+    return new Response(denied?'Account not permitted':'GitHub identity verification unavailable. Please retry later.',{status:denied?403:502,headers:{'Cache-Control':'no-store'}});
+   }
    const completed=await oauth.completeAuthorization({
     request:upstream.request,userId:String(user.githubUserId),scope:['mcp:read'],
     metadata:{label:user.login},props:{githubUserId:user.githubUserId}
