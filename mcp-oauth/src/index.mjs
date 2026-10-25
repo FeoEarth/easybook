@@ -159,6 +159,14 @@ const apiHandler={
     }
     return reply({content:[{type:'text',text:JSON.stringify({revoked:true})}]});
    }
+   // MCP clients must initialize before invoking pairing tools, even with no workspace grant.
+   // Only protocol negotiation is available here; note reads remain grant-gated below.
+   if(msg.method==='initialize' || msg.method==='ping' || msg.method==='notifications/initialized'){
+    const headers=new Headers(request.headers);
+    headers.delete('Origin');
+    headers.set('Authorization','Bearer internal-oauth-bridge');
+    return mcp(new Request(request,{body:raw,headers}),{...env,MCP_ACCESS_TOKEN:'internal-oauth-bridge'},'0'.repeat(64));
+   }
    if(msg.method==='tools/list'){
     const headers=new Headers(request.headers);
     headers.delete('Origin');
