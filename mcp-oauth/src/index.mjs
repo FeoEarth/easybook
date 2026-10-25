@@ -36,7 +36,7 @@ const oauthHandler = {
   }
   if(url.pathname==='/callback' && request.method==='GET'){
    const upstream=await oauth.finishUpstream(request);
-   if(url.searchParams.has('error'))return new Response('GitHub authorization denied',{status:403});
+   if(url.searchParams.has('error'))return new Response('GitHub authorization denied',{status:403,headers:{'Cache-Control':'no-store'}});
    const code=url.searchParams.get('code');
    if(!code)return new Response('Missing authorization code',{status:400});
    const exchange=await fetch('https://github.com/login/oauth/access_token',{
@@ -45,7 +45,7 @@ const oauthHandler = {
    });
    if(!exchange.ok)return new Response('GitHub authorization failed',{status:502});
    const token=await exchange.json();
-   if(!token.access_token)return new Response('GitHub authorization failed',{status:403});
+   if(!token.access_token || typeof token.access_token !== 'string')return new Response('GitHub authorization failed',{status:403});
    let user;try{user=await verifyGithubIdentity(token.access_token)}catch{return new Response('Account not permitted',{status:403})}
    const completed=await oauth.completeAuthorization({
     request:upstream.request,userId:String(user.githubUserId),scope:['mcp:read'],
@@ -61,7 +61,7 @@ const apiHandler={
  async fetch(request,env,ctx){
   if(ctx?.props?.githubUserId!==236202359 || !ctx?.auth?.scope?.includes('mcp:read'))
    return new Response('Forbidden',{status:403});
-  if(!env.MCP_WORKSPACE_KEY)return new Response('Workspace not paired',{status:503});
+  if(!env.MCP_WORKSPACE_KEY || !/^[a-f0-9]{64}$/.test(env.MCP_WORKSPACE_KEY))return new Response('Workspace not paired',{status:503});
   // Reuse the existing read-only MCP handler only after provider validation.
   // Internal bearer is never sent to the client or persisted.
   const headers=new Headers(request.headers);
