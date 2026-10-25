@@ -85,13 +85,27 @@ const apiHandler={
  async fetch(request,env,ctx){
   if(ctx?.props?.githubUserId!==236202359 || !ctx?.auth?.scope?.includes('mcp:read'))
    return new Response('Forbidden',{status:403});
-  if(!env.MCP_WORKSPACE_KEY || !/^[a-f0-9]{64}$/.test(env.MCP_WORKSPACE_KEY))return new Response('Workspace not paired',{status:503});
+  // Grant-based mode is opt-in until the authenticated pairing flow is deployed.
+  // No workspace is ever selected from untrusted MCP request parameters.
+  let workspaceId=null;
+  if(env.MCP_GRANTS_ENABLED==='true'){
+   const githubUserId=String(ctx.props.githubUserId);
+   const clientId=ctx?.auth?.clientId;
+   if(typeof clientId!=='string'||!clientId)return new Response('Client identity unavailable',{status:403});
+   const grant=await env.DB.prepare(
+    'SELECT a.workspace_id FROM mcp_active_workspaces a JOIN mcp_workspace_grants g ON g.github_user_id=a.github_user_id AND g.oauth_client_id=a.oauth_client_id AND g.workspace_id=a.workspace_id WHERE a.github_user_id=? AND a.oauth_client_id=? AND g.revoked_at IS NULL AND g.scope=?'
+   ).bind(githubUserId,clientId,'mcp:read').first();
+   if(!grant)return new Response('Workspace not paired',{status:503});
+   workspaceId=grant.workspace_id;
+  }else{
+   if(!env.MCP_WORKSPACE_KEY || !/^[a-f0-9]{64}$/.test(env.MCP_WORKSPACE_KEY))return new Response('Workspace not paired',{status:503});
+  }
   // Reuse the existing read-only MCP handler only after provider validation.
   // Internal bearer is never sent to the client or persisted.
   const headers=new Headers(request.headers);
   headers.delete('Origin');headers.set('Authorization','Bearer internal-oauth-bridge');
   const trusted=new Request(request,{headers});
-  return mcp(trusted,{...env,MCP_ACCESS_TOKEN:'internal-oauth-bridge'});
+  return mcp(trusted,{...env,MCP_ACCESS_TOKEN:'internal-oauth-bridge'},workspaceId);
  }
 };
 export default new OAuthProvider({
