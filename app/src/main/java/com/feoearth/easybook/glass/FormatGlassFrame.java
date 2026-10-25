@@ -87,7 +87,7 @@ final class FormatGlassFrame {
         int left=Math.round((float)state.optDouble("left")*scale),top=Math.round((float)state.optDouble("top")*scale);
         int width=Math.max(1,Math.round((float)state.optDouble("width")*scale)),height=Math.max(1,Math.round((float)state.optDouble("height")*scale));
         web.getLocationInWindow(webAt);root.getLocationInWindow(rootAt);
-        FrameLayout.LayoutParams lp=new FrameLayout.LayoutParams(width,height);lp.leftMargin=left+webAt[0]-rootAt[0]-((toolbar||move||dock)?root.getPaddingLeft():0);lp.topMargin=top+webAt[1]-rootAt[1]-((toolbar||move)?root.getPaddingTop():0);glass.setLayoutParams(lp);
+        FrameLayout.LayoutParams lp=new FrameLayout.LayoutParams(width,height);lp.leftMargin=left+webAt[0]-rootAt[0]-((toolbar||move||dock)?root.getPaddingLeft():0);lp.topMargin=top+webAt[1]-rootAt[1]-((toolbar||move||dock)?root.getPaddingTop():0);glass.setLayoutParams(lp);
         if(move)glass.setMoveCorners((float)state.optDouble("corner")*scale,(float)state.optDouble("bottomCorner")*scale);else glass.setFormatCorner((float)state.optDouble("corner")*scale);glass.setAlpha((float)state.optDouble("opacity",1));
         // Full-size CSS viewport keeps original media queries/font metrics. The
         // panel is simply clipped out at its measured origin, never re-laid out.
