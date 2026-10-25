@@ -125,6 +125,19 @@ const apiHandler={
     await env.DB.prepare('INSERT INTO mcp_pairing_challenges(challenge_hash,github_user_id,oauth_client_id,expires_at) VALUES(?,?,?,?)').bind(hash,String(ctx.props.githubUserId),clientId,expires).run();
     return reply({content:[{type:'text',text:JSON.stringify({challenge,expiresAt:expires,instructions:'Open Easybook AI & MCP settings to approve this client and enter the challenge. Never share your workspace key.'})}]});
    }
+   if(msg.method==='tools/call' && msg.params?.name==='list_authorized_workspaces'){
+    const {results}=await env.DB.prepare('SELECT g.workspace_id,a.workspace_id AS active FROM mcp_workspace_grants g LEFT JOIN mcp_active_workspaces a ON a.github_user_id=g.github_user_id AND a.oauth_client_id=g.oauth_client_id WHERE g.github_user_id=? AND g.oauth_client_id=? AND g.revoked_at IS NULL ORDER BY g.created_at DESC LIMIT 100').bind(String(ctx.props.githubUserId),clientId).all();
+    return reply({content:[{type:'text',text:JSON.stringify({workspaces:results.map(r=>({id:r.workspace_id,active:r.workspace_id===r.active}))})}]});
+   }
+   if(msg.method==='tools/call' && msg.params?.name==='select_authorized_workspace'){
+    const workspaceId=msg.params?.arguments?.workspaceId;
+    if(typeof workspaceId!=='string'||!/^[a-f0-9]{64}$/.test(workspaceId))return new Response('Invalid workspace id',{status:400});
+    const githubId=String(ctx.props.githubUserId);
+    const active=await env.DB.prepare('SELECT workspace_id FROM mcp_workspace_grants WHERE github_user_id=? AND oauth_client_id=? AND workspace_id=? AND revoked_at IS NULL').bind(githubId,clientId,workspaceId).first();
+    if(!active)return new Response('Workspace not authorized',{status:403});
+    await env.DB.prepare('INSERT INTO mcp_active_workspaces(github_user_id,oauth_client_id,workspace_id,updated_at) VALUES(?,?,?,?) ON CONFLICT(github_user_id,oauth_client_id) DO UPDATE SET workspace_id=excluded.workspace_id,updated_at=excluded.updated_at').bind(githubId,clientId,workspaceId,Math.floor(Date.now()/1000)).run();
+    return reply({content:[{type:'text',text:JSON.stringify({selected:true,workspaceFingerprint:workspaceId.slice(0,12)})}]});
+   }
    if(msg.method==='tools/call' && msg.params?.name==='workspace_access_status'){
     const row=await env.DB.prepare('SELECT a.workspace_id FROM mcp_active_workspaces a JOIN mcp_workspace_grants g ON g.github_user_id=a.github_user_id AND g.oauth_client_id=a.oauth_client_id AND g.workspace_id=a.workspace_id WHERE a.github_user_id=? AND a.oauth_client_id=? AND g.revoked_at IS NULL').bind(String(ctx.props.githubUserId),clientId).first();
     return reply({content:[{type:'text',text:JSON.stringify({paired:!!row,workspaceFingerprint:row?.workspace_id?.slice(0,12)||null})}]});
@@ -141,7 +154,41 @@ const apiHandler={
    if(msg.method==='tools/list'){
     const response=await mcp(new Request(request,{body:raw,headers:new Headers([...request.headers].filter(([k])=>k.toLowerCase()!=='origin').concat([['Authorization','Bearer internal-oauth-bridge']]))}),{...env,MCP_ACCESS_TOKEN:'internal-oauth-bridge'},'0'.repeat(64));
     const data=await response.json();
-    if(data?.result?.tools)data.result.tools.push({name:'workspace_access_status',description:'Check whether this AI client has an active Easybook workspace grant',inputSchema:{type:'object',properties:{},additionalProperties:false}},{name:'revoke_workspace_access',description:'Revoke this AI client access to its active Easybook workspace',inputSchema:{type:'object',properties:{},additionalProperties:false}},{name:'begin_workspace_pairing',description:'Generate a one-time code to pair the current Easybook workspace using the Easybook app',inputSchema:{type:'object',properties:{},additionalProperties:false}});
+    if(data?.result?.tools)data.result.tools.push({name:'list_authorized_workspaces',description:'List workspaces explicitly granted to this OAuth client',inputSchema:{type:'object',properties:{},additionalProperties:false}},{name:'select_authorized_workspace',description:'Switch this OAuth client to a previously authorized workspace',inputSchema:{type:'object',properties:{workspaceId:{type:'string',pattern:'^[a-f0-9]{64},description:'Check whether this AI client has an active Easybook workspace grant',inputSchema:{type:'object',properties:{},additionalProperties:false}},{name:'revoke_workspace_access',description:'Revoke this AI client access to its active Easybook workspace',inputSchema:{type:'object',properties:{},additionalProperties:false}},{name:'begin_workspace_pairing',description:'Generate a one-time code to pair the current Easybook workspace using the Easybook app',inputSchema:{type:'object',properties:{},additionalProperties:false}});
+    return Response.json(data,{headers:{'Cache-Control':'no-store'}});
+   }
+   request=new Request(request,{body:raw});
+  }
+  // Grant-based mode is opt-in until the authenticated pairing flow is deployed.
+  // No workspace is ever selected from untrusted MCP request parameters.
+  let workspaceId=null;
+  if(env.MCP_GRANTS_ENABLED==='true'){
+   const githubUserId=String(ctx.props.githubUserId);
+   const clientId=ctx?.auth?.clientId;
+   if(typeof clientId!=='string'||!clientId)return new Response('Client identity unavailable',{status:403});
+   const grant=await env.DB.prepare(
+    'SELECT a.workspace_id FROM mcp_active_workspaces a JOIN mcp_workspace_grants g ON g.github_user_id=a.github_user_id AND g.oauth_client_id=a.oauth_client_id AND g.workspace_id=a.workspace_id WHERE a.github_user_id=? AND a.oauth_client_id=? AND g.revoked_at IS NULL AND g.scope=?'
+   ).bind(githubUserId,clientId,'mcp:read').first();
+   if(!grant)return new Response('Workspace not paired',{status:503});
+   workspaceId=grant.workspace_id;
+  }else{
+   if(!env.MCP_WORKSPACE_KEY || !/^[a-f0-9]{64}$/.test(env.MCP_WORKSPACE_KEY))return new Response('Workspace not paired',{status:503});
+  }
+  // Reuse the existing read-only MCP handler only after provider validation.
+  // Internal bearer is never sent to the client or persisted.
+  const headers=new Headers(request.headers);
+  headers.delete('Origin');headers.set('Authorization','Bearer internal-oauth-bridge');
+  const trusted=new Request(request,{headers});
+  return mcp(trusted,{...env,MCP_ACCESS_TOKEN:'internal-oauth-bridge'},workspaceId);
+ }
+};
+export default new OAuthProvider({
+ apiRoute:'/mcp',apiHandler,defaultHandler:oauthHandler,
+ resourceMetadata:{resource:'https://easybook-mcp-oauth.1902521952.workers.dev/mcp'},
+ authorizeEndpoint:'/authorize',tokenEndpoint:'/token',clientRegistrationEndpoint:'/register',
+ allowPlainPKCE:false,scopesSupported:['mcp:read'],requiredScopes:['mcp:read']
+});
+}},required:['workspaceId'],additionalProperties:false}},{name:'workspace_access_status',description:'Check whether this AI client has an active Easybook workspace grant',inputSchema:{type:'object',properties:{},additionalProperties:false}},{name:'revoke_workspace_access',description:'Revoke this AI client access to its active Easybook workspace',inputSchema:{type:'object',properties:{},additionalProperties:false}},{name:'begin_workspace_pairing',description:'Generate a one-time code to pair the current Easybook workspace using the Easybook app',inputSchema:{type:'object',properties:{},additionalProperties:false}});
     return Response.json(data,{headers:{'Cache-Control':'no-store'}});
    }
    request=new Request(request,{body:raw});
