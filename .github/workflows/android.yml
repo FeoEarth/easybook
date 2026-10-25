@@ -59,7 +59,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           TAG="v0.8.0-build${GITHUB_RUN_NUMBER}"
-          gh release create "$TAG" Easybook-0.8.0.apk SHA256SUMS.txt --target "$GITHUB_SHA" --title "Easybook 0.8.0 · build ${GITHUB_RUN_NUMBER}" --notes "底部搜索胶囊、新建文件夹及新建笔记圆形按钮分别复用QWEA0原生GPU玻璃，保留原布局和按钮事件。共享主WebView背景采样，边界跟随实际DOM；搜索输入时交还原WebView以保留IME、光标与文字选择，失焦恢复原生材质。Web/旧API为局部CSS降级。仅静态检查、Android编译打包签名和产物检查；未执行UI、模拟器或视觉验收，由用户安装体验。不部署Cloudflare。"
+          gh release create "$TAG" Easybook-0.8.0.apk SHA256SUMS.txt --target "$GITHUB_SHA" --title "Easybook 0.8.0 · build ${GITHUB_RUN_NUMBER}" --notes "修复底部搜索栏和悬浮按钮下移、底部裁切：Dock纵坐标换算补扣FrameLayout顶部安全区域，避免重复补偿。只修改几何坐标；保留现有QWEA0背景采样、Shader、折射、模糊条纹、颜色、透明度、阴影、圆角及动画。仅静态检查、Android编译打包签名和产物检查；未执行UI或模拟器测试，用户安装验收。不部署Cloudflare。"
       - name: Keep latest APK available through repository downloads
         env:
           GH_TOKEN: ${{ github.token }}
