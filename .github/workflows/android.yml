@@ -11,7 +11,7 @@ permissions:
   actions: read
 jobs:
   apk:
-    if: github.event_name != 'pull_request' || (github.head_ref == 'fix/android-sync-policy-save' || github.head_ref == 'fix/sync-policies-active-space')
+    if: github.event_name != 'pull_request' || (github.head_ref == 'fix/android-sync-policy-save' || github.head_ref == 'fix/sync-policies-active-space' || github.head_ref == 'fix/sync-policies-list-gestures')
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -62,7 +62,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           TAG="v0.8.0-build${GITHUB_RUN_NUMBER}"
-          gh release create "$TAG" Easybook-0.8.0.apk SHA256SUMS.txt --target "$GITHUB_SHA" --title "Easybook 0.8.0 · build ${GITHUB_RUN_NUMBER}" --notes "修复Android同步设置全部保存失败的实际原因：sync.activity未加载当前空间ID，错误地与空字符串比较并抛出SecurityException。补齐当前空间读取，恢复设置读写和历史管理。versionCode 48；保留现有UI、QWEA0 Liquid Glass、SQLite配置、笔记和密钥。仅构建和签名检查，未运行测试或模拟器。"
+          gh release create "$TAG" Easybook-0.8.0.apk SHA256SUMS.txt --target "$GITHUB_SHA" --title "Easybook 0.8.0 · build ${GITHUB_RUN_NUMBER}" --notes "列表手势专项修复：左右滑动操作互斥、隐藏操作层不绘制不拦截点击、长按收起滑动并锁住底层手势、预览和菜单先定宽再测高。画廊与QWEA0材质不变。versionCode 49；仅JavaScript静态语法检查、Android编译和签名校验，未运行模拟器或UI自动化；本次不部署Cloudflare。"
       - name: Keep latest APK available through repository downloads
         if: github.ref == 'refs/heads/main'
         env:
