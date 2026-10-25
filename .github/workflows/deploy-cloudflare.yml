@@ -29,6 +29,8 @@ jobs:
         run: npm ci --no-audit --no-fund
       - name: Prepare PDF assets
         run: node scripts/prepare-pdf.mjs
+      - name: Install current Wrangler
+        run: npm install --no-save --no-package-lock --no-audit --no-fund wrangler@4
       - name: Deploy production Worker
         uses: cloudflare/wrangler-action@v3
         with:
