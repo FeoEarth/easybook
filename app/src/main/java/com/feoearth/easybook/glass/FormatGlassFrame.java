@@ -19,8 +19,8 @@ final class FormatGlassFrame {
     private final GlassBackdrop backdrop;
     private final Runnable changed;
     private final BooleanSupplier valid;
-    private final boolean toolbar,move;
-    private String prefix(){return move?"Move":toolbar?"Toolbar":"Format";}
+    private final boolean toolbar,move,dock;private final String dockPrefix;
+    private String prefix(){return dock?dockPrefix:move?"Move":toolbar?"Toolbar":"Format";}
     private GlassSurface glass;
     private WebView controls;
     private FrameLayout moveShield;
@@ -35,7 +35,7 @@ final class FormatGlassFrame {
         this(activity,root,web,backdrop,changed,valid,toolbar?"toolbar":"format");
     }
     FormatGlassFrame(Activity activity,FrameLayout root,WebView web,GlassBackdrop backdrop,Runnable changed,BooleanSupplier valid,String kind){
-        this.activity=activity;this.root=root;this.web=web;this.backdrop=backdrop;this.changed=changed;this.valid=valid;this.toolbar="toolbar".equals(kind);this.move="move".equals(kind);
+        this.activity=activity;this.root=root;this.web=web;this.backdrop=backdrop;this.changed=changed;this.valid=valid;this.toolbar="toolbar".equals(kind);this.move="move".equals(kind);this.dock=kind.startsWith("Dock");this.dockPrefix=dock?kind:"";
     }
     GlassSurface surface(){return attached?glass:null;}
     void clear(){
@@ -59,13 +59,13 @@ final class FormatGlassFrame {
         if(content==null){fail();return;}
         if(glass==null){
             try{
-                glass=new GlassSurface(activity,backdrop,newDark,this::fail);if(move)glass.useMoveSurface();else if(toolbar)glass.useToolbarSurface();else glass.useFormatSurface();glass.setTag(move?"move-glass-surface":toolbar?"toolbar-glass-surface":"format-glass-surface");dark=newDark;
+                glass=new GlassSurface(activity,backdrop,newDark,this::fail);if(move)glass.useMoveSurface();else if(toolbar||dock)glass.useToolbarSurface();else glass.useFormatSurface();glass.setTag(move?"move-glass-surface":toolbar?"toolbar-glass-surface":"format-glass-surface");dark=newDark;
                 controls=new WebView(activity);controls.setBackgroundColor(Color.TRANSPARENT);controls.setFocusable(false);controls.setFocusableInTouchMode(false);controls.setOverScrollMode(View.OVER_SCROLL_NEVER);
                 controls.setImportantForAutofill(View.IMPORTANT_FOR_AUTOFILL_NO_EXCLUDE_DESCENDANTS);
                 WebSettings settings=controls.getSettings();settings.setJavaScriptEnabled(true);settings.setAllowFileAccess(false);settings.setAllowContentAccess(false);settings.setBlockNetworkLoads(true);settings.setBlockNetworkImage(true);settings.setSupportZoom(false);
                 androidx.webkit.WebViewCompat.addWebMessageListener(controls,"FormatActions",java.util.Collections.singleton("https://format.easybook.invalid"),(view,message,origin,isMainFrame,reply)->{
                     if(view!=controls||!isMainFrame||!"https".equals(origin.getScheme())||!"format.easybook.invalid".equals(origin.getHost())||message.getData()==null||message.getData().length()>128)return;
-                    try{JSONObject event=new JSONObject(message.getData());Actions actions=new Actions();if("ready".equals(event.optString("type")))actions.ready(event.getInt("revision"));else if("click".equals(event.optString("type")))actions.click(event.getString("token"));else if(toolbar&&"gesture".equals(event.optString("type")))actions.gesture(event.optBoolean("active"));else if(toolbar&&"scroll".equals(event.optString("type")))actions.scroll(event.getDouble("left"));else if(move&&"scroll".equals(event.optString("type")))actions.moveScroll(event.getDouble("top"));else if(move&&"drag".equals(event.optString("type")))actions.drag(event.getString("phase"),event.getDouble("y"),event.getInt("pointer"));}catch(Exception ignored){}
+                    try{JSONObject event=new JSONObject(message.getData());Actions actions=new Actions();if("ready".equals(event.optString("type")))actions.ready(event.getInt("revision"));else if("click".equals(event.optString("type")))actions.click(event.getString("token"));else if(toolbar&&"gesture".equals(event.optString("type")))actions.gesture(event.optBoolean("active"));else if(toolbar&&"scroll".equals(event.optString("type")))actions.scroll(event.getDouble("left"));else if(move&&"scroll".equals(event.optString("type")))actions.moveScroll(event.getDouble("top"));else if(dock&&"focus".equals(event.optString("type")))actions.focusSearch();else if(move&&"drag".equals(event.optString("type")))actions.drag(event.getString("phase"),event.getDouble("y"),event.getInt("pointer"));}catch(Exception ignored){}
                 });
                 controls.setWebViewClient(new WebViewClient(){
                     @Override public boolean shouldOverrideUrlLoading(WebView view,WebResourceRequest request){return true;}
@@ -74,7 +74,7 @@ final class FormatGlassFrame {
                     @Override public boolean onRenderProcessGone(WebView view,RenderProcessGoneDetail detail){fail();return true;}
                 });
                 glass.addView(controls,new FrameLayout.LayoutParams(1,1));
-                String html;try(InputStream in=activity.getAssets().open(move?"native-glass/move-content.html":toolbar?"native-glass/toolbar-content.html":"native-glass/format-content.html");ByteArrayOutputStream bytes=new ByteArrayOutputStream()){byte[] buffer=new byte[4096];int count;while((count=in.read(buffer))!=-1)bytes.write(buffer,0,count);html=bytes.toString(StandardCharsets.UTF_8.name());}
+                String html;try(InputStream in=activity.getAssets().open(dock?"native-glass/dock-content.html":move?"native-glass/move-content.html":toolbar?"native-glass/toolbar-content.html":"native-glass/format-content.html");ByteArrayOutputStream bytes=new ByteArrayOutputStream()){byte[] buffer=new byte[4096];int count;while((count=in.read(buffer))!=-1)bytes.write(buffer,0,count);html=bytes.toString(StandardCharsets.UTF_8.name());}
                 controls.loadDataWithBaseURL("https://format.easybook.invalid/",html,"text/html","UTF-8",null);
             }catch(Exception|LinkageError error){fail();return;}
         }
@@ -87,7 +87,7 @@ final class FormatGlassFrame {
         int left=Math.round((float)state.optDouble("left")*scale),top=Math.round((float)state.optDouble("top")*scale);
         int width=Math.max(1,Math.round((float)state.optDouble("width")*scale)),height=Math.max(1,Math.round((float)state.optDouble("height")*scale));
         web.getLocationInWindow(webAt);root.getLocationInWindow(rootAt);
-        FrameLayout.LayoutParams lp=new FrameLayout.LayoutParams(width,height);lp.leftMargin=left+webAt[0]-rootAt[0]-((toolbar||move)?root.getPaddingLeft():0);lp.topMargin=top+webAt[1]-rootAt[1]-((toolbar||move)?root.getPaddingTop():0);glass.setLayoutParams(lp);
+        FrameLayout.LayoutParams lp=new FrameLayout.LayoutParams(width,height);lp.leftMargin=left+webAt[0]-rootAt[0]-((toolbar||move||dock)?root.getPaddingLeft():0);lp.topMargin=top+webAt[1]-rootAt[1]-((toolbar||move)?root.getPaddingTop():0);glass.setLayoutParams(lp);
         if(move)glass.setMoveCorners((float)state.optDouble("corner")*scale,(float)state.optDouble("bottomCorner")*scale);else glass.setFormatCorner((float)state.optDouble("corner")*scale);glass.setAlpha((float)state.optDouble("opacity",1));
         // Full-size CSS viewport keeps original media queries/font metrics. The
         // panel is simply clipped out at its measured origin, never re-laid out.
@@ -102,6 +102,8 @@ final class FormatGlassFrame {
         }catch(Exception error){fail();}
     }
     private final class Actions {
+        public void focusSearch(){activity.runOnUiThread(()->{if(dock&&"DockSearch".equals(dockPrefix)&&attached&&valid.getAsBoolean()){web.requestFocus();web.evaluateJavascript("window.easybookDockSearchFocus&&window.easybookDockSearchFocus()",value->{if(valid.getAsBoolean())((android.view.inputmethod.InputMethodManager)activity.getSystemService(Activity.INPUT_METHOD_SERVICE)).showSoftInput(web,android.view.inputmethod.InputMethodManager.SHOW_IMPLICIT);});}});}
+
         public void moveScroll(double top){if(!Double.isFinite(top)||top<0||top>100000)return;activity.runOnUiThread(()->{if(move&&attached&&valid.getAsBoolean())web.evaluateJavascript("window.easybookMoveSurfaceScroll&&window.easybookMoveSurfaceScroll("+top+")",null);});}
         public void drag(String phase,double y,int pointer){if(!phase.matches("down|move|up|cancel")||!Double.isFinite(y)||Math.abs(y)>10000||pointer<0)return;activity.runOnUiThread(()->{if(move&&attached&&valid.getAsBoolean())web.evaluateJavascript("window.easybookMoveSurfaceDrag&&window.easybookMoveSurfaceDrag("+JSONObject.quote(phase)+","+y+","+pointer+")",null);});}
         public void gesture(boolean active){activity.runOnUiThread(()->{if(toolbar&&attached&&valid.getAsBoolean())web.evaluateJavascript("window.easybookToolbarSurfaceGesture&&window.easybookToolbarSurfaceGesture("+active+")",null);});}
@@ -111,7 +113,7 @@ final class FormatGlassFrame {
             if(attached&&state!=null&&valid.getAsBoolean()&&revision==state.optInt("revision"))web.evaluateJavascript("window.easybook"+prefix()+"SurfaceReady&&window.easybook"+prefix()+"SurfaceReady("+revision+")",null);
         });}
         public void click(String token){
-            if(token==null||!token.matches((move?"m":toolbar?"t":"f")+"-[0-9]{1,6}"))return;
+            if(token==null||!token.matches((dock?"d":move?"m":toolbar?"t":"f")+"-[0-9]{1,6}"))return;
             activity.runOnUiThread(()->{if(attached&&state!=null&&state.optBoolean("mounted")&&valid.getAsBoolean())web.evaluateJavascript("window.easybook"+prefix()+"SurfaceClick&&window.easybook"+prefix()+"SurfaceClick("+JSONObject.quote(token)+")",null);});
         }
     }

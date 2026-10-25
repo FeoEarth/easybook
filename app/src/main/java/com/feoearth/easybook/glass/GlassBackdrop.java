@@ -9,15 +9,16 @@ import android.widget.FrameLayout;
 public final class GlassBackdrop extends FrameLayout {
     private final RenderNode node=new RenderNode("EasybookWebViewBackdrop");
     private boolean capturing;
-    private android.view.View consumer,secondary;
+    private android.view.View[] consumers=new android.view.View[0];
     public long recordings, recordNanos;
     public GlassBackdrop(Context context){super(context);setClipChildren(false);}
     public RenderNode recording(){return node;}
     public void captureFor(android.view.View view){captureFor(view,null);}
-    public void captureFor(android.view.View view,android.view.View other){consumer=view;secondary=other;capturing=view!=null;if(!capturing)node.discardDisplayList();invalidate();}
+    public void captureFor(android.view.View view,android.view.View other){captureConsumers(view==null?new android.view.View[0]:other==null?new android.view.View[]{view}:new android.view.View[]{view,other});}
+    public void captureConsumers(android.view.View[] views){consumers=views;capturing=views.length>0;if(!capturing)node.discardDisplayList();invalidate();}
     @Override public void onDescendantInvalidated(android.view.View child,android.view.View target){
         super.onDescendantInvalidated(child,target);
-        if(capturing && consumer!=null){invalidate();consumer.postInvalidateOnAnimation();if(secondary!=null)secondary.postInvalidateOnAnimation();}
+        if(capturing){invalidate();for(android.view.View view:consumers)view.postInvalidateOnAnimation();}
     }
     @Override protected void dispatchDraw(Canvas canvas){
         if(!capturing||!canvas.isHardwareAccelerated()||getWidth()==0||getHeight()==0){super.dispatchDraw(canvas);return;}
@@ -26,7 +27,7 @@ public final class GlassBackdrop extends FrameLayout {
         Canvas target=node.beginRecording(getWidth(),getHeight());
         try{super.dispatchDraw(target);}finally{node.endRecording();}
         canvas.drawRenderNode(node);recordings++;recordNanos+=System.nanoTime()-started;
-        if(consumer!=null)consumer.postInvalidateOnAnimation();if(secondary!=null)secondary.postInvalidateOnAnimation();
+        for(android.view.View view:consumers)view.postInvalidateOnAnimation();
     }
-    @Override protected void onDetachedFromWindow(){node.discardDisplayList();consumer=null;secondary=null;super.onDetachedFromWindow();}
+    @Override protected void onDetachedFromWindow(){node.discardDisplayList();consumers=new android.view.View[0];super.onDetachedFromWindow();}
 }
