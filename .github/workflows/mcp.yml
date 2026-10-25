@@ -27,4 +27,11 @@ jobs:
           node-version: '22'
       - run: node --check worker/mcp.mjs && node --check worker/index.mjs && node scripts/mcp-test.mjs && node scripts/mcp-github-identity-test.mjs
       - name: Bundle OAuth Worker (no deploy)
-        run: cd mcp-oauth && npm install --no-audit --no-fund && npx wrangler deploy --dry-run --outdir /tmp/easybook-mcp-bundle
+        run: cd mcp-oauth && npm install --no-audit --no-fund && npx wrangler deploy --dry-run --outdir ../mcp-oauth-bundle
+      - name: Save OAuth Worker deployment bundle
+        uses: actions/upload-artifact@v4
+        with:
+          name: easybook-mcp-oauth-bundle
+          path: mcp-oauth-bundle/
+          if-no-files-found: error
+          retention-days: 7
