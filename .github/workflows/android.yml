@@ -11,7 +11,7 @@ permissions:
   actions: read
 jobs:
   apk:
-    if: github.event_name != 'pull_request' || (github.head_ref == 'fix/android-sync-policy-save' || github.head_ref == 'fix/sync-policies-active-space' || github.head_ref == 'fix/sync-policies-list-gestures' || github.head_ref == 'fix/sync-policies-list-hit-area' || github.head_ref == 'fix/sync-policies-large-attachments' || github.head_ref == 'fix/sync-policies-pdf-reader' || github.head_ref == 'fix/sync-policies-pdf-loading')
+    if: github.event_name != 'pull_request' || (github.head_ref == 'fix/android-sync-policy-save' || github.head_ref == 'fix/sync-policies-active-space' || github.head_ref == 'fix/sync-policies-list-gestures' || github.head_ref == 'fix/sync-policies-list-hit-area' || github.head_ref == 'fix/sync-policies-large-attachments' || github.head_ref == 'fix/sync-policies-pdf-reader' || github.head_ref == 'fix/sync-policies-pdf-loading' || github.head_ref == 'fix/sync-policies-pdf-interaction')
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -75,4 +75,4 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           TAG="v0.8.0-build${GITHUB_RUN_NUMBER}"
-          gh release create "$TAG" Easybook-0.8.0.apk SHA256SUMS.txt --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" --title "Easybook 0.8.0 · build ${GITHUB_RUN_NUMBER}" --notes "修复Android PDF初始化作用域错误导致加载卡住及标题缺失。统一异步文件读取、PDF.js加载与错误反馈，支持重试和返回，保留新版悬浮阅读界面与QWEA0玻璃。versionCode 53。PDF.js真实首页栅格、文件名、关闭重开完整性检查和Android编译签名检查；未运行模拟器、UI自动化或Android真机验证。本次不部署Cloudflare。"
+          gh release create "$TAG" Easybook-0.8.0.apk SHA256SUMS.txt --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" --title "Easybook 0.8.0 · build ${GITHUB_RUN_NUMBER}" --notes "PDF紧凑交互优化：单行页码导航与校验、玻璃搜索框和匹配导航、浮层互斥及返回/外部关闭、键盘可视区域适配。Android页码与搜索输入复用现有QWEA0玻璃，并保留真实输入、组合输入及焦点。versionCode 54。核心交互逻辑、PDF.js首页栅格保护检查及Android编译签名检查；未运行模拟器、UI自动化或真机验证。不部署Cloudflare。"

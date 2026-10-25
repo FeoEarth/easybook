@@ -22,8 +22,27 @@ for(const native of [false,true]){
   const deadline=Date.now()+10000;while(Date.now()<deadline&&!root.querySelector('[data-pdf="status"]').hidden)await new Promise(r=>setTimeout(r,20));
   assert.equal(root.querySelector('[data-pdf="status"]').hidden,true,root.querySelector('[data-pdf="status"]').textContent);
   const c=root.querySelector('.page canvas');assert.ok(c);assert.ok(canvas(c).getContext('2d').getImageData(0,0,c.width,c.height).data.some((v,i,a)=>i%4===0&&v>200&&a[i+1]<30&&a[i+2]<30),'actual red page content must be rasterized');assert.equal(root.querySelector('[data-pdf="total"]').textContent,'1');
+  if(!native&&i===0){
+   const get=name=>root.querySelector('[data-pdf="'+name+'"]');
+   get('pagepill').click();assert.equal(root.dataset.panel,'jump');assert.equal(get('findbar').hidden,true);
+   get('page').value='0';get('jump').requestSubmit();assert.equal(root.dataset.panel,'jump');assert.equal(get('pageerror').hidden,false);
+   get('page').value='1';get('jump').requestSubmit();assert.equal(root.dataset.panel,'');
+   get('search').click();assert.equal(root.dataset.panel,'search');assert.equal(get('jump').hidden,true);get('query').value='needle';get('query').dispatchEvent(new window.Event('input',{bubbles:true}));
+   get('clearquery').click();assert.equal(get('query').value,'');assert.equal(get('matches').textContent,'0 / 0');
+   get('more').click();assert.equal(root.dataset.panel,'menu');assert.equal(get('findbar').hidden,true);assert.equal(window.EasybookPDF.back(),true);assert.equal(root.dataset.panel,'');
+   get('search').click();get('shield').dispatchEvent(new window.Event('pointerdown',{bubbles:true,cancelable:true}));assert.equal(root.dataset.panel,'');
+   console.log('Compact navigation validation/commit, exclusive search/menu, clear, back and outside dismiss passed');
+  }
   await close();assert.equal(document.querySelector('.pdf-reader'),null);
  }
  console.log((native?'Android adapter bridge stub':'Web')+': actual PDF.js page raster, filename, close and reopen passed');
 }
 await open({bytes:new Uint8Array([1,2]),id:'bad',stage:document.getElementById('stage'),dialog:document.getElementById('dialog'),file:{name:'null'}});assert.equal(document.querySelector('[data-pdf="filename"]').textContent,'PDF 文档');assert.equal(document.querySelector('[data-pdf="erroractions"]').hidden,false);await close();dom.window.close();console.log('Invalid PDF: visible failure + retry/back, fallback filename passed');
+
+// Isolated native projection input protocol: no Android/browser/UI automation.
+const events=[];const hostHTML=await readFile(new URL('../app/src/main/assets/native-glass/pdf-content.html',import.meta.url),'utf8');
+const projection=new JSDOM(hostHTML,{runScripts:'dangerously',pretendToBeVisual:true,beforeParse(w){w.FormatActions={postMessage:text=>events.push(JSON.parse(text))}}});
+const pw=projection.window,geometry={left:12,top:70,width:300,height:90,revision:1},content={css:'',rootStyle:'',theme:'light',html:'<div data-pdf-glass="7"><input type="search" data-format-token="p-0" data-pdf-focus="true" value="a"></div>'};
+pw.renderFormat(content,geometry);let field=pw.document.querySelector('input');field.value='query';field.dispatchEvent(new pw.Event('input',{bubbles:true}));assert.ok(events.some(e=>e.type==='edit'&&e.value==='query'));
+pw.renderFormat({...content,html:content.html.replace('value="a"','value="stale"')},{...geometry,revision:2});field=pw.document.querySelector('input');assert.equal(field.value,'query');assert.equal(pw.document.activeElement,field);
+field.dispatchEvent(new pw.KeyboardEvent('keydown',{key:'Enter',bubbles:true}));assert.ok(events.some(e=>e.type==='edit'&&e.submit===true));projection.window.close();console.log('Native input protocol: editable query, stale-render protection, focus preservation and submit passed');
