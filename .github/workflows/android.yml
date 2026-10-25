@@ -59,7 +59,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           TAG="v0.8.0-build${GITHUB_RUN_NUMBER}"
-          gh release create "$TAG" Easybook-0.8.0.apk SHA256SUMS.txt --target "$GITHUB_SHA" --title "Easybook 0.8.0 · build ${GITHUB_RUN_NUMBER}" --notes "恢复原有移动备忘录底部Sheet：保留拖动条、取消/标题、数量、当前路径、文件夹行和层级导航，继续调用原移动与保存逻辑。Sheet外壳复用QWEA0原生GPU背景采样、模糊折射和高光，边界跟随原展开/拖动/关闭动画。旧API或GPU不可用保留Web降级。仅静态检查、Android编译打包签名与产物检查；未执行UI/模拟器/视觉验收，由用户安装体验。不部署Cloudflare。"
+          gh release create "$TAG" Easybook-0.8.0.apk SHA256SUMS.txt --target "$GITHUB_SHA" --title "Easybook 0.8.0 · build ${GITHUB_RUN_NUMBER}" --notes "修复长按笔记时原生文字选择冲突：仅在浏览卡片和只读预览中禁止选择、图片拖拽及原生上下文菜单，清理该区域残留选区；保留编辑器正常选字复制粘贴及现有长按预览、Liquid Glass菜单和其他手势。仅静态检查、Android编译打包签名与产物检查；未执行UI、模拟器或视觉验收，由用户安装体验。不部署Cloudflare。"
       - name: Keep latest APK available through repository downloads
         env:
           GH_TOKEN: ${{ github.token }}
