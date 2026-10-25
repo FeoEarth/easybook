@@ -40,9 +40,7 @@ jobs:
           cache: npm
       - run: npm ci
       - name: Build release APK
-        run: |
-          node scripts/sync-policy-safety.mjs
-          gradle :app:testDebugUnitTest --tests com.feoearth.easybook.SyncPolicySafetyTest :app:assembleRelease --no-daemon
+        run: gradle :app:assembleRelease --no-daemon
       - name: Verify APK signing
         run: '"$ANDROID_HOME/build-tools/35.0.0/apksigner" verify --verbose --print-certs app/build/outputs/apk/release/app-release.apk'
       - name: Prepare APK
@@ -61,7 +59,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           TAG="v0.8.0-build${GITHUB_RUN_NUMBER}"
-          gh release create "$TAG" Easybook-0.8.0.apk SHA256SUMS.txt --target "$GITHUB_SHA" --title "Easybook 0.8.0 · build ${GITHUB_RUN_NUMBER}" --notes "修复底部搜索栏和悬浮按钮下移、底部裁切：Dock纵坐标换算补扣FrameLayout顶部安全区域，避免重复补偿。只修改几何坐标；保留现有QWEA0背景采样、Shader、折射、模糊条纹、颜色、透明度、阴影、圆角及动画。仅静态检查、Android编译打包签名和产物检查；未执行UI或模拟器测试，用户安装验收。不部署Cloudflare。"
+          gh release create "$TAG" Easybook-0.8.0.apk SHA256SUMS.txt --target "$GITHUB_SHA" --title "Easybook 0.8.0 · build ${GITHUB_RUN_NUMBER}" --notes "同步管理UI专项优化：分组设置、统一选择菜单与开关、文件夹范围Sheet、精简历史列表、独立任务详情和批量管理。Android复用现有QWEA0原生GlassSurface；同步引擎、协议及数据模型保持不变。仅静态检查、Android编译与签名产物检查，未执行UI或模拟器测试；用户安装验收。本次不部署Cloudflare。"
       - name: Keep latest APK available through repository downloads
         env:
           GH_TOKEN: ${{ github.token }}

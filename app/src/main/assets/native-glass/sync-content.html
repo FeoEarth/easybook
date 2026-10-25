@@ -1,0 +1,43 @@
+<!doctype html><html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src data:; base-uri 'none'; form-action 'none'"><style id="originalStyles"></style><style>
+html:root,body{background:transparent!important;min-height:0!important;overflow:hidden!important;margin:0!important}
+#syncSurfaceDialog{position:fixed!important;right:auto!important;bottom:auto!important;margin:0!important;opacity:1!important;transform:none!important;transition:none!important;animation:none!important;background:transparent!important;backdrop-filter:none!important;-webkit-backdrop-filter:none!important;box-shadow:none!important;border-color:transparent!important;visibility:visible!important}
+</style></head><body><svg aria-hidden="true" style="position:absolute;width:0;height:0;overflow:hidden" id="symbols"></svg><dialog id="syncSurfaceDialog" class="ui-material" open></dialog><script>
+(()=>{
+ const panel=document.getElementById('syncSurfaceDialog');let signature='',gesture=null;
+ window.renderFormat=(content,geometry)=>{
+  if(content){
+   const next=JSON.stringify(content);
+   if(next!==signature){
+    const scroll=panel.scrollTop,strip=panel.querySelector('.paragraph-strip')?.scrollLeft||0;
+    document.getElementById('originalStyles').textContent=content.css;
+    document.documentElement.dataset.theme=content.theme;
+    document.documentElement.style.cssText=content.rootStyle;
+    document.body.className=content.bodyClass;
+    document.getElementById('symbols').innerHTML=content.symbols;
+    panel.dataset.panel=content.panel;
+    panel.innerHTML=content.html;
+    // Only the trusted source panel's inert markup is projected. No active
+    // content, event attributes, external hrefs or second command implementation.
+    for(const element of panel.querySelectorAll('*')){
+     if(['SCRIPT','IFRAME','OBJECT','EMBED','LINK','META','FORM','INPUT','TEXTAREA'].includes(element.tagName.toUpperCase())){element.remove();continue}
+     for(const attr of [...element.attributes])if(/^on/i.test(attr.name)||/^(src|href|xlink:href)$/i.test(attr.name)&&!attr.value.startsWith('#'))element.removeAttribute(attr.name);
+    }
+    panel.scrollTop=scroll;const track=panel.querySelector('.paragraph-strip');if(track)track.scrollLeft=strip;
+    signature=next;
+   }
+  }
+  panel.style.left=geometry.left+'px';panel.style.top=geometry.top+'px';panel.style.width=geometry.width+'px';panel.style.height=geometry.height+'px';panel.style.maxHeight=geometry.height+'px';if(Math.abs(panel.scrollTop-(geometry.scrollTop||0))>1)panel.scrollTop=geometry.scrollTop||0;
+  // Startup acknowledgement is not gated on rAF of an initially invisible View.
+  if(content)FormatActions.postMessage(JSON.stringify({type:"ready",revision:geometry.revision}));
+ };
+ let scrollQueued=false;panel.addEventListener('scroll',()=>{if(scrollQueued)return;scrollQueued=true;requestAnimationFrame(()=>{scrollQueued=false;FormatActions.postMessage(JSON.stringify({type:'scroll',top:panel.scrollTop}))})},{passive:true});
+ panel.addEventListener('mousedown',event=>event.preventDefault());
+ panel.addEventListener('pointerdown',event=>{const strip=event.target.closest('.paragraph-strip');gesture={x:event.clientX,y:event.clientY,strip,left:strip?.scrollLeft||0}},{passive:true});
+ panel.addEventListener('click',event=>{
+  const target=event.target.closest('[data-format-token]');if(!target)return;
+  event.preventDefault();event.stopImmediatePropagation();
+  const moved=gesture&&(Math.abs(event.clientX-gesture.x)>8||Math.abs(event.clientY-gesture.y)>8||gesture.strip&&Math.abs(gesture.strip.scrollLeft-gesture.left)>8);gesture=null;
+  if(!moved&&!target.disabled)FormatActions.postMessage(JSON.stringify({type:"click",token:target.dataset.formatToken}));
+ },true);
+})();
+</script></body></html>
