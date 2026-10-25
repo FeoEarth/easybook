@@ -2,6 +2,13 @@ name: Deploy Cloudflare Worker
 
 on:
   workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - 'worker/**'
+      - 'app/src/main/assets/pdf/**'
+      - 'scripts/prepare-pdf.mjs'
+      - '.github/workflows/deploy-cloudflare.yml'
 
 concurrency:
   group: easybook-production-worker
