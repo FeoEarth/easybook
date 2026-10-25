@@ -39,8 +39,12 @@ const oauthHandler = {
    gh.searchParams.set('redirect_uri',new URL('/callback',request.url).href);
    gh.searchParams.set('state',upstream.state);
    // No GitHub scopes: only /user identity is needed; never request repo access.
-   upstream.headers.set('Location',gh.href);
-   return new Response(null,{status:302,headers:upstream.headers});
+   const redirectHeaders = new Headers(upstream.headers);
+   redirectHeaders.set('Location',gh.href);
+   redirectHeaders.set('Cache-Control','no-store');
+   console.info('MCP consent redirect', {stage:'github-upstream',destinationHost:gh.hostname,method:'GET',status:303});
+   // 303 explicitly converts the form POST into a GET on GitHub.
+   return new Response(null,{status:303,headers:redirectHeaders});
   }
   if(url.pathname==='/callback' && request.method==='GET'){
    const upstream=await oauth.finishUpstream(request);
