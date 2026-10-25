@@ -11,7 +11,7 @@ permissions:
   actions: read
 jobs:
   apk:
-    if: github.event_name != 'pull_request' || (github.head_ref == 'fix/android-sync-policy-save' || github.head_ref == 'fix/sync-policies-active-space' || github.head_ref == 'fix/sync-policies-list-gestures' || github.head_ref == 'fix/sync-policies-list-hit-area' || github.head_ref == 'fix/sync-policies-large-attachments' || github.head_ref == 'fix/sync-policies-pdf-reader')
+    if: github.event_name != 'pull_request' || (github.head_ref == 'fix/android-sync-policy-save' || github.head_ref == 'fix/sync-policies-active-space' || github.head_ref == 'fix/sync-policies-list-gestures' || github.head_ref == 'fix/sync-policies-list-hit-area' || github.head_ref == 'fix/sync-policies-large-attachments' || github.head_ref == 'fix/sync-policies-pdf-reader' || github.head_ref == 'fix/sync-policies-pdf-loading')
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -44,6 +44,8 @@ jobs:
       - run: npm ci
       - name: Attachment protocol static checks
         run: node --check shared/attachments.mjs && node --check worker/attachments.mjs && node --check app/src/main/assets/pdf/reader.mjs && node --check app/src/main/assets/pdf/glass.mjs
+      - name: PDF first-page integrity (no browser or UI automation)
+        run: npm run build:pdf && node scripts/pdf-reader-integrity.mjs
       - name: Build release APK
         run: gradle :app:assembleRelease --no-daemon
       - name: Verify APK signing
@@ -73,4 +75,4 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           TAG="v0.8.0-build${GITHUB_RUN_NUMBER}"
-          gh release create "$TAG" Easybook-0.8.0.apk SHA256SUMS.txt --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" --title "Easybook 0.8.0 · build ${GITHUB_RUN_NUMBER}" --notes "PDF阅读器专项重构：参考iOS 26 Files，独立圆形导航、单行标题、自动隐藏页码胶囊、单行悬浮底栏、带首页缩略图的锚定文件菜单、沉浸阅读与搜索/缩放/跳页。Android复用现有QWEA0 GlassSurface投影PDF控件，不修改Shader或采样参数；PDF打开时隐藏编辑工具栏。versionCode 52。必要静态检查、Android编译及签名检查；未运行模拟器或UI自动化，真机视觉与手势待验收。本次不部署Cloudflare。"
+          gh release create "$TAG" Easybook-0.8.0.apk SHA256SUMS.txt --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" --title "Easybook 0.8.0 · build ${GITHUB_RUN_NUMBER}" --notes "修复Android PDF初始化作用域错误导致加载卡住及标题缺失。统一异步文件读取、PDF.js加载与错误反馈，支持重试和返回，保留新版悬浮阅读界面与QWEA0玻璃。versionCode 53。PDF.js真实首页栅格、文件名、关闭重开完整性检查和Android编译签名检查；未运行模拟器、UI自动化或Android真机验证。本次不部署Cloudflare。"

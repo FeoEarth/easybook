@@ -20,3 +20,5 @@
 .pdf-reader[data-panel=menu] .pdf-top,.pdf-reader[data-panel=menu] .pdf-bottom,.pdf-reader[data-panel=menu] .pdf-page-pill,.pdf-reader[data-panel=info] .pdf-top,.pdf-reader[data-panel=info] .pdf-bottom,.pdf-reader[data-panel=info] .pdf-page-pill{visibility:hidden;pointer-events:none}
 
 .pdf-reader[data-search=true] .pdf-page-pill{display:none}
+
+.pdf-error-actions{position:absolute;z-index:7;top:calc(var(--pdf-top) + 214px);left:20px;right:20px;display:flex;justify-content:center;gap:20px}.pdf-error-actions button{padding:0 18px;background:var(--paper);border-radius:22px}
