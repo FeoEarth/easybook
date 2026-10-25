@@ -1,3 +1,4 @@
+import {mcp} from './mcp.mjs';
 import {management} from './management.mjs';
 import {notes} from './notes.mjs';
 import html from './ui.mjs';
@@ -9,6 +10,7 @@ const json = (data, status=200) => Response.json(data, {status, headers});
 export default {
  async fetch(request, env) {
   const url = new URL(request.url);
+  if(url.pathname === '/mcp') return mcp(request,env);
   if(request.method === 'OPTIONS') return new Response(null,{status:204,headers});
   // Keep published UI modules aligned with the HTML; vendor data remains in existing assets.
   if(request.method==='GET'&&Object.hasOwn(pdfStatic,url.pathname))return new Response(pdfStatic[url.pathname],{headers:{'Content-Type':url.pathname.endsWith('.css')?'text/css; charset=utf-8':'text/javascript; charset=utf-8','Cache-Control':'no-cache','X-Content-Type-Options':'nosniff'}});
