@@ -12,7 +12,7 @@ final class SyncPolicy {
  static String name(String key){return "sync-policy:"+NoteRepository.spaceId(key);}
  static JSONObject read(NoteRepository db,String key)throws Exception{return clean(new JSONObject(db.setting(name(key),"{}")));}
  static JSONObject clean(JSONObject raw)throws Exception{
-  JSONObject p=new JSONObject().put("autoChange",raw.optBoolean("autoChange",true)).put("paused",raw.optBoolean("paused",false)).put("all",raw.optBoolean("all",true));
+  JSONObject p=new JSONObject().put("compression",raw.optBoolean("compression",true)).put("autoChange",raw.optBoolean("autoChange",true)).put("paused",raw.optBoolean("paused",false)).put("all",raw.optBoolean("all",true));
   long interval=raw.optLong("interval",900000);boolean found=false;for(long value:new long[]{0,300000,900000,1800000,3600000,21600000,43200000,86400000})found|=value==interval;if(!found)throw new IllegalArgumentException("Invalid interval");p.put("interval",interval);
   String network=raw.optString("network","any");if(!network.matches("any|wifi|unmetered"))throw new IllegalArgumentException();p.put("network",network);
   int retention=raw.optInt("retention",30);if(retention!=0&&retention!=7&&retention!=30&&retention!=90)throw new IllegalArgumentException();p.put("retention",retention);
@@ -45,3 +45,4 @@ final class SyncPolicy {
  }
  static void schedule(JSONObject p){if(context==null)return;JobScheduler jobs=(JobScheduler)context.getSystemService(Context.JOB_SCHEDULER_SERVICE);long interval=p.optLong("interval");if(p.optBoolean("paused")||interval==0){jobs.cancel(8030);return;}JobInfo.Builder b=new JobInfo.Builder(8030,new ComponentName(context,SyncJobService.class)).setPeriodic(Math.max(900000,interval)).setRequiredNetworkType(p.optString("network").equals("unmetered")?JobInfo.NETWORK_TYPE_UNMETERED:JobInfo.NETWORK_TYPE_ANY).setBackoffCriteria(30000,JobInfo.BACKOFF_POLICY_EXPONENTIAL);if(jobs.schedule(b.build())!=JobScheduler.RESULT_SUCCESS)throw new IllegalStateException("Background schedule rejected");}
 }
+

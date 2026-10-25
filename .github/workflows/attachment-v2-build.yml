@@ -1,0 +1,48 @@
+name: Attachment v2 unsigned build
+on:
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  compile:
+    if: github.event_name == 'workflow_dispatch' || github.head_ref == 'fix/sync-policies-large-attachments'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+      - run: npm ci
+      - run: node --check shared/attachments.mjs && node --check worker/attachments.mjs && node --check app/src/main/assets/native-api.js
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: android-actions/setup-android@v3
+        with:
+          packages: platform-tools platforms;android-35 build-tools;35.0.0
+          log-accepted-android-sdk-licenses: false
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.9'
+      - name: Build unsigned review artifact without release credentials
+        run: |
+          cat > /tmp/unsigned-review.gradle <<'GRADLE'
+          allprojects {
+            plugins.withId('com.android.application') {
+              androidComponents.finalizeDsl { dsl ->
+                dsl.defaultConfig.versionCode = 51
+                dsl.buildTypes.getByName('release').signingConfig = null
+              }
+            }
+          }
+          GRADLE
+          gradle -I /tmp/unsigned-review.gradle :app:assembleRelease --no-daemon
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Easybook-attachment-v2-UNSIGNED-review
+          path: app/build/outputs/apk/release/*unsigned.apk
+          if-no-files-found: error
