@@ -14,7 +14,7 @@ export async function verifyGithubIdentity(accessToken, fetchImpl = fetch) {
       'X-GitHub-Api-Version': '2022-11-28',
       'User-Agent': 'Easybook-MCP-OAuth'
     },
-    redirect: 'error'
+    redirect: 'follow'
     });
   } catch (error) {
     console.error('GitHub identity transport error', {errorName: String(error?.name || 'Error').slice(0,80)});
