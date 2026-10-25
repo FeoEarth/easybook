@@ -23,7 +23,7 @@ public final class SecurityManager {
             case "bootstrap":if(initialized==generation)throw new SecurityException("Already initialized");fields=fields("legacy");break;
             case "commit":fields=fields("key","changes");break;
             case "search":fields=fields("key","query","category","everywhere");break;
-            case "sync.activity":fields=fields("key");break;
+            case "sync.activity":fields=fields("key","action","policy","ids");break;
             case "sync":fields=fields("key","manual");break;
             case "attachment.restore":fields=fields("key","files");break;
             case "attachment.pick":fields=fields("key","noteId");break;

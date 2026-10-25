@@ -21,6 +21,9 @@ public class MainActivity extends Activity {
     public com.feoearth.easybook.glass.NativeGlassMenu nativeGlass;
     private long glassGeneration=-1;
     private android.widget.FrameLayout safeArea;
+    private android.net.ConnectivityManager connectivity;
+    private android.net.ConnectivityManager.NetworkCallback networkCallback;
+    private String networkSignature="";
     private boolean ready;
     private volatile boolean destroyed;
     private volatile long documentGeneration;
@@ -48,8 +51,14 @@ public class MainActivity extends Activity {
     private static final String LOCAL = "https://appassets.androidplatform.net/index.html";
     @Override public void onCreate(Bundle state) {
         super.onCreate(state);
-        repository=NoteRepository.get(this);
+        repository=NoteRepository.get(this);SyncPolicy.initialize(this);
         security=new SecurityManager(this,repository,io);
+        connectivity=(android.net.ConnectivityManager)getSystemService(CONNECTIVITY_SERVICE);
+        networkCallback=new android.net.ConnectivityManager.NetworkCallback(){
+            private void changed(android.net.NetworkCapabilities c){String signature=c==null?"offline":c.hasCapability(android.net.NetworkCapabilities.NET_CAPABILITY_INTERNET)+":"+c.hasTransport(android.net.NetworkCapabilities.TRANSPORT_WIFI)+":"+c.hasCapability(android.net.NetworkCapabilities.NET_CAPABILITY_NOT_METERED);runOnUiThread(()->{if(signature.equals(networkSignature))return;networkSignature=signature;if(ready&&!destroyed&&web!=null&&LOCAL.equals(web.getUrl()))web.evaluateJavascript("window.easybookNetworkChanged&&window.easybookNetworkChanged()",null);});}
+            @Override public void onCapabilitiesChanged(android.net.Network n,android.net.NetworkCapabilities c){changed(c);}
+            @Override public void onLost(android.net.Network n){changed(null);}
+        };connectivity.registerDefaultNetworkCallback(networkCallback);
         boolean dark = (getResources().getConfiguration().uiMode & Configuration.UI_MODE_NIGHT_MASK) == Configuration.UI_MODE_NIGHT_YES;
         int color = dark ? 0xff000000 : 0xfff2f2f7;
         getWindow().setStatusBarColor(color);
@@ -145,12 +154,18 @@ public class MainActivity extends Activity {
         String active=(method.equals("commit")||method.equals("search")||method.equals("snapshot")||method.equals("sync")||method.equals("device.exportNotes"))?repository.activeSpace():"";
         switch(method){
             case "bootstrap":{
-                repository.secureCredentials();JSONObject report=new JSONObject().put("state","not-needed");repository.secureCredentials();security.initialized(generation);new SyncJournal(repository,repository.activeSpace()).recover();return repository.snapshot(repository.activeSpace()).put("migration",report).put("security",repository.securityStatus());
+                repository.secureCredentials();JSONObject report=new JSONObject().put("state","not-needed");repository.secureCredentials();security.initialized(generation);new SyncJournal(repository,repository.activeSpace()).recover();SyncPolicy.schedule(SyncPolicy.read(repository,repository.activeSpace()));return repository.snapshot(repository.activeSpace()).put("syncPolicy",SyncPolicy.read(repository,repository.activeSpace())).put("migration",report).put("security",repository.securityStatus());
             }
             case "commit":{String k=args.getString("key");if(!k.equals(active))throw new IllegalStateException("Workspace changed");return repository.commit(k,args.getJSONObject("changes"));}
             case "search":{if(!args.getString("key").equals(active))throw new IllegalStateException("Workspace changed");return new JSONObject().put("notes",repository.search(active,bounded(args,"query",2000),bounded(args,"category",80),args.optBoolean("everywhere")));}
             case "snapshot":return repository.snapshot(active);
-            case "sync.activity":return new JSONObject().put("tasks",new SyncJournal(repository,repository.activeSpace()).tasks());
+            case "sync.activity":{
+                if(!args.getString("key").equals(active))throw new SecurityException();SyncJournal journal=new SyncJournal(repository,active);String action=args.optString("action", "read");
+                if(action.equals("configure")){NativeSync.configure(repository,active,args.getJSONObject("policy"));}
+                else if(action.equals("delete")||action.equals("clear")){JSONArray ids=args.optJSONArray("ids");if(ids!=null){if(ids.length()>500)throw new IllegalArgumentException();for(int i=0;i<ids.length();i++)if(ids.getString(i).length()>512)throw new IllegalArgumentException();}journal.delete(ids,action.equals("clear"));}
+                else if(!action.equals("read"))throw new IllegalArgumentException();
+                return new JSONObject().put("tasks",journal.tasks()).put("policy",SyncPolicy.read(repository,active)).put("running",NativeSync.isRunning(active)).put("runtime",new JSONObject(repository.setting("sync-runtime:"+NoteRepository.spaceId(active),"{}")));
+            }
             case "sync":{if(!repository.securityStatus().getBoolean("paired"))throw new CredentialVault.KeyUnavailable();String k=args.getString("key");if(!k.equals(active))throw new IllegalStateException("Workspace changed");return new NativeSync(repository,new NativeSync.HttpsTransport(new DataProtection.Plaintext())).run(k,args.optBoolean("manual"));}
             case "attachment.pick":{String space=repository.activeSpace(),noteId=bounded(args,"noteId",36);if(repository.row(space,"note",noteId)==null)throw new SecurityException();runOnUiThread(()->{if(destroyed||generation!=documentGeneration)return;attachmentSpace=space;attachmentNote=noteId;attachmentGeneration=generation;Intent i=new Intent(Intent.ACTION_OPEN_DOCUMENT);i.addCategory(Intent.CATEGORY_OPENABLE);i.setType("*/*");startActivityForResult(i,83);});return new JSONObject().put("picker",true);}
             case "attachment.get":{String space=repository.activeSpace(),id=bounded(args,"id",64);requireAttachmentReference(space,id);return repository.attachments.get(space,id);}
@@ -319,7 +334,7 @@ public class MainActivity extends Activity {
         web.evaluateJavascript("window.handleBack()", handled -> {if (!"true".equals(handled)) MainActivity.super.onBackPressed();});
     }
     @Override protected void onPause() { if(nativeGlass!=null)nativeGlass.dismiss(true);web.evaluateJavascript("window.persistNow && window.persistNow()", null); super.onPause(); }
-    @Override protected void onDestroy() { if(nativeGlass!=null){nativeGlass.clearFormatFrame();nativeGlass.dismiss(true);}ready=false; destroyed=true;if(WebViewFeature.isFeatureSupported(WebViewFeature.WEB_MESSAGE_LISTENER))WebViewCompat.removeWebMessageListener(web,"EasybookNative");web.destroy();io.shutdown();super.onDestroy(); }
+    @Override protected void onDestroy() { if(connectivity!=null&&networkCallback!=null)connectivity.unregisterNetworkCallback(networkCallback); if(nativeGlass!=null){nativeGlass.clearFormatFrame();nativeGlass.dismiss(true);}ready=false; destroyed=true;if(WebViewFeature.isFeatureSupported(WebViewFeature.WEB_MESSAGE_LISTENER))WebViewCompat.removeWebMessageListener(web,"EasybookNative");web.destroy();io.shutdown();super.onDestroy(); }
 }
 
 

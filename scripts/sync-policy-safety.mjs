@@ -1,0 +1,23 @@
+import assert from 'node:assert/strict';
+import {normalize,includesFolder,includesNote,cleanHistory,scopeQuery} from '../shared/sync-policy.mjs';
+import {SyncActivity} from '../shared/sync-activity.mjs';
+import {notes as endpoint} from '../worker/notes.mjs';
+const a='11111111-1111-4111-8111-111111111111',b='22222222-2222-4222-8222-222222222222',c='33333333-3333-4333-8333-333333333333';
+const items={['f:'+b]:{parent:a},['f:'+c]:{parent:''}},p=normalize({all:false,roots:[a]}),empty=normalize({all:false,roots:['']});
+assert(includesFolder(b,p,items));assert(!includesFolder(c,p,items));assert(!includesFolder('',p,items));assert(includesFolder('',empty,items));assert(!includesFolder(a,empty,items));assert(!includesFolder(c,p,{['f:'+c]:{parent:c}}));
+assert(includesFolder(a,normalize()));assert.equal(normalize().retention,30);assert.equal(normalize().interval,900000);
+assert(!includesNote({id:'n',purged:1},p,items,{}));assert(includesNote({id:'n',purged:1},p,items,{n:b}));assert(!includesNote({id:'n',folder_id:c},p,items,{n:b}));
+const queue=[{id:'n',folder_id:c,dirty:true,mutation:'keep',document:{}}];const before=JSON.stringify(queue);assert.equal(queue.filter(n=>includesNote(n,p,items)).length,0);assert.equal(JSON.stringify(queue),before);assert.equal(queue.filter(n=>includesNote(n,normalize({all:false,roots:[c]}),items)).length,1);
+const memory=new Map(),storage={getItem:k=>memory.get(k),setItem:(k,v)=>memory.set(k,v)};const activity=new SyncActivity(storage,()=>a);
+activity.set('check:old','检查笔记更新','note','down','running');activity.finishCheck('check:old',0);assert.equal(activity.tasks[0].id,'check:old');assert.equal(activity.view(true,false).state,'ready');
+activity.set('outbox','n','note','up','queued');activity.set('live','n','note','down','running');activity.deleteHistory([],true);assert.deepEqual(new Set(activity.tasks.map(t=>t.id)),new Set(['outbox','live']));
+activity.replaceNative([{id:'check:new',state:'done',kind:'note',direction:'down',updated:Date.now()}]);assert(!activity.tasks.some(t=>t.id==='live'));assert(activity.tasks.some(t=>t.id==='outbox'));
+const old=Date.now()-40*86400000;assert.deepEqual(cleanHistory([{id:1,state:'done',updated:old},{id:2,state:'queued',updated:old},{id:3,state:'running',updated:old}],30).map(t=>t.id),[2,3]);assert.equal(cleanHistory([{state:'done',updated:old}],0).length,1);
+const document=JSON.stringify({schemaVersion:1,doc:{type:'doc',content:[{type:'paragraph'}]}});const rows=Array.from({length:100},(_,i)=>({cursor:i+1,id:'n'+i,folder_id:i===0?b:c,document,purged:0}));let writes=0;
+const env={DB:{prepare(sql){return {bind(){return this},async all(){return {results:rows}},async first(){return {items:JSON.stringify(items)}},async run(){writes++;throw Error('GET must not mutate')}}}}};
+const json=(body,status=200)=>new Response(JSON.stringify(body),{status});
+async function get(query){const url=new URL('https://local/api/notes?cursor=0'+query);const r=await endpoint(new Request(url),env,'workspace',url,json);return {status:r.status,body:await r.json()}}
+const selected=await get(scopeQuery(p));assert.equal(selected.body.notes.length,1);assert.equal(selected.body.cursor,100);assert.equal(selected.body.hasMore,true);assert.equal(selected.body.scopeApplied,1);
+const excluded=await get('&scope=none');assert.equal(excluded.body.notes.length,0);assert.equal(excluded.body.cursor,100);const reenabled=await get(scopeQuery(normalize({all:false,roots:[c]})));assert.equal(reenabled.body.notes.length,99);
+assert.equal((await get('')).body.notes.length,100);assert.equal((await get('&scope=bad')).status,400);rows[1].purged=1;assert.equal((await get('&scope=none')).body.notes.length,1);assert.equal(writes,0);
+console.log('Sync safety: ancestry, unclassified, held queue, re-enable, purge origin, raw cursor, legacy compatibility, history isolation and stable check IDs passed.');

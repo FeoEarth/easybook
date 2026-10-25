@@ -40,7 +40,9 @@ jobs:
           cache: npm
       - run: npm ci
       - name: Build release APK
-        run: gradle :app:assembleRelease --no-daemon
+        run: |
+          node scripts/sync-policy-safety.mjs
+          gradle :app:testDebugUnitTest --tests com.feoearth.easybook.SyncPolicySafetyTest :app:assembleRelease --no-daemon
       - name: Verify APK signing
         run: '"$ANDROID_HOME/build-tools/35.0.0/apksigner" verify --verbose --print-certs app/build/outputs/apk/release/app-release.apk'
       - name: Prepare APK
