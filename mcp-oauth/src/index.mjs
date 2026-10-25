@@ -106,7 +106,7 @@ const oauthHandler = {
 };
 const apiHandler={
  async fetch(request,env,ctx){
-  if(ctx?.props?.githubUserId!==236202359 || !ctx?.auth?.scope?.includes('mcp:read'))
+  if(String(ctx?.props?.githubUserId ?? '')!=='236202359' || !ctx?.auth?.scope?.includes('mcp:read'))
    return new Response('Forbidden',{status:403});
   // The OAuth provider validates the client token before this handler runs.
   // Pairing initiation does not grant access to any workspace.
