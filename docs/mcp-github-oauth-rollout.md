@@ -15,7 +15,7 @@ Status: **not enabled**. This document is a production security gate, not a clai
 
 ## Production prerequisites
 
-1. Confirm the **exact GitHub username or numeric user ID** to allow. Do not assume `FeoEarth` is the personal login.
+1. **Confirmed allowlist:** GitHub login `FeoEarth`, immutable numeric GitHub user ID `236202359` (verified using the connected GitHub profile). Enforce the numeric ID after querying the authenticated GitHub identity; reject all other accounts.
 2. Create a GitHub OAuth App at https://github.com/settings/developers with the chosen production MCP hostname and `/callback` URL. This requires action by the GitHub account owner.
 3. Configure `GITHUB_CLIENT_ID` and `GITHUB_CLIENT_SECRET` as Cloudflare Worker secrets. Never store the client secret in source control.
 4. Define how the GitHub identity is paired with the target Easybook workspace, using a server-side admin-only pairing step. Do not publish the workspace sync key.
