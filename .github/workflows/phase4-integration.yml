@@ -7,7 +7,7 @@ permissions:
   contents: read
 jobs:
   verify:
-    if: !startsWith(github.head_ref, 'fix/sync-policies-') && github.head_ref != 'management-placement' && github.head_ref != 'fix-android-folder-save' && github.head_ref != 'ui-more-menu' && github.head_ref != 'ui-selection-move' && !startsWith(github.head_ref, 'ui-liquid-glass-') && github.head_ref != 'prototype-native-liquid-glass'
+    if: github.event_name != 'push' && !startsWith(github.head_ref, 'fix/sync-policies-') && github.head_ref != 'management-placement' && github.head_ref != 'fix-android-folder-save' && github.head_ref != 'ui-more-menu' && github.head_ref != 'ui-selection-move' && !startsWith(github.head_ref, 'ui-liquid-glass-') && github.head_ref != 'prototype-native-liquid-glass'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
