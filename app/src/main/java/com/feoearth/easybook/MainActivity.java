@@ -11,6 +11,8 @@ import org.json.JSONObject;
 import org.json.JSONArray;
 import androidx.webkit.*;
 import java.util.Collections;
+import java.util.Map;
+import java.util.HashMap;
 import java.io.*;
 import java.nio.charset.StandardCharsets;
 import java.util.concurrent.Executors;
