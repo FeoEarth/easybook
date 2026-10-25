@@ -1,0 +1,20 @@
+import assert from 'node:assert/strict';
+import {readFile,writeFile} from 'node:fs/promises';
+import {JSDOM} from 'jsdom';
+import {indexedDB} from 'fake-indexeddb';
+import {validateDocument,serializeDocument,deserializeDocument,plainText} from '../shared/document.mjs';
+import {WebStore} from '../shared/web-store.mjs';
+const dom=new JSDOM('<div id="editor"></div>',{runScripts:'outside-only',pretendToBeVisual:true,url:'https://test.invalid/'});const w=dom.window;
+w.ResizeObserver=class {observe(){}unobserve(){}disconnect(){}};w.scrollBy=()=>{};w.HTMLElement.prototype.scrollIntoView=()=>{};w.Range.prototype.getClientRects=()=>[];w.Range.prototype.getBoundingClientRect=()=>({top:0,bottom:20,left:0,right:1,width:1,height:20});
+w.eval(await readFile('app/src/main/assets/editor.js','utf8'));const rich=w.RichNotes.create(w.document.getElementById('editor'),()=>{},()=>{throw Error('Document rejected')});
+rich.editor.commands.focus=()=>true;
+assert.equal(rich.insertTable(),true);assert.equal(rich.editor.isActive('tableCell'),true);rich.editor.commands.insertContent('Cell A');rich.command('toggleBold');rich.editor.commands.insertContent(' bold');rich.command('toggleBold');
+assert.equal(rich.tableAction('addRowAfter'),true);assert.equal(rich.tableAction('addColumnAfter'),true);let doc=JSON.parse(rich.editor.getJSON()?JSON.stringify(rich.value()):'null');let table=doc.doc.content.find(n=>n.type==='table');assert.equal(table.content.length,3);assert.equal(table.content[0].content.length,3);
+const saved=serializeDocument(doc);rich.load(deserializeDocument(saved));assert.equal(serializeDocument(JSON.parse(JSON.stringify(rich.value()))),saved);assert.ok(plainText(doc).includes('Cell A'));assert.ok(saved.includes('bold'));
+const store=new WebStore(indexedDB);await store.open();await store.load('test');await store.save('test',{notes:[{id:'one',document:doc}]});store.db.close();const reopened=new WebStore(indexedDB);await reopened.open();const restored=await reopened.load('test');assert.equal(serializeDocument(restored.notes[0].document),saved);reopened.db.close();
+// One canonical fixture is checked by the Android validator too.
+await writeFile('docs/table-contract-fixture.json',saved+'\n');
+const bad=structuredClone(doc);bad.doc.content.find(n=>n.type==='table').content[0].content.pop();assert.throws(()=>validateDocument(bad));
+const clean=w.RichNotes.sanitize('<table><tr><th><b>Title</b></th><td>Body</td></tr></table>');assert.ok(clean.includes('<table>')&&clean.includes('<th>')&&clean.includes('<b>'));
+rich.load(doc);let pos;rich.editor.state.doc.descendants((n,p)=>{if(pos===undefined&&n.type.name==='tableCell')pos=p+2});rich.editor.commands.setTextSelection(pos);assert.equal(rich.tableAction('deleteRow'),true);assert.equal(rich.tableAction('deleteColumn'),true);assert.equal(rich.tableAction('deleteTable'),true);assert.equal(rich.editor.isActive('table'),false);rich.command('undo');assert.ok(rich.value().doc.content.some(n=>n.type==='table'));rich.command('redo');assert.ok(!rich.value().doc.content.some(n=>n.type==='table'));
+rich.editor.destroy();dom.window.close();console.log('Table insert/edit/row-column/delete/undo/redo, JSON round trip, IndexedDB reopen, paste structure and invalid-grid checks passed');

@@ -1,6 +1,7 @@
 import {management} from './management.mjs';
 import {notes} from './notes.mjs';
 import html from './ui.mjs';
+import pdfStatic from './pdf-static.mjs';
 import editor from './editor.mjs';
 import {attachments} from './attachments.mjs';
 const headers = {'Access-Control-Allow-Origin':'*','Access-Control-Allow-Headers':'Authorization, Content-Type','Access-Control-Allow-Methods':'GET, PUT, OPTIONS','Cache-Control':'no-store','X-Content-Type-Options':'nosniff'};
@@ -9,6 +10,8 @@ export default {
  async fetch(request, env) {
   const url = new URL(request.url);
   if(request.method === 'OPTIONS') return new Response(null,{status:204,headers});
+  // Keep published UI modules aligned with the HTML; vendor data remains in existing assets.
+  if(request.method==='GET'&&Object.hasOwn(pdfStatic,url.pathname))return new Response(pdfStatic[url.pathname],{headers:{'Content-Type':url.pathname.endsWith('.css')?'text/css; charset=utf-8':'text/javascript; charset=utf-8','Cache-Control':'no-cache','X-Content-Type-Options':'nosniff'}});
   // Compatibility-only static PDF resources; attachment/auth/sync routes are unchanged.
   if(request.method==='GET'&&(url.pathname.startsWith('/pdf/')||url.pathname==='/pdf-sw.js')){
    if(!env.PDF_ASSETS)return new Response('PDF assets unavailable',{status:503});
@@ -55,6 +58,7 @@ export default {
   } catch(e) { console.error(JSON.stringify({event:'request_failed',name:e.name})); return json({error:'Service temporarily unavailable'},503); }
  }
 };
+
 
 
 
