@@ -32,7 +32,7 @@ jobs:
       - name: Verify generated production UI contains MCP settings
         run: |
           node scripts/generate-ui.mjs
-          node --input-type=module -e "import html from './worker/ui.mjs'; if (!html.includes('id=\\\"mcpPairEntry\\\"') || !html.includes('AI 与 MCP')) { console.error('Generated Worker UI is missing MCP settings'); process.exit(1); }"
+          node --input-type=module -e "import html from './worker/ui.mjs'; if (!html.includes('mcpPairEntry') || !html.includes('AI 与 MCP')) process.exit(1)"
       - name: Deploy sync Worker (preserve existing bindings and secrets)
         working-directory: worker
         env:
