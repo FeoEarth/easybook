@@ -1,0 +1,18 @@
+// Focused protocol integrity checks; no browser, emulator or UI automation.
+import assert from 'node:assert/strict';
+import {createHash,webcrypto} from 'node:crypto';
+import {prepare,upload,download,hash,CLOUD,LOCAL} from '../shared/attachments.mjs';
+import {attachments} from '../worker/attachments.mjs';
+class DigestStream extends WritableStream{constructor(){const h=createHash('sha256');let resolve,reject;const digest=new Promise((a,b)=>{resolve=a;reject=b});super({write(b){h.update(b)},close(){resolve(h.digest())},abort(e){reject(e)}});this.digest=digest}}
+Object.defineProperty(globalThis,'crypto',{value:{subtle:webcrypto.subtle,DigestStream}});
+const objects=new Map();const env={ATTACHMENTS:{async put(key,data,options={}){const b=typeof data==='string'?new Blob([data]):new Blob([data]);if(options.onlyIf&&objects.has(key))return null;objects.set(key,{b,customMetadata:options.customMetadata});return {}},async head(key){const o=objects.get(key);return o?{size:o.b.size,customMetadata:o.customMetadata}:null},async get(key){const o=objects.get(key);return o?{size:o.b.size,customMetadata:o.customMetadata,body:o.b.stream(),arrayBuffer:()=>o.b.arrayBuffer(),json:async()=>JSON.parse(await o.b.text())}:null}}};
+const call=id=>async(suffix='',body)=>{const res=await attachments(new Request('https://test/api/attachments/'+id+(body?'':suffix),{method:body?'PUT':'GET',...(body?{body:JSON.stringify(body)}:{})}),env,'space',id,{});const value=await res.json();if(!res.ok)throw Error(JSON.stringify(value));return value};
+const blob=new Blob(['原始图片与附件字节'.repeat(20000)]),file={id:await hash(blob),name:'原件.txt',mime:'text/plain',size:blob.size,blob};
+const prepared=await prepare(file);assert.equal(prepared.manifest.encoding,'gzip');assert.ok(prepared.wire.size<blob.size*.95);const ack=await upload(file,call(file.id));assert.equal(ack.localOnly,false);const restored=await download(file.id,call(file.id));assert.equal(await hash(restored.blob),file.id);assert.equal(await restored.blob.text(),await blob.text());
+const multiBlob=new Blob([new Uint8Array(4*1024*1024+17).fill(73)]),multi={...file,id:await hash(multiBlob),size:multiBlob.size,blob:multiBlob};await upload(multi,call(multi.id),false);assert.equal(await hash((await download(multi.id,call(multi.id))).blob),multi.id);
+const over=new Blob([new Uint8Array(CLOUD+1)]),large={...file,id:await hash(over),size:over.size,blob:over};const local=await upload(large,call(large.id),false);assert.equal(local.localOnly,true);assert.equal((await download(large.id,call(large.id))).available,false);assert.equal(await hash(large.blob),large.id);
+const compressedLarge=await upload(large,call(large.id),true);assert.equal(compressedLarge.localOnly,false);const recoveredLarge=await download(large.id,call(large.id));assert.equal(await hash(recoveredLarge.blob),large.id);
+const at=new Blob([new Uint8Array(CLOUD)]),exact=await prepare({...file,id:await hash(at),size:at.size,blob:at},false);assert.equal(exact.manifest.localOnly,false);assert.equal(exact.manifest.wireSize,CLOUD);
+const res=await attachments(new Request('https://test/api/attachments/'+file.id,{method:'PUT',body:JSON.stringify({op:'commit',manifest:{...prepared.manifest,wireSize:CLOUD+1,parts:[]}})}),env,'space',file.id,{});assert.equal(res.status,413);
+const damaged=new Blob(['damaged']);await assert.rejects(()=>download(file.id,async suffix=>suffix?{data:await (await import('../shared/attachments.mjs')).base64(damaged)}:{...prepared.manifest,parts:[{hash:file.id,size:damaged.size}]}));
+assert.equal(LOCAL,1073741824);console.log('PASS: gzip exact-byte restore/SHA-256, original retained, 50 MB boundary, over-limit local-only placeholder, server hard cap, corrupted chunk rejection');
