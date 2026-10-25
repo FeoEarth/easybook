@@ -101,6 +101,32 @@ const apiHandler={
  async fetch(request,env,ctx){
   if(ctx?.props?.githubUserId!==236202359 || !ctx?.auth?.scope?.includes('mcp:read'))
    return new Response('Forbidden',{status:403});
+  // The OAuth provider validates the client token before this handler runs.
+  // Pairing initiation does not grant access to any workspace.
+  if(env.MCP_GRANTS_ENABLED==='true' && request.method==='POST'){
+   const clientId=ctx?.auth?.clientId;
+   if(typeof clientId!=='string'||!clientId)return new Response('Client identity unavailable',{status:403});
+   const raw=await request.text();
+   if(raw.length>16384)return new Response('Payload too large',{status:413});
+   let msg;try{msg=JSON.parse(raw)}catch{return new Response('Invalid JSON',{status:400})}
+   const reply=(value)=>Response.json({jsonrpc:'2.0',id:msg.id??null,result:value},{headers:{'Cache-Control':'no-store'}});
+   if(msg.method==='tools/call' && msg.params?.name==='begin_workspace_pairing'){
+    const bytes=crypto.getRandomValues(new Uint8Array(32));
+    const challenge=btoa(String.fromCharCode(...bytes)).replace(/\\+/g,'-').replace(/\\//g,'_').replace(/=+$/,'');
+    const digest=await crypto.subtle.digest('SHA-256',new TextEncoder().encode(challenge));
+    const hash=Array.from(new Uint8Array(digest),b=>b.toString(16).padStart(2,'0')).join('');
+    const expires=Math.floor(Date.now()/1000)+300;
+    await env.DB.prepare('INSERT INTO mcp_pairing_challenges(challenge_hash,github_user_id,oauth_client_id,expires_at) VALUES(?,?,?,?)').bind(hash,String(ctx.props.githubUserId),clientId,expires).run();
+    return reply({content:[{type:'text',text:JSON.stringify({challenge,expiresAt:expires,instructions:'Open Easybook AI & MCP settings to approve this client and enter the challenge. Never share your workspace key.'})}]});
+   }
+   if(msg.method==='tools/list'){
+    const response=await mcp(new Request(request,{body:raw,headers:new Headers([...request.headers].filter(([k])=>k.toLowerCase()!=='origin').concat([['Authorization','Bearer internal-oauth-bridge']]))}),{...env,MCP_ACCESS_TOKEN:'internal-oauth-bridge'},'0'.repeat(64));
+    const data=await response.json();
+    if(data?.result?.tools)data.result.tools.push({name:'begin_workspace_pairing',description:'Generate a one-time code to pair the current Easybook workspace using the Easybook app',inputSchema:{type:'object',properties:{},additionalProperties:false}});
+    return Response.json(data,{headers:{'Cache-Control':'no-store'}});
+   }
+   request=new Request(request,{body:raw});
+  }
   // Grant-based mode is opt-in until the authenticated pairing flow is deployed.
   // No workspace is ever selected from untrusted MCP request parameters.
   let workspaceId=null;
