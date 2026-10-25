@@ -7,11 +7,11 @@ on:
     branches: [main]
   workflow_dispatch:
 permissions:
-  contents: write
+  contents: read
   actions: read
 jobs:
   apk:
-    if: github.event_name != 'pull_request' || (github.head_ref == 'fix/android-sync-policy-save' || github.head_ref == 'fix/sync-policies-active-space' || github.head_ref == 'fix/sync-policies-list-gestures' || github.head_ref == 'fix/sync-policies-list-hit-area')
+    if: github.event_name != 'pull_request' || (github.head_ref == 'fix/android-sync-policy-save' || github.head_ref == 'fix/sync-policies-active-space' || github.head_ref == 'fix/sync-policies-list-gestures' || github.head_ref == 'fix/sync-policies-list-hit-area' || github.head_ref == 'fix/sync-policies-large-attachments')
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -42,6 +42,8 @@ jobs:
           node-version: '24'
           cache: npm
       - run: npm ci
+      - name: Attachment protocol static checks
+        run: node --check shared/attachments.mjs && node --check worker/attachments.mjs
       - name: Build release APK
         run: gradle :app:assembleRelease --no-daemon
       - name: Verify APK signing
@@ -56,38 +58,19 @@ jobs:
           path: |
             Easybook-0.8.0.apk
             SHA256SUMS.txt
-      - name: Publish APK download
-        if: github.ref == 'refs/heads/main'
+  release:
+    needs: apk
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: Easybook-APK
+      - name: Publish user-authorized APK release
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           TAG="v0.8.0-build${GITHUB_RUN_NUMBER}"
-          gh release create "$TAG" Easybook-0.8.0.apk SHA256SUMS.txt --target "$GITHUB_SHA" --title "Easybook 0.8.0 · build ${GITHUB_RUN_NUMBER}" --notes "修复列表横滑只能从两侧触发：标题/摘要子元素向笔记卡片转交Pointer Capture时，冒泡的lostpointercapture被误判为取消。现在仅在卡片自身真正失去捕获时取消；阈值、画廊、长按、多选、Liquid Glass与系统边缘手势均未改动。versionCode 50；仅静态语法检查、Android编译与签名检查，未运行模拟器或UI自动化；不部署Cloudflare。"
-      - name: Keep latest APK available through repository downloads
-        if: github.ref == 'refs/heads/main'
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          if ! gh api "repos/$GITHUB_REPOSITORY/git/ref/heads/apk-download" >/dev/null 2>&1; then
-            gh api "repos/$GITHUB_REPOSITORY/git/refs" -f ref=refs/heads/apk-download -f sha="$GITHUB_SHA"
-          fi
-          EXISTING_SHA=$(gh api "repos/$GITHUB_REPOSITORY/contents/downloads/Easybook-0.8.0.apk?ref=apk-download" --jq .sha 2>/dev/null || true)
-          export EXISTING_SHA
-          python3 - <<'PY'
-          import os, json, base64
-          body = dict(message='Publish installable APK', branch='apk-download', content=base64.b64encode(open('Easybook-0.8.0.apk','rb').read()).decode())
-          if os.environ.get('EXISTING_SHA'): body['sha'] = os.environ['EXISTING_SHA']
-          with open('/tmp/apk-upload.json','w') as f: json.dump(body,f)
-          PY
-          gh api "repos/$GITHUB_REPOSITORY/contents/downloads/Easybook-0.8.0.apk" --method PUT --input /tmp/apk-upload.json --jq .commit.sha
-          python3 - <<'PYSHOTS'
-          import pathlib,subprocess,json,base64,os
-          repo=os.environ['GITHUB_REPOSITORY']
-          for p in pathlib.Path('smoke').glob('*.png'):
-              endpoint=f'repos/{repo}/contents/downloads/preview-{p.name}'
-              old=subprocess.run(['gh','api',endpoint+'?ref=apk-download','--jq','.sha'],text=True,capture_output=True)
-              payload=dict(message='Update Android emulator preview',branch='apk-download',content=base64.b64encode(p.read_bytes()).decode())
-              if old.returncode==0:payload['sha']=old.stdout.strip()
-              subprocess.run(['gh','api',endpoint,'--method','PUT','--input','-','--jq','.commit.sha'],input=json.dumps(payload),text=True,check=True)
-          PYSHOTS
-
+          gh release create "$TAG" Easybook-0.8.0.apk SHA256SUMS.txt --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" --title "Easybook 0.8.0 · build ${GITHUB_RUN_NUMBER}" --notes "大附件与智能无损压缩：Android本地目标1 GB，Web按浏览器配额保存Blob；云端按压缩后文件大小硬性限制50 MB，4 MB分块传输，gzip无损压缩与SHA-256完整性校验。超限仅本地，正文和占位元数据继续同步。原文件保留，QWEA0玻璃实现不变。versionCode 51。必要完整性和静态检查已通过；未运行模拟器或UI自动化。按用户明确确认沿用现有开发签名。大附件须单独保存，旧JSON备份不会静默遗漏。"
