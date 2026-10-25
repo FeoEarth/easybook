@@ -5,7 +5,9 @@ export async function verifyGithubIdentity(accessToken, fetchImpl = fetch) {
   if (typeof accessToken !== 'string' || !accessToken || accessToken.length > 512) {
     throw new Error('Invalid upstream token');
   }
-  const response = await fetchImpl('https://api.github.com/user', {
+  let response;
+  try {
+    response = await fetchImpl('https://api.github.com/user', {
     headers: {
       Authorization: 'Bearer ' + accessToken,
       Accept: 'application/vnd.github+json',
@@ -13,7 +15,11 @@ export async function verifyGithubIdentity(accessToken, fetchImpl = fetch) {
       'User-Agent': 'Easybook-MCP-OAuth'
     },
     redirect: 'error'
-  });
+    });
+  } catch (error) {
+    console.error('GitHub identity transport error', {errorName: String(error?.name || 'Error').slice(0,80)});
+    throw new Error('GitHub identity API unavailable');
+  }
   if (!response.ok) {
     console.error('GitHub identity API failure', {status:response.status});
     throw new Error('GitHub identity API unavailable');
