@@ -1,0 +1,39 @@
+name: Deploy Cloudflare Worker
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - 'worker/**'
+      - 'app/src/main/assets/pdf/**'
+      - 'scripts/prepare-pdf.mjs'
+      - '.github/workflows/deploy-cloudflare.yml'
+
+concurrency:
+  group: easybook-production-worker
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Prepare PDF assets
+        run: node scripts/prepare-pdf.mjs
+      - name: Deploy production Worker
+        uses: cloudflare/wrangler-action@v3
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          workingDirectory: worker
+          command: deploy --config wrangler.jsonc
+      - name: Check health
+        run: |
+          curl --fail --show-error --retry 3 --retry-delay 3 https://easybook-sync.1902521952.workers.dev/health
