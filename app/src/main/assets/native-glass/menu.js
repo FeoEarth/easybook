@@ -90,15 +90,8 @@
   event.preventDefault();event.stopImmediatePropagation();active=true;
   window.NativeStore.call('ui.glass.menu',options(button.getBoundingClientRect())).then(r=>{if(!r.accepted)window.easybookNativeGlassFallback()}).catch(window.easybookNativeGlassFallback);
  },true);
- // Attachment insertion uses the existing picker; the other entries reuse editor controls.
- const attachment=document.createElement('dialog');attachment.id='nativeAttachmentMenu';attachment.className='ui-material';
- const title=document.createElement('h2');title.textContent='添加附件与内容';attachment.append(title);
- for(const [label,id]of [['图片或文件','attachmentButton'],['添加链接','toolbarLink'],['待办清单',null]]){
-  const item=document.createElement('button');item.textContent=label;item.onclick=()=>{attachment.close();bypass=true;try{if(id)$(id).click();else document.querySelector('#formatTrack [data-command="toggleTaskList"]').click()}finally{bypass=false}};attachment.append(item);
- }
- const cancel=document.createElement('button');cancel.textContent='取消';cancel.onclick=()=>attachment.close();attachment.append(cancel);document.body.append(attachment);
- $('attachmentButton').addEventListener('click',event=>{if(bypass||window.easybookRich?.isComposing())return;event.preventDefault();event.stopImmediatePropagation();window.easybookRich?.captureSelection();attachment.showModal()},true);
  new MutationObserver(schedule).observe(document.documentElement,{subtree:true,childList:true,attributes:true,characterData:true});
  new ResizeObserver(schedule).observe($('contextSurface'));
  document.addEventListener('animationend',schedule,true);document.addEventListener('load',schedule,true);document.addEventListener('scroll',schedule,true);window.addEventListener('resize',schedule);window.visualViewport?.addEventListener('resize',schedule);window.visualViewport?.addEventListener('scroll',schedule);
 })();
+

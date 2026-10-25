@@ -15,7 +15,8 @@
         "codeBlock",
         "horizontalRule",
         "image",
-        "attachment"
+        "attachment",
+        "table"
       ],
       "min": 1,
       "attrs": {}
@@ -53,7 +54,8 @@
         "codeBlock",
         "horizontalRule",
         "image",
-        "attachment"
+        "attachment",
+        "table"
       ],
       "min": 1,
       "attrs": {}
@@ -92,7 +94,8 @@
         "codeBlock",
         "horizontalRule",
         "image",
-        "attachment"
+        "attachment",
+        "table"
       ],
       "min": 1,
       "attrs": {}
@@ -115,7 +118,8 @@
         "codeBlock",
         "horizontalRule",
         "image",
-        "attachment"
+        "attachment",
+        "table"
       ],
       "min": 1,
       "attrs": {
@@ -193,6 +197,87 @@
           "integer",
           0,
           1073741824
+        ]
+      }
+    },
+    "table": {
+      "children": [
+        "tableRow"
+      ],
+      "min": 1,
+      "attrs": {}
+    },
+    "tableRow": {
+      "children": [
+        "tableCell",
+        "tableHeader"
+      ],
+      "min": 1,
+      "attrs": {}
+    },
+    "tableCell": {
+      "children": [
+        "paragraph",
+        "heading",
+        "blockquote",
+        "bulletList",
+        "orderedList",
+        "taskList",
+        "codeBlock",
+        "horizontalRule",
+        "image",
+        "attachment"
+      ],
+      "min": 1,
+      "attrs": {
+        "colspan": [
+          "integer",
+          1,
+          64
+        ],
+        "rowspan": [
+          "integer",
+          1,
+          200
+        ],
+        "colwidth": [
+          "widths"
+        ],
+        "align": [
+          "alignment"
+        ]
+      }
+    },
+    "tableHeader": {
+      "children": [
+        "paragraph",
+        "heading",
+        "blockquote",
+        "bulletList",
+        "orderedList",
+        "taskList",
+        "codeBlock",
+        "horizontalRule",
+        "image",
+        "attachment"
+      ],
+      "min": 1,
+      "attrs": {
+        "colspan": [
+          "integer",
+          1,
+          64
+        ],
+        "rowspan": [
+          "integer",
+          1,
+          200
+        ],
+        "colwidth": [
+          "widths"
+        ],
+        "align": [
+          "alignment"
         ]
       }
     }

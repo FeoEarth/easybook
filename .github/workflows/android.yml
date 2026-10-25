@@ -11,7 +11,7 @@ permissions:
   actions: read
 jobs:
   apk:
-    if: github.event_name != 'pull_request' || (github.head_ref == 'fix/android-sync-policy-save' || github.head_ref == 'fix/sync-policies-active-space' || github.head_ref == 'fix/sync-policies-list-gestures' || github.head_ref == 'fix/sync-policies-list-hit-area' || github.head_ref == 'fix/sync-policies-large-attachments' || github.head_ref == 'fix/sync-policies-pdf-reader' || github.head_ref == 'fix/sync-policies-pdf-loading' || github.head_ref == 'fix/sync-policies-pdf-interaction')
+    if: github.event_name != 'pull_request' || (github.head_ref == 'fix/android-sync-policy-save' || github.head_ref == 'fix/sync-policies-active-space' || github.head_ref == 'fix/sync-policies-list-gestures' || github.head_ref == 'fix/sync-policies-list-hit-area' || github.head_ref == 'fix/sync-policies-large-attachments' || github.head_ref == 'fix/sync-policies-pdf-reader' || github.head_ref == 'fix/sync-policies-pdf-loading' || github.head_ref == 'fix/sync-policies-pdf-interaction' || github.head_ref == 'fix/sync-policies-tables-pickers')
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -44,8 +44,10 @@ jobs:
       - run: npm ci
       - name: Attachment protocol static checks
         run: node --check shared/attachments.mjs && node --check worker/attachments.mjs && node --check app/src/main/assets/pdf/reader.mjs && node --check app/src/main/assets/pdf/glass.mjs
-      - name: PDF first-page integrity (no browser or UI automation)
-        run: npm run build:pdf && node scripts/pdf-reader-integrity.mjs
+      - name: Build editor and focused table integrity
+        run: npm run build:editor && node scripts/table-integrity.mjs && node scripts/picker-static-check.mjs
+      - name: Android and Web table contract consistency
+        run: gradle :app:testReleaseUnitTest --tests com.feoearth.easybook.TableContractTest --no-daemon
       - name: Build release APK
         run: gradle :app:assembleRelease --no-daemon
       - name: Verify APK signing
@@ -75,4 +77,4 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           TAG="v0.8.0-build${GITHUB_RUN_NUMBER}"
-          gh release create "$TAG" Easybook-0.8.0.apk SHA256SUMS.txt --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" --title "Easybook 0.8.0 · build ${GITHUB_RUN_NUMBER}" --notes "PDF紧凑交互优化：单行页码导航与校验、玻璃搜索框和匹配导航、浮层互斥及返回/外部关闭、键盘可视区域适配。Android页码与搜索输入复用现有QWEA0玻璃，并保留真实输入、组合输入及焦点。versionCode 54。核心交互逻辑、PDF.js首页栅格保护检查及Android编译签名检查；未运行模拟器、UI自动化或真机验证。不部署Cloudflare。"
+          gh release create "$TAG" Easybook-0.8.0.apk SHA256SUMS.txt --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" --title "Easybook 0.8.0 · build ${GITHUB_RUN_NUMBER}" --notes "附件入口拆分为照片与视频、文件；加入2×2可编辑表格与行列操作，统一Android/Web文档校验与同步。设置加入持久极速模式，关闭原生及CSS玻璃。versionCode 55。必要构建、表格JSON/本地恢复/跨端校验及选择器静态检查；未运行模拟器、UI自动化或真机验证。"
