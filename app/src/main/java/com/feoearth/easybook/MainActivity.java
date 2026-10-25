@@ -154,14 +154,22 @@ public class MainActivity extends Activity {
         String active=(method.equals("commit")||method.equals("search")||method.equals("snapshot")||method.equals("sync")||method.equals("device.exportNotes"))?repository.activeSpace():"";
         switch(method){
             case "bootstrap":{
-                repository.secureCredentials();JSONObject report=new JSONObject().put("state","not-needed");repository.secureCredentials();security.initialized(generation);new SyncJournal(repository,repository.activeSpace()).recover();SyncPolicy.schedule(SyncPolicy.read(repository,repository.activeSpace()));return repository.snapshot(repository.activeSpace()).put("syncPolicy",SyncPolicy.read(repository,repository.activeSpace())).put("migration",report).put("security",repository.securityStatus());
+                repository.secureCredentials();JSONObject report=new JSONObject().put("state","not-needed");repository.secureCredentials();security.initialized(generation);new SyncJournal(repository,repository.activeSpace()).recover();SyncPolicy.scheduleSafely(SyncPolicy.read(repository,repository.activeSpace()));return repository.snapshot(repository.activeSpace()).put("syncPolicy",SyncPolicy.read(repository,repository.activeSpace())).put("migration",report).put("security",repository.securityStatus());
             }
             case "commit":{String k=args.getString("key");if(!k.equals(active))throw new IllegalStateException("Workspace changed");return repository.commit(k,args.getJSONObject("changes"));}
             case "search":{if(!args.getString("key").equals(active))throw new IllegalStateException("Workspace changed");return new JSONObject().put("notes",repository.search(active,bounded(args,"query",2000),bounded(args,"category",80),args.optBoolean("everywhere")));}
             case "snapshot":return repository.snapshot(active);
             case "sync.activity":{
                 if(!args.getString("key").equals(active))throw new SecurityException();SyncJournal journal=new SyncJournal(repository,active);String action=args.optString("action", "read");
-                if(action.equals("configure")){NativeSync.configure(repository,active,args.getJSONObject("policy"));}
+                if(action.equals("configure")){
+                    try{
+                        JSONObject policy=NativeSync.configure(repository,active,args.getJSONObject("policy"));
+                        return new JSONObject().put("policy",policy).put("saved",true).put("scheduleWarning",SyncPolicy.scheduleSafely(policy));
+                    }catch(Exception e){
+                        android.util.Log.w("EasybookSyncPolicy","configure_failed:"+operationErrorCode(e)+":"+e.getClass().getSimpleName());
+                        throw e;
+                    }
+                }
                 else if(action.equals("delete")||action.equals("clear")){JSONArray ids=args.optJSONArray("ids");if(ids!=null){if(ids.length()>500)throw new IllegalArgumentException();for(int i=0;i<ids.length();i++)if(ids.getString(i).length()>512)throw new IllegalArgumentException();}journal.delete(ids,action.equals("clear"));}
                 else if(!action.equals("read"))throw new IllegalArgumentException();
                 return new JSONObject().put("tasks",journal.tasks()).put("policy",SyncPolicy.read(repository,active)).put("running",NativeSync.isRunning(active)).put("runtime",new JSONObject(repository.setting("sync-runtime:"+NoteRepository.spaceId(active),"{}")));

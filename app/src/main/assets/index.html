@@ -293,7 +293,35 @@ function rememberOrigins(){for(const n of notes)if(!n.dirty&&n.version>0&&!n.pur
 function autoAllowed(reason){if(syncPolicy.paused||!syncPolicy.autoChange&&!syncPolicy.interval)return false;if(reason==='change')return syncPolicy.autoChange;if(autoSyncFailures&&Date.now()>=nextAutoSync)return true;return (syncPolicy.autoChange&&(notes.some(n=>n.dirty&&scoped(n))||folders.some(f=>f.dirty)||management.pending.length))||(syncPolicy.interval>0&&Date.now()-lastCheck>=syncPolicy.interval)||(!lastCheck&&syncPolicy.autoChange)}
 function webNetworkAllowed(){if(syncPolicy.network==='any')return true;const c=navigator.connection;if(syncPolicy.network==='wifi')return c?.type==='wifi';return typeof c?.metered==='boolean'&&!c.metered}
 function scheduleRemote(minDelay=0){clearTimeout(remoteTimer);if(document.hidden||syncPolicy.paused||!syncPolicy.interval)return;const delay=Math.max(1000,minDelay,lastCheck+syncPolicy.interval-Date.now(),nextAutoSync-Date.now());remoteTimer=setTimeout(()=>void sync(false,'check'),delay)}
-async function configureSync(next){if(busy||nativeSyncRunning)return toast('正在同步，请完成后修改设置');const old=syncPolicy;if(next.roots?.length>256)return toast('最多选择256个独立同步范围');next=EasybookSyncPolicy.normalize(next);if(!native&&next.network!=='any'&&(next.network==='wifi'?typeof navigator.connection?.type!=='string':typeof navigator.connection?.metered!=='boolean'))return toast('此浏览器无法可靠检测该网络条件');try{if(native){const r=await native.call('sync.activity',{key,action:'configure',policy:next});next=EasybookSyncPolicy.normalize(r.policy)}if(old.all!==next.all||JSON.stringify(old.roots)!==JSON.stringify(next.roots)){pullCursor=0;persistNow()}syncPolicy=next;saveSyncPolicyLocal();activity.save();renderSyncPolicy();renderActivity();scheduleRemote();if(!next.paused)void sync(false,'resume')}catch{toast('设置未保存，请稍后重试')}}
+let syncPolicySaving=false;
+async function configureSync(next){
+ if(busy||nativeSyncRunning||syncPolicySaving){renderSyncPolicy();return toast('正在同步或保存，请完成后修改设置')}
+ const old=syncPolicy,space=key;
+ if(next.roots?.length>256)return toast('最多选择256个独立同步范围');
+ next=EasybookSyncPolicy.normalize(next);
+ if(!native&&next.network!=='any'&&(next.network==='wifi'?typeof navigator.connection?.type!=='string':typeof navigator.connection?.metered!=='boolean'))return toast('此浏览器无法可靠检测该网络条件');
+ syncPolicySaving=true;let warning='';
+ try{
+  if(native){
+   const r=await native.call('sync.activity',{key:space,action:'configure',policy:next});
+   if(space!==key)return;
+   if(r.saved!==true||!r.policy)throw Object.assign(Error('Invalid configuration acknowledgement'),{code:'INVALID_ACK'});
+   next=EasybookSyncPolicy.normalize(r.policy);warning=r.scheduleWarning||'';
+  }else localStorage.setItem('easybook-sync-policy:'+space,JSON.stringify(next));
+ }catch(e){
+  if(space===key){syncPolicy=old;renderSyncPolicy()}
+  const code=['STORAGE_FULL','STORAGE_BUSY','STORAGE_READ_ONLY','INVALID_ACK'].includes(e?.code)?e.code:'OPERATION_FAILED';
+  console.warn('sync_policy_save_failed',code,e?.name||'Error');
+  toast('设置未保存，请稍后重试（'+code+'）');return;
+ }finally{syncPolicySaving=false}
+ if(space!==key)return;
+ syncPolicy=next;
+ // Android SQLite is authoritative; renderer caches cannot invalidate its commit.
+ try{if(native)saveSyncPolicyLocal();activity.save()}catch(e){console.warn('sync_policy_cache_failed',e?.name||'Error')}
+ if(old.all!==next.all||JSON.stringify(old.roots)!==JSON.stringify(next.roots)){pullCursor=0;if(!native)persistNow()}
+ renderSyncPolicy();renderActivity();scheduleRemote();
+ if(warning)toast('设置已保存，系统后台调度暂不可用；前台同步仍可使用');
+}
 const syncUi={selecting:false,expanded:new Set(),visible:[],taskId:null};
 const syncChevron='<svg aria-hidden="true"><use href="#i-chevron"/></svg>';
 function syncStatusLabel(t){return t.resolvedAt?'后续已同步':({done:'已完成',running:'进行中',failed:'失败',conflict:'存在冲突',queued:'等待同步',waiting:'等待网络'})[t.state]||'等待同步'}
