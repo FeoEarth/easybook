@@ -5,6 +5,8 @@ on:
       - 'worker/mcp.mjs'
       - 'worker/index.mjs'
       - 'scripts/mcp-test.mjs'
+      - 'scripts/mcp-github-identity-test.mjs'
+      - 'worker/mcp-github-identity.mjs'
       - '.github/workflows/mcp.yml'
   push:
     branches: [main]
@@ -21,4 +23,4 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
-      - run: node --check worker/mcp.mjs && node --check worker/index.mjs && node scripts/mcp-test.mjs
+      - run: node --check worker/mcp.mjs && node --check worker/index.mjs && node scripts/mcp-test.mjs && node scripts/mcp-github-identity-test.mjs
