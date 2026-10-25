@@ -12,12 +12,13 @@ const error = (id,code,message,status=200) => Response.json({jsonrpc:'2.0',id,er
 const digest = async s => Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256',new TextEncoder().encode(s))),b=>b.toString(16).padStart(2,'0')).join('');
 const equal = (a,b) => {if(a.length!==b.length)return false;let d=0;for(let i=0;i<a.length;i++)d|=a.charCodeAt(i)^b.charCodeAt(i);return d===0};
 const textResult = data => ({content:[{type:'text',text:JSON.stringify(data)}]});
-export async function mcp(request,env) {
+export async function mcp(request,env,workspaceId=null) {
  if(request.method==='GET')return new Response('MCP sessionless endpoint: POST JSON-RPC', {status:405,headers:{Allow:'POST'}});
  if(request.method!=='POST')return new Response(null,{status:405,headers:{Allow:'POST'}});
  // Intentionally do not enable cross-origin browser requests or reuse the sync bearer key.
  const origin=request.headers.get('Origin');if(origin)return new Response('Origin not allowed',{status:403});
- if(!env.MCP_ACCESS_TOKEN||!env.MCP_WORKSPACE_KEY||! /^[a-f0-9]{64}$/.test(env.MCP_WORKSPACE_KEY))return new Response('MCP not configured',{status:503});
+ if(!env.MCP_ACCESS_TOKEN || (workspaceId===null && (!env.MCP_WORKSPACE_KEY || !/^[a-f0-9]{64}$/.test(env.MCP_WORKSPACE_KEY))))return new Response('MCP not configured',{status:503});
+ if(workspaceId!==null && !/^[a-f0-9]{64}$/.test(workspaceId))return new Response('Invalid workspace grant',{status:403});
  const auth=request.headers.get('Authorization')||'';
  if(!auth.startsWith('Bearer ')||!equal(auth.slice(7),env.MCP_ACCESS_TOKEN))return new Response('Unauthorized',{status:401,headers:{'WWW-Authenticate':'Bearer realm="Easybook MCP"'}});
  if(Number(request.headers.get('Content-Length')||0)>16384)return new Response('Payload too large',{status:413});
@@ -32,7 +33,7 @@ export async function mcp(request,env) {
  if(msg.method!=='tools/call')return error(id,-32601,'Method not found');
  const name=msg.params?.name,args=msg.params?.arguments||{};
  if(!tools.some(t=>t.name===name)||!args||typeof args!=='object'||Array.isArray(args))return error(id,-32602,'Invalid tool');
- const workspace=await digest(env.MCP_WORKSPACE_KEY);
+ const workspace=workspaceId===null?await digest(env.MCP_WORKSPACE_KEY):workspaceId;
  try {
   if(name==='list_folders'){
    const {results}=await env.DB.prepare('SELECT id,name,updated FROM folders WHERE workspace=? AND deleted=0 ORDER BY name,id LIMIT 500').bind(workspace).all();
