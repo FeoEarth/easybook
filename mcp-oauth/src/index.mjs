@@ -117,11 +117,15 @@ const apiHandler={
    let msg;try{msg=JSON.parse(raw)}catch{return new Response('Invalid JSON',{status:400})}
    const reply=(value)=>Response.json({jsonrpc:'2.0',id:msg.id??null,result:value},{headers:{'Cache-Control':'no-store'}});
    if(msg.method==='tools/call' && msg.params?.name==='begin_workspace_pairing'){
+    const githubId=String(ctx.props.githubUserId);
+    const now=Math.floor(Date.now()/1000);
+    const pending=await env.DB.prepare('SELECT COUNT(*) AS total FROM mcp_pairing_challenges WHERE github_user_id=? AND oauth_client_id=? AND consumed_at IS NULL AND expires_at>?').bind(githubId,clientId,now).first();
+    if(Number(pending?.total||0)>=5)return new Response('Too many active pairing challenges',{status:429,headers:{'Retry-After':'300'}});
     const bytes=crypto.getRandomValues(new Uint8Array(32));
     const challenge=btoa(String.fromCharCode(...bytes)).split('+').join('-').split('/').join('_').replace(/=+$/,'');
     const digest=await crypto.subtle.digest('SHA-256',new TextEncoder().encode(challenge));
     const hash=Array.from(new Uint8Array(digest),b=>b.toString(16).padStart(2,'0')).join('');
-    const expires=Math.floor(Date.now()/1000)+300;
+    const expires=now+300;
     await env.DB.prepare('INSERT INTO mcp_pairing_challenges(challenge_hash,github_user_id,oauth_client_id,expires_at) VALUES(?,?,?,?)').bind(hash,String(ctx.props.githubUserId),clientId,expires).run();
     return reply({content:[{type:'text',text:JSON.stringify({challenge,expiresAt:expires,instructions:'Open Easybook AI & MCP settings to approve this client and enter the challenge. Never share your workspace key.'})}]});
    }
