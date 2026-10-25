@@ -1,6 +1,7 @@
 import OAuthProvider from '@cloudflare/workers-oauth-provider';
 import { mcp } from '../../worker/mcp.mjs';
 import { verifyGithubIdentity } from '../../worker/mcp-github-identity.mjs';
+import { verifyWorkspaceAssertion } from './pairing.mjs';
 
 const escape = s => String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const htmlHeaders = {'Content-Type':'text/html; charset=utf-8','Cache-Control':'no-store','X-Frame-Options':'DENY','Content-Security-Policy':"default-src 'none'; style-src 'unsafe-inline'; form-action 'self' https://github.com; frame-ancestors 'none'"};
@@ -8,6 +9,21 @@ const oauthHandler = {
  async fetch(request,env) {
   const url = new URL(request.url);
   const oauth = env.OAUTH_PROVIDER;
+  if(url.pathname==='/pairing/complete' && request.method==='POST'){
+   if(!env.MCP_PAIRING_SIGNING_KEY)return new Response('Pairing unavailable',{status:503});
+   let input;
+   try{const raw=await request.text();if(raw.length>4096)throw Error();input=JSON.parse(raw)}catch{return new Response('Invalid pairing request',{status:400})}
+   const workspace=await verifyWorkspaceAssertion(input?.assertion,env.MCP_PAIRING_SIGNING_KEY,input?.challenge);
+   if(!workspace)return new Response('Invalid workspace proof',{status:403});
+   const bytes=await crypto.subtle.digest('SHA-256',new TextEncoder().encode(input.challenge));
+   const hash=Array.from(new Uint8Array(bytes),b=>b.toString(16).padStart(2,'0')).join('');
+   const now=Math.floor(Date.now()/1000);
+   const challenge=await env.DB.prepare('UPDATE mcp_pairing_challenges SET consumed_at=? WHERE challenge_hash=? AND consumed_at IS NULL AND expires_at>? RETURNING github_user_id,oauth_client_id').bind(now,hash,now).first();
+   if(!challenge)return new Response('Pairing challenge expired',{status:409});
+   await env.DB.prepare("INSERT INTO mcp_workspace_grants(id,github_user_id,oauth_client_id,workspace_id,scope,created_at) VALUES(?,?,?,?,?,?) ON CONFLICT(github_user_id,oauth_client_id,workspace_id) DO UPDATE SET revoked_at=NULL").bind(crypto.randomUUID(),challenge.github_user_id,challenge.oauth_client_id,workspace,'mcp:read',now).run();
+   await env.DB.prepare('INSERT INTO mcp_active_workspaces(github_user_id,oauth_client_id,workspace_id,updated_at) VALUES(?,?,?,?) ON CONFLICT(github_user_id,oauth_client_id) DO UPDATE SET workspace_id=excluded.workspace_id,updated_at=excluded.updated_at').bind(challenge.github_user_id,challenge.oauth_client_id,workspace,now).run();
+   return Response.json({paired:true},{headers:{'Cache-Control':'no-store'}});
+  }
   if (url.pathname === '/authorize' && request.method === 'GET') {
    const authRequest = await oauth.parseAuthRequest(request);
    const client = await oauth.lookupClient(authRequest.clientId);
