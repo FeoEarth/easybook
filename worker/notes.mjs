@@ -1,3 +1,4 @@
+import {normalize,includesFolder} from '../shared/sync-policy.mjs';
 import {validateDocument} from '../shared/document.mjs';
 const uuid=/^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/;
 const fields='id,title,document,icon,pinned,favorite,deleted,purged,version,mutation,updated,folder_id';
@@ -7,7 +8,14 @@ export async function notes(request,env,workspace,url,json){
  if(url.pathname==='/api/notes'&&request.method==='GET'){
   const raw=url.searchParams.get('cursor')||'0';if(!/^\d{1,15}$/.test(raw))return json({error:'Invalid cursor'},400);const cursor=Number(raw);
   const {results}=await env.DB.prepare(`SELECT c.cursor,${fields.split(',').map(f=>'n.'+f).join(',')} FROM note_changes c JOIN notes_json n ON n.workspace=c.workspace AND n.id=c.note_id WHERE c.workspace=? AND c.cursor>? ORDER BY c.cursor LIMIT 100`).bind(workspace,cursor).all();
-  return json({notes:results.map(({cursor,...n})=>decode(n)),cursor:results.at(-1)?.cursor||cursor,hasMore:results.length===100});
+  let visible=results;const scope=url.searchParams.get('scope');
+  if(scope!==null){const roots=scope==='none'?[]:scope.split(',').map(id=>id==='0'?'':id);if(roots.length>256||roots.some(id=>id!==''&&!uuid.test(id)))return json({error:'Invalid folder scope'},400);
+   const state=await env.DB.prepare('SELECT items FROM management_state WHERE workspace=?').bind(workspace).first();let items={};try{items=JSON.parse(state?.items||'{}')}catch{}
+   const policy=normalize({all:false,roots});visible=results.filter(n=>n.purged||includesFolder(n.folder_id,policy,items));
+  }
+  // Advance across the raw change window, even if every record was excluded.
+  // Scope changes restart the cursor on clients; omissions never mean deletion.
+  return json({notes:visible.map(({cursor,...n})=>decode(n)),cursor:results.at(-1)?.cursor||cursor,hasMore:results.length===100,...(scope!==null?{scopeApplied:1}:{})});
  }
  const id=url.pathname.match(/^\/api\/notes\/([^/]+)$/)?.[1];if(!id||!uuid.test(id)||request.method!=='PUT')return json({error:'Not found'},404);
  const reader=request.body?.getReader();if(!reader)return json({error:'Missing body'},400);let size=0,chunks=[];while(true){const {done,value}=await reader.read();if(done)break;size+=value.byteLength;if(size>230000){await reader.cancel();return json({error:'Too large'},413)}chunks.push(value)}const bytes=new Uint8Array(size);let offset=0;for(const c of chunks){bytes.set(c,offset);offset+=c.length}
