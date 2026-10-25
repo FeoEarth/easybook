@@ -24,6 +24,9 @@ jobs:
         run: node scripts/prepare-pdf.mjs
       - name: Install current Wrangler
         run: npm install --no-save --no-package-lock --no-audit --no-fund wrangler@4
+      - name: Validate Worker bundle without deployment
+        working-directory: worker
+        run: npx wrangler deploy --config wrangler.jsonc --dry-run --outdir ../.wrangler-preflight
       - name: Deploy production Worker
         uses: cloudflare/wrangler-action@v3
         with:
@@ -31,6 +34,12 @@ jobs:
           accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           workingDirectory: worker
           command: deploy --config wrangler.jsonc
-      - name: Check health
+      - name: Verify production web and API
         run: |
-          curl --fail --show-error --retry 3 --retry-delay 3 https://easybook-sync.1902521952.workers.dev/health
+          set -euo pipefail
+          for origin in https://easybook-sync.1902521952.workers.dev https://easybook.loonxy.com; do
+            curl --fail --show-error --retry 3 --retry-delay 3 "$origin/health" | grep -q '"ok":true'
+            curl --fail --show-error --retry 3 --retry-delay 3 "$origin/" -o /tmp/easybook-home.html
+            grep -qi '<html' /tmp/easybook-home.html
+            grep -qi 'Easybook' /tmp/easybook-home.html
+          done
