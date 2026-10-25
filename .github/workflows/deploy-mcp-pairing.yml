@@ -29,6 +29,10 @@ jobs:
           test -n "$CLOUDFLARE_ACCOUNT_ID" || { echo "::error::Set CLOUDFLARE_ACCOUNT_ID in repository secrets"; exit 1; }
       - name: Install editor dependencies and build assets
         run: npm ci && npm run build:editor
+      - name: Verify generated production UI contains MCP settings
+        run: |
+          node scripts/generate-ui.mjs
+          node --input-type=module -e "import html from './worker/ui.mjs'; if (!html.includes('id=\\\"mcpPairEntry\\\"') || !html.includes('AI 与 MCP')) { console.error('Generated Worker UI is missing MCP settings'); process.exit(1); }"
       - name: Deploy sync Worker (preserve existing bindings and secrets)
         working-directory: worker
         env:
