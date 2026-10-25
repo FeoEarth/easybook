@@ -3,7 +3,27 @@ import {mcp} from '../worker/mcp.mjs';
 const key='a'.repeat(64),token='mcp-test-secret';
 const workspace=Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256',new TextEncoder().encode(key))),b=>b.toString(16).padStart(2,'0')).join('');
 const rows={folders:[{id:'folder',name:'Inbox',updated:1}],notes:[{id:'11111111-1111-4111-8111-111111111111',title:'Hello',updated:2,folder_id:''}]};
-const env={MCP_ACCESS_TOKEN:token,MCP_WORKSPACE_KEY:key,DB:{prepare(sql){return {bind(...args){assert.equal(args[0],workspace,'D1 queries must be workspace scoped');return {async all(){return {results:sql.includes('FROM folders')?rows.folders:rows.notes}},async first(){return {...rows.notes[0],document:JSON.stringify({schemaVersion:1,doc:{type:'doc',content:[]}}),icon:'📄',pinned:0,favorite:0}}}}}}}}};
+const env = {
+  MCP_ACCESS_TOKEN: token,
+  MCP_WORKSPACE_KEY: key,
+  DB: {
+    prepare(sql) {
+      return {
+        bind(...args) {
+          assert.equal(args[0], workspace, 'D1 queries must be workspace scoped');
+          return {
+            async all() {
+              return {results: sql.includes('FROM folders') ? rows.folders : rows.notes};
+            },
+            async first() {
+              return {...rows.notes[0], document: JSON.stringify({schemaVersion:1,doc:{type:'doc',content:[]}}), icon:'📄', pinned:0, favorite:0};
+            }
+          };
+        }
+      };
+    }
+  }
+};
 const call=(method,params={},bearer=token)=>mcp(new Request('https://example.com/mcp',{method:'POST',headers:{Authorization:'Bearer '+bearer,'Content-Type':'application/json'},body:JSON.stringify({jsonrpc:'2.0',id:1,method,params})}),env);
 assert.equal((await call('tools/list',{},'wrong')).status,401);
 const list=await (await call('tools/list')).json();assert.deepEqual(list.result.tools.map(x=>x.name),['list_folders','search_notes','get_note']);
