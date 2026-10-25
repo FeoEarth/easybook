@@ -40,7 +40,7 @@ public final class NativeGlassMenu {
         moveFrame=new FormatGlassFrame(activity,root,web,backdrop,this::captureCurrent,valid,"move");
         syncFrame=new FormatGlassFrame(activity,root,web,backdrop,this::captureCurrent,valid,"sync");
         dockFrames=new FormatGlassFrame[]{new FormatGlassFrame(activity,root,web,backdrop,this::captureCurrent,valid,"DockSearch"),new FormatGlassFrame(activity,root,web,backdrop,this::captureCurrent,valid,"DockFolder"),new FormatGlassFrame(activity,root,web,backdrop,this::captureCurrent,valid,"DockCompose")};
-        pdfFrames=new FormatGlassFrame[6];for(int i=0;i<pdfFrames.length;i++)pdfFrames[i]=new FormatGlassFrame(activity,root,web,backdrop,this::captureCurrent,valid,"Pdf"+i);
+        pdfFrames=new FormatGlassFrame[8];for(int i=0;i<pdfFrames.length;i++)pdfFrames[i]=new FormatGlassFrame(activity,root,web,backdrop,this::captureCurrent,valid,"Pdf"+i);
     }
     private int dp(float x){return Math.round(x*activity.getResources().getDisplayMetrics().density);}
     public boolean isShowing(){return shield!=null;}

@@ -202,7 +202,7 @@ public class MainActivity extends Activity {
             case "ui.glass.pdf":case "ui.glass.sync":case "ui.glass.dock":case "ui.glass.move":case "ui.glass.toolbar":case "ui.glass.format":{
                 boolean available=BuildConfig.NATIVE_GLASS_PROTOTYPE && android.os.Build.VERSION.SDK_INT>=33 && nativeGlass!=null;
                 if(!available)return new JSONObject().put("accepted",false);
-                if(method.equals("ui.glass.pdf")&&(args.getInt("slot")<0||args.getInt("slot")>5))throw new IllegalArgumentException();
+                if(method.equals("ui.glass.pdf")&&(args.getInt("slot")<0||args.getInt("slot")>7))throw new IllegalArgumentException();
                 if(method.equals("ui.glass.dock")&&(args.getInt("slot")<0||args.getInt("slot")>2))throw new IllegalArgumentException();
                 if(!(args.get("visible") instanceof Boolean))throw new IllegalArgumentException();
                 if(args.getBoolean("visible")){
