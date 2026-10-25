@@ -1,0 +1,22 @@
+{
+  "name": "easybook-mcp-oauth",
+  "main": "src/index.mjs",
+  "compatibility_date": "2026-10-23",
+  "compatibility_flags": [
+    "nodejs_compat"
+  ],
+  "workers_dev": true,
+  "kv_namespaces": [
+    {
+      "binding": "OAUTH_KV",
+      "id": "788971285844492d89386e614315bb0a"
+    }
+  ],
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "easybook-data",
+      "database_id": "af430aed-01b5-41ca-9653-31212bed3f9f"
+    }
+  ]
+}

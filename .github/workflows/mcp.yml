@@ -5,13 +5,17 @@ on:
       - 'worker/mcp.mjs'
       - 'worker/index.mjs'
       - 'scripts/mcp-test.mjs'
+      - 'scripts/mcp-github-identity-test.mjs'
+      - 'worker/mcp-github-identity.mjs'
       - '.github/workflows/mcp.yml'
+      - 'mcp-oauth/**'
   push:
     branches: [main]
     paths:
       - 'worker/mcp.mjs'
       - 'worker/index.mjs'
       - 'scripts/mcp-test.mjs'
+      - 'mcp-oauth/**'
 jobs:
   mcp:
     runs-on: ubuntu-latest
@@ -21,4 +25,6 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
-      - run: node --check worker/mcp.mjs && node --check worker/index.mjs && node scripts/mcp-test.mjs
+      - run: node --check worker/mcp.mjs && node --check worker/index.mjs && node scripts/mcp-test.mjs && node scripts/mcp-github-identity-test.mjs
+      - name: Bundle OAuth Worker (no deploy)
+        run: cd mcp-oauth && npm install --no-audit --no-fund && npx wrangler deploy --dry-run --outdir /tmp/easybook-mcp-bundle
