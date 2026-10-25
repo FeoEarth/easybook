@@ -6,6 +6,7 @@
     "nodejs_compat"
   ],
   "workers_dev": true,
+  "observability": {"enabled": true},
   "kv_namespaces": [
     {
       "binding": "OAUTH_KV",

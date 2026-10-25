@@ -72,6 +72,7 @@ const apiHandler={
 };
 export default new OAuthProvider({
  apiRoute:'/mcp',apiHandler,defaultHandler:oauthHandler,
+ resourceMetadata:{resource:'https://easybook-mcp-oauth.1902521952.workers.dev/mcp'},
  authorizeEndpoint:'/authorize',tokenEndpoint:'/token',clientRegistrationEndpoint:'/register',
  allowPlainPKCE:false,scopesSupported:['mcp:read'],requiredScopes:['mcp:read']
 });
