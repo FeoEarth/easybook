@@ -14,7 +14,7 @@ if(mode==='stage'){
  const baseline=await current();
  const state={worker,baseline,candidate:null,sha:process.env.GITHUB_SHA||'local'};
  writeFileSync('release-state.json',JSON.stringify(state,null,2));
- const output=execFileSync('npx',['--no-install','wrangler','versions','upload','--config',config,'--keep-vars','--tag',state.sha.slice(0,40),'--message','Candidate '+state.sha,'--var','RELEASE_SHA:'+state.sha],{encoding:'utf8',maxBuffer:8*1024*1024});console.log(output);
+ const output=execFileSync(oauth?'mcp-oauth/node_modules/.bin/wrangler':'node_modules/.bin/wrangler',['versions','upload','--config',config,'--keep-vars','--tag',state.sha.slice(0,40),'--message','Candidate '+state.sha,'--var','RELEASE_SHA:'+state.sha],{encoding:'utf8',maxBuffer:8*1024*1024});console.log(output);
  const id=output.match(/Version ID:\s*([a-f0-9-]{36})/i)?.[1];
  const url=output.match(/https:\/\/[\w.-]+\.workers\.dev/g)?.find(u=>!u.startsWith('https://'+worker+'.'));
  if(!id||!url)throw Error('Upload did not return an exact version ID and URL');
