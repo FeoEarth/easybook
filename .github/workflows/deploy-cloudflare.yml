@@ -24,8 +24,9 @@ jobs:
         run: node scripts/prepare-pdf.mjs
       - name: Verify generated Web assets match source
         run: |
+          node scripts/build-editor.mjs
           node scripts/generate-ui.mjs
-          git diff --exit-code -- worker/ui.mjs worker/editor.mjs worker/pdf-static.mjs
+          git diff --exit-code -- app/src/main/assets/editor.js worker/ui.mjs worker/editor.mjs worker/pdf-static.mjs
       - name: Install current Wrangler
         run: npm install --no-save --no-package-lock --no-audit --no-fund wrangler@4
       - name: Validate Worker bundle without deployment
