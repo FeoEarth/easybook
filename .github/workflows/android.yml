@@ -79,5 +79,4 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           TAG="v0.8.0-build${GITHUB_RUN_NUMBER}"
-          gh release create "$TAG" Easybook-0.8.0.apk SHA256SUMS.txt --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" --title "Easybook 0.8.0 · build ${GITHUB_RUN_NUMBER}" --notes "修复文件夹触摸结束后残留 click 导致误打开笔记的问题；切换页面立即清理旧列表，校验异步查询上下文，保留全局搜索跨文件夹入口。通过针对性导航逻辑回归与必要构建。未做模拟器或真机验证。"
-
+          gh release create "$TAG" Easybook-0.8.0.apk SHA256SUMS.txt --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" --title "Easybook 0.8.0 · build ${GITHUB_RUN_NUMBER}" --notes "统一 AI 与 MCP 设置导航、分组列表、配对输入及状态反馈，适配深浅色与小屏。保留现有 Android 原生 Liquid Glass；Android 安全配对仍未启用。未做真机验证。"

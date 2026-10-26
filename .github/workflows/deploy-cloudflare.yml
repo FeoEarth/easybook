@@ -56,7 +56,9 @@ jobs:
         id: candidate
         run: node scripts/cloudflare-release.mjs stage
       - name: Verify candidate in real Chromium
-        run: node scripts/web-release-smoke.mjs '${{ steps.candidate.outputs.url }}'
+        run: |
+          node scripts/web-release-smoke.mjs '${{ steps.candidate.outputs.url }}'
+          node scripts/mcp-ui-smoke.cjs '${{ steps.candidate.outputs.url }}'
       - name: Verify live pairing with synthetic workspace only
         run: node scripts/live-pairing-probe.mjs '${{ steps.candidate.outputs.url }}'
       - name: Verify real MCP uploads with synthetic workspace and temporary probe
@@ -83,8 +85,10 @@ jobs:
             rollback-probe-state.json
             custom-domain-baseline.json
             web-release-smoke.png
+            mcp-ui-*.png
             mcp-upload-live-evidence.json
           if-no-files-found: ignore
           retention-days: 14
+
 
 
