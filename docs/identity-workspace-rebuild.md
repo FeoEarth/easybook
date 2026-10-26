@@ -258,3 +258,42 @@ API tests verify those boundaries and that revoking the approving browser device
 blocks an unfinished handoff without invalidating an already-established separate
 native session. The account page now exposes the device list and per-device
 logout through native-only HTTP; no token crosses the WebView bridge.
+
+## Stage 4 multi-workspace OAuth checkpoint
+
+Added per-policy workspace bindings and explicit scope ceilings. The account
+consent page starts with no selected workspaces and supports choosing several;
+readers cannot receive write capabilities. Authorization rechecks the account
+session, workspace version and role inside the D1 transaction. New `workspace.create`
+and `workspace.write` scopes cover account-associated creation and manager-only
+ordinary settings/rename; no AI membership/key/security operations are introduced.
+
+Every MCP content request intersects token scope, the child authorization and the
+current role. Changes to membership/manager/mode permanently retire the affected
+child authorization; a later role increase cannot revive it. Other workspaces on
+the same policy remain usable. Multi-workspace content operations require an
+explicit server-validated workspace ID, avoiding mutable-selection races between
+parallel calls. Catalog/initialize calls still work without an active workspace.
+AI creation returns no key and does not expand the client's content grants.
+
+Canonical-mode legacy issuer token issuance, direct GitHub claims and pairing
+entry points are retired. Account ticket/upload/download permission resolution
+uses the new child bindings. The canonical account page lists current roles and
+client workspace grants; old key-claim UI is removed. The old deletion path is
+blocked in the new mode until the explicit disposition/transfer flow is ready,
+so it cannot orphan shared workspaces.
+
+The actual pinned OAuth Provider passes local checks for canonical discovery,
+no-default-workspace consent, tenant/reader isolation, explicit per-request
+routing, role attenuation/no revival, unrelated child survival, account-bound
+creation without keys/automatic grant growth, manager rename, refresh rotation,
+parent revocation and legacy bypass denial. All data and identities are synthetic.
+Migration 0011 and coordinated activation are not applied in production.
+High-risk server-executed approval and final UI/workspace integration remain
+unfinished; this checkpoint is not a production cutover.
+
+Resource URIs also carry an explicit authorized workspace selector, with that
+selector preserved in returned URIs to prevent cross-workspace cache ambiguity.
+Resource catalogs/templates advertise the selector; unauthorized resource access
+uses a JSON-RPC error rather than a malformed tool-result response. Synthetic
+checks cover workspace-qualified resources and foreign-workspace denial.

@@ -1,3 +1,4 @@
+import {modernWorkspaces,V2_SCOPES} from '../../worker/oauth-workspace-policy.mjs';
 import {IDENTITY_ORIGIN,LEGACY_IDENTITY_ORIGIN,identityEnabled} from '../../worker/identity-origin.mjs';
 import {nativeAccountRoutes} from './native-sessions.mjs';
 import {grantClient} from '../../worker/account-grants.mjs';
@@ -19,6 +20,7 @@ const oauthHandler = {
   const url = new URL(request.url);
   const oauth = env.OAUTH_PROVIDER;
   if(identityEnabled(env)&&url.origin===LEGACY_IDENTITY_ORIGIN&&((url.pathname==='/callback'&&url.searchParams.get('state')?.startsWith('account_'))||url.pathname==='/account/login'))return new Response(null,{status:303,headers:{Location:IDENTITY_ORIGIN+url.pathname+url.search,'Cache-Control':'no-store','Referrer-Policy':'no-referrer'}});
+  if(modernWorkspaces(env)&&(url.pathname==='/pairing/complete'||url.pathname==='/callback'&&!url.searchParams.get('state')?.startsWith('account_')))return new Response('Legacy authorization retired; authorize your Easybook account',{status:410});
   if(url.pathname.startsWith('/account/native/passkeys/')){const {nativePasskeyRoutes}=await import('./native-passkeys.mjs');return nativePasskeyRoutes(request,env);}
   const native=await nativeAccountRoutes(request,env);if(native)return native;
   if(url.pathname.startsWith('/account/passkeys')){const {passkeyRoutes}=await import('./passkeys.mjs');return passkeyRoutes(request,env);}
@@ -55,6 +57,7 @@ const oauthHandler = {
    return Response.json({paired:true},{headers:{'Cache-Control':'no-store',...(pairingWebOrigins.has(origin)?{'Access-Control-Allow-Origin':origin,'Vary':'Origin'}:{})}});
    } catch(error) {console.error(JSON.stringify({event:'mcp_pairing_failed',name:error?.name}));return fail('Pairing temporarily unavailable',503)}
   }
+  if(modernWorkspaces(env)&&url.pathname==='/authorize')return request.method==='GET'?new Response(null,{status:303,headers:{Location:'/oauth/authorize'+url.search,'Cache-Control':'no-store'}}):new Response('Reauthorize with an Easybook account',{status:410});
   if (url.pathname === '/authorize' && request.method === 'GET') {
    const authRequest = await oauth.parseAuthRequest(request);
    const client = await oauth.lookupClient(authRequest.clientId);
@@ -133,6 +136,7 @@ const oauthHandler = {
 };
 const apiHandler={
  async fetch(request,env,ctx){
+  if(modernWorkspaces(env)){const {workspaceMcp}=await import('./workspace-mcp.mjs');return workspaceMcp(request,env,ctx);}
   if(ctx?.props?.accountId){
    const policy=await policyFor(env,ctx.props,ctx?.auth?.clientId,ctx?.auth?.scope||[]);
    if(!policy)return new Response('Authorization revoked',{status:403});
@@ -252,6 +256,7 @@ const providerOptions={
  accessTokenTTL:300,refreshTokenTTL:2592000,
  onError:({code,internal})=>{console.warn(JSON.stringify({event:'oauth_denied',code,category:internal?.category,reason:internal?.reason}))},
  tokenExchangeCallback:async options=>{
+  if(modernWorkspaces(options.env)&&!options.props?.accountId)throw new OAuthError('invalid_grant',{description:'Authorize with your Easybook account at the canonical domain'});
   if(options.props?.accountId){
    const policy=await policyFor(options.env,options.props,options.clientId,options.requestedScope);
    if(!policy||!policy.scopes.length)throw new OAuthError('invalid_grant',{description:'Authorization revoked'});
@@ -263,7 +268,7 @@ const providerOptions={
  allowPlainPKCE:false,scopesSupported:['mcp:read',...SCOPES],requiredScopes:[]
 };
 export const provider=new OAuthProvider(providerOptions);
-export const canonicalProvider=new OAuthProvider({...providerOptions,resourceMetadata:{resource:IDENTITY_ORIGIN+'/mcp'},authorizeEndpoint:'/oauth/authorize'});
+export const canonicalProvider=new OAuthProvider({...providerOptions,resourceMetadata:{resource:IDENTITY_ORIGIN+'/mcp'},authorizeEndpoint:'/oauth/authorize',scopesSupported:['mcp:read',...V2_SCOPES]});
 
 
 
@@ -274,6 +279,7 @@ export default {async fetch(request,env,ctx){
   let requestUrl=new URL(request.url);
   if(requestUrl.pathname==='/.well-known/oauth-protected-resource'){requestUrl.pathname+='\/mcp';request=new Request(requestUrl,request);}
   const path=requestUrl.pathname;
+  if(modernWorkspaces(env)&&requestUrl.origin===LEGACY_IDENTITY_ORIGIN){if(path.startsWith('/.well-known/oauth-')||path==='/oauth/authorize'||path==='/authorize')return new Response(null,{status:303,headers:{Location:IDENTITY_ORIGIN+path+requestUrl.search,'Cache-Control':'no-store','Referrer-Policy':'no-referrer'}});if(['/register','/token','/oauth/token'].includes(path))return Response.json({error:'legacy_issuer_retired',authorization_server:IDENTITY_ORIGIN},{status:410,headers:{'Cache-Control':'no-store'}});}
   if(['/token','/oauth/token','/oauth/revoke','/register'].includes(path))await rateLimit(request,env,'oauth',60);
   return await guardTokens(request,env,ctx,identityEnabled(env)&&new URL(request.url).origin===IDENTITY_ORIGIN?canonicalProvider:provider);
  }catch(error){if(error instanceof Response)return error;console.error(JSON.stringify({event:'account_oauth_failed',name:error?.name}));return new Response('Authorization temporarily unavailable',{status:503,headers:{'Cache-Control':'no-store'}});}

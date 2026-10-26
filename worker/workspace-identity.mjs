@@ -26,7 +26,7 @@ export async function workspaceAccess(env,id,principal){
  return role?{...w,role,via:principal.kind}:null;
 }
 export function roleScopes(role,granted){
- const allowed=role==='reader'?READ:['manager','editor'].includes(role)?[...READ,...WRITE,'workspace.create','workspace.write']:[];
+ const allowed=role==='reader'?READ:role==='editor'?[...READ,...WRITE]:role==='manager'?[...READ,...WRITE,'workspace.write']:[];
  return granted.filter(s=>allowed.includes(s));
 }
 async function requireManager(env,id,principal,accountOnly=false){
@@ -50,6 +50,7 @@ async function change(env,w,principal,statements){
  catch(e){if(String(e.message).includes('workspace_tx_assertions')||String(e.message).includes('valid=1'))deny('workspace_changed_retry',409);throw e;}
 }
 function invalidate(env,id,account=null){
+ if(env.WORKSPACE_IDENTITY_V2==='true')return stmt(env,'UPDATE oauth_grant_workspaces SET revoked_at=? WHERE workspace_id=? AND revoked_at IS NULL'+(account?' AND policy_id IN(SELECT id FROM oauth_grants WHERE account_id=?)':''),...[Date.now(),id,...(account?[account]:[])]);
  const suffix=account?' AND account_id=?':'';
  return stmt(env,'UPDATE oauth_grants SET revoked_at=? WHERE workspace_id=? AND revoked_at IS NULL'+suffix,...[Date.now(),id,...(account?[account]:[])]);
 }

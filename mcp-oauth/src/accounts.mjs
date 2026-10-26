@@ -1,3 +1,4 @@
+import {modernWorkspaces,workspacePolicy} from '../../worker/oauth-workspace-policy.mjs';
 import {githubCallback,identityEnabled} from '../../worker/identity-origin.mjs';
 import {hash, READ, WRITE} from '../../worker/mcp-common.mjs';
 import {verifyWorkspaceAssertion} from './pairing.mjs';
@@ -115,6 +116,8 @@ export async function accountRoutes(request,env){
    const name=(f.get('name')||'').trim();if(!name||name.length>100)return json({error:'Invalid name'},400);
    await env.DB.prepare('UPDATE accounts SET display_name=? WHERE id=?').bind(name,s.account_id).run();return redirect('/account');
   }
+  if(path==='/account/delete'&&modernWorkspaces(env))return json({error:'account_deletion_requires_workspace_disposition'},409);
+  if(path==='/account/workspaces/claim'&&modernWorkspaces(env))return json({error:'use_verified_workspace_association'},410);
   if(path==='/account/delete'){
    if(f.get('confirm')!=='DELETE')return page('删除账户',`<p>删除账户会撤销账户会话与新 OAuth 授权。笔记、附件和原有同步密钥保留，仍可通过原有设备访问。第三方旧 GitHub 授权需在原有授权界面单独撤销。</p><form method="post">${hidden}<label>输入 DELETE 确认 <input name="confirm" required></label><button class="danger">确认删除账户</button></form>`);
    if(Date.now()-s.authenticated_at>300000)return page('请重新验证身份',`<p>删除账户前需要最近五分钟内验证身份。</p><a href="/account/login">重新登录</a>`);
@@ -150,6 +153,7 @@ export async function accountRoutes(request,env){
   const {results}=await env.DB.prepare('SELECT id,client_id,workspace_id,scopes,created_at,revoked_at FROM oauth_grants WHERE account_id=? ORDER BY created_at DESC LIMIT 100').bind(s.account_id).all();
   return json(path==='/oauth/clients'?{clients:[...new Set(results.map(g=>g.client_id))]}:{grants:results});
  }
+ if(modernWorkspaces(env)){const {workspaceAccountPage}=await import('./workspace-consent.mjs');return workspaceAccountPage(request,env,s);}
  const [devices,workspaces,grants]=await Promise.all([
   env.DB.prepare('SELECT id,device,created_at FROM account_sessions WHERE account_id=? AND revoked_at IS NULL AND expires_at>? ORDER BY created_at DESC LIMIT 50').bind(s.account_id,Date.now()).all(),
   env.DB.prepare('SELECT workspace_id,role FROM workspace_memberships WHERE account_id=? AND revoked_at IS NULL').bind(s.account_id).all(),
@@ -161,6 +165,7 @@ export async function accountRoutes(request,env){
 }
 
 export async function accountAuthorize(request,env){
+ if(modernWorkspaces(env)){const {workspaceAuthorize}=await import('./workspace-consent.mjs');return workspaceAuthorize(request,env);}
  const oauth=env.OAUTH_PROVIDER,s=await session(request,env),url=new URL(request.url);
  if(!s)return redirect('/account/login?return='+encodeURIComponent(safeReturn(url.pathname+url.search)));
  if(request.method==='GET'){
@@ -193,6 +198,7 @@ export async function accountAuthorize(request,env){
 
 export async function policyFor(env,props,clientId,tokenScopes){
  if(!props?.accountId||!props?.policyId)return null;
+ if(modernWorkspaces(env)){if(typeof clientId!=='string'||!clientId)return null;return workspacePolicy(env,props.policyId,{accountId:props.accountId,clientId,tokenScopes});}
  const row=await env.DB.prepare('SELECT g.* FROM oauth_grants g JOIN accounts a ON a.id=g.account_id JOIN workspace_memberships m ON m.account_id=g.account_id AND m.workspace_id=g.workspace_id WHERE g.id=? AND g.account_id=? AND g.client_id=? AND g.revoked_at IS NULL AND a.deleted_at IS NULL AND m.revoked_at IS NULL').bind(props.policyId,props.accountId,clientId).first();
  if(!row)return null;
  const allowed=JSON.parse(row.scopes);return {...row,scopes:tokenScopes.filter(x=>allowed.includes(x))};
