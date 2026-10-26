@@ -36,7 +36,18 @@ jobs:
       - name: Bundle OAuth Worker (no deploy)
         run: cd mcp-oauth && npm ci --no-audit --no-fund && npx wrangler deploy --dry-run --outdir ../mcp-oauth-bundle
       - name: Account and OAuth security regression
-        run: node scripts/account-oauth-security-test.mjs
+        run: node scripts/account-oauth-security-test.mjs && node mcp-oauth/test/passkeys-security.mjs
+      - name: Verify Passkeys with a real browser virtual authenticator
+        run: |
+          npx --no-install playwright install chromium
+          EASYBOOK_PASSKEY_BROWSER=1 node mcp-oauth/test/passkeys-security.mjs
+      - name: Save Passkey browser evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: account-passkey-ui
+          path: account-ui-passkey-*.png
+          if-no-files-found: ignore
       - name: Save OAuth Worker deployment bundle
         uses: actions/upload-artifact@v4
         with:

@@ -10,7 +10,7 @@ import {accountRoutes,finishLogin,session,csrf,policyFor} from '../mcp-oauth/src
 import {hash} from '../worker/mcp-common.mjs';
 import {attestMcpWorkspace} from '../worker/mcp-pairing.mjs';
 const sqlite=new DatabaseSync(':memory:');
-for(const p of ['worker/schema.sql','mcp-oauth/migrations/0001_workspace_grants.sql','mcp-oauth/migrations/0002_accounts.sql','worker/migrations/0008-mcp-capabilities.sql','worker/migrations/0009-mcp-uploads.sql'])sqlite.exec(readFileSync(p,'utf8'));
+for(const p of ['worker/schema.sql','mcp-oauth/migrations/0001_workspace_grants.sql','mcp-oauth/migrations/0002_accounts.sql','mcp-oauth/migrations/0003_passkeys.sql','worker/migrations/0008-mcp-capabilities.sql','worker/migrations/0009-mcp-uploads.sql'])sqlite.exec(readFileSync(p,'utf8'));
 sqlite.exec(readFileSync('mcp-oauth/migrations/0002_accounts.sql','utf8')); // Retryable.
 const DB={prepare(sql){const q=sqlite.prepare(sql);let params=[];return {bind(...p){params=p;return this},async first(){return q.get(...params)||null},async all(){return {results:q.all(...params)}},async run(){return q.run(...params)}}},async batch(stmts){sqlite.exec('BEGIN');try{const out=[];for(const s of stmts)out.push(await s.all());sqlite.exec('COMMIT');return out}catch(e){sqlite.exec('ROLLBACK');throw e}}};
 const kv=new Map();

@@ -34,11 +34,14 @@ jobs:
         working-directory: mcp-oauth
       - name: Install shared client dependencies for upload compatibility check
         run: npm ci --no-audit --no-fund
+      - name: Verify pinned Passkey browser bundle
+        run: node mcp-oauth/scripts/build-passkey-client.mjs && git diff --exit-code -- mcp-oauth/src/passkey-browser.mjs
       - name: Validate OAuth bundle
         run: mcp-oauth/node_modules/.bin/wrangler deploy --config mcp-oauth/wrangler.jsonc --dry-run --outdir oauth-preflight
       - name: Validate MCP protocol before candidate upload
         run: |
           node scripts/account-oauth-security-test.mjs
+          node mcp-oauth/test/passkeys-security.mjs
           node scripts/mcp-capabilities-test.mjs
           node scripts/mcp-upload-test.mjs
           node scripts/mcp-pairing-release-test.mjs
@@ -48,7 +51,9 @@ jobs:
       - name: Install Chinese fonts for account layout evidence
         run: sudo apt-get update -qq && sudo apt-get install -y fonts-noto-cjk
       - name: Verify account and consent layouts
-        run: EASYBOOK_ACCOUNT_UI=1 node scripts/account-oauth-security-test.mjs
+        run: |
+          EASYBOOK_ACCOUNT_UI=1 node scripts/account-oauth-security-test.mjs
+          EASYBOOK_PASSKEY_BROWSER=1 node mcp-oauth/test/passkeys-security.mjs
       - name: Upload OAuth candidate only
         id: candidate
         run: |
