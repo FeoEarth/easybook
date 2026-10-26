@@ -36,7 +36,8 @@ export default {
   if(url.pathname==='/account/connect'&&request.method==='GET')return new Response(accountConnect,{headers:{'Content-Type':'text/html; charset=utf-8','Cache-Control':'no-store','Referrer-Policy':'no-referrer','X-Frame-Options':'DENY','Content-Security-Policy':"default-src 'none'; style-src 'unsafe-inline'; script-src 'unsafe-inline'; connect-src 'self'; form-action 'none'; frame-ancestors 'none'; base-uri 'none'"}});
   if(url.pathname==='/health/mcp'&&request.method==='GET')return mcpHealth(env);
   if(url.pathname === '/mcp') return mcp(request,env);
-  if(url.pathname==='/mcp/approve'&&request.method==='GET')return new Response(approvalPage,{headers:{'Content-Type':'text/html; charset=utf-8','Cache-Control':'no-store','Referrer-Policy':'no-referrer','X-Frame-Options':'DENY','Content-Security-Policy':"default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; connect-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'none'"}});
+  if(identityV2&&url.pathname==='/mcp/approve'&&request.method==='GET')return Response.redirect(new URL('/account',url),303);
+  if(url.pathname==='/mcp/approve'&&request.method==='GET')return new Response(approvalPage,{headers:{'Content-Type':'text/html; charset=utf-8','Cache-Control':'no-store','Referrer-Policy':'no-referrer','X-Frame-Options':'DENY','Content-Security-Policy':"default-src 'none'; script-src 'self' 'unsafe-inline'; style-src 'unsafe-inline'; connect-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'none'"}});
   if(url.pathname==='/api/mcp/download'&&request.method==='GET'){try{return await download(request,env)}catch{return new Response('Download unavailable',{status:404})}}
   // Browser pairing uses a cross-origin authenticated POST; ordinary sync CORS only permits GET/PUT.
   const pairingOrigin=request.headers.get('Origin');
