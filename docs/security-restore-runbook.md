@@ -6,7 +6,7 @@ remaining client integration and release checks are complete.
 
 Business D1: `easybook-data` (`af430aed-01b5-41ca-9653-31212bed3f9f`).
 Independent security D1: `easybook-security`
-(`d1761c2d-6372-489c-ae5e-114f3d5baa80`). Its schema is installed, but all four
+(`d1761c2d-6372-489c-ae5e-114f3d5baa80`). Its schema is installed, but all six
 tables are empty and no security epoch has been initialized. Production Worker
 bindings and traffic have not been changed.
 
@@ -75,11 +75,34 @@ against an old business backup. Security records have no ordinary log TTL.
 The separate D1 infrastructure and empty schema exist. Business migrations,
 checkpoint initialization, production bindings/flags and restore operations have
 not been applied. The internal administrative functions are not exposed through
-a deployed management endpoint. Production execution still needs an authenticated
-operator context with both bindings and the recorded recovery points.
+a deployed management endpoint. Production execution uses the operator-controlled cron runner described below,
+with both bindings and recorded recovery points.
 
 Verified email delivery is blocked by the current connector's HTTP 401 response
 for Email Sending inspection. Android push provisioning and the self-built
 30-day backup lifecycle are not implemented. No push/email registration currently
 exists for account deletion to unregister; this must be wired when those channels
 are introduced. These are release blockers, not completed capabilities.
+
+
+## Operator-controlled cron runner
+
+`worker/security-admin.mjs` runs only from the main Worker's scheduled handler.
+It accepts no HTTP, WebView Bridge or MCP commands. An authenticated Cloudflare
+operator sets these Worker configuration variables for one reviewed action:
+
+- `SECURITY_ADMIN_ACTION`: `initialize`, `begin-restore`, `reconcile` or `open`.
+- `SECURITY_ADMIN_REQUEST`: a unique UUID for this exact action.
+- `SECURITY_ADMIN_EPOCH`: the previously recorded epoch, required for reconcile
+  and open. Never guess it or advance it to bypass a failed check.
+
+Read the result from `security_admin_runs` using authenticated Cloudflare D1
+access. A duplicate cron with the same request never repeats the action. An
+unknown outcome is marked `uncertain` and requires operator inspection; changing
+the nonce must not be used as a blind retry. Ordinary scheduled cleanup pauses
+while this configuration is present. Clear all three admin variables after the
+reviewed action finishes, and preserve the ordinary cron configuration.
+
+The completed baseline has an immutable `security_installation` marker. An
+interrupted initial copy cannot be reopened using the restore/reconcile runner.
+The empty production checkpoint has no installation marker and remains inactive.

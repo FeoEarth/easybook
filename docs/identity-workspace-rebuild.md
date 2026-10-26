@@ -439,8 +439,15 @@ business snapshot rollback cannot revive deleted accounts, old keys, removed
 members, sessions or OAuth policies. Missing/wrong security bindings and epochs
 fail closed. Existing account OAuth and native/browser Passkey checks pass.
 
-Remaining: production recovery points/activation, operational management runner,
+Remaining: production recovery points/activation,
 verified email and push delivery, 30-day self-backup lifecycle, full account-only
 workspace client integration and final UI consolidation. Current deletion has no
 active push/email subscription records to remove because those channels are not
 yet provisioned. Production remains on the existing main deployment.
+
+A configuration-controlled cron administration runner is now available without
+a public management endpoint. Unique request IDs prevent duplicate privileged
+execution; an immutable installation marker prevents opening a partially copied
+initial baseline. The expanded empty security schema is installed in Cloudflare,
+with zero epochs, initialization markers or admin executions. No administrative
+action has run in production.

@@ -26,3 +26,12 @@ CREATE TABLE IF NOT EXISTS security_revocation_intents(
 CREATE INDEX IF NOT EXISTS security_entity_intent ON security_revocation_intents(kind,subject,status);
 CREATE TRIGGER IF NOT EXISTS security_intent_no_delete BEFORE DELETE ON security_revocation_intents BEGIN SELECT RAISE(ABORT,'permanent revocation intent'); END;
 CREATE TRIGGER IF NOT EXISTS security_intent_committed BEFORE UPDATE ON security_revocation_intents WHEN OLD.status='committed' BEGIN SELECT RAISE(ABORT,'committed revocation intent'); END;
+CREATE TABLE IF NOT EXISTS security_admin_runs(
+ id TEXT PRIMARY KEY,action TEXT NOT NULL,status TEXT NOT NULL CHECK(status IN('running','complete','uncertain')),
+ created_at INTEGER NOT NULL,completed_at INTEGER,result TEXT,error TEXT
+);
+CREATE TABLE IF NOT EXISTS security_installation(
+ id INTEGER PRIMARY KEY CHECK(id=1),initialized_at INTEGER NOT NULL
+);
+CREATE TRIGGER IF NOT EXISTS security_installation_no_delete BEFORE DELETE ON security_installation BEGIN SELECT RAISE(ABORT,'initialized security checkpoint'); END;
+CREATE TRIGGER IF NOT EXISTS security_installation_no_update BEFORE UPDATE ON security_installation BEGIN SELECT RAISE(ABORT,'initialized security checkpoint'); END;

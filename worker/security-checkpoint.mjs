@@ -5,7 +5,7 @@ export async function checkpointState(env){
  const db=store(env);
  // An accidentally bound business database must never serve as its own guard.
  if(await db.prepare("SELECT 1 FROM sqlite_master WHERE type='table' AND name='accounts'").first())throw new CheckpointError('security_database_must_be_independent');
- const state=await db.prepare('SELECT * FROM security_state WHERE id=1').first();if(!state)throw new CheckpointError('security_checkpoint_not_initialized');return state;
+ const state=await db.prepare('SELECT * FROM security_state WHERE id=1').first();if(!state)throw new CheckpointError('security_checkpoint_not_initialized');if(!await db.prepare('SELECT 1 FROM security_installation WHERE id=1').first())throw new CheckpointError('security_checkpoint_incomplete');return state;
 }
 export async function requireRestoreAccess(env){
  if(!checkpointEnabled(env))return null;
@@ -48,10 +48,11 @@ export async function initializeCheckpoint(env){
  const {results:workspaces}=await env.DB.prepare('SELECT id,version,deleted_at FROM workspaces').all();
  for(const w of workspaces){if(w.deleted_at)await db.prepare("INSERT INTO security_revocations VALUES('workspace',?,?) ON CONFLICT(kind,subject) DO NOTHING").bind(w.id,now).run();else await db.prepare("INSERT INTO workspace_security_floors VALUES(?,?,?,'committed',?)").bind(crypto.randomUUID(),w.id,w.version,now).run()}
  await env.DB.prepare('INSERT INTO security_restore_state VALUES(1,?,?) ON CONFLICT(id) DO UPDATE SET epoch=excluded.epoch,reconciled_at=excluded.reconciled_at').bind(epoch,now).run();
+ await db.prepare('INSERT INTO security_installation VALUES(1,?)').bind(now).run();
  await db.prepare("UPDATE security_state SET mode='open' WHERE id=1 AND epoch=?").bind(epoch).run();return {epoch};
 }
 export async function beginSecurityRestore(env){
- const epoch=crypto.randomUUID();await checkpointState(env);await store(env).prepare("UPDATE security_state SET mode='blocked',epoch=?,not_before=? WHERE id=1").bind(epoch,Date.now()).run();return {epoch};
+ const epoch=crypto.randomUUID();const current=await checkpointState(env);if(current.mode!=='open')throw new CheckpointError('restore_already_blocked');await store(env).prepare("UPDATE security_state SET mode='blocked',epoch=?,not_before=? WHERE id=1").bind(epoch,Date.now()).run();return {epoch};
 }
 export async function reconcileSecurityRestore(env,epoch){
  const state=await checkpointState(env);if(state.mode!=='blocked'||state.epoch!==epoch)throw new CheckpointError('restore_epoch_mismatch');
