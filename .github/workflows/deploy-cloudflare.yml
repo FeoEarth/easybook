@@ -12,8 +12,8 @@ on:
       - 'package*.json'
       - '.github/workflows/deploy-cloudflare.yml'
 concurrency:
-  group: easybook-production-worker
-  cancel-in-progress: false
+  group: ${{ github.ref == 'refs/heads/main' && 'easybook-production-worker' || format('easybook-validation-{0}', github.ref_name) }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
 permissions:
   contents: read
 jobs:
@@ -42,7 +42,7 @@ jobs:
       - name: Validate bundle without deployment
         run: npx --no-install wrangler deploy --config worker/wrangler.jsonc --dry-run --outdir .wrangler-preflight
       - name: Install browser for release smoke test
-        run: npx --no-install playwright install --with-deps chromium
+        run: npx --no-install playwright install chromium
       - name: Verify real rollback on binding-free probe Worker
         run: node scripts/rollback-probe.mjs
       - name: Record baseline and upload candidate without production traffic
