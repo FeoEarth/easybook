@@ -125,3 +125,47 @@ integration is not green. No claim of full media or Android validation is made.
 Broad browser and emulator steps in the integration workflow are manual-only to
 respect the requested minimal automation scope. API/data checks and compilation
 remain enabled. This does not turn a failed test into a passing result.
+
+## Stage 2 client storage continuation
+
+WebStore now upgrades the existing IndexedDB database from v1 to v2 additively.
+Server workspace IDs map to stable local namespaces; credential fingerprints map
+back to that workspace. Existing snapshots, in-flight mutations, dirty records,
+folder placement, cursor and attachment-cache paths stay in their original slot.
+A rotated key can bind to that same slot. A credential already associated with
+another workspace is rejected, and separate offline data is never silently
+merged/overwritten. Revision CAS still rejects a stale second tab. Public local
+workspace lists omit the credential-bearing legacy storage address.
+
+The Web page resolves identities only when the server explicitly marks the page
+as identity-v2. Connecting another key verifies its workspace before switching.
+Sync policy/history/scope/origin settings and file-cache operations use the local
+namespace rather than the current transport credential. The transport uses the
+canonical production domain. The server activation setting remains unset.
+Anonymous first-run provisioning and a complete workspace selection/rotation UI
+still require integration before enabling the flag.
+
+Native SQLite version 2 adds workspace identity and credential-fingerprint
+bindings without moving records or attachment files. Native HTTPS resolves a
+key's workspace before reconnecting and can reuse an existing local slot after
+rotation. The encrypted credential remains bound to that local slot in Keystore;
+no raw credential is added to the WebView bridge. Existing local security
+checkpoint rollback skips registered workspaces so it cannot overwrite their
+current credential with an old checkpoint. Sync metadata lookup respects the
+existing network/pause policy and uses the canonical domain. Only an explicit
+404 permits old-server compatibility; authentication failures do not fall back.
+Android's minSdk 26 SQLite compatibility is retained (no new UPSERT syntax).
+Native account sessions and account-only shared workspaces remain unfinished.
+
+Local checks passed: WebStore v1 upgrade, old/new key storage equivalence,
+queue/cursor/cache retention, namespace isolation, duplicate-binding retries,
+stale-tab CAS, actual Worker workspace permissions and attachment-v2 protocol.
+The old attachment-test entry now exercises the real chunk/manifest-v2 endpoint,
+including byte round trip, hash/size limits, immutable chunks and workspace
+isolation. The editor offline-save and Worker JSON/CAS checks also pass.
+
+For this rebuild branch, the old broad media/UI integration job is skipped;
+focused storage/permission/attachment checks and Android Release compilation are
+enabled instead. Skipped UI/emulator checks are not reported as passing.
+Physical-device SQLite/Keystore upgrade and reconnection are not yet verified.
+This checkpoint has not been deployed and production D1 has not been migrated.

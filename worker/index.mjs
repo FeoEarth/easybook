@@ -50,7 +50,7 @@ export default {
   }
   if(url.pathname === '/editor.js' && request.method === 'GET')return new Response(editor,{headers:{'Content-Type':'application/javascript; charset=utf-8','X-Content-Type-Options':'nosniff','Cache-Control':'no-cache'}});
   if(url.pathname === '/health') return json({ok:true,app:'Easybook',version:'0.8.0',build:25,commit:env.RELEASE_SHA||'',schemaVersion:1});
-  if(url.pathname === '/' && request.method === 'GET') return new Response(html,{headers:{'Content-Type':'text/html; charset=utf-8','X-Content-Type-Options':'nosniff','Referrer-Policy':'no-referrer','Cache-Control':'no-cache'}});
+  if(url.pathname === '/' && request.method === 'GET') return new Response(identityV2?html.replace('name="easybook-identity" content="legacy"','name="easybook-identity" content="v2"'):html,{headers:{'Content-Type':'text/html; charset=utf-8','X-Content-Type-Options':'nosniff','Referrer-Policy':'no-referrer','Cache-Control':'no-cache'}});
   if(!url.pathname.startsWith('/api/')) return json({error:'Not found'},404);
   const token = (request.headers.get('Authorization')||'').replace(/^Bearer /,'');
   if(!identityV2&&!/^[a-f0-9]{64}$/.test(token)) {

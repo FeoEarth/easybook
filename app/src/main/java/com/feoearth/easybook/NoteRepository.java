@@ -18,14 +18,19 @@ public final class NoteRepository extends SQLiteOpenHelper {
     final AttachmentStore attachments;
     final CredentialVault vault;
     NoteRepository(Context c){this(c,"easybook-native.db");}
-    NoteRepository(Context c,String name){super(c,name,null,1);DocumentModel.initialize(c);vault=new CredentialVault(c);protection=vault;attachments=new AttachmentStore(c,this);setWriteAheadLoggingEnabled(true);}
+    NoteRepository(Context c,String name){super(c,name,null,2);DocumentModel.initialize(c);vault=new CredentialVault(c);protection=vault;attachments=new AttachmentStore(c,this);setWriteAheadLoggingEnabled(true);}
     @Override public void onCreate(SQLiteDatabase db){
         db.execSQL("CREATE TABLE records(space TEXT NOT NULL,kind TEXT NOT NULL,id TEXT NOT NULL,payload TEXT NOT NULL,rev INTEGER NOT NULL,PRIMARY KEY(space,kind,id))");
         db.execSQL("CREATE TABLE spaces(key TEXT PRIMARY KEY,credential TEXT NOT NULL)");
         db.execSQL("CREATE TABLE settings(name TEXT PRIMARY KEY,value TEXT NOT NULL)");
+        identitySchema(db);
         db.execSQL("CREATE TABLE migration_journal(digest TEXT PRIMARY KEY,source TEXT NOT NULL,state TEXT NOT NULL,report TEXT NOT NULL,created INTEGER NOT NULL)");
     }
-    @Override public void onUpgrade(SQLiteDatabase db,int oldVersion,int newVersion){throw new IllegalStateException("Unsupported database upgrade");}
+    private static void identitySchema(SQLiteDatabase db){
+        db.execSQL("CREATE TABLE IF NOT EXISTS workspace_identity(local_id TEXT PRIMARY KEY,workspace_id TEXT NOT NULL UNIQUE,name TEXT NOT NULL,mode TEXT NOT NULL CHECK(mode IN ('personal','shared')))");
+        db.execSQL("CREATE TABLE IF NOT EXISTS workspace_credentials(key_hash TEXT PRIMARY KEY,local_id TEXT NOT NULL)");
+    }
+    @Override public void onUpgrade(SQLiteDatabase db,int oldVersion,int newVersion){if(oldVersion==1&&newVersion==2){identitySchema(db);return;}throw new IllegalStateException("Unsupported database upgrade");}
     public static String newKey(){byte[] b=new byte[32];new SecureRandom().nextBytes(b);StringBuilder s=new StringBuilder();for(byte v:b)s.append(String.format(Locale.ROOT,"%02x",v&255));return s.toString();}
     static String hash(String s)throws Exception{byte[] b=MessageDigest.getInstance("SHA-256").digest(s.getBytes(StandardCharsets.UTF_8));StringBuilder out=new StringBuilder();for(byte v:b)out.append(String.format(Locale.ROOT,"%02x",v&255));return out.toString();}
     static void key(String k){if(k==null||!k.matches("(?:space:)?[a-f0-9]{64}"))throw new IllegalArgumentException("Invalid workspace key");}
@@ -44,12 +49,41 @@ public final class NoteRepository extends SQLiteOpenHelper {
     public synchronized String setting(String name,String fallback){try(Cursor c=getReadableDatabase().rawQuery("SELECT value FROM settings WHERE name=?",new String[]{name})){return c.moveToFirst()?c.getString(0):fallback;}}
     public synchronized void setSetting(String name,String value){ContentValues v=new ContentValues();v.put("name",name);v.put("value",value);if(getWritableDatabase().insertWithOnConflict("settings",null,v,SQLiteDatabase.CONFLICT_REPLACE)==-1)throw new android.database.sqlite.SQLiteException("Setting write failed");}
     static String spaceId(String k){if(k.startsWith("space:"))return k.substring(6);try{return hash(k);}catch(Exception e){throw new IllegalStateException("SHA-256 unavailable",e);}}
-    private void rememberSpace(String k){if(k.startsWith("space:"))return;try{ContentValues v=new ContentValues();v.put("key",spaceId(k));v.put("credential",vault.seal(k,"credential:"+spaceId(k)));getWritableDatabase().insertWithOnConflict("spaces",null,v,SQLiteDatabase.CONFLICT_IGNORE);}catch(Exception e){throw new IllegalStateException("Credential persistence failed",e);}}
+    private String localSpaceId(String value){String ref=spaceId(value);if(value.startsWith("space:"))return ref;try(Cursor c=getReadableDatabase().rawQuery("SELECT local_id FROM workspace_credentials WHERE key_hash=?",new String[]{ref})){return c.moveToFirst()?c.getString(0):ref;}}
+    private void rememberSpace(String k){if(k.startsWith("space:"))return;try{ContentValues v=new ContentValues();v.put("key",localSpaceId(k));v.put("credential",vault.seal(k,"credential:"+localSpaceId(k)));getWritableDatabase().insertWithOnConflict("spaces",null,v,SQLiteDatabase.CONFLICT_IGNORE);}catch(Exception e){throw new IllegalStateException("Credential persistence failed",e);}}
     public synchronized String activeSpace(){String ref=setting("active","");if(ref.isEmpty()){activate(newKey());ref=setting("active","");}return "space:"+ref;}
-    public synchronized String credential(String space)throws Exception{String ref=spaceId(space);try(Cursor c=getReadableDatabase().rawQuery("SELECT key,credential FROM spaces WHERE key=?",new String[]{ref})){if(!c.moveToFirst())throw new CredentialVault.KeyUnavailable();String k=vault.open(c.getString(1),"credential:"+ref);if(!hash(k).equals(ref))throw new SecurityException("Credential identity mismatch");return k;}}
+    public synchronized String credential(String space)throws Exception{String ref=localSpaceId(space);try(Cursor c=getReadableDatabase().rawQuery("SELECT key,credential FROM spaces WHERE key=?",new String[]{ref})){if(!c.moveToFirst())throw new CredentialVault.KeyUnavailable();String k=vault.open(c.getString(1),"credential:"+ref);if(!hash(k).equals(ref)){try(Cursor proof=getReadableDatabase().rawQuery("SELECT local_id FROM workspace_credentials WHERE key_hash=? AND local_id=?",new String[]{hash(k),ref})){if(!proof.moveToFirst())throw new SecurityException("Credential identity mismatch");}}return k;}}
     public synchronized String active(){try{return credential(activeSpace());}catch(Exception e){throw new IllegalStateException("Credential unavailable",e);}}
-    public synchronized void activate(String k){if(k==null||!k.matches("[a-f0-9]{64}"))throw new IllegalArgumentException("Invalid credential");rememberSpace(k);setSetting("active",spaceId(k));}
-    public synchronized void pair(String k,boolean rotate)throws Exception{if(k==null||!k.matches("[a-f0-9]{64}"))throw new IllegalArgumentException("Invalid credential");if(rotate)vault.rotate();String ref=spaceId(k),encrypted=vault.seal(k,"credential:"+ref);if(!vault.open(encrypted,"credential:"+ref).equals(k))throw new SecurityException("Verification failed");SQLiteDatabase db=getWritableDatabase();db.beginTransaction();try{ContentValues v=new ContentValues();v.put("key",ref);v.put("credential",encrypted);db.insertWithOnConflict("spaces",null,v,SQLiteDatabase.CONFLICT_REPLACE);setSetting("active",ref);db.setTransactionSuccessful();}finally{db.endTransaction();}}
+    public synchronized void activate(String k){if(k==null||!k.matches("[a-f0-9]{64}"))throw new IllegalArgumentException("Invalid credential");rememberSpace(k);setSetting("active",localSpaceId(k));}
+    public synchronized void pair(String k,boolean rotate)throws Exception{if(k==null||!k.matches("[a-f0-9]{64}"))throw new IllegalArgumentException("Invalid credential");if(rotate)vault.rotate();String ref=localSpaceId(k),encrypted=vault.seal(k,"credential:"+ref);if(!vault.open(encrypted,"credential:"+ref).equals(k))throw new SecurityException("Verification failed");SQLiteDatabase db=getWritableDatabase();db.beginTransaction();try{ContentValues v=new ContentValues();v.put("key",ref);v.put("credential",encrypted);db.insertWithOnConflict("spaces",null,v,SQLiteDatabase.CONFLICT_REPLACE);setSetting("active",ref);db.setTransactionSuccessful();}finally{db.endTransaction();}}
+    /** Bind a server-verified identity without moving any note or attachment file.
+     * Only native HTTPS lookup may supply identity; JS never supplies a credential. */
+    public synchronized void bindWorkspaceIdentity(String space,JSONObject identity)throws Exception{
+        String ref=localSpaceId(space),credential=credential("space:"+ref);String server=identity.getString("id");
+        if(!server.matches("[a-f0-9]{64}")||!Arrays.asList("personal","shared").contains(identity.optString("mode"))||identity.optString("name").trim().isEmpty()||identity.optString("name").length()>60)throw new SecurityException("Invalid workspace identity");
+        SQLiteDatabase db=getWritableDatabase();db.beginTransaction();try{
+            try(Cursor c=db.rawQuery("SELECT local_id,workspace_id FROM workspace_identity WHERE local_id=? OR workspace_id=?",new String[]{ref,server})){while(c.moveToNext())if(!ref.equals(c.getString(0))||!server.equals(c.getString(1)))throw new SecurityException("Separate local workspace data requires explicit reconnection");}
+            ContentValues record=new ContentValues();record.put("local_id",ref);record.put("workspace_id",server);record.put("name",identity.getString("name"));record.put("mode",identity.getString("mode"));if(db.insertWithOnConflict("workspace_identity",null,record,SQLiteDatabase.CONFLICT_REPLACE)==-1)throw new SQLiteException("Identity persistence failed");
+            ContentValues binding=new ContentValues();binding.put("key_hash",hash(credential));binding.put("local_id",ref);if(db.insertWithOnConflict("workspace_credentials",null,binding,SQLiteDatabase.CONFLICT_REPLACE)==-1)throw new SQLiteException("Credential binding failed");
+            db.setTransactionSuccessful();
+        }finally{db.endTransaction();}
+    }
+    public synchronized void pairWorkspace(String credential,JSONObject identity,boolean rotate)throws Exception{
+        if(identity==null){pair(credential,rotate);return;}
+        if(credential==null||!credential.matches("[a-f0-9]{64}"))throw new IllegalArgumentException("Invalid credential");String server=identity.getString("id"),ref=hash(credential);
+        if(!server.matches("[a-f0-9]{64}")||!identity.optString("mode").equals("personal"))throw new SecurityException("Invalid key workspace");
+        SQLiteDatabase db=getWritableDatabase();try(Cursor c=db.rawQuery("SELECT local_id FROM workspace_identity WHERE workspace_id=?",new String[]{server})){if(c.moveToFirst())ref=c.getString(0);}
+        String candidate=localSpaceId(credential);
+        if(!candidate.equals(ref)){try(Cursor c=db.rawQuery("SELECT 1 FROM records WHERE space=? LIMIT 1",new String[]{candidate})){if(c.moveToFirst())throw new SecurityException("Separate offline data must be exported before reconnecting");}}
+        if(rotate)vault.rotate();String encrypted=vault.seal(credential,"credential:"+ref);if(!credential.equals(vault.open(encrypted,"credential:"+ref)))throw new SecurityException("Credential verification failed");
+        db.beginTransaction();try{
+            // A known key cannot be rebound to another local workspace.
+            try(Cursor c=db.rawQuery("SELECT local_id FROM workspace_credentials WHERE key_hash=?",new String[]{hash(credential)})){if(c.moveToFirst()&&!ref.equals(c.getString(0)))throw new SecurityException("Credential identity changed");}
+            ContentValues entry=new ContentValues();entry.put("key",ref);entry.put("credential",encrypted);if(db.insertWithOnConflict("spaces",null,entry,SQLiteDatabase.CONFLICT_REPLACE)==-1)throw new SQLiteException("Credential persistence failed");
+            ContentValues binding=new ContentValues();binding.put("key_hash",hash(credential));binding.put("local_id",ref);if(db.insertWithOnConflict("workspace_credentials",null,binding,SQLiteDatabase.CONFLICT_REPLACE)==-1)throw new SQLiteException("Credential binding failed");
+            bindWorkspaceIdentity("space:"+ref,identity);setSetting("active",ref);db.setTransactionSuccessful();
+        }finally{db.endTransaction();}
+    }
     /** Resumable, atomic upgrade. Encrypted checkpoint permits native-only rollback;
      * no record payload or revision is modified. Original keys never enter reports. */
     public synchronized JSONObject secureCredentials()throws Exception{
@@ -72,14 +106,14 @@ public final class NoteRepository extends SQLiteOpenHelper {
         // Restore previous credential content only after authenticating the checkpoint;
         // re-wrap it under the current Keystore key. Never downgrade to plaintext.
         JSONObject backup;try(Cursor c=getReadableDatabase().rawQuery("SELECT payload FROM security_checkpoints WHERE id=1",null)){if(!c.moveToFirst())throw new IllegalStateException("No checkpoint");backup=new JSONObject(vault.open(c.getString(0),"checkpoint"));}
-        SQLiteDatabase db=getWritableDatabase();db.beginTransaction();try{JSONArray entries=backup.getJSONArray("credentials");for(int i=0;i<entries.length();i++){JSONObject row=entries.getJSONObject(i);String ref=row.getString("ref"),k=row.getString("value");if(!hash(k).equals(ref))throw new SecurityException();db.execSQL("UPDATE spaces SET credential=? WHERE key=?",new Object[]{vault.seal(k,"credential:"+ref),ref});}setSetting("securityRollback","verified");db.setTransactionSuccessful();}finally{db.endTransaction();}
+        SQLiteDatabase db=getWritableDatabase();db.beginTransaction();try{JSONArray entries=backup.getJSONArray("credentials");for(int i=0;i<entries.length();i++){JSONObject row=entries.getJSONObject(i);String ref=row.getString("ref"),k=row.getString("value");if(!hash(k).equals(ref))throw new SecurityException();try(Cursor identity=db.rawQuery("SELECT 1 FROM workspace_identity WHERE local_id=?",new String[]{ref})){if(identity.moveToFirst())continue;}db.execSQL("UPDATE spaces SET credential=? WHERE key=?",new Object[]{vault.seal(k,"credential:"+ref),ref});}setSetting("securityRollback","verified");db.setTransactionSuccessful();}finally{db.endTransaction();}
     }
     private static String recordKind(String kind){return kind.equals("note")?"note_json_v1":kind;}
-    public synchronized JSONArray rows(String space,String kind)throws Exception{key(space);JSONArray a=new JSONArray();try(Cursor c=getReadableDatabase().rawQuery("SELECT payload,rev FROM records WHERE space=? AND kind=? ORDER BY id",new String[]{spaceId(space),recordKind(kind)})){while(c.moveToNext()){JSONObject value=new JSONObject(protection.decodeLocal(c.getString(0))).put("_rev",c.getLong(1));if(kind.equals("note"))validNote(value);a.put(value);}}return a;}
-    public synchronized JSONObject row(String space,String kind,String id)throws Exception{try(Cursor c=getReadableDatabase().rawQuery("SELECT payload,rev FROM records WHERE space=? AND kind=? AND id=?",new String[]{spaceId(space),recordKind(kind),id})){return c.moveToFirst()?new JSONObject(protection.decodeLocal(c.getString(0))).put("_rev",c.getLong(1)):null;}}
-    private void put(String space,String kind,JSONObject value)throws Exception{rememberSpace(space);JSONObject n=copy(value);JSONObject old=row(space,kind,n.getString("id"));long rev=old==null?1:old.getLong("_rev")+1;n.remove("_rev");ContentValues v=new ContentValues();v.put("space",spaceId(space));v.put("kind",recordKind(kind));v.put("id",n.getString("id"));v.put("payload",protection.encodeLocal(n.toString()));v.put("rev",rev);getWritableDatabase().insertWithOnConflict("records",null,v,SQLiteDatabase.CONFLICT_REPLACE);}
+    public synchronized JSONArray rows(String space,String kind)throws Exception{key(space);JSONArray a=new JSONArray();try(Cursor c=getReadableDatabase().rawQuery("SELECT payload,rev FROM records WHERE space=? AND kind=? ORDER BY id",new String[]{localSpaceId(space),recordKind(kind)})){while(c.moveToNext()){JSONObject value=new JSONObject(protection.decodeLocal(c.getString(0))).put("_rev",c.getLong(1));if(kind.equals("note"))validNote(value);a.put(value);}}return a;}
+    public synchronized JSONObject row(String space,String kind,String id)throws Exception{try(Cursor c=getReadableDatabase().rawQuery("SELECT payload,rev FROM records WHERE space=? AND kind=? AND id=?",new String[]{localSpaceId(space),recordKind(kind),id})){return c.moveToFirst()?new JSONObject(protection.decodeLocal(c.getString(0))).put("_rev",c.getLong(1)):null;}}
+    private void put(String space,String kind,JSONObject value)throws Exception{rememberSpace(space);JSONObject n=copy(value);JSONObject old=row(space,kind,n.getString("id"));long rev=old==null?1:old.getLong("_rev")+1;n.remove("_rev");ContentValues v=new ContentValues();v.put("space",localSpaceId(space));v.put("kind",recordKind(kind));v.put("id",n.getString("id"));v.put("payload",protection.encodeLocal(n.toString()));v.put("rev",rev);getWritableDatabase().insertWithOnConflict("records",null,v,SQLiteDatabase.CONFLICT_REPLACE);}
     public synchronized void saveAttachment(String key,JSONObject meta)throws Exception{AttachmentStore.validId(meta.getString("id"));put(key,"attachment",meta);}
-    public synchronized JSONObject snapshot(String k)throws Exception{return new JSONObject().put("key","space:"+spaceId(k)).put("notes",rows(k,"note")).put("folders",rows(k,"folder")).put("native",true).put("management",management(k));}
+    public synchronized JSONObject snapshot(String k)throws Exception{return new JSONObject().put("key","space:"+localSpaceId(k)).put("notes",rows(k,"note")).put("folders",rows(k,"folder")).put("native",true).put("management",management(k));}
     public synchronized JSONArray migrationReports()throws Exception{JSONArray reports=new JSONArray();try(Cursor c=getReadableDatabase().rawQuery("SELECT report FROM migration_journal ORDER BY created",null)){while(c.moveToNext())reports.put(new JSONObject(c.getString(0)));}return reports;}
     /** Save only changed records, with an optimistic base mutation. A stale UI can
      * never overwrite an independently changed database record. */
@@ -100,9 +134,9 @@ public final class NoteRepository extends SQLiteOpenHelper {
     public synchronized void acknowledgeFolder(String k,JSONObject f)throws Exception{validFolder(f);JSONObject local=row(k,"folder",f.getString("id"));if(local==null||local.optLong("updated")<=f.optLong("updated")||f.optInt("deleted")==1)put(k,"folder",copy(f).put("dirty",false));}
     public synchronized void mergeNote(String k,JSONObject remote)throws Exception{validNote(remote);JSONObject local=row(k,"note",remote.getString("id"));if(local!=null&&local.optInt("purged")==1&&remote.optInt("purged")!=1)return;if(local==null||remote.optInt("purged")==1||(!local.optBoolean("dirty")&&remote.getLong("version")>local.optLong("version")))put(k,"note",copy(remote).put("dirty",false));}
     public synchronized JSONObject pending(String k,JSONObject local)throws Exception{JSONObject pending=row(k,"outbox",local.getString("id"));if(pending!=null)return pending;JSONObject sent=copy(local);sent.remove("_rev");put(k,"outbox",sent);return sent;}
-    private void clearPending(String k,String noteId){getWritableDatabase().delete("records","space=? AND kind='outbox' AND id=?",new String[]{spaceId(k),noteId});}
-    public synchronized long cursor(String k){return Long.parseLong(setting("cursor:"+spaceId(k),"0"));}
-    public synchronized void mergePage(String k,JSONArray notes,long cursor)throws Exception{SQLiteDatabase db=getWritableDatabase();db.beginTransaction();try{for(int i=0;i<notes.length();i++)mergeNote(k,notes.getJSONObject(i));setSetting("cursor:"+spaceId(k),Long.toString(cursor));db.setTransactionSuccessful();}finally{db.endTransaction();}}
+    private void clearPending(String k,String noteId){getWritableDatabase().delete("records","space=? AND kind='outbox' AND id=?",new String[]{localSpaceId(k),noteId});}
+    public synchronized long cursor(String k){return Long.parseLong(setting("cursor:"+localSpaceId(k),"0"));}
+    public synchronized void mergePage(String k,JSONArray notes,long cursor)throws Exception{SQLiteDatabase db=getWritableDatabase();db.beginTransaction();try{for(int i=0;i<notes.length();i++)mergeNote(k,notes.getJSONObject(i));setSetting("cursor:"+localSpaceId(k),Long.toString(cursor));db.setTransactionSuccessful();}finally{db.endTransaction();}}
     public synchronized String syncResult(String k,JSONObject sent,JSONObject response,int status)throws Exception{SQLiteDatabase db=getWritableDatabase();db.beginTransaction();try{String copied="";JSONObject local=row(k,"note",sent.getString("id")),remote=response.optJSONObject("note");if(local==null)throw new IllegalStateException("Local note missing");if(remote!=null&&remote.optInt("purged")==1){validNote(remote);put(k,"note",copy(remote).put("dirty",false));}
         else if(status==409&&local.optInt("purged")==1&&remote!=null){local.put("version",remote.getLong("version")).put("mutation",id()).put("dirty",true);put(k,"note",local);}
         else if(status==409){JSONObject conflict=copy(local).put("id",id()).put("title",local.getString("title").substring(0,Math.min(175,local.getString("title").length()))+" · 冲突副本").put("version",0).put("mutation",id()).put("dirty",true);put(k,"note",conflict);copied=conflict.getString("id");if(remote!=null){validNote(remote);put(k,"note",copy(remote).put("dirty",false));}else{throw new IllegalStateException("Conflict response missing server note");}}
@@ -114,6 +148,7 @@ public final class NoteRepository extends SQLiteOpenHelper {
         matches.sort((a,b)->Long.compare(b.optLong("updated"),a.optLong("updated")));JSONArray out=new JSONArray();for(JSONObject n:matches)out.put(n);return out;
     }
 }
+
 
 
 
