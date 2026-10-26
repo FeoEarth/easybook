@@ -58,11 +58,16 @@ jobs:
       - name: Verify candidate in real Chromium
         run: |
           node scripts/web-release-smoke.mjs '${{ steps.candidate.outputs.url }}'
-          node scripts/mcp-ui-smoke.cjs '${{ steps.candidate.outputs.url }}'
+          if [ '${{ steps.candidate.outputs.identity_v2 }}' != 'true' ]; then node scripts/mcp-ui-smoke.cjs '${{ steps.candidate.outputs.url }}'; fi
       - name: Verify live pairing with synthetic workspace only
+        if: steps.candidate.outputs.identity_v2 != 'true'
         run: node scripts/live-pairing-probe.mjs '${{ steps.candidate.outputs.url }}'
       - name: Verify real MCP uploads with synthetic workspace and temporary probe
+        if: steps.candidate.outputs.identity_v2 != 'true'
         run: node scripts/live-mcp-upload-probe.mjs '${{ steps.candidate.outputs.url }}'
+      - name: Verify active workspace protocol with synthetic data
+        if: steps.candidate.outputs.identity_v2 == 'true'
+        run: node scripts/live-core-workspace-probe.mjs '${{ steps.candidate.outputs.url }}'
       - name: Promote verified candidate
         if: github.ref == 'refs/heads/main'
         run: node scripts/cloudflare-release.mjs promote
@@ -70,7 +75,7 @@ jobs:
         if: github.ref == 'refs/heads/main'
         run: |
           node scripts/web-release-smoke.mjs https://easybook-sync.1902521952.workers.dev
-          node scripts/live-pairing-probe.mjs https://easybook-sync.1902521952.workers.dev
+          if [ '${{ steps.candidate.outputs.identity_v2 }}' = 'true' ]; then node scripts/live-core-workspace-probe.mjs https://easybook.loonxy.com; else node scripts/live-pairing-probe.mjs https://easybook-sync.1902521952.workers.dev; fi
           node scripts/custom-domain-release-check.mjs verify
       - name: Roll back failed or cancelled promotion
         if: ${{ (failure() || cancelled()) && github.ref == 'refs/heads/main' }}
@@ -89,6 +94,7 @@ jobs:
             mcp-upload-live-evidence.json
           if-no-files-found: ignore
           retention-days: 14
+
 
 
 
