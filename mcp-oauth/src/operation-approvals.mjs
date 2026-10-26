@@ -6,7 +6,7 @@ const errorPage=(title,content,status)=>{const r=page(title,content);return new 
 export async function operationApprovalRoutes(request,env){
  const path=new URL(request.url).pathname,match=path.match(/^\/account\/operations\/([a-f0-9-]{36})$/);if(!match)return null;
  const s=await session(request,env);if(!s)return redirect('/account/passkeys?return='+encodeURIComponent(path));
- const row=await env.DB.prepare('SELECT id,tool,payload,status,expires_at FROM account_operation_approvals WHERE id=? AND account_id=?').bind(match[1],s.account_id).first();
+ const row=await env.DB.prepare('SELECT id,client_id,workspace_id,scope,tool,payload,status,expires_at FROM account_operation_approvals WHERE id=? AND account_id=?').bind(match[1],s.account_id).first();
  if(!row)return errorPage('操作不可用','<p>此审批不存在，或不属于当前账户。</p>',404);
  if(request.method==='POST'){
   const form=await requireForm(request,s);if(form.get('decision')==='deny'){await env.DB.prepare("UPDATE account_operation_approvals SET status='cancelled',completed_at=? WHERE id=? AND account_id=? AND status='pending'").bind(Date.now(),row.id,s.account_id).run();return redirect(path)}
@@ -15,5 +15,6 @@ export async function operationApprovalRoutes(request,env){
  }
  if(request.method!=='GET')return new Response('Method not allowed',{status:405});
  const expired=row.expires_at<=Date.now(),pending=row.status==='pending'&&!expired,payload=JSON.parse(row.payload),count=payload.attachment_id?1:payload.items.length;
- return page('高风险操作审批',`<p>仅发起此 OAuth 授权的账户本人可以批准。批准后 Easybook 服务端自动执行，AI 不再提交执行请求。</p><div class="group"><div class="row"><strong>${escape(row.tool)}</strong><small>${count} 条笔记 · ${escape(expired&&row.status==='pending'?'已过期':row.status)}</small></div></div><h2>冻结的目标与参数</h2><pre style="white-space:pre-wrap;overflow-wrap:anywhere">${escape(JSON.stringify(payload,null,2))}</pre><p>有效期十分钟。任何目标版本、账户权限或 OAuth 授权发生变化，整个批次终止，不会部分执行。</p>${pending?`<form method="post"><input type="hidden" name="csrf" value="${await csrf(request,s)}"><button name="decision" value="approve">批准并执行 ${count} 条操作</button><button name="decision" value="deny">取消操作</button></form>`:''}<a class="link" href="/account">账户与安全</a>`);
+ return page('高风险操作审批',`<p>仅发起此 OAuth 授权的账户本人可以批准。批准后 Easybook 服务端自动执行，AI 不再提交执行请求。</p><div class="group"><div class="row"><strong>${escape(row.tool)}</strong><small>客户端：${escape(row.client_id)}<br>工作区：${escape(row.workspace_id)}<br>Scope：${escape(row.scope)}<br>${count} ${payload.attachment_id?'个附件':'条笔记'} · ${escape(expired&&row.status==='pending'?'已过期':row.status)}</small></div></div><h2>冻结的目标与参数</h2><pre style="white-space:pre-wrap;overflow-wrap:anywhere">${escape(JSON.stringify(payload,null,2))}</pre><p>有效期十分钟。任何目标版本、账户权限或 OAuth 授权发生变化，整个批次终止，不会部分执行。</p>${pending?`<form method="post"><input type="hidden" name="csrf" value="${await csrf(request,s)}"><button name="decision" value="approve">批准并执行 ${count} 条操作</button><button name="decision" value="deny">取消操作</button></form>`:''}<a class="link" href="/account">账户与安全</a>`);
 }
+

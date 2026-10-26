@@ -28,4 +28,4 @@ Android compilation and APK signer/Digital Asset Links consistency are separate 
 
 The zone's Free Bot Fight Mode may challenge non-browser requests and cannot use per-path skip rules. The native client therefore uses the existing fixed Workers API transports, while browser URLs and the Passkey RP remain canonical. Zone protection settings are unchanged. CI records a pre-existing custom-domain challenge separately and still requires real Worker runtime probes.
 
-Production migration, final commit, deployment IDs and release APK are recorded after publication.
+Migration 0017 was applied to production and all three trigger names were verified through sqlite_master. It did not rewrite existing content. Final commit, deployment IDs and release APK are recorded after publication.

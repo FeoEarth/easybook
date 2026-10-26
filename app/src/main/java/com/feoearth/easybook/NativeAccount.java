@@ -50,16 +50,19 @@ final class NativeAccount {
     void open(){try{if(publicStatus().optBoolean("signedIn")){browse(ORIGIN+"/account");return;}}catch(Exception ignored){}begin();}
     void begin(){if(!startOperation())return;io.execute(()->{try{
         String verifier=NoteRepository.newKey(),state=NoteRepository.newKey();String challenge=android.util.Base64.encodeToString(MessageDigest.getInstance("SHA-256").digest(verifier.getBytes(StandardCharsets.UTF_8)),android.util.Base64.URL_SAFE|android.util.Base64.NO_WRAP|android.util.Base64.NO_PADDING);
-        JSONObject response=request("/account/native/manage","/account/native/start",new JSONObject().put("challenge",challenge).put("state",state),null);String flow=response.getString("flow"),destination=response.getString("authorization_url");Uri uri=Uri.parse(destination);
+        JSONObject response=request("/account/native/start",new JSONObject().put("challenge",challenge).put("state",state).put("provider","github"),null);String flow=response.getString("flow"),destination=response.getString("authorization_url");Uri uri=Uri.parse(destination);
         if(!flow.matches("[a-f0-9]{64}")||!"https".equals(uri.getScheme())||!"easybook.loonxy.com".equals(uri.getHost())||uri.getPort()!=-1||uri.getUserInfo()!=null||!"/account/login".equals(uri.getPath()))throw new SecurityException("Invalid authorization destination");
         Uri handoff=Uri.parse(uri.getQueryParameter("return")==null?"":uri.getQueryParameter("return"));if(handoff.isAbsolute()||!"/account/handoff".equals(handoff.getPath())||!flow.equals(handoff.getQueryParameter("flow"))||!state.equals(handoff.getQueryParameter("state")))throw new SecurityException("Invalid login return path");
         if(activity.isDestroyed())return;write(PENDING,new JSONObject().put("kind","browser").put("flow",flow).put("state",state).put("verifier",verifier).put("expires",System.currentTimeMillis()+300000));feedback="请在系统浏览器中完成登录，再返回 Easybook";browse(destination);
     }catch(Exception e){message(failureMessage(e));}finally{finishOperation();}});}
     boolean handle(Intent intent){if(intent==null||!Intent.ACTION_VIEW.equals(intent.getAction()))return false;Uri uri=intent.getData();if(uri==null||!"easybook".equals(uri.getScheme())||!"account".equals(uri.getHost())||!"/callback".equals(uri.getPath())||uri.getUserInfo()!=null||uri.getPort()!=-1||uri.getFragment()!=null)return false;
-        if(uri.getQueryParameterNames().size()!=3||!uri.getQueryParameterNames().containsAll(java.util.Arrays.asList("flow","code","state")))return true;
-        for(String name:new String[]{"flow","code","state"})if(uri.getQueryParameters(name).size()!=1||uri.getQueryParameter(name)==null||!uri.getQueryParameter(name).matches("[a-f0-9]{64}"))return true;
+        final boolean denied="access_denied".equals(uri.getQueryParameter("error"));
+        if(uri.getQueryParameterNames().size()!=3||!uri.getQueryParameterNames().containsAll(java.util.Arrays.asList("flow",denied?"error":"code","state")))return true;
+        for(String name:new String[]{"flow","state"})if(uri.getQueryParameters(name).size()!=1||uri.getQueryParameter(name)==null||!uri.getQueryParameter(name).matches("[a-f0-9]{64}"))return true;
+        if(denied?uri.getQueryParameters("error").size()!=1:uri.getQueryParameters("code").size()!=1||uri.getQueryParameter("code")==null||!uri.getQueryParameter("code").matches("[a-f0-9]{64}"))return true;
         final String flow=uri.getQueryParameter("flow"),code=uri.getQueryParameter("code"),state=uri.getQueryParameter("state");
         io.execute(()->{try{JSONObject pending=read(PENDING);if(pending==null||!pending.optString("kind","browser").equals("browser")||pending.getLong("expires")<System.currentTimeMillis()||!same(flow,pending.getString("flow"))||!same(state,pending.getString("state"))){message("登录回调已过期或不匹配，请返回原登录流程");return;}
+            if(denied){db.setSetting(PENDING,"");finishOperation();message("已取消浏览器登录");return;}
             JSONObject response=request("/account/native/token",new JSONObject().put("flow",flow).put("code",code).put("state",state).put("verifier",pending.getString("verifier")),null);
             synchronized(db){JSONObject active=read(PENDING);if(activity.isDestroyed()||active==null||!same(flow,active.getString("flow"))||!same(state,active.getString("state")))return;storeSession(response);db.setSetting(PENDING,"");}message("Easybook 账户已登录；工作区密钥保持独立");
         }catch(Exception e){message(failureMessage(e));}});return true;
