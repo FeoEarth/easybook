@@ -34,11 +34,11 @@ jobs:
         working-directory: mcp-oauth
       - name: Validate OAuth bundle
         run: mcp-oauth/node_modules/.bin/wrangler deploy --config mcp-oauth/wrangler.jsonc --dry-run --outdir oauth-preflight
-      - name: Validate MCP protocol and apply additive control-plane migration
+      - name: Validate MCP protocol before candidate upload
         run: |
           node scripts/mcp-capabilities-test.mjs
           node scripts/mcp-pairing-release-test.mjs
-          mcp-oauth/node_modules/.bin/wrangler d1 execute easybook-data --remote --config mcp-oauth/wrangler.jsonc --file worker/migrations/0008-mcp-capabilities.sql
+          # Migration is applied via authorized Cloudflare; candidate smoke verifies runtime D1 readiness.
       - name: Upload OAuth candidate only
         id: candidate
         run: |

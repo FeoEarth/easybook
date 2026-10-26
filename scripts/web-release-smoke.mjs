@@ -23,3 +23,5 @@ try{
  console.log('PASS: HTML, editor load, list menu, new editor, health; no user notes read');
  await context.close();
 }finally{await browser.close()}
+
+const mcpReadiness=await fetch(origin+'/health/mcp');assert.equal(mcpReadiness.status,200,'MCP schema must be ready before promotion');assert.equal((await mcpReadiness.json()).mcp_schema_revision,8);

@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import {DatabaseSync} from 'node:sqlite';
 import {readFileSync} from 'node:fs';
 import {mcp} from '../worker/mcp.mjs';
+import {mcpHealth} from '../worker/mcp-health.mjs';
 import {registry} from '../worker/mcp-registry.mjs';
 import {promptDefinitions} from '../worker/mcp-prompts.mjs';
 import {READ,WRITE} from '../worker/mcp-common.mjs';
@@ -17,6 +18,7 @@ const workspace='a'.repeat(64),client='synthetic-client',token='synthetic-only';
 const env={DB,ATTACHMENTS:bucket,MCP_ACCESS_TOKEN:token};
 const ctx={env,workspace,client,scopes:[...READ,...WRITE]};
 sqlite.prepare("INSERT INTO mcp_workspace_grants(id,github_user_id,oauth_client_id,workspace_id,created_at) VALUES('g','236202359',?,?,0)").run(client,workspace);
+assert.equal((await mcpHealth(env)).status,200);
 const exercised=new Set();
 async function protocol(method,params={},access=ctx){const r=await mcp(new Request('https://test/mcp',{method:'POST',headers:{Authorization:'Bearer '+token},body:JSON.stringify({jsonrpc:'2.0',id:1,method,params})}),env,access.workspace,{client:access.client,scopes:access.scopes});return r.json()}
 async function call(name,a={},access=ctx){const r=await protocol('tools/call',{name,arguments:a},access);assert.ok(r.result,JSON.stringify(r));const data=JSON.parse(r.result.content[0].text);if(r.result.isError)throw Object.assign(Error(data.error.message),data.error);exercised.add(name);return data}

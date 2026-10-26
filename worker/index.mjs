@@ -1,4 +1,5 @@
 import {mcp} from './mcp.mjs';
+import {mcpHealth} from './mcp-health.mjs';
 import {approvalPage,approvalAPI} from './mcp-access.mjs';
 import {download} from './mcp-attachments.mjs';
 import {attestMcpWorkspace} from './mcp-pairing.mjs';
@@ -13,6 +14,7 @@ const json = (data, status=200) => Response.json(data, {status, headers});
 export default {
  async fetch(request, env) {
   const url = new URL(request.url);
+  if(url.pathname==='/health/mcp'&&request.method==='GET')return mcpHealth(env);
   if(url.pathname === '/mcp') return mcp(request,env);
   if(url.pathname==='/mcp/approve'&&request.method==='GET')return new Response(approvalPage,{headers:{'Content-Type':'text/html; charset=utf-8','Cache-Control':'no-store','Referrer-Policy':'no-referrer','X-Frame-Options':'DENY','Content-Security-Policy':"default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; connect-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'none'"}});
   if(url.pathname==='/api/mcp/download'&&request.method==='GET'){try{return await download(request,env)}catch{return new Response('Download unavailable',{status:404})}}

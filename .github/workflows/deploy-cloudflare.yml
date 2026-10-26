@@ -44,8 +44,8 @@ jobs:
         run: npx --no-install wrangler deploy --config worker/wrangler.jsonc --dry-run --outdir .wrangler-preflight
       - name: Install browser for release smoke test
         run: npx --no-install playwright install chromium
-      - name: Apply additive MCP control-plane migration
-        run: npx --no-install wrangler d1 execute easybook-data --remote --config worker/wrangler.jsonc --file worker/migrations/0008-mcp-capabilities.sql
+      # Schema migration is applied via the authorized Cloudflare connection.
+      # Candidate readiness below verifies D1 through its runtime binding before promotion.
       - name: Record custom-domain baseline without weakening zone security
         run: node scripts/custom-domain-release-check.mjs record
       - name: Verify real rollback on binding-free probe Worker
