@@ -11,7 +11,7 @@ permissions:
   actions: read
 jobs:
   apk:
-    if: github.event_name != 'pull_request' || (github.head_ref == 'fix/android-sync-policy-save' || github.head_ref == 'fix/sync-policies-active-space' || github.head_ref == 'fix/sync-policies-list-gestures' || github.head_ref == 'fix/sync-policies-list-hit-area' || github.head_ref == 'fix/sync-policies-large-attachments' || github.head_ref == 'fix/sync-policies-pdf-reader' || github.head_ref == 'fix/sync-policies-pdf-loading' || github.head_ref == 'fix/sync-policies-pdf-interaction' || github.head_ref == 'fix/sync-policies-tables-pickers')
+    if: github.event_name != 'pull_request' || (github.head_ref == 'feat/easybook-accounts-oauth' || github.head_ref == 'fix/android-sync-policy-save' || github.head_ref == 'fix/sync-policies-active-space' || github.head_ref == 'fix/sync-policies-list-gestures' || github.head_ref == 'fix/sync-policies-list-hit-area' || github.head_ref == 'fix/sync-policies-large-attachments' || github.head_ref == 'fix/sync-policies-pdf-reader' || github.head_ref == 'fix/sync-policies-pdf-loading' || github.head_ref == 'fix/sync-policies-pdf-interaction' || github.head_ref == 'fix/sync-policies-tables-pickers')
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -79,4 +79,5 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           TAG="v0.8.0-build${GITHUB_RUN_NUMBER}"
-          gh release create "$TAG" Easybook-0.8.0.apk SHA256SUMS.txt --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" --title "Easybook 0.8.0 · build ${GITHUB_RUN_NUMBER}" --notes "依据 iOS 26.1 真实设置截图调整设备连接与 AI/MCP 页面：居中导航标题、44dp 图形返回键、紧凑输入分组、分组外说明和列表式操作，移除大标题与大面积黄色按钮。保留原生安全配对和 QWEA0。未做真机视觉验证。"
+          gh release create "$TAG" Easybook-0.8.0.apk SHA256SUMS.txt --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" --title "Easybook 0.8.0 · build ${GITHUB_RUN_NUMBER}" --notes "新增 Easybook 独立账户、会话及工作区关联；保留旧 GitHub OAuth 与配对。账户管理使用外部浏览器，不向 WebView 暴露 OAuth 凭据；保留 Keystore、离线笔记和 QWEA0。首版继续以 GitHub 验证身份，Passkey 尚未启用。"
+

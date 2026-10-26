@@ -188,6 +188,7 @@ public class MainActivity extends Activity {
             case "attachment.restore":{String space=repository.activeSpace();JSONArray files=args.getJSONArray("files");if(files.length()>100)throw new IllegalArgumentException();for(int i=0;i<files.length();i++){JSONObject f=files.getJSONObject(i);repository.attachments.accept(space,f.getString("id"),f);repository.saveAttachment(space,new JSONObject(f.toString()).put("data",JSONObject.NULL).put("dirty",true));}return new JSONObject().put("restored",files.length());}
             case "attachment.open":case "attachment.share":{String space=repository.activeSpace(),id=bounded(args,"id",64);requireAttachmentReference(space,id);JSONObject f=repository.attachments.get(space,id);if(!f.optBoolean("available"))throw new IOException("Attachment only on original device");openNativeFile(f,method.equals("attachment.share"),generation);return new JSONObject().put("opened",true);}
             case "attachment.export":{String space=repository.activeSpace(),id=bounded(args,"id",64);requireAttachmentReference(space,id);JSONObject f=repository.attachments.get(space,id);if(!f.optBoolean("available"))throw new IOException("Attachment only on original device");File bytes=repository.attachments.file(space,id);runOnUiThread(()->{if(destroyed||generation!=documentGeneration)return;attachmentExport=bytes;attachmentExportName=AttachmentStore.cleanName(f.optString("name","附件"));Intent i=new Intent(Intent.ACTION_CREATE_DOCUMENT);i.addCategory(Intent.CATEGORY_OPENABLE);i.setType("application/octet-stream");i.putExtra(Intent.EXTRA_TITLE,attachmentExportName);startActivityForResult(i,84);});return new JSONObject().put("picker",true);}
+            case "security.account":runOnUiThread(()->{try{startActivity(new Intent(Intent.ACTION_VIEW,Uri.parse("https://easybook-mcp-oauth.1902521952.workers.dev/account")));}catch(ActivityNotFoundException e){notifyJs("未找到可用浏览器");}});return new JSONObject().put("externalBrowser",true);
             case "security.mcp":security.mcpPairing();return new JSONObject().put("nativeDialog",true);
             case "security.pair":security.pairing(()->{if(!destroyed&&generation==documentGeneration)web.reload();});return new JSONObject().put("nativeDialog",true);
             case "security.status":return repository.securityStatus();
@@ -358,6 +359,7 @@ public class MainActivity extends Activity {
     @Override protected void onPause() { if(security!=null)security.dismissConnection(); if(nativeGlass!=null)nativeGlass.dismiss(true);web.evaluateJavascript("window.persistNow && window.persistNow()", null); super.onPause(); }
     @Override protected void onDestroy() { if(security!=null)security.dismissConnection(); if(connectivity!=null&&networkCallback!=null)connectivity.unregisterNetworkCallback(networkCallback); if(nativeGlass!=null){nativeGlass.clearFormatFrame();nativeGlass.dismiss(true);}ready=false; destroyed=true;if(WebViewFeature.isFeatureSupported(WebViewFeature.WEB_MESSAGE_LISTENER))WebViewCompat.removeWebMessageListener(web,"EasybookNative");web.destroy();io.shutdown();super.onDestroy(); }
 }
+
 
 
 

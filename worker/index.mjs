@@ -1,3 +1,4 @@
+import {accountConnect} from './account-connect.mjs';
 import {cleanupUploads} from './mcp-uploads.mjs';
 import {mcp} from './mcp.mjs';
 import {mcpHealth} from './mcp-health.mjs';
@@ -16,6 +17,7 @@ export default {
  async scheduled(controller,env){await cleanupUploads(env,10)},
  async fetch(request, env) {
   const url = new URL(request.url);
+  if(url.pathname==='/account/connect'&&request.method==='GET')return new Response(accountConnect,{headers:{'Content-Type':'text/html; charset=utf-8','Cache-Control':'no-store','Referrer-Policy':'no-referrer','X-Frame-Options':'DENY','Content-Security-Policy':"default-src 'none'; style-src 'unsafe-inline'; script-src 'unsafe-inline'; connect-src 'self'; form-action 'none'; frame-ancestors 'none'; base-uri 'none'"}});
   if(url.pathname==='/health/mcp'&&request.method==='GET')return mcpHealth(env);
   if(url.pathname === '/mcp') return mcp(request,env);
   if(url.pathname==='/mcp/approve'&&request.method==='GET')return new Response(approvalPage,{headers:{'Content-Type':'text/html; charset=utf-8','Cache-Control':'no-store','Referrer-Policy':'no-referrer','X-Frame-Options':'DENY','Content-Security-Policy':"default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; connect-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'none'"}});
@@ -87,6 +89,7 @@ export default {
   } catch(e) { console.error(JSON.stringify({event:'request_failed',name:e.name})); const response=json({error:'Service temporarily unavailable'},503); return url.pathname==='/api/mcp/attest'?pairingResponse(response):response; }
  }
 };
+
 
 
 
