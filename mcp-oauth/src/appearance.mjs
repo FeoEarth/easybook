@@ -7,3 +7,13 @@ export const oauthAppearance = `<meta name="viewport" content="width=device-widt
 </style>`;
 
 export const htmlHeaders = {'Content-Type':'text/html; charset=utf-8','Cache-Control':'no-store','X-Frame-Options':'DENY','Content-Security-Policy':"default-src 'none'; style-src 'unsafe-inline'; form-action 'self' https://github.com; frame-ancestors 'none'"};
+
+
+// Chromium applies form-action to the OAuth POST's redirect as well. Allow only
+// the callback target already validated against this OAuth client's registration.
+export function oauthConsentHeaders(redirectUri){
+ const url=new URL(redirectUri),protocol=url.protocol;
+ const source=['https:','http:'].includes(protocol)?url.origin:protocol;
+ if(!/^[a-z][a-z0-9+.-]*:$/.test(protocol)||['javascript:','data:','blob:','file:','about:'].includes(protocol)||/[\s;'"<>]/.test(source))throw Error('Unsafe OAuth callback policy');
+ return {'Content-Security-Policy':`default-src 'none'; style-src 'unsafe-inline'; form-action 'self' ${source}; frame-ancestors 'none'`};
+}
