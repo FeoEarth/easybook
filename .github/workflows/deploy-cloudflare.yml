@@ -43,6 +43,8 @@ jobs:
         run: npx --no-install wrangler deploy --config worker/wrangler.jsonc --dry-run --outdir .wrangler-preflight
       - name: Install browser for release smoke test
         run: npx --no-install playwright install --with-deps chromium
+      - name: Verify real rollback on binding-free probe Worker
+        run: node scripts/rollback-probe.mjs
       - name: Record baseline and upload candidate without production traffic
         id: candidate
         run: node scripts/cloudflare-release.mjs stage

@@ -1,7 +1,7 @@
 import {execFileSync} from 'node:child_process';
 import {readFileSync,writeFileSync,appendFileSync} from 'node:fs';
 const mode=process.argv[2],oauth=process.argv.includes('--oauth');
-const worker=oauth?'easybook-mcp-oauth':'easybook-sync';
+const worker=process.argv.includes('--probe')?'easybook-release-rollback-probe':oauth?'easybook-mcp-oauth':'easybook-sync';
 const config=oauth?'mcp-oauth/wrangler.jsonc':'worker/wrangler.jsonc';
 const account=process.env.CLOUDFLARE_ACCOUNT_ID,token=process.env.CLOUDFLARE_API_TOKEN;
 if(!account||!token)throw Error('Cloudflare credentials missing');
