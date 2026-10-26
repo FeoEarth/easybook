@@ -205,7 +205,7 @@ public class MainActivity extends Activity {
             case "account.device.revoke":return nativeAccount.revokeDevice(bounded(args,"id",36));
             case "account.logout":nativeAccount.signOut();return new JSONObject().put("pending",true);
             case "security.mcp":security.mcpPairing();return new JSONObject().put("nativeDialog",true);
-            case "security.pair":if(!repository.setting("account-workspace:"+repository.activeSpace(),"").isEmpty())throw new SecurityException("Rotate a key before anonymous device access");security.pairing(()->{if(!destroyed&&generation==documentGeneration)web.reload();});return new JSONObject().put("nativeDialog",true);
+            case "security.pair":security.pairing(()->{if(!destroyed&&generation==documentGeneration)web.reload();});return new JSONObject().put("nativeDialog",true);
             case "security.status":return repository.securityStatus();
             case "migration.cleaned":if(!repository.setting("rendererCredentials","").equals("cleared")){repository.scrubDeletedPages();repository.setSetting("rendererCredentials","cleared");}return new JSONObject().put("verified",true);
             case "migration.retry":return repository.secureCredentials();

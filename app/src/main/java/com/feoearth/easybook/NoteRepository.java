@@ -81,7 +81,7 @@ public final class NoteRepository extends SQLiteOpenHelper {
             try(Cursor c=db.rawQuery("SELECT local_id FROM workspace_credentials WHERE key_hash=?",new String[]{hash(credential)})){if(c.moveToFirst()&&!ref.equals(c.getString(0)))throw new SecurityException("Credential identity changed");}
             ContentValues entry=new ContentValues();entry.put("key",ref);entry.put("credential",encrypted);if(db.insertWithOnConflict("spaces",null,entry,SQLiteDatabase.CONFLICT_REPLACE)==-1)throw new SQLiteException("Credential persistence failed");
             ContentValues binding=new ContentValues();binding.put("key_hash",hash(credential));binding.put("local_id",ref);if(db.insertWithOnConflict("workspace_credentials",null,binding,SQLiteDatabase.CONFLICT_REPLACE)==-1)throw new SQLiteException("Credential binding failed");
-            bindWorkspaceIdentity("space:"+ref,identity);setSetting("active",ref);db.setTransactionSuccessful();
+            bindWorkspaceIdentity("space:"+ref,identity);setSetting("active",ref);setSetting("account-workspace:space:"+ref,"");db.setTransactionSuccessful();
         }finally{db.endTransaction();}
     }
     synchronized void activateAccountWorkspace(JSONObject identity)throws Exception{
