@@ -21,8 +21,7 @@ jobs:
       - run: node scripts/browser-pairing-smoke.mjs
         env:
           TEST_SOURCE_HTML: 'true'
-          OAUTH_CANDIDATE_ORIGIN: https://1149ffed-easybook-mcp-oauth.1902521952.workers.dev
-          SYNTHETIC_PAIRING_CHALLENGE: dOBTKuyLGM66visN5m5PZuJySrceuOhc_-fsnOGnj4c
+          SYNTHETIC_PAIRING_CHALLENGE: E0Y2fRrJXHxwT1r_mxGcwUNBuMDPwUD8DP_iHnxMbH8
       - uses: actions/upload-artifact@v4
         if: always()
         with:
