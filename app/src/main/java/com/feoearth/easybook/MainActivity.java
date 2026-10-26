@@ -195,11 +195,17 @@ public class MainActivity extends Activity {
             case "account.passkey":if(!(args.get("register") instanceof Boolean)||args.has("name")&&!(args.get("name") instanceof String)||args.optString("name").length()>100)throw new SecurityException("Invalid account request");nativeAccount.passkey(args.getBoolean("register"),args.optString("name",""));return new JSONObject().put("pending",true);
             case "account.login":nativeAccount.begin();return new JSONObject().put("externalBrowser",true);
             case "account.status":return nativeAccount.publicStatus();
+            case "workspace.action":{
+                if(NativeSync.isRunning(repository.activeSpace()))throw new IllegalStateException("Sync running");
+                String action=bounded(args,"action",16);JSONObject result=WorkspaceClient.perform(repository,action,args);
+                if(action.equals("select")||action.equals("create")||action.equals("rotate"))runOnUiThread(()->{if(!destroyed&&generation==documentGeneration)web.reload();});
+                return result;
+            }
             case "account.devices":return nativeAccount.devices();
             case "account.device.revoke":return nativeAccount.revokeDevice(bounded(args,"id",36));
             case "account.logout":nativeAccount.signOut();return new JSONObject().put("pending",true);
             case "security.mcp":security.mcpPairing();return new JSONObject().put("nativeDialog",true);
-            case "security.pair":security.pairing(()->{if(!destroyed&&generation==documentGeneration)web.reload();});return new JSONObject().put("nativeDialog",true);
+            case "security.pair":if(!repository.setting("account-workspace:"+repository.activeSpace(),"").isEmpty())throw new SecurityException("Rotate a key before anonymous device access");security.pairing(()->{if(!destroyed&&generation==documentGeneration)web.reload();});return new JSONObject().put("nativeDialog",true);
             case "security.status":return repository.securityStatus();
             case "migration.cleaned":if(!repository.setting("rendererCredentials","").equals("cleared")){repository.scrubDeletedPages();repository.setSetting("rendererCredentials","cleared");}return new JSONObject().put("verified",true);
             case "migration.retry":return repository.secureCredentials();
@@ -368,6 +374,7 @@ public class MainActivity extends Activity {
     @Override protected void onPause() { if(security!=null)security.dismissConnection(); if(nativeGlass!=null)nativeGlass.dismiss(true);web.evaluateJavascript("window.persistNow && window.persistNow()", null); super.onPause(); }
     @Override protected void onDestroy() { if(nativeAccount!=null)nativeAccount.cancel(); if(security!=null)security.dismissConnection(); if(connectivity!=null&&networkCallback!=null)connectivity.unregisterNetworkCallback(networkCallback); if(nativeGlass!=null){nativeGlass.clearFormatFrame();nativeGlass.dismiss(true);}ready=false; destroyed=true;if(WebViewFeature.isFeatureSupported(WebViewFeature.WEB_MESSAGE_LISTENER))WebViewCompat.removeWebMessageListener(web,"EasybookNative");web.destroy();io.shutdown();super.onDestroy(); }
 }
+
 
 
 

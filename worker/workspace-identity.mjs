@@ -56,9 +56,11 @@ function invalidate(env,id,account=null){
  return stmt(env,'UPDATE oauth_grants SET revoked_at=? WHERE workspace_id=? AND revoked_at IS NULL'+suffix,...[Date.now(),id,...(account?[account]:[])]);
 }
 
-export async function createWorkspace(env,name,principal=null){
+export async function createWorkspace(env,name,principal=null,initialKey=null){
  await requireRestoreAccess(env);
- const id=newWorkspaceSecret(),key=newWorkspaceSecret(),now=Date.now();name=nameValue(name);
+ const id=newWorkspaceSecret(),key=initialKey||newWorkspaceSecret(),now=Date.now();name=nameValue(name);
+ if(!HEX.test(key))deny('invalid_workspace_key',400);
+ if(initialKey&&await stmt(env,'SELECT 1 FROM workspace_keys WHERE key_hash=?',await hash(initialKey)).first())deny('credential_already_registered',409);
  if(principal&&(!['account','oauth'].includes(principal.kind)||!await activeAccount(env,principal.accountId)))deny('account_required');
  if(principal?.kind==='oauth'&&!principal.scopes?.includes('workspace.create'))deny('insufficient_scope');
  // AI may create an account-associated personal workspace but never receives its key.
@@ -175,3 +177,4 @@ export async function transferWorkspaceManager(env,id,principal,newManagerId,{co
   invalidate(env,id),event(env,id,principal,'manager_transferred'),stmt(env,'DELETE FROM workspace_tx_assertions WHERE id=?',id)
  ]);return metadata(env,id);
 }
+

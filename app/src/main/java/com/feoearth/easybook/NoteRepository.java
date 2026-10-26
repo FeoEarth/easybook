@@ -84,6 +84,12 @@ public final class NoteRepository extends SQLiteOpenHelper {
             bindWorkspaceIdentity("space:"+ref,identity);setSetting("active",ref);db.setTransactionSuccessful();
         }finally{db.endTransaction();}
     }
+    synchronized void activateAccountWorkspace(JSONObject identity)throws Exception{
+        String id=identity.getString("id"),ref=null;if(!id.matches("[a-f0-9]{64}"))throw new SecurityException("Invalid workspace");
+        try(Cursor c=getReadableDatabase().rawQuery("SELECT local_id FROM workspace_identity WHERE workspace_id=?",new String[]{id})){if(c.moveToFirst())ref=c.getString(0);}
+        if(ref==null){String placeholder=newKey();pairWorkspace(placeholder,identity,false);ref=setting("active","");}else setSetting("active",ref);
+        setSetting("account-workspace:space:"+ref,id);
+    }
     /** Resumable, atomic upgrade. Encrypted checkpoint permits native-only rollback;
      * no record payload or revision is modified. Original keys never enter reports. */
     public synchronized JSONObject secureCredentials()throws Exception{
@@ -148,6 +154,7 @@ public final class NoteRepository extends SQLiteOpenHelper {
         matches.sort((a,b)->Long.compare(b.optLong("updated"),a.optLong("updated")));JSONArray out=new JSONArray();for(JSONObject n:matches)out.put(n);return out;
     }
 }
+
 
 
 
