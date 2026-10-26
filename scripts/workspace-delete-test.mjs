@@ -1,3 +1,6 @@
+import {prepareAccountOperation,executeAccountOperation} from '../worker/account-operations.mjs';
+import {sessionToken} from '../mcp-oauth/src/accounts.mjs';
+import {workspaceAccess} from '../worker/workspace-identity.mjs';
 import assert from 'node:assert/strict';
 import {DatabaseSync} from 'node:sqlite';
 import {readFileSync} from 'node:fs';
@@ -17,6 +20,10 @@ const policy=crypto.randomUUID(),scopes='["notes.read"]';sql.prepare('INSERT INT
 for(const workspace of [personal.workspace.id,id])sql.prepare('INSERT INTO oauth_grant_workspaces(policy_id,workspace_id,scopes,created_at) VALUES(?,?,?,?)').run(policy,workspace,scopes,Date.now());
 await revokeWorkspaceGrant(env,a.id,policy,id);sql.prepare('UPDATE oauth_grant_workspaces SET revoked_at=NULL WHERE policy_id=? AND workspace_id=?').run(policy,id);
 assert.equal((await workspacePolicy(env,policy)).workspaces.length,1,'business row rollback cannot revive child grant');
+const purgePolicy=crypto.randomUUID();sql.prepare('INSERT INTO oauth_grants(id,account_id,client_id,workspace_id,scopes,created_at) VALUES(?,?,?,?,?,?)').run(purgePolicy,a.id,'purge-fixture',id,'["notes.delete"]',Date.now());sql.prepare('INSERT INTO oauth_grant_workspaces(policy_id,workspace_id,scopes,created_at) VALUES(?,?,?,?)').run(purgePolicy,id,'["notes.delete"]',Date.now());
+const target=sql.prepare('SELECT id,version FROM notes_json WHERE workspace=? AND purged=0').get(id),before=sql.prepare('SELECT version FROM workspaces WHERE id=?').get(id).version;
+const approval=await prepareAccountOperation(env,{policyId:purgePolicy,accountId:a.id,clientId:'purge-fixture',workspaceId:id,tokenScopes:['notes.delete']},'notes_permanent_delete',{items:[target]});await executeAccountOperation(env,approval.approval_id,await sessionToken(login.token,env));
+sql.prepare('UPDATE workspaces SET version=? WHERE id=?').run(before,id);assert.equal(await workspaceAccess(env,id,{kind:'account',accountId:a.id}),null,'restoring pre-purge business version cannot reopen deleted note/attachment access');sql.prepare('UPDATE workspaces SET version=? WHERE id=?').run(before+1,id);
 const shared=await createWorkspace(env,'shared deletion',{kind:'account',accountId:a.id});await convertToShared(env,shared.workspace.id,{kind:'account',accountId:a.id},{confirm:true,firstAccountId:b.id,role:'reader'});
 const bLogin=await createSession(new Request(origin+'/account'),env,b.id);sql.prepare('INSERT INTO account_native_sessions VALUES(?,?)').run(bLogin.id,now);
 const path='/api/workspaces/'+shared.workspace.id+'/delete',version=(await req('/api/workspaces/'+shared.workspace.id,{headers})).status;
