@@ -79,4 +79,4 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           TAG="v0.8.0-build${GITHUB_RUN_NUMBER}"
-          gh release create "$TAG" Easybook-0.8.0.apk SHA256SUMS.txt --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" --title "Easybook 0.8.0 · build ${GITHUB_RUN_NUMBER}" --notes "Android AI 与 MCP 接入统一原生玻璃面板，支持一次性码配对、原生工作区验证及授权完成反馈。同步密钥和签名断言不进入 WebView。通过针对性配对测试及发行构建；未做真机验证。"
+          gh release create "$TAG" Easybook-0.8.0.apk SHA256SUMS.txt --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" --title "Easybook 0.8.0 · build ${GITHUB_RUN_NUMBER}" --notes "重新设计 Android 连接其他设备及 AI 与 MCP：完整设置页面、返回导航、大标题和分组列表，输入及确认分步展示。复用 QWEA0 返回控件，保留原生配对与 Keystore 安全边界。通过针对性测试及发行构建；未做真机验证。"
