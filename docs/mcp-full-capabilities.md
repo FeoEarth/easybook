@@ -2,7 +2,7 @@
 
 完整 JSON Schema： [mcp-catalog.json](mcp-catalog.json)。* 表示必填，? 表示可选。
 
-49 个工具（含 2 个授权辅助工具），加 3 个旧名称别名、5 个原有配对工具。协议使用标准 JSON-RPC / sessionless Streamable HTTP。
+55 个工具（含 2 个授权辅助工具），加 3 个旧名称别名、5 个原有配对工具。协议使用标准 JSON-RPC / sessionless Streamable HTTP。
 
 ## Tools
 
@@ -49,6 +49,12 @@
 | attachments_attach_to_note | 插入已有附件的正文引用 | id*:string, version*:integer, attachment_id*:string, index?:integer, as_image?:boolean | attachments.write | 合成数据 SQLite/协议调用通过 |
 | attachments_detach_from_note | 仅移除精确节点路径处的附件引用 | id*:string, version*:integer, path*:array, attachment_id*:string | attachments.write | 合成数据 SQLite/协议调用通过 |
 | attachments_delete | 确认后停用无引用附件；保留 R2 字节以兼容离线同步，禁止永久清除 | attachment_id*:string, confirmation_id*:string | attachments.write + 人工一次性确认 | 合成数据 SQLite/协议调用通过 |
+| attachments_prepare_upload | 准备15分钟有效、绑定工作区和客户端的4 MiB分块上传 | filename*:string, mime_type*:string, sha256?:string, request_id?:string, provenance?:object, size*:integer | attachments.write | 合成数据 SQLite/协议调用通过 |
+| attachments_upload_base64 | 上传最多128 KiB的小文件；使用严格标准Base64，不能上传URL或假设客户端能读取文件 | filename*:string, mime_type*:string, sha256?:string, request_id?:string, provenance?:object, content_base64*:string | attachments.write | 合成数据 SQLite/协议调用通过 |
+| attachments_complete_upload | 验证全部分块、实际类型、大小和SHA-256后登记现有R2附件，幂等返回附件ID | upload_id*:string | attachments.write | 合成数据 SQLite/协议调用通过 |
+| attachments_upload_status | 读取当前OAuth客户端上传状态与已接收分块 | upload_id*:string | attachments.write | 合成数据 SQLite/协议调用通过 |
+| attachments_abort_upload | 取消未提交的上传并清理临时对象，不删除已登记附件 | upload_id*:string | attachments.write | 合成数据 SQLite/协议调用通过 |
+| notes_get_attachments | 列出指定笔记中图片和附件的元数据、节点路径和版本 | id*:string, limit?:integer, cursor?:string | notes.read | 合成数据 SQLite/协议调用通过 |
 | workspace_get_info | 当前工作区信息 | 无 | workspace.read | 合成数据 SQLite/协议调用通过 |
 | workspace_get_summary | 笔记及文件夹计数；待办按有界分页统计 | limit?:integer, cursor?:string | workspace.read | 合成数据 SQLite/协议调用通过 |
 | workspace_get_recent_activity | 按同步游标列出最近变更元数据 | limit?:integer, cursor?:string | workspace.read | 合成数据 SQLite/协议调用通过 |
@@ -64,6 +70,7 @@
 
 | URI | MIME | 用途 | 权限 | 更新通知 |
 |---|---|---|---|---|
+| easybook://attachments | application/json | 附件目录 | attachments.read | 不支持，未声明 |
 | easybook://workspace/info | application/json | 工作区信息 | workspace.read | 不支持，未声明 |
 | easybook://workspace/summary | application/json | 工作区摘要 | workspace.read + tasks.read | 不支持，未声明 |
 | easybook://workspace/capabilities | application/json | 工作区权限和能力 | workspace.read | 不支持，未声明 |
@@ -75,6 +82,7 @@
 | easybook://notes/{note_id}/text | text/plain | 笔记纯文本 | notes.read | 不支持，未声明 |
 | easybook://notes/{note_id}/document | application/json | 笔记文档 JSON 分段 | notes.read | 不支持，未声明 |
 | easybook://notes/{note_id}/outline | application/json | 笔记大纲 | notes.read | 不支持，未声明 |
+| easybook://notes/{note_id}/attachments | application/json | 笔记附件 | attachments.read | 不支持，未声明 |
 | easybook://folders/{folder_id} | application/json | 文件夹详情 | folders.read | 不支持，未声明 |
 | easybook://folders/{folder_id}/notes | application/json | 文件夹笔记 | folders.read | 不支持，未声明 |
 | easybook://attachments/{attachment_id}/metadata | application/json | 附件元数据 | attachments.read | 不支持，未声明 |
@@ -111,6 +119,7 @@
 | extract_action_items | note_id*, requirements? | 提取行动项 | {"note_id":"11111111-1111-4111-8111-111111111111"} |
 | convert_to_checklist | note_id*, requirements? | 转换为待办清单 | {"note_id":"11111111-1111-4111-8111-111111111111"} |
 | create_meeting_summary | note_id*, requirements? | 整理会议纪要 | {"note_id":"11111111-1111-4111-8111-111111111111"} |
+| illustrate_notes | note_ids*, image_source*, images_per_note?, placement? | 为指定笔记寻找、生成或选择相关图片，上传并插入，保留来源和AI标识 | {"note_ids":"11111111-1111-4111-8111-111111111111","image_source":"existing"} |
 
 ## 权限与确认
 
@@ -124,7 +133,7 @@
 
 - 无永久清除工具。folders_delete 仅允许无笔记、无子文件夹的文件夹，且只软删除。
 - attachments_delete 为可恢复的停用标记：隐藏于 MCP 列表并阻止新增 MCP 引用，保留 R2 字节和已有 Web/Android 引用。离线设备缺乏全局引用锁，故不物理删除。
-- 附件使用现有 R2 manifest/chunk 协议；短期下载链接五分钟失效，撤销工作区授权立即失效。不返回 R2 内部路径、wireId 或凭据。未新增上传协议。
+- 附件使用现有 R2 manifest/chunk 协议；短期下载链接五分钟失效，撤销工作区授权立即失效。不返回 R2 内部路径、wireId 或凭据。新增 MCP 上传会话复用相同分块/manifest协议，详见 mcp-uploads.md。
 - 工作区笔记/文件夹计数为精确计数。任务计数由原始 taskItem 派生，旧数据每次最多补齐十条；tasks.complete=false 时不能当作完整统计，next_cursor=continue 时继续调用。附件总数不可靠时返回 null。
 - 同步状态仅表示服务端游标，不声称 Android 或其他设备已完成同步。
 - 批量最多20项，逐项 CAS，非全批原子；每条结果显式标注成功/失败。批量读取最多5篇，列表最多30项。任务扫描每次最多5篇笔记，可能返回空页及下一游标。
@@ -134,6 +143,6 @@
 
 ## 针对性验证
 
-node scripts/mcp-capabilities-test.mjs 覆盖全部49工具、3别名、7静态+7动态资源和26提示词，使用内存真实 SQLite、合成工作区和合成 R2。检查旧只读权限、跨工作区拒绝、版本冲突、确认参数/客户端绑定和重放、下载撤销、嵌套任务、表格/marks保留、大文档分段及同步变更记录。另运行原有配对回归、文档合同和 Web 生成产物语法一致性检查。
+node scripts/mcp-capabilities-test.mjs 覆盖全部基础工具及附件资源；新增上传工具另由 mcp-upload-test.mjs 验证、3别名、8静态+8动态资源和27提示词，使用内存真实 SQLite、合成工作区和合成 R2。检查旧只读权限、跨工作区拒绝、版本冲突、确认参数/客户端绑定和重放、下载撤销、嵌套任务、表格/marks保留、大文档分段及同步变更记录。另运行原有配对回归、文档合同和 Web 生成产物语法一致性检查。
 
 生产发布沿用候选版本上传、候选浏览器运行验证、正式晋升和失败自动回滚；新增迁移只建立 MCP 控制平面表和派生统计，不新建笔记或任务存储系统。

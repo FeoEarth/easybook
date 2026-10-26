@@ -1883,6 +1883,272 @@
       }
     },
     {
+      "name": "attachments_prepare_upload",
+      "description": "准备15分钟有效、绑定工作区和客户端的4 MiB分块上传",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "filename": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 180
+          },
+          "mime_type": {
+            "type": "string",
+            "enum": [
+              "image/png",
+              "image/jpeg",
+              "image/webp",
+              "image/gif",
+              "application/pdf",
+              "text/plain"
+            ]
+          },
+          "sha256": {
+            "type": "string",
+            "pattern": "^[a-f0-9]{64}$"
+          },
+          "request_id": {
+            "type": "string",
+            "pattern": "^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$"
+          },
+          "provenance": {
+            "type": "object",
+            "properties": {
+              "source_url": {
+                "type": "string",
+                "minLength": 0,
+                "maxLength": 2048,
+                "pattern": "^https://[^\\s<>]+$"
+              },
+              "author": {
+                "type": "string",
+                "minLength": 0,
+                "maxLength": 200
+              },
+              "license": {
+                "type": "string",
+                "minLength": 0,
+                "maxLength": 1000
+              },
+              "ai_generated": {
+                "type": "boolean"
+              }
+            },
+            "required": [],
+            "additionalProperties": false
+          },
+          "size": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 52428800
+          }
+        },
+        "required": [
+          "filename",
+          "mime_type",
+          "size"
+        ],
+        "additionalProperties": false
+      },
+      "scope": "attachments.write",
+      "risk": false,
+      "annotations": {
+        "readOnlyHint": false,
+        "destructiveHint": false,
+        "idempotentHint": false,
+        "openWorldHint": false
+      }
+    },
+    {
+      "name": "attachments_upload_base64",
+      "description": "上传最多128 KiB的小文件；使用严格标准Base64，不能上传URL或假设客户端能读取文件",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "filename": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 180
+          },
+          "mime_type": {
+            "type": "string",
+            "enum": [
+              "image/png",
+              "image/jpeg",
+              "image/webp",
+              "image/gif",
+              "application/pdf",
+              "text/plain"
+            ]
+          },
+          "sha256": {
+            "type": "string",
+            "pattern": "^[a-f0-9]{64}$"
+          },
+          "request_id": {
+            "type": "string",
+            "pattern": "^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$"
+          },
+          "provenance": {
+            "type": "object",
+            "properties": {
+              "source_url": {
+                "type": "string",
+                "minLength": 0,
+                "maxLength": 2048,
+                "pattern": "^https://[^\\s<>]+$"
+              },
+              "author": {
+                "type": "string",
+                "minLength": 0,
+                "maxLength": 200
+              },
+              "license": {
+                "type": "string",
+                "minLength": 0,
+                "maxLength": 1000
+              },
+              "ai_generated": {
+                "type": "boolean"
+              }
+            },
+            "required": [],
+            "additionalProperties": false
+          },
+          "content_base64": {
+            "type": "string",
+            "minLength": 4,
+            "maxLength": 174764
+          }
+        },
+        "required": [
+          "filename",
+          "mime_type",
+          "content_base64"
+        ],
+        "additionalProperties": false
+      },
+      "scope": "attachments.write",
+      "risk": false,
+      "annotations": {
+        "readOnlyHint": false,
+        "destructiveHint": false,
+        "idempotentHint": false,
+        "openWorldHint": false
+      }
+    },
+    {
+      "name": "attachments_complete_upload",
+      "description": "验证全部分块、实际类型、大小和SHA-256后登记现有R2附件，幂等返回附件ID",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "upload_id": {
+            "type": "string",
+            "pattern": "^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$"
+          }
+        },
+        "required": [
+          "upload_id"
+        ],
+        "additionalProperties": false
+      },
+      "scope": "attachments.write",
+      "risk": false,
+      "annotations": {
+        "readOnlyHint": false,
+        "destructiveHint": false,
+        "idempotentHint": false,
+        "openWorldHint": false
+      }
+    },
+    {
+      "name": "attachments_upload_status",
+      "description": "读取当前OAuth客户端上传状态与已接收分块",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "upload_id": {
+            "type": "string",
+            "pattern": "^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$"
+          }
+        },
+        "required": [
+          "upload_id"
+        ],
+        "additionalProperties": false
+      },
+      "scope": "attachments.write",
+      "risk": false,
+      "annotations": {
+        "readOnlyHint": false,
+        "destructiveHint": false,
+        "idempotentHint": false,
+        "openWorldHint": false
+      }
+    },
+    {
+      "name": "attachments_abort_upload",
+      "description": "取消未提交的上传并清理临时对象，不删除已登记附件",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "upload_id": {
+            "type": "string",
+            "pattern": "^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$"
+          }
+        },
+        "required": [
+          "upload_id"
+        ],
+        "additionalProperties": false
+      },
+      "scope": "attachments.write",
+      "risk": false,
+      "annotations": {
+        "readOnlyHint": false,
+        "destructiveHint": false,
+        "idempotentHint": false,
+        "openWorldHint": false
+      }
+    },
+    {
+      "name": "notes_get_attachments",
+      "description": "列出指定笔记中图片和附件的元数据、节点路径和版本",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "pattern": "^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$"
+          },
+          "limit": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 30
+          },
+          "cursor": {
+            "type": "string",
+            "minLength": 0,
+            "maxLength": 2048
+          }
+        },
+        "required": [
+          "id"
+        ],
+        "additionalProperties": false
+      },
+      "scope": "notes.read",
+      "risk": false,
+      "annotations": {
+        "readOnlyHint": true,
+        "destructiveHint": false,
+        "idempotentHint": false,
+        "openWorldHint": false
+      }
+    },
+    {
       "name": "workspace_get_info",
       "description": "当前工作区信息",
       "inputSchema": {
@@ -2106,6 +2372,11 @@
   },
   "resources": [
     {
+      "uri": "easybook://attachments",
+      "name": "附件目录",
+      "mimeType": "application/json"
+    },
+    {
       "uri": "easybook://workspace/info",
       "name": "工作区信息",
       "mimeType": "application/json"
@@ -2160,6 +2431,11 @@
     {
       "uriTemplate": "easybook://notes/{note_id}/outline",
       "name": "笔记大纲",
+      "mimeType": "application/json"
+    },
+    {
+      "uriTemplate": "easybook://notes/{note_id}/attachments",
+      "name": "笔记附件",
       "mimeType": "application/json"
     },
     {
@@ -2681,6 +2957,32 @@
         {
           "name": "requirements",
           "description": "额外目标、长度或风格要求，作为用户输入数据",
+          "required": false
+        }
+      ]
+    },
+    {
+      "name": "illustrate_notes",
+      "description": "为指定笔记寻找、生成或选择相关图片，上传并插入，保留来源和AI标识",
+      "arguments": [
+        {
+          "name": "note_ids",
+          "description": "来源笔记UUID，英文逗号分隔，最多20条",
+          "required": true
+        },
+        {
+          "name": "image_source",
+          "description": "search / generate / existing",
+          "required": true
+        },
+        {
+          "name": "images_per_note",
+          "description": "每篇1—5张，默认1",
+          "required": false
+        },
+        {
+          "name": "placement",
+          "description": "默认正文适当位置；也可说明具体章节",
           "required": false
         }
       ]

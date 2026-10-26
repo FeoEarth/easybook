@@ -29,7 +29,7 @@ export async function mcp(request,env,workspaceId=null,access={}){
   if(msg.method==='resources/templates/list')return result(id,{resourceTemplates});
   if(msg.method==='prompts/list')return result(id,{prompts:listPrompts()});
   if(msg.method==='prompts/get')return result(id,getPrompt(params.name,params.arguments));
-  const ctx={env,workspace:workspaceId??await hash(env.MCP_WORKSPACE_KEY),client:access.client||null,scopes:access.scopes||READ};
+  const ctx={env,workspace:workspaceId??await hash(env.MCP_WORKSPACE_KEY),client:access.client||null,scopes:access.scopes||READ,uploadOrigin:access.uploadOrigin};
   if(msg.method==='resources/read')return limited(id,await readResource(ctx,params.uri,callTool));
   if(msg.method==='tools/call'){
    const original=params.name,name=Object.hasOwn(aliases,original)?aliases[original]:original;

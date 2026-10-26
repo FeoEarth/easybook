@@ -28,5 +28,10 @@
     "directory": "../app/src/main/assets/pdf",
     "binding": "PDF_ASSETS",
     "run_worker_first": true
+  },
+  "triggers": {
+    "crons": [
+      "17 * * * *"
+    ]
   }
 }

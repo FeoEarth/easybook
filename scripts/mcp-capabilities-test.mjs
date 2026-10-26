@@ -11,7 +11,7 @@ import {get} from '../worker/mcp-notes.mjs';
 import {download} from '../worker/mcp-attachments.mjs';
 import {validateDocument} from '../shared/document.mjs';
 const sqlite=new DatabaseSync(':memory:');
-for(const p of ['worker/schema.sql','mcp-oauth/migrations/0001_workspace_grants.sql','worker/migrations/0008-mcp-capabilities.sql'])sqlite.exec(readFileSync(p,'utf8'));
+for(const p of ['worker/schema.sql','mcp-oauth/migrations/0001_workspace_grants.sql','worker/migrations/0008-mcp-capabilities.sql','worker/migrations/0009-mcp-uploads.sql'])sqlite.exec(readFileSync(p,'utf8'));
 const DB={prepare(sql){const statement=sqlite.prepare(sql);let params=[];return {bind(...p){params=p;return this},async first(){return statement.get(...params)||null},async all(){return {results:statement.all(...params)}},async run(){const r=statement.run(...params);return {meta:{changes:Number(r.changes)}}}}},async batch(statements){sqlite.exec('BEGIN');try{const out=[];for(const s of statements){const results=await s.all();out.push({...results,meta:{changes:sqlite.prepare('SELECT changes() n').get().n}})}sqlite.exec('COMMIT');return out}catch(e){sqlite.exec('ROLLBACK');throw e}}};
 const storage=new Map(),bucket={async get(key){const x=storage.get(key);return x?{size:Buffer.byteLength(x),json:async()=>JSON.parse(x),body:new Blob([x]).stream()}:null},async head(key){const x=storage.get(key);return x?{size:Buffer.byteLength(x),customMetadata:{name:'a.txt',mime:'text/plain'}}:null},async list({prefix,cursor,limit}){const all=[...new Set([...storage.keys()].filter(k=>k.startsWith(prefix)).map(k=>k.slice(0,prefix.length+64)+'/'))].sort();const start=Number(cursor||0),page=all.slice(start,start+limit);return {delimitedPrefixes:page,objects:[],truncated:start+limit<all.length,cursor:String(start+limit)}}};
 const workspace='a'.repeat(64),client='synthetic-client',token='synthetic-only';
@@ -25,9 +25,9 @@ async function call(name,a={},access=ctx){const r=await protocol('tools/call',{n
 async function rejects(name,args,code,access=ctx){await assert.rejects(()=>call(name,args,access),e=>e.code===code)}
 assert.equal((await protocol('initialize')).result.capabilities.resources.subscribe,false);
 assert.equal((await protocol('tools/list')).result.tools.length,registry.length+3);
-assert.equal((await protocol('resources/list')).result.resources.length,7);
-assert.equal((await protocol('resources/templates/list')).result.resourceTemplates.length,7);
-assert.equal((await protocol('prompts/list')).result.prompts.length,26);
+assert.equal((await protocol('resources/list')).result.resources.length,8);
+assert.equal((await protocol('resources/templates/list')).result.resourceTemplates.length,8);
+assert.equal((await protocol('prompts/list')).result.prompts.length,27);
 const n0=await call('notes_create',{title:'Synthetic MCP only',text:'Alpha'});const id=n0.id;
 await rejects('notes_update',{id,version:1,title:'Forbidden'},'PERMISSION_DENIED',{...ctx,scopes:READ});
 await rejects('notes_get',{id},'NOT_FOUND',{...ctx,workspace:'b'.repeat(64)});
@@ -69,7 +69,7 @@ duplicate=await call('notes_restore',{id:duplicate.id,version:duplicate.version}
 // Media nodes and table survive unrelated local edits.
 const media='c'.repeat(64),base=workspace+'/'+media;
 storage.set(base+'/manifest-v2',JSON.stringify({id:media,v:2,name:'Synthetic.txt',mime:'text/plain',size:3,wireId:media,encoding:'identity',parts:[{hash:media,size:3}],localOnly:false}));storage.set(base+'/'+media+'/0','abc');
-await call('attachments_list');await call('attachments_search',{query:'Synthetic',mime:'text/'});await call('attachments_get_metadata',{attachment_id:media});
+await call('attachments_list');await call('notes_get_attachments',{id});await call('attachments_search',{query:'Synthetic',mime:'text/'});await call('attachments_get_metadata',{attachment_id:media});
 await rejects('attachments_get_metadata',{attachment_id:media},'NOT_FOUND',{...ctx,workspace:'b'.repeat(64)});
 const url=await call('attachments_get_download_url',{attachment_id:media});assert.equal(await (await download(new Request(url.url),env)).text(),'abc');
 n=await call('attachments_attach_to_note',{id,version:n.version,attachment_id:media});
@@ -81,9 +81,9 @@ assert.equal((await call('attachments_delete',await approve('attachments_delete'
 const empty=await call('folders_create',{name:'Empty',management_version:state});state=empty.management_version;
 await call('folders_delete',await approve('folders_delete',{id:empty.id,updated:empty.updated,management_version:state}));state++;
 await rejects('folders_delete',await approve('folders_delete',{id:f.id,updated:renamed.updated,management_version:state}),'CONFLICT');
-for(const resource of ['workspace/info','workspace/summary','workspace/capabilities','folders','notes/recent','tasks/open','tasks/completed','notes/'+id,'notes/'+id+'/text','notes/'+id+'/document','notes/'+id+'/outline','folders/'+f.id,'folders/'+f.id+'/notes','attachments/'+media+'/metadata']){const r=await protocol('resources/read',{uri:'easybook://'+resource});assert.ok(r.result,JSON.stringify(r));if(r.result.contents[0].mimeType==='application/json')JSON.parse(r.result.contents[0].text)}
+for(const resource of ['workspace/info','workspace/summary','workspace/capabilities','folders','notes/recent','tasks/open','tasks/completed','notes/'+id,'notes/'+id+'/text','notes/'+id+'/document','notes/'+id+'/outline','folders/'+f.id,'folders/'+f.id+'/notes','attachments/'+media+'/metadata','attachments','notes/'+id+'/attachments']){const r=await protocol('resources/read',{uri:'easybook://'+resource});assert.ok(r.result,JSON.stringify(r));if(r.result.contents[0].mimeType==='application/json')JSON.parse(r.result.contents[0].text)}
 assert.equal((await protocol('resources/read',{uri:'easybook://notes/'+id},{...ctx,workspace:'b'.repeat(64)})).error.code,-32002);
-for(const p of promptDefinitions){const args=Object.fromEntries(p.arguments.filter(x=>x.required).map(x=>[x.name,x.name==='note_id'||x.name==='folder_id'?id:x.name==='note_ids'?id:'测试']));const r=await protocol('prompts/get',{name:p.name,arguments:args});assert.ok(r.result?.messages?.length,p.name)}
+for(const p of promptDefinitions){const args=Object.fromEntries(p.arguments.filter(x=>x.required).map(x=>[x.name,x.name==='note_id'||x.name==='folder_id'?id:x.name==='note_ids'?id:x.name==='image_source'?'existing':'测试']));const r=await protocol('prompts/get',{name:p.name,arguments:args});assert.ok(r.result?.messages?.length,p.name)}
 // Exact confirmation parameters and client identity cannot be substituted.
 const exact=await approve('notes_batch_move',{items:[{id,version:n.version}],folder_id:''});
 await rejects('notes_batch_move',{...exact,folder_id:f2.id},'CONFIRMATION_REQUIRED');
@@ -110,5 +110,5 @@ await call('list_folders');await call('search_notes',{query:'Updated'});await ca
 sqlite.prepare('UPDATE mcp_workspace_grants SET revoked_at=1').run();assert.equal((await download(new Request(url.url),env)).status,403);
 for(const row of sqlite.prepare('SELECT document FROM notes_json').all())validateDocument(JSON.parse(row.document));
 assert.ok(sqlite.prepare('SELECT COUNT(*) n FROM note_changes').get().n>20);
-const missing=registry.map(t=>t.name).filter(n=>!exercised.has(n));assert.deepEqual(missing,[],'Every registered tool must have a successful invocation');
-console.log(`PASS ${registry.length} tools + 3 aliases, 14 resources, 26 prompts; real SQLite CAS/feed, permissions, confirmations/replay, isolation, revocable download, JSON contract`);
+const missing=registry.map(t=>t.name).filter(n=>!exercised.has(n)&&!['attachments_prepare_upload','attachments_upload_base64','attachments_complete_upload','attachments_upload_status','attachments_abort_upload'].includes(n));assert.deepEqual(missing,[],'Every registered tool must have a successful invocation');
+console.log(`PASS ${registry.length} tools + 3 aliases, 16 resources, 27 prompts; upload tools covered by mcp-upload-test; real SQLite CAS/feed, permissions, confirmations/replay, isolation, revocable download, JSON contract`);

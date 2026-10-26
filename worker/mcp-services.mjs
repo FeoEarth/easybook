@@ -5,6 +5,8 @@ import {noteTool,get,revision,save} from './mcp-notes.mjs';
 import {folderTool} from './mcp-folders.mjs';
 import {taskTool} from './mcp-tasks.mjs';
 import {attachmentTool} from './mcp-attachments.mjs';
+import {uploadTool} from './mcp-uploads.mjs';
+import {noteAttachments} from './mcp-note-attachments.mjs';
 import {workspaceTool} from './mcp-workspace.mjs';
 export async function callTool(ctx,name,a){
  const t=registry.find(t=>t.name===name);if(!t)fail('INVALID_ARGUMENT','Unknown tool');validate(t.inputSchema,a);need(ctx,t.scope);
@@ -18,7 +20,9 @@ export async function callTool(ctx,name,a){
  if(t.risk)await consumeApproval(ctx,name,a);
  let value;
  try{
-  if(name.startsWith('notes_batch_')&&name!=='notes_batch_get'){
+  if(['attachments_prepare_upload','attachments_upload_base64','attachments_complete_upload','attachments_upload_status','attachments_abort_upload'].includes(name))value=await uploadTool(ctx,name,a);
+  else if(name==='notes_get_attachments')value=await noteAttachments(ctx,a);
+  else if(name.startsWith('notes_batch_')&&name!=='notes_batch_get'){
    const results=[];for(const item of a.items){try{const n=await get(ctx,item.id);revision(n,item.version);if(name==='notes_batch_delete')n.deleted=1;else if(name==='notes_batch_move')n.folder_id=a.folder_id;else for(const [k,v]of Object.entries(a.metadata))n[k]=typeof v==='boolean'?+v:v;results.push({id:item.id,ok:true,note:await save(ctx,n)})}catch(e){results.push({id:item.id,ok:false,error:e.code||'INTERNAL',message:e.code?e.message:'Operation failed'})}}value={results,atomic:false};
   }else if(name.startsWith('notes_'))value=await noteTool(ctx,name,a);
   else if(name.startsWith('folders_'))value=await folderTool(ctx,name,a);

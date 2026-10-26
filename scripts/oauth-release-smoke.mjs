@@ -6,4 +6,4 @@ const cors=await fetch(origin+'/pairing/complete',{method:'OPTIONS',headers:{Ori
 const bad=await fetch(origin+'/pairing/complete',{method:'POST',headers:{Origin:'https://easybook.loonxy.com','Content-Type':'application/json'},body:'{}'});assert.equal(bad.status,403);assert.equal(bad.headers.get('Access-Control-Allow-Origin'),'https://easybook.loonxy.com');
 console.log('PASS: OAuth discovery, enforced 401, pairing preflight and visible error CORS');
 
-const mcpReadiness=await fetch(origin+'/health/mcp');assert.equal(mcpReadiness.status,200,'MCP schema must be ready before promotion');assert.equal((await mcpReadiness.json()).mcp_schema_revision,8);
+const mcpReadiness=await fetch(origin+'/health/mcp');assert.equal(mcpReadiness.status,200,'MCP schema must be ready before promotion');assert.equal((await mcpReadiness.json()).mcp_schema_revision,9);

@@ -1,4 +1,5 @@
 import OAuthProvider from '@cloudflare/workers-oauth-provider';
+import {uploadHTTP} from '../../worker/mcp-uploads.mjs';
 import { mcp } from '../../worker/mcp.mjs';
 import {mcpHealth} from '../../worker/mcp-health.mjs';
 import {boundedJSON,object,validate,schema,str} from '../../worker/mcp-common.mjs';
@@ -13,6 +14,7 @@ const oauthHandler = {
  async fetch(request,env) {
   const url = new URL(request.url);
   const oauth = env.OAUTH_PROVIDER;
+  if(url.pathname.startsWith('/uploads/'))return uploadHTTP(request,env);
   if(url.pathname==='/health/mcp'&&request.method==='GET')return mcpHealth(env);
   if(url.pathname==='/pairing/complete' && request.method==='OPTIONS'){
    const origin=request.headers.get('Origin');

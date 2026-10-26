@@ -1,0 +1,65 @@
+import assert from 'node:assert/strict';
+import {DatabaseSync} from 'node:sqlite';
+import {readFileSync} from 'node:fs';
+import {createHash} from 'node:crypto';
+import fixtures from './mcp-upload-fixtures.json' with {type:'json'};
+import {callTool} from '../worker/mcp-services.mjs';
+import {uploadHTTP,cleanupUploads} from '../worker/mcp-uploads.mjs';
+import {mcp} from '../worker/mcp.mjs';
+import {readResource} from '../worker/mcp-resources.mjs';
+import {READ,WRITE} from '../worker/mcp-common.mjs';
+import {download as clientDownload} from '../shared/attachments.mjs';
+// Node test adapter for Workers' streaming digest; production uses native crypto.DigestStream.
+crypto.DigestStream=class extends WritableStream{constructor(){const h=createHash('sha256');let resolve,reject;const digest=new Promise((a,b)=>{resolve=a;reject=b});super({write(b){h.update(b)},close(){const b=h.digest();resolve(b.buffer.slice(b.byteOffset,b.byteOffset+b.byteLength))},abort(e){reject(e)}});this.digest=digest}};
+const sqlite=new DatabaseSync(':memory:');for(const p of ['worker/schema.sql','mcp-oauth/migrations/0001_workspace_grants.sql','worker/migrations/0008-mcp-capabilities.sql','worker/migrations/0009-mcp-uploads.sql'])sqlite.exec(readFileSync(p,'utf8'));
+const DB={prepare(sql){const statement=sqlite.prepare(sql);let params=[];return {bind(...p){params=p;return this},async first(){return statement.get(...params)||null},async all(){return {results:statement.all(...params)}},async run(){const r=statement.run(...params);return {meta:{changes:Number(r.changes)}}}}},async batch(statements){sqlite.exec('BEGIN');try{const out=[];for(const s of statements){const results=await s.all();out.push({...results,meta:{changes:sqlite.prepare('SELECT changes() n').get().n}})}sqlite.exec('COMMIT');return out}catch(e){sqlite.exec('ROLLBACK');throw e}}};
+const objects=new Map();let serial=0;
+const bucket={async put(key,data,options={}){if(options.onlyIf?.etagDoesNotMatch==='*'&&objects.has(key))return null;const bytes=typeof data==='string'?Buffer.from(data):Buffer.from(data);objects.set(key,{bytes,customMetadata:options.customMetadata||{},etag:String(++serial)});return {etag:String(serial)}},async head(key){const x=objects.get(key);return x?{size:x.bytes.length,customMetadata:x.customMetadata,etag:x.etag}:null},async get(key){const x=objects.get(key);return x?{size:x.bytes.length,customMetadata:x.customMetadata,etag:x.etag,body:new Blob([x.bytes]).stream(),arrayBuffer:async()=>Uint8Array.from(x.bytes).buffer,json:async()=>JSON.parse(x.bytes.toString())}:null},async delete(keys){for(const k of Array.isArray(keys)?keys:[keys])objects.delete(k)},async list({prefix,delimiter,limit=1000}){const keys=[...objects.keys()].filter(k=>k.startsWith(prefix));if(delimiter)return {objects:[],delimitedPrefixes:[...new Set(keys.map(k=>k.slice(0,prefix.length+64)+'/'))].slice(0,limit),truncated:false};return {objects:keys.slice(0,limit).map(key=>({key})),truncated:keys.length>limit}}};
+const env={DB,ATTACHMENTS:bucket,MCP_PAIRING_SIGNING_KEY:'synthetic-upload-signing-key',MCP_ACCESS_TOKEN:'synthetic-only'},workspace='e'.repeat(64),client='synthetic-upload-client';
+const ctx={env,workspace,client,scopes:[...READ,...WRITE]};
+sqlite.prepare("INSERT INTO mcp_workspace_grants(id,github_user_id,oauth_client_id,workspace_id,created_at) VALUES('upload-grant','synthetic',?,?,0)").run(client,workspace);
+sqlite.prepare('INSERT INTO mcp_client_permissions(workspace,client,scopes,updated) VALUES(?,?,?,0)').run(workspace,client,JSON.stringify(WRITE));
+const call=(n,a={},c=ctx)=>callTool(c,n,a),reject=(n,a,code,c=ctx)=>assert.rejects(()=>call(n,a,c),e=>e.code===code);
+const metadata={filename:'fixture.png',mime_type:'image/png'};
+await reject('attachments_prepare_upload',{...metadata,size:10},'PERMISSION_DENIED',{...ctx,scopes:READ});
+await reject('attachments_upload_base64',{...metadata,content_base64:'%%%%'},'INVALID_BASE64');
+await reject('attachments_upload_base64',{...metadata,content_base64:'YQ=A'},'INVALID_BASE64');
+await reject('attachments_upload_base64',{...metadata,content_base64:Buffer.alloc(131073).toString('base64')},'FILE_TOO_LARGE');
+await reject('attachments_prepare_upload',{...metadata,size:52428801},'INVALID_ARGUMENT');
+await reject('attachments_upload_base64',{...metadata,content_base64:Buffer.from('<html>fake</html>').toString('base64')},'MIME_MISMATCH');
+await reject('attachments_upload_base64',{...metadata,content_base64:fixtures.png,sha256:'0'.repeat(64)},'CHECKSUM_MISMATCH');
+const provenance={source_url:'https://example.org/synthetic.png',author:'Synthetic fixture',license:'test fixture',ai_generated:true};
+const png=await call('attachments_upload_base64',{...metadata,content_base64:fixtures.png,provenance,request_id:'11111111-1111-4111-8111-111111111111'});assert.equal(png.status,'complete');
+const repeat=await call('attachments_upload_base64',{...metadata,content_base64:fixtures.png,provenance,request_id:'11111111-1111-4111-8111-111111111111'});assert.equal(repeat.attachment_id,png.attachment_id);
+assert.deepEqual(await call('attachments_complete_upload',{upload_id:png.upload_id}),png);
+await reject('attachments_upload_status',{upload_id:png.upload_id},'PERMISSION_DENIED',{...ctx,workspace:'f'.repeat(64)});
+await reject('attachments_upload_status',{upload_id:png.upload_id},'PERMISSION_DENIED',{...ctx,client:'unpaired'});
+sqlite.prepare("INSERT INTO mcp_workspace_grants(id,github_user_id,oauth_client_id,workspace_id,created_at) VALUES('second','synthetic','second-client',?,0)").run(workspace);sqlite.prepare("INSERT INTO mcp_client_permissions(workspace,client,scopes,updated) VALUES(?,'second-client',?,0)").run(workspace,JSON.stringify(WRITE));
+await reject('attachments_upload_status',{upload_id:png.upload_id},'NOT_FOUND',{...ctx,client:'second-client'});
+const info=await call('attachments_get_metadata',{attachment_id:png.attachment_id});assert.equal(info.width,2);assert.equal(info.height,2);assert.deepEqual(info.provenance,provenance);
+const jpegBytes=Buffer.from(fixtures.jpeg,'base64');
+const prepared=await call('attachments_prepare_upload',{filename:'fixture.jpg',mime_type:'image/jpeg',size:jpegBytes.length});
+assert.equal((await call('attachments_upload_status',{upload_id:prepared.upload_id})).received_bytes,0);
+await reject('attachments_complete_upload',{upload_id:prepared.upload_id},'UPLOAD_INCOMPLETE');
+let response=await uploadHTTP(new Request(prepared.upload_url.replace('{part_index}','0'),{method:'PUT',headers:prepared.headers,body:jpegBytes}),env);assert.equal(response.status,200,await response.clone().text());
+response=await uploadHTTP(new Request(prepared.upload_url.replace('{part_index}','0'),{method:'PUT',headers:prepared.headers,body:jpegBytes}),env);assert.equal(response.status,200);
+assert.equal((await call('attachments_upload_status',{upload_id:prepared.upload_id})).received_bytes,jpegBytes.length);
+const jpg=await call('attachments_complete_upload',{upload_id:prepared.upload_id});assert.equal(jpg.status,'complete');
+assert.equal((await call('attachments_list')).attachments.length,2);
+const shared=await import('../worker/attachments.mjs');
+for(const [id,bytes]of [[png.attachment_id,Buffer.from(fixtures.png,'base64')],[jpg.attachment_id,jpegBytes]]){const file=await clientDownload(id,async suffix=>{const r=await shared.attachments(new Request('https://test/api/attachments/'+id+suffix),env,workspace,id,{});return r.json()});assert.deepEqual(Buffer.from(await file.blob.arrayBuffer()),bytes)}
+const n=await call('notes_create',{title:'Synthetic illustration',text:'Original paragraph'});const attached=await call('attachments_attach_to_note',{id:n.id,version:n.version,attachment_id:png.attachment_id,as_image:true});assert.equal(attached.version,2);
+const note=await call('notes_get',{id:n.id});assert.equal(note.document.doc.content[0].content[0].text,'Original paragraph');assert.equal(note.document.doc.content[1].type,'image');assert.equal(note.document.doc.content[1].attrs.width,2);assert.match(note.document.doc.content[2].content[0].text,/AI 生成/);
+const r=await readResource(ctx,'easybook://notes/'+n.id+'/attachments',callTool);assert.equal(JSON.parse(r.contents[0].text).attachments[0].attachment_id,png.attachment_id);
+assert.equal(JSON.parse((await readResource(ctx,'easybook://attachments',callTool)).contents[0].text).attachments.length,2);
+const abort=await call('attachments_prepare_upload',{...metadata,size:Buffer.from(fixtures.png,'base64').length});await uploadHTTP(new Request(abort.upload_url.replace('{part_index}','0'),{method:'PUT',headers:abort.headers,body:Buffer.from(fixtures.png,'base64')}),env);await call('attachments_abort_upload',{upload_id:abort.upload_id});assert.equal((await call('attachments_upload_status',{upload_id:abort.upload_id})).status,'aborted');assert.ok(![...objects.keys()].some(k=>k.includes(abort.upload_id)));
+const expire=await call('attachments_prepare_upload',{...metadata,size:80});sqlite.prepare('UPDATE mcp_uploads SET expires=0 WHERE id=?').run(expire.upload_id);await cleanupUploads(env);await reject('attachments_complete_upload',{upload_id:expire.upload_id},'NOT_FOUND');
+// A file larger than one native chunk follows the bounded binary path.
+const big=Buffer.alloc(4*1024*1024+21,97),bigSession=await call('attachments_prepare_upload',{filename:'two-chunks.txt',mime_type:'text/plain',size:big.length});
+for(let part=0;part<2;part++){const r=await uploadHTTP(new Request(bigSession.upload_url.replace('{part_index}',String(part)),{method:'PUT',headers:bigSession.headers,body:big.subarray(part*4*1024*1024,(part+1)*4*1024*1024)}),env);assert.equal(r.status,200,await r.clone().text())}
+assert.equal((await call('attachments_complete_upload',{upload_id:bigSession.upload_id})).status,'complete');
+// URL is not a download importer; forged credentials and revoked OAuth grants cannot upload.
+const pending=await call('attachments_prepare_upload',{...metadata,size:80});response=await uploadHTTP(new Request(pending.upload_url.replace('{part_index}','0'),{method:'PUT',headers:{Authorization:'Bearer invalid'},body:new Uint8Array(80)}),env);assert.equal(response.status,403);
+sqlite.prepare("UPDATE mcp_client_permissions SET scopes='[]' WHERE workspace=?").run(workspace);response=await uploadHTTP(new Request(pending.upload_url.replace('{part_index}','0'),{method:'PUT',headers:pending.headers,body:new Uint8Array(80)}),env);assert.equal(response.status,403);
+const rpc=await mcp(new Request('https://test/mcp',{method:'POST',headers:{Authorization:'Bearer synthetic-only'},body:JSON.stringify({jsonrpc:'2.0',id:1,method:'tools/list'})}),env,workspace,{client,scopes:READ});assert.ok((await rpc.json()).result.tools.some(t=>t.name==='attachments_upload_base64'));
+console.log('PASS upload: PNG Base64, JPEG staged PUT, invalid/oversized/MIME/hash rejection, OAuth scope/revocation, tenant isolation, duplicate completion, metadata/resources, image insertion, shared Web/Android v2 download, abort and expiry');
