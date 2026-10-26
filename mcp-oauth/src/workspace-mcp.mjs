@@ -1,3 +1,5 @@
+import {registry} from '../../worker/mcp-registry.mjs';
+import {prepareAccountOperation,operationStatus,operationScope,reserveSmallOperation} from '../../worker/account-operations.mjs';
 import {boundedJSON,object,validate,schema,str} from '../../worker/mcp-common.mjs';
 import {workspacePolicy,selectPolicyWorkspace} from '../../worker/oauth-workspace-policy.mjs';
 import {createWorkspace,renameWorkspace} from '../../worker/workspace-identity.mjs';
@@ -5,6 +7,7 @@ import {grantClient} from '../../worker/account-grants.mjs';
 import {mcp} from '../../worker/mcp.mjs';
 const workspaceId={type:'string',pattern:'^[a-f0-9]{64}$'};
 const tools=[
+ {name:'operations_get_status',description:'查询本次 OAuth 授权发起的审批执行状态；不能批准或重新执行',inputSchema:schema({approval_id:{type:'string',pattern:'^[a-f0-9-]{36}$'}},['approval_id'])},
  {name:'list_authorized_workspaces',description:'列出本次 OAuth 授权仍允许访问的工作区',inputSchema:schema()},
  {name:'select_authorized_workspace',description:'切换到本次授权中明确选择的工作区',inputSchema:schema({workspaceId},['workspaceId'])},
  {name:'workspace_access_status',description:'检查当前工作区及有效操作范围',inputSchema:schema()},
@@ -32,6 +35,7 @@ export async function workspaceMcp(request,env,ctx){
  if(control){
   try{validate(control.inputSchema,msg.params.arguments||{})}catch{return Response.json({jsonrpc:'2.0',id:msg.id,error:{code:-32602,message:'Invalid tool arguments'}})}
   const a=msg.params.arguments||{};
+  if(control.name==='operations_get_status'){try{return text(await operationStatus(env,a.approval_id,{accountId:policy.account_id,policyId:policy.id,clientId:policy.client_id}))}catch(e){return error(e.code||'OPERATION_FAILED')}}
   if(control.name==='list_authorized_workspaces')return text({workspaces:policy.workspaces.map(w=>({...w,active:w.id===policy.selected?.id}))});
   if(control.name==='workspace_access_status')return text({authorized:true,selected:policy.selected?.id||null,scopes:policy.selected?.scopes||[],global_scopes:policy.globalScopes});
   if(control.name==='select_authorized_workspace')return await selectPolicyWorkspace(env,policy,a.workspaceId)?text({selected:true,workspace_id:a.workspaceId}):error('WORKSPACE_NOT_AUTHORIZED');
@@ -55,9 +59,30 @@ export async function workspaceMcp(request,env,ctx){
  if(!catalogs.has(msg.method)&&!explicit&&policy.workspaces.length>1)return error('WORKSPACE_REQUIRED');
  if(!selected&&!catalogs.has(msg.method))return error('WORKSPACE_SELECTION_REQUIRED');
  if(msg.method==='tools/call'&&object(msg.params?.arguments)){const {workspace_id,...args}=msg.params.arguments;msg.params.arguments=args;}
+ if(msg.method==='tools/call'){
+  let name=msg.params.name,args=msg.params.arguments||{};
+  if(name==='operations_request_confirmation'){name=args.tool;args=args.arguments;}
+  const definition=registry.find(t=>t.name===name);
+  if(operationScope(name)){
+   const input=structuredClone(definition.inputSchema);delete input.properties.confirmation_id;input.required=input.required.filter(k=>k!=='confirmation_id');input.properties.items.maxItems=100;
+   try{validate(input,args);return text(await prepareAccountOperation(env,{policyId:policy.id,accountId:policy.account_id,clientId:policy.client_id,workspaceId:selected.id,tokenScopes:ctx.auth.scope},name,args))}catch(e){return error(e.code||'OPERATION_FAILED')}
+  }
+  if(definition?.risk||msg.params.name==='operations_request_confirmation')return error('ACCOUNT_APPROVAL_OPERATION_UNAVAILABLE');
+  if(name==='notes_update'&&args.document)return error('ACCOUNT_APPROVAL_OPERATION_UNAVAILABLE');
+  if(definition&&!definition.annotations.readOnlyHint&&typeof args.id==='string'){
+   try{validate(definition.inputSchema,args)}catch{return error('INVALID_ARGUMENT')}
+   if(!await reserveSmallOperation(env,policy.account_id,selected.id)){
+    const batch=name==='notes_move'?'notes_batch_move':name==='notes_delete'?'notes_batch_delete':name==='notes_update'?'notes_batch_update':null;
+    if(!batch)return error('ACCOUNT_APPROVAL_REQUIRED');
+    const batchArgs={items:[{id:args.id,version:args.version}]};if(name==='notes_move')batchArgs.folder_id=args.folder_id;if(name==='notes_update'){const {id,version,...metadata}=args;batchArgs.metadata=metadata;}
+    try{return text(await prepareAccountOperation(env,{policyId:policy.id,accountId:policy.account_id,clientId:policy.client_id,workspaceId:selected.id,tokenScopes:ctx.auth.scope},batch,batchArgs))}catch(e){return error(e.code||'OPERATION_FAILED')}
+   }
+  }
+
+ }
  const headers=new Headers(request.headers);headers.delete('Origin');headers.set('Authorization','Bearer internal-oauth-bridge');
  const response=await mcp(new Request(request,{headers,body:JSON.stringify(msg)}),{...env,MCP_ACCESS_TOKEN:'internal-oauth-bridge'},selected?.id||'0'.repeat(64),{client:grantClient(policy.id),scopes:selected?.scopes||[],uploadOrigin:'https://easybook.loonxy.com'});
- if(msg.method==='tools/list'&&response.ok){const value=await response.json();if(value.result?.tools){value.result.tools=value.result.tools.filter(t=>t.name!=='access_request_permissions');value.result.tools=value.result.tools.map(t=>({...t,description:t.description+'；内容操作可显式指定已授权 workspace_id',inputSchema:{...t.inputSchema,properties:{...t.inputSchema.properties,workspace_id:workspaceId},required:[...new Set([...(t.inputSchema.required||[]),...(policy.workspaces.length>1?['workspace_id']:[])])]}}));value.result.tools.push(...tools.map(t=>['workspaces_rename','revoke_workspace_access'].includes(t.name)?{...t,inputSchema:{...t.inputSchema,required:[...t.inputSchema.required,...(policy.workspaces.length>1?['workspace_id']:[])]}}:t))}return Response.json(value,{headers:{'Cache-Control':'no-store'}})}
+ if(msg.method==='tools/list'&&response.ok){const value=await response.json();if(value.result?.tools){value.result.tools=value.result.tools.filter(t=>t.name!=='access_request_permissions');value.result.tools=value.result.tools.map(t=>{if(!operationScope(t.name))return t;const inputSchema=structuredClone(t.inputSchema);delete inputSchema.properties.confirmation_id;inputSchema.required=inputSchema.required.filter(k=>k!=='confirmation_id');inputSchema.properties.items.maxItems=100;return {...t,description:'请求账户本人审批后，由服务端原子执行整个批次；AI 仅查询结果',inputSchema}});value.result.tools=value.result.tools.map(t=>({...t,description:t.description+'；内容操作可显式指定已授权 workspace_id',inputSchema:{...t.inputSchema,properties:{...t.inputSchema.properties,workspace_id:workspaceId},required:[...new Set([...(t.inputSchema.required||[]),...(policy.workspaces.length>1?['workspace_id']:[])])]}}));value.result.tools.push(...tools.map(t=>['workspaces_rename','revoke_workspace_access'].includes(t.name)?{...t,inputSchema:{...t.inputSchema,required:[...t.inputSchema.required,...(policy.workspaces.length>1?['workspace_id']:[])]}}:t))}return Response.json(value,{headers:{'Cache-Control':'no-store'}})}
  if(['resources/list','resources/templates/list','resources/read'].includes(msg.method)&&response.ok){const value=await response.json();if(value.result?.resources)value.result.resources=value.result.resources.flatMap(r=>policy.workspaces.map(w=>({...r,uri:r.uri+'?workspace_id='+w.id,name:w.name+' · '+r.name})));if(value.result?.resourceTemplates)value.result.resourceTemplates=value.result.resourceTemplates.map(r=>({...r,uriTemplate:r.uriTemplate+'?workspace_id={workspace_id}'}));if(originalUri&&value.result?.contents)value.result.contents=value.result.contents.map(c=>({...c,uri:originalUri}));return Response.json(value,{headers:{'Cache-Control':'no-store'}})}
  return response;
 }

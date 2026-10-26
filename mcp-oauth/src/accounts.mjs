@@ -41,7 +41,7 @@ export async function rateLimit(request,env,kind,limit=30){
  const row=await env.DB.prepare('INSERT INTO account_rate_limits(bucket,count,expires_at) VALUES(?,1,?) ON CONFLICT(bucket) DO UPDATE SET count=count+1 RETURNING count').bind(bucket,Date.now()+120000).first();
  if(row.count>limit)throw new Response('Too many requests',{status:429,headers:{...noStore,'Retry-After':'60'}});
 }
-export function safeReturn(value){return typeof value==='string'&&value.length<=6000&&(value==='/account'||value==='/account?connect=1'||/^\/account\/handoff\?flow=[a-f0-9]{64}&state=[a-f0-9]{64}$/.test(value)||value.startsWith('/oauth/authorize?'))?value:'/account';}
+export function safeReturn(value){return typeof value==='string'&&value.length<=6000&&(value==='/account'||value==='/account?connect=1'||/^\/account\/handoff\?flow=[a-f0-9]{64}&state=[a-f0-9]{64}$/.test(value)||/^\/account\/operations\/[a-f0-9-]{36}$/.test(value)||value.startsWith('/oauth/authorize?'))?value:'/account';}
 export async function startLogin(request,env,linkSession=null){
  await rateLimit(request,env,'login',10);
  const state='account_'+random(),browser=random();

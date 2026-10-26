@@ -297,3 +297,42 @@ selector preserved in returned URIs to prevent cross-workspace cache ambiguity.
 Resource catalogs/templates advertise the selector; unauthorized resource access
 uses a JSON-RPC error rather than a malformed tool-result response. Synthetic
 checks cover workspace-qualified resources and foreign-workspace denial.
+
+### Stage 5 checkpoint: account approval and atomic note batches
+
+Stage 4 commit b5db3c38a5bbf614f44b0137a49473317f28444a passed both
+GitHub Actions MCP focused checks and Android APK compilation/signing checks.
+
+Migration 0012 adds durable account operation receipts and a shared small-write
+budget. New-mode batch metadata updates, moves and soft deletions (1–100 unique
+notes) now produce account-owned approval URLs instead of consuming legacy key
+approvals. All batches require approval at this checkpoint, including small ones.
+The initiating account must log in and submit a CSRF-protected form within ten
+minutes. The server executes automatically; MCP only polls its own policy's
+status. The existing account appearance is reused, with final visual integration
+still pending. No approval URL acts as a bearer capability.
+
+A single D1 batch checks current account/session/passkey state, parent and child
+OAuth grants, role/scopes, all frozen note versions and the destination folder,
+then updates all targets and the completion receipt atomically. JSON target joins
+keep the number of D1 statements bounded even with 100 notes. Sync change-feed
+triggers remain active. Failed target/authority assertions roll back all writes;
+a committed completion receipt makes network retries idempotent.
+
+Unapproved note-target mutations share an account/workspace rolling ten-minute
+budget across OAuth clients. The 21st small move, soft delete or metadata update
+becomes an account approval; unsupported mutation types stop at the threshold.
+This is conservative (failed attempts also consume budget). Dangerous whole-
+document replacement and legacy high-risk operations without the new executor
+are denied in the new mode until implemented, rather than using key approvals.
+
+Synthetic checks cover foreign-account URL access, CSRF, expiry, revocation,
+server-side execution, repeated approval, concurrent final-target conflict with
+25 targets, authorization/destination rollback, and small-write threshold.
+Existing MCP, account OAuth and Passkey regression checks also pass locally.
+No production migration, flag activation, deployment or main merge occurred.
+
+Still incomplete in stage 5: permanent note/attachment deletion, folder clearing,
+whole-document overwrite approval, durable R2 cleanup/recovery and scheduled
+retries. Stage 6 notifications/retention/account deletion/restore checkpoints and
+final workspace/UI integration remain outstanding. This is not the 0.8.0 release.
