@@ -18,5 +18,6 @@ jobs:
       - run: npm ci --no-audit --no-fund
       - run: npm ci --prefix mcp-oauth --no-audit --no-fund
       - run: node scripts/workspace-oauth-security-test.mjs
-      - run: npx playwright install --with-deps chromium
       - run: node mcp-oauth/test/consent-browser.mjs
+        env:
+          CHROME_BIN: /usr/bin/google-chrome
