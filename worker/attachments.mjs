@@ -1,8 +1,23 @@
+import {attachmentDeleted} from './attachment-purge.mjs';
 import {Buffer} from 'node:buffer';
 const CLOUD=50*1024*1024,LOCAL=1024*1024*1024,CHUNK=4*1024*1024;
 const hex=b=>Buffer.from(b).toString('hex'),hash=async b=>hex(await crypto.subtle.digest('SHA-256',b));
 const valid=h=>typeof h==='string'&&/^[a-f0-9]{64}$/.test(h);
 export async function attachments(request,env,workspace,id,headers,metadata={}){
+ if(await attachmentDeleted(env,workspace,id))return Response.json({error:'Attachment permanently deleted'},{status:410,headers});
+ const bucket=env.ATTACHMENTS;
+ // A write already in flight at fence creation must clean up its own late R2
+ // write. Readers always check the fence, even before physical cleanup finishes.
+ const tracked=[];
+ const guarded=bucket?{get:bucket.get.bind(bucket),head:bucket.head.bind(bucket),async put(key,...args){tracked.push(key);return bucket.put(key,...args)}}:bucket;
+ let response;
+ try{response=await attachmentRequest(request,{...env,ATTACHMENTS:guarded},workspace,id,headers,metadata)}finally{
+  if(request.method==='PUT'&&await attachmentDeleted(env,workspace,id)&&tracked.length)await bucket.delete(tracked);
+ }
+ if(await attachmentDeleted(env,workspace,id))return Response.json({error:'Attachment permanently deleted'},{status:410,headers});
+ return response;
+}
+async function attachmentRequest(request,env,workspace,id,headers,metadata={}){
  const reply=(v,status=200)=>Response.json(v,{status,headers});if(!env.ATTACHMENTS)return reply({error:'Storage unavailable'},503);
  const bucket=env.ATTACHMENTS,base=workspace+'/'+id,manifestKey=base+'/manifest-v2';
  async function manifest(){const m=await bucket.get(manifestKey);if(m)return m.json();const old=await bucket.head(base);return old?{v:2,id,name:decodeURIComponent(old.customMetadata?.name||'%E9%99%84%E4%BB%B6'),mime:old.customMetadata?.mime||'application/octet-stream',size:old.size,wireSize:old.size,wireId:id,encoding:'identity',parts:[{hash:id,size:old.size}],legacy:true,localOnly:false}:null;}
@@ -42,3 +57,4 @@ export async function attachments(request,env,workspace,id,headers,metadata={}){
  try{await stream.pipeThrough(new TransformStream({transform(b,c){originalCount+=b.length;if(originalCount>m.size||originalCount>LOCAL)throw Error('Expanded size exceeds manifest');c.enqueue(b)}})).pipeTo(digest);if(originalCount!==m.size||hex(await digest.digest)!==id||wireCount!==m.wireSize||hex(await wireHash.digest)!==m.wireId)return reply({error:'SHA-256 mismatch'},400)}catch{try{await wireWriter.abort()}catch{}return reply({error:'Integrity verification failed'},400)}
  await bucket.put(manifestKey,JSON.stringify({...safe,wireId:m.wireId,wireSize:m.wireSize,encoding:m.encoding,parts:m.parts}));return reply({id,size:m.size,localOnly:false});
 }
+

@@ -1,3 +1,6 @@
+import {accountAllowed,sessionAllowed,revoked,reserveRevocations,finishRevocations} from '../../worker/security-checkpoint.mjs';
+import {modernWorkspaces,workspacePolicy} from '../../worker/oauth-workspace-policy.mjs';
+import {githubCallback,identityEnabled} from '../../worker/identity-origin.mjs';
 import {hash, READ, WRITE} from '../../worker/mcp-common.mjs';
 import {verifyWorkspaceAssertion} from './pairing.mjs';
 import {escape,oauthAppearance,htmlHeaders} from './appearance.mjs';
@@ -15,20 +18,21 @@ export function page(title,content,headers={}){
  return new Response(`<!doctype html><html lang="zh-CN"><meta charset="utf-8"><title>${escape(title)} · Easybook</title>${oauthAppearance}<style>.group{background:var(--paper);border-radius:20px;padding:4px 16px;margin:20px 0}.row{padding:14px 0;border-bottom:1px solid var(--line)}.row:last-child{border:0}h2{font-size:13px;line-height:1.5;color:var(--muted);font-weight:500;margin:28px 16px 8px}.group{margin:0 0 20px}label{display:block;padding:12px 0;line-height:1.5}input,select{font:inherit;max-width:100%;accent-color:var(--accent)}input:not([type=checkbox]),select{display:block;width:100%;min-height:44px;margin-top:8px;padding:10px 12px;border:0;border-radius:10px;background:var(--bg);color:var(--ink);outline-offset:3px}input[type=checkbox]{width:18px;height:18px;vertical-align:middle;margin-right:8px}select{appearance:none;background-image:none}form{display:block;margin:18px 0;padding:16px;gap:0}.row form{margin:10px 0 0;padding:0;background:none;border-radius:0}form button{margin:8px 4px;min-height:44px}.row form button{margin:0;padding-left:0;background:none;color:var(--danger)}a.link{background:none;color:var(--accent);padding-left:0}small{display:block;color:var(--muted);font-size:13px}code{font-size:13px;word-break:break-all}.danger{color:var(--danger)}</style><body><a class="link" href="/account">‹ Easybook 账户</a><h1>${escape(title)}</h1>${content}</body></html>`,{headers:{...htmlHeaders,...noStore,...headers}});
 }
 export function redirect(path,cookies=[]){const headers=new Headers({...noStore,Location:path});for(const c of cookies)headers.append('Set-Cookie',c);return new Response(null,{status:303,headers});}
-export async function session(request,env){
- const token=readCookie(request,ACCOUNT_COOKIE);if(!/^[a-f0-9]{64}$/.test(token))return null;
- return env.DB.prepare('SELECT s.*,a.display_name FROM account_sessions s JOIN accounts a ON a.id=s.account_id WHERE s.token_hash=? AND s.revoked_at IS NULL AND s.expires_at>? AND a.deleted_at IS NULL AND NOT EXISTS(SELECT 1 FROM account_session_passkeys sp JOIN account_passkeys pk ON pk.id=sp.credential_id WHERE sp.session_id=s.id AND pk.revoked_at IS NOT NULL)').bind(await hash(token),Date.now()).first();
+export async function sessionToken(token,env){
+ if(!/^[a-f0-9]{64}$/.test(token||''))return null;
+ const current=await env.DB.prepare('SELECT s.*,a.display_name FROM account_sessions s JOIN accounts a ON a.id=s.account_id WHERE s.token_hash=? AND s.revoked_at IS NULL AND s.expires_at>? AND a.deleted_at IS NULL AND NOT EXISTS(SELECT 1 FROM account_session_passkeys sp JOIN account_passkeys pk ON pk.id=sp.credential_id WHERE sp.session_id=s.id AND pk.revoked_at IS NOT NULL)').bind(await hash(token),Date.now()).first();return current&&await sessionAllowed(env,current)?current:null;
 }
+export async function session(request,env){const current=await sessionToken(readCookie(request,ACCOUNT_COOKIE),env);if(current&&identityEnabled(env)&&await env.DB.prepare('SELECT session_id FROM account_native_sessions WHERE session_id=?').bind(current.id).first())return null;return current}
 export async function csrf(request,s){return hash(readCookie(request,ACCOUNT_COOKIE)+'|'+s.id);}
 export async function boundedText(request,max=16384){
  const reader=request.body?.getReader();if(!reader)return '';let size=0;const parts=[];
  for(;;){const {value,done}=await reader.read();if(done)break;size+=value.byteLength;if(size>max){await reader.cancel();throw new Response('Too large',{status:413})}parts.push(value)}
  const bytes=new Uint8Array(size);let at=0;for(const p of parts){bytes.set(p,at);at+=p.byteLength}return new TextDecoder().decode(bytes);
 }
-export async function requireForm(request,s){
+export async function requireForm(request,s,max=16384){
  if(request.headers.get('Origin')!==new URL(request.url).origin)throw new Response('Origin not allowed',{status:403});
- if(Number(request.headers.get('Content-Length')||0)>16384)throw new Response('Too large',{status:413});
- const raw=await boundedText(request);if(raw.length>16384)throw new Response('Too large',{status:413});
+ if(Number(request.headers.get('Content-Length')||0)>max)throw new Response('Too large',{status:413});
+ const raw=await boundedText(request,max);if(raw.length>max)throw new Response('Too large',{status:413});
  const form=new URLSearchParams(raw);
  if(form.get('csrf')!==await csrf(request,s))throw new Response('Invalid CSRF token',{status:403});return form;
 }
@@ -38,14 +42,14 @@ export async function rateLimit(request,env,kind,limit=30){
  const row=await env.DB.prepare('INSERT INTO account_rate_limits(bucket,count,expires_at) VALUES(?,1,?) ON CONFLICT(bucket) DO UPDATE SET count=count+1 RETURNING count').bind(bucket,Date.now()+120000).first();
  if(row.count>limit)throw new Response('Too many requests',{status:429,headers:{...noStore,'Retry-After':'60'}});
 }
-export function safeReturn(value){return typeof value==='string'&&value.length<=6000&&(value==='/account'||value==='/account?connect=1'||value.startsWith('/oauth/authorize?'))?value:'/account';}
+export function safeReturn(value){return typeof value==='string'&&value.length<=6000&&(value==='/account'||value==='/account?connect=1'||/^\/account\/handoff\?flow=[a-f0-9]{64}&state=[a-f0-9]{64}$/.test(value)||/^\/account\/operations\/[a-f0-9-]{36}$/.test(value)||value.startsWith('/oauth/authorize?'))?value:'/account';}
 export async function startLogin(request,env,linkSession=null){
  await rateLimit(request,env,'login',10);
  const state='account_'+random(),browser=random();
  const returnPath=linkSession?'/account?identity-link=github':safeReturn(new URL(request.url).searchParams.get('return'));
  await env.DB.prepare('INSERT INTO account_login_states(state_hash,browser_hash,return_path,expires_at) VALUES(?,?,?,?)').bind(await hash(state),await hash(browser),returnPath,Date.now()+300000).run();
  if(linkSession)await env.DB.prepare('INSERT INTO account_identity_link_requests(state_hash,account_id,session_id,expires_at) VALUES(?,?,?,?)').bind(await hash(state),linkSession.account_id,linkSession.id,Date.now()+300000).run();
- const url=new URL('https://github.com/login/oauth/authorize');url.searchParams.set('client_id',env.GITHUB_CLIENT_ID);url.searchParams.set('redirect_uri',new URL('/callback',request.url).href);url.searchParams.set('state',state);
+ const url=new URL('https://github.com/login/oauth/authorize');url.searchParams.set('client_id',env.GITHUB_CLIENT_ID);url.searchParams.set('redirect_uri',githubCallback(request,env));url.searchParams.set('state',state);
  return redirect(url.href,[cookie(LOGIN_COOKIE,browser,300)]);
 }
 export async function finishLogin(request,env,fetcher=fetch){
@@ -53,7 +57,7 @@ export async function finishLogin(request,env,fetcher=fetch){
  if(!browser||!state||state.length>100)return json({error:'Login expired'},400);
  const proof=await env.DB.prepare('DELETE FROM account_login_states WHERE state_hash=? AND browser_hash=? AND expires_at>? RETURNING return_path').bind(await hash(state),await hash(browser),Date.now()).first();
  if(!proof||url.searchParams.has('error')||!url.searchParams.get('code'))return json({error:'Login expired or declined'},400);
- const response=await fetcher('https://github.com/login/oauth/access_token',{method:'POST',headers:{Accept:'application/json','Content-Type':'application/json'},body:JSON.stringify({client_id:env.GITHUB_CLIENT_ID,client_secret:env.GITHUB_CLIENT_SECRET,code:url.searchParams.get('code'),redirect_uri:new URL('/callback',request.url).href})});
+ const response=await fetcher('https://github.com/login/oauth/access_token',{method:'POST',headers:{Accept:'application/json','Content-Type':'application/json'},body:JSON.stringify({client_id:env.GITHUB_CLIENT_ID,client_secret:env.GITHUB_CLIENT_SECRET,code:url.searchParams.get('code'),redirect_uri:githubCallback(request,env)})});
  if(!response.ok)return json({error:'Identity service unavailable'},502);
  const token=await response.json();if(typeof token.access_token!=='string'||token.access_token.length>512)return json({error:'Identity verification failed'},403);
  const identity=await fetcher('https://api.github.com/user',{headers:{Authorization:'Bearer '+token.access_token,Accept:'application/vnd.github+json','User-Agent':'Easybook-Accounts','X-GitHub-Api-Version':'2022-11-28'},redirect:'error'});
@@ -82,11 +86,12 @@ export async function finishLogin(request,env,fetcher=fetch){
  const established=await createSession(request,env,account.id);
  return redirect(proof.return_path,[established.cookie,cookie(LOGIN_COOKIE,'',0)]);
 }
-export async function createSession(request,env,accountId,credentialId=null){
+export async function createSession(request,env,accountId,credentialId=null,authenticatedAt=Date.now()){
+ if(!await accountAllowed(env,accountId)||await revoked(env,'passkey',credentialId))throw json({error:'identity_revoked'},403);
  const token=random(),id=crypto.randomUUID(),now=Date.now();
- const statements=[env.DB.prepare('INSERT INTO account_sessions(id,token_hash,account_id,created_at,expires_at,authenticated_at,device) VALUES(?,?,?,?,?,?,?)').bind(id,await hash(token),accountId,now,now+7*86400000,now,(request.headers.get('User-Agent')||'Browser').slice(0,180))];
+ const statements=[env.DB.prepare('INSERT INTO account_sessions(id,token_hash,account_id,created_at,expires_at,authenticated_at,device) VALUES(?,?,?,?,?,?,?)').bind(id,await hash(token),accountId,now,now+7*86400000,authenticatedAt,(request.headers.get('User-Agent')||'Browser').slice(0,180))];
  if(credentialId)statements.push(env.DB.prepare('INSERT INTO account_session_passkeys(session_id,credential_id) VALUES(?,?)').bind(id,credentialId));
- await env.DB.batch(statements);return {id,cookie:cookie(ACCOUNT_COOKIE,token,7*86400)};
+ await env.DB.batch(statements);return {id,token,cookie:cookie(ACCOUNT_COOKIE,token,7*86400)};
 }
 export async function accountRoutes(request,env){
  const url=new URL(request.url),path=url.pathname;
@@ -104,15 +109,19 @@ export async function accountRoutes(request,env){
    return startLogin(request,env,s);
   }
   if(path==='/account/logout'){
-   await env.DB.prepare('UPDATE account_sessions SET revoked_at=? WHERE id=? AND account_id=?').bind(Date.now(),s.id,s.account_id).run();return redirect('/account',[cookie(ACCOUNT_COOKIE,'',0)]);
+   const revocation=await reserveRevocations(env,[['session',s.id]]);await env.DB.prepare('UPDATE account_sessions SET revoked_at=? WHERE id=? AND account_id=?').bind(Date.now(),s.id,s.account_id).run();await finishRevocations(env,revocation,'committed');return redirect('/account',[cookie(ACCOUNT_COOKIE,'',0)]);
   }
   if(path==='/account/sessions/revoke'){
-   await env.DB.prepare('UPDATE account_sessions SET revoked_at=? WHERE id=? AND account_id=?').bind(Date.now(),f.get('id'),s.account_id).run();return redirect('/account');
+   if(f.get('id')!==s.id&&Date.now()-s.authenticated_at>300000)return json({error:'reauthentication_required'},403);
+   if(!await env.DB.prepare('SELECT 1 FROM account_sessions WHERE id=? AND account_id=?').bind(f.get('id'),s.account_id).first())return json({error:'not_found'},404);
+   const revocation=await reserveRevocations(env,[['session',f.get('id')]]);await env.DB.prepare('UPDATE account_sessions SET revoked_at=? WHERE id=? AND account_id=?').bind(Date.now(),f.get('id'),s.account_id).run();await finishRevocations(env,revocation,'committed');return redirect('/account');
   }
   if(path==='/account/profile'){
    const name=(f.get('name')||'').trim();if(!name||name.length>100)return json({error:'Invalid name'},400);
    await env.DB.prepare('UPDATE accounts SET display_name=? WHERE id=?').bind(name,s.account_id).run();return redirect('/account');
   }
+  if(path==='/account/delete'&&modernWorkspaces(env))return json({error:'account_deletion_requires_workspace_disposition'},409);
+  if(path==='/account/workspaces/claim'&&modernWorkspaces(env))return json({error:'use_verified_workspace_association'},410);
   if(path==='/account/delete'){
    if(f.get('confirm')!=='DELETE')return page('删除账户',`<p>删除账户会撤销账户会话与新 OAuth 授权。笔记、附件和原有同步密钥保留，仍可通过原有设备访问。第三方旧 GitHub 授权需在原有授权界面单独撤销。</p><form method="post">${hidden}<label>输入 DELETE 确认 <input name="confirm" required></label><button class="danger">确认删除账户</button></form>`);
    if(Date.now()-s.authenticated_at>300000)return page('请重新验证身份',`<p>删除账户前需要最近五分钟内验证身份。</p><a href="/account/login">重新登录</a>`);
@@ -125,7 +134,8 @@ export async function accountRoutes(request,env){
   }
   if(path==='/oauth/grants'){
    if(f.get('confirm')!=='yes')return page('撤销应用授权',`<p>该授权的笔记、附件及其他访问将立即停止。</p><form method="post">${hidden}<input type="hidden" name="id" value="${escape(f.get('id'))}"><button name="confirm" value="yes" class="danger">撤销授权</button><a class="link" href="/account">取消</a></form>`);
-   await env.DB.prepare('UPDATE oauth_grants SET revoked_at=? WHERE id=? AND account_id=?').bind(Date.now(),f.get('id'),s.account_id).run();return redirect('/account');
+   if(!await env.DB.prepare('SELECT 1 FROM oauth_grants WHERE id=? AND account_id=?').bind(f.get('id'),s.account_id).first())return json({error:'not_found'},404);
+   const revocation=await reserveRevocations(env,[['oauth',f.get('id')]]);await env.DB.prepare('UPDATE oauth_grants SET revoked_at=? WHERE id=? AND account_id=?').bind(Date.now(),f.get('id'),s.account_id).run();await finishRevocations(env,revocation,'committed');return redirect('/account');
   }
   if(path==='/account/workspaces/claim'){
    await rateLimit(request,env,'claim',10);
@@ -148,6 +158,7 @@ export async function accountRoutes(request,env){
   const {results}=await env.DB.prepare('SELECT id,client_id,workspace_id,scopes,created_at,revoked_at FROM oauth_grants WHERE account_id=? ORDER BY created_at DESC LIMIT 100').bind(s.account_id).all();
   return json(path==='/oauth/clients'?{clients:[...new Set(results.map(g=>g.client_id))]}:{grants:results});
  }
+ if(modernWorkspaces(env)){const {workspaceAccountPage}=await import('./workspace-consent.mjs');return workspaceAccountPage(request,env,s);}
  const [devices,workspaces,grants]=await Promise.all([
   env.DB.prepare('SELECT id,device,created_at FROM account_sessions WHERE account_id=? AND revoked_at IS NULL AND expires_at>? ORDER BY created_at DESC LIMIT 50').bind(s.account_id,Date.now()).all(),
   env.DB.prepare('SELECT workspace_id,role FROM workspace_memberships WHERE account_id=? AND revoked_at IS NULL').bind(s.account_id).all(),
@@ -159,6 +170,7 @@ export async function accountRoutes(request,env){
 }
 
 export async function accountAuthorize(request,env){
+ if(modernWorkspaces(env)){const {workspaceAuthorize}=await import('./workspace-consent.mjs');return workspaceAuthorize(request,env);}
  const oauth=env.OAUTH_PROVIDER,s=await session(request,env),url=new URL(request.url);
  if(!s)return redirect('/account/login?return='+encodeURIComponent(safeReturn(url.pathname+url.search)));
  if(request.method==='GET'){
@@ -191,7 +203,9 @@ export async function accountAuthorize(request,env){
 
 export async function policyFor(env,props,clientId,tokenScopes){
  if(!props?.accountId||!props?.policyId)return null;
+ if(modernWorkspaces(env)){if(typeof clientId!=='string'||!clientId)return null;return workspacePolicy(env,props.policyId,{accountId:props.accountId,clientId,tokenScopes});}
  const row=await env.DB.prepare('SELECT g.* FROM oauth_grants g JOIN accounts a ON a.id=g.account_id JOIN workspace_memberships m ON m.account_id=g.account_id AND m.workspace_id=g.workspace_id WHERE g.id=? AND g.account_id=? AND g.client_id=? AND g.revoked_at IS NULL AND a.deleted_at IS NULL AND m.revoked_at IS NULL').bind(props.policyId,props.accountId,clientId).first();
  if(!row)return null;
  const allowed=JSON.parse(row.scopes);return {...row,scopes:tokenScopes.filter(x=>allowed.includes(x))};
 }
+

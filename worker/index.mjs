@@ -1,4 +1,13 @@
+import {runSecurityAdmin} from './security-admin.mjs';
+import {runWorkspacePurges} from './workspace-purge.mjs';
+import {requireRestoreAccess} from './security-checkpoint.mjs';
+import {maintainIdentity} from './identity-maintenance.mjs';
+import {runAttachmentPurges} from './attachment-purge.mjs';
+import {androidAssetLinks} from './android-identity.mjs';
+import {IDENTITY_ORIGIN,identityEnabled,identityPath} from './identity-origin.mjs';
 import {accountConnect} from './account-connect.mjs';
+import {workspaceAPI,workspacePrincipal} from './workspace-api.mjs';
+import {workspaceAccess,WorkspaceError} from './workspace-identity.mjs';
 import {cleanupUploads} from './mcp-uploads.mjs';
 import {mcp} from './mcp.mjs';
 import {mcpHealth} from './mcp-health.mjs';
@@ -14,9 +23,16 @@ import {attachments} from './attachments.mjs';
 const headers = {'Access-Control-Allow-Origin':'*','Access-Control-Allow-Headers':'Authorization, Content-Type','Access-Control-Allow-Methods':'GET, PUT, OPTIONS','Cache-Control':'no-store','X-Content-Type-Options':'nosniff'};
 const json = (data, status=200) => Response.json(data, {status, headers});
 export default {
- async scheduled(controller,env){await cleanupUploads(env,10)},
+ async scheduled(controller,env){if(await runSecurityAdmin(env))return;const results=await Promise.allSettled([cleanupUploads(env,10),runAttachmentPurges(env,10),runWorkspacePurges(env,5),maintainIdentity(env)]);if(results.some(r=>r.status==='rejected'))throw Error('Scheduled maintenance incomplete')},
  async fetch(request, env) {
   const url = new URL(request.url);
+  if(url.pathname.startsWith('/api/')||identityPath(url.pathname)){try{await requireRestoreAccess(env)}catch{return json({error:'Security recovery in progress'},503)}}
+  if(url.pathname==='/.well-known/assetlinks.json'&&identityEnabled(env)&&url.origin===IDENTITY_ORIGIN&&request.method==='GET')return Response.json(androidAssetLinks,{headers:{'Cache-Control':'public, max-age=3600','X-Content-Type-Options':'nosniff'}});
+  // Deliberately unset on production until the coordinated identity cutover.
+  const identityV2=env.WORKSPACE_IDENTITY_V2==='true';
+  if(identityEnabled(env)&&url.origin===IDENTITY_ORIGIN&&identityPath(url.pathname)){if(!env.IDENTITY_SERVICE)return json({error:'Identity service unavailable'},503);return env.IDENTITY_SERVICE.fetch(request);}
+  if(identityV2&&url.pathname.startsWith('/api/workspaces'))return workspaceAPI(request,env);
+  if(identityV2&&(url.pathname==='/mcp'||url.pathname==='/api/mcp/attest'||url.pathname==='/api/mcp/approval'))return json({error:'Use account OAuth authorization'},410);
   if(url.pathname==='/account/connect'&&request.method==='GET')return new Response(accountConnect,{headers:{'Content-Type':'text/html; charset=utf-8','Cache-Control':'no-store','Referrer-Policy':'no-referrer','X-Frame-Options':'DENY','Content-Security-Policy':"default-src 'none'; style-src 'unsafe-inline'; script-src 'unsafe-inline'; connect-src 'self'; form-action 'none'; frame-ancestors 'none'; base-uri 'none'"}});
   if(url.pathname==='/health/mcp'&&request.method==='GET')return mcpHealth(env);
   if(url.pathname === '/mcp') return mcp(request,env);
@@ -44,14 +60,23 @@ export default {
   }
   if(url.pathname === '/editor.js' && request.method === 'GET')return new Response(editor,{headers:{'Content-Type':'application/javascript; charset=utf-8','X-Content-Type-Options':'nosniff','Cache-Control':'no-cache'}});
   if(url.pathname === '/health') return json({ok:true,app:'Easybook',version:'0.8.0',build:25,commit:env.RELEASE_SHA||'',schemaVersion:1});
-  if(url.pathname === '/' && request.method === 'GET') return new Response(html,{headers:{'Content-Type':'text/html; charset=utf-8','X-Content-Type-Options':'nosniff','Referrer-Policy':'no-referrer','Cache-Control':'no-cache'}});
+  if(url.pathname === '/' && request.method === 'GET') return new Response(identityV2?html.replace('name="easybook-identity" content="legacy"','name="easybook-identity" content="v2"'):html,{headers:{'Content-Type':'text/html; charset=utf-8','X-Content-Type-Options':'nosniff','Referrer-Policy':'no-referrer','Cache-Control':'no-cache'}});
   if(!url.pathname.startsWith('/api/')) return json({error:'Not found'},404);
   const token = (request.headers.get('Authorization')||'').replace(/^Bearer /,'');
-  if(!/^[a-f0-9]{64}$/.test(token)) {
+  if(!identityV2&&!/^[a-f0-9]{64}$/.test(token)) {
    const response=json({error:'Invalid workspace key'},401);
    return url.pathname==='/api/mcp/attest'?pairingResponse(response):response;
   }
-  const workspace = Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256',new TextEncoder().encode(token)))).map(x=>x.toString(16).padStart(2,'0')).join('');
+  let workspace;
+  if(identityV2){
+   try{
+    const principal=await workspacePrincipal(request,env,{mutation:!['GET','HEAD'].includes(request.method)});
+    workspace=principal.kind==='key'?principal.workspaceId:request.headers.get('X-Easybook-Workspace');
+    const access=await workspaceAccess(env,workspace,principal);
+    if(!access)return json({error:'Workspace access denied'},403);
+    if(access.role==='reader'&&!['GET','HEAD'].includes(request.method))return json({error:'Read only workspace'},403);
+   }catch(e){if(e instanceof WorkspaceError)return json({error:e.code},e.status);return json({error:'Authentication unavailable'},503);}
+  }else workspace=Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256',new TextEncoder().encode(token)))).map(x=>x.toString(16).padStart(2,'0')).join('');
   try {
    if(url.pathname==='/api/mcp/attest'){
     return pairingResponse(await attestMcpWorkspace(request,env,workspace));
@@ -89,6 +114,7 @@ export default {
   } catch(e) { console.error(JSON.stringify({event:'request_failed',name:e.name})); const response=json({error:'Service temporarily unavailable'},503); return url.pathname==='/api/mcp/attest'?pairingResponse(response):response; }
  }
 };
+
 
 
 

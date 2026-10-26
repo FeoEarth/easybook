@@ -22,6 +22,12 @@
       "binding": "DB",
       "database_name": "easybook-data",
       "database_id": "af430aed-01b5-41ca-9653-31212bed3f9f"
+    },
+    {
+      "binding": "SECURITY_DB",
+      "database_name": "easybook-security",
+      "database_id": "d1761c2d-6372-489c-ae5e-114f3d5baa80",
+      "migrations_dir": "security-migrations"
     }
   ],
   "assets": {
@@ -33,5 +39,11 @@
     "crons": [
       "17 * * * *"
     ]
-  }
+  },
+  "services": [
+    {
+      "binding": "IDENTITY_SERVICE",
+      "service": "easybook-mcp-oauth"
+    }
+  ]
 }

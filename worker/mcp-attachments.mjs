@@ -1,7 +1,9 @@
+import {attachmentDeleted} from './attachment-purge.mjs';
 import {hasWorkspaceGrant} from './account-grants.mjs';
 import {fail,hash,at,splice} from './mcp-common.mjs';
 import {get,save,revision,textDocument} from './mcp-notes.mjs';
 export async function manifest(ctx,id){
+ if(await attachmentDeleted(ctx.env,ctx.workspace,id))fail('NOT_FOUND','Attachment permanently deleted');
  const b=ctx.env.ATTACHMENTS;if(!b)fail('UNAVAILABLE','Attachment binding unavailable');
  const object=await b.get(ctx.workspace+'/'+id+'/manifest-v2');let m;
  if(object){if(object.size>16384)fail('INVALID_ATTACHMENT','Manifest too large');m=await object.json();}
@@ -62,4 +64,5 @@ export async function download(request,env){
  let size=0;body=body.pipeThrough(new TransformStream({transform(chunk,c){size+=chunk.byteLength;if(size>m.size||size>1073741824)throw Error('Attachment size exceeded');c.enqueue(chunk)}}));
  return new Response(body,{headers:{'Content-Type':'application/octet-stream','Content-Disposition':"attachment; filename*=UTF-8''"+encodeURIComponent(m.name),'Cache-Control':'private, no-store','Referrer-Policy':'no-referrer','X-Content-Type-Options':'nosniff'}});
 }
+
 
