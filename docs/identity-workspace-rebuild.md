@@ -241,3 +241,20 @@ This is source/test completion of the native credential paths, not a real-person
 or physical-device Passkey round trip. Canonical identity flags, D1 migration and
 Digital Asset Links are not live yet. Native account-workspace selection/sync,
 remaining OAuth policy work and full release acceptance are still outstanding.
+
+### Stage 3 validation follow-up
+
+At 5f9dadd8, Android Release compilation, existing unit checks, signing verification
+and the new APK/Passkey certificate-association check passed (run 40315492316).
+The MCP job failed before OAuth dependencies were installed because the native
+Passkey module was imported eagerly. It is now loaded only for its own routes,
+matching the existing browser Passkey module boundary; the focused pairing test
+passes locally again. The next CI result must be checked before reporting green.
+
+Added native authenticated device listing and account-scoped device revocation.
+Other-device revocation requires recent verification; another account's device
+cannot be revoked. Native tokens cannot substitute for browser cookies. Local
+API tests verify those boundaries and that revoking the approving browser device
+blocks an unfinished handoff without invalidating an already-established separate
+native session. The account page now exposes the device list and per-device
+logout through native-only HTTP; no token crosses the WebView bridge.

@@ -38,7 +38,7 @@ async function establish(request,env,proof,native){
 }
 export async function nativeAccountRoutes(request,env){
  const url=new URL(request.url),path=url.pathname;
- if(!['/account/native/start','/account/native/token','/account/native/session','/account/native/logout','/account/handoff','/account/recover','/account/recover/complete'].includes(path))return null;
+ if(!['/account/native/start','/account/native/token','/account/native/session','/account/native/logout','/account/native/sessions','/account/native/sessions/revoke','/account/handoff','/account/recover','/account/recover/complete'].includes(path))return null;
  if(!identityEnabled(env))return json({error:'not_available'},404);
  const canonical=url.origin===IDENTITY_ORIGIN,legacy=url.origin===LEGACY_IDENTITY_ORIGIN;
  if(!canonical&&!(legacy&&path==='/account/handoff'))return json({error:'identity_origin_required'},403);
@@ -58,6 +58,20 @@ export async function nativeAccountRoutes(request,env){
  if(path==='/account/native/session'&&request.method==='GET'){
   const s=await nativeSession(request,env);if(!s)return json({error:'unauthorized'},401);
   return json({account:{id:s.account_id,name:s.display_name},session:{id:s.id,expires_at:s.expires_at,authenticated_at:s.authenticated_at}});
+ }
+ if(path==='/account/native/sessions'&&request.method==='GET'){
+  const s=await nativeSession(request,env);if(!s)return json({error:'unauthorized'},401);
+  const {results}=await env.DB.prepare('SELECT id,device,created_at,expires_at FROM account_sessions WHERE account_id=? AND revoked_at IS NULL AND expires_at>? ORDER BY created_at DESC LIMIT 50').bind(s.account_id,Date.now()).all();
+  return json({account:{id:s.account_id,name:s.display_name},recently_authenticated:Date.now()-s.authenticated_at<=300000,devices:results.map(d=>({...d,current:d.id===s.id}))});
+ }
+ if(path==='/account/native/sessions/revoke'&&request.method==='POST'){
+  const input=await nativeBody(request),s=await nativeSession(request,env);if(!s)return json({error:'unauthorized'},401);
+  if(typeof input.id!=='string'||!/^[a-f0-9-]{36}$/.test(input.id))return json({error:'invalid_session'},400);
+  if(input.id!==s.id&&Date.now()-s.authenticated_at>300000)return json({error:'reauthentication_required'},403);
+  await rateLimit(request,env,'native-device-revoke',20);
+  const changed=await env.DB.prepare('UPDATE account_sessions SET revoked_at=? WHERE id=? AND account_id=? AND revoked_at IS NULL RETURNING id').bind(Date.now(),input.id,s.account_id).first();
+  if(!changed)return json({error:'session_not_found'},404);
+  return json({revoked:true,current:input.id===s.id,independent_key_access_unchanged:true});
  }
  if(path==='/account/native/logout'&&request.method==='POST'){
   await nativeBody(request);const s=await nativeSession(request,env);if(!s)return json({error:'unauthorized'},401);

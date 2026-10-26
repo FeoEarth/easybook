@@ -33,11 +33,20 @@ const credentials=await exchanged.json();assert.match(credentials.token,/^[a-f0-
 assert.equal(sql.prepare('SELECT authenticated_at FROM account_sessions WHERE id=?').get(credentials.session_id).authenticated_at,verifiedAt,'handoff does not refresh recent-auth time');
 assert.equal((await call('/account/native/token',{method:'POST',body:input})).status,400,'single-use code');
 const nativeHeaders={Authorization:'Easybook-Session '+credentials.token};assert.equal((await call('/account/native/session',{headers:nativeHeaders})).status,200);
+assert.equal(await session(new Request(primary,{headers:{Cookie:ACCOUNT_COOKIE+'='+credentials.token}}),env),null,'native session cannot become a browser cookie');
+const devices=await (await call('/account/native/sessions',{headers:nativeHeaders})).json();assert.ok(devices.devices.some(d=>d.id===credentials.session_id&&d.current));
+const foreignAccount=crypto.randomUUID(),foreignSession=crypto.randomUUID();sql.prepare('INSERT INTO accounts VALUES(?,?,?,NULL)').run(foreignAccount,'Other account',Date.now());sql.prepare('INSERT INTO account_sessions VALUES(?,?,?,?,?,?,?,NULL)').run(foreignSession,await hash('z'.repeat(64)),foreignAccount,Date.now(),Date.now()+86400000,Date.now(),'Foreign device');
+assert.equal((await call('/account/native/sessions/revoke',{method:'POST',body:{id:foreignSession},headers:nativeHeaders})).status,404,'cannot revoke another account device');
+assert.equal(sql.prepare('SELECT revoked_at FROM account_sessions WHERE id=?').get(foreignSession).revoked_at,null);
+sql.prepare('UPDATE account_sessions SET authenticated_at=0 WHERE id=?').run(credentials.session_id);
+assert.equal((await call('/account/native/sessions/revoke',{method:'POST',body:{id:browserId},headers:nativeHeaders})).status,403,'other-device revocation requires recent verification');
+sql.prepare('UPDATE account_sessions SET authenticated_at=? WHERE id=?').run(verifiedAt,credentials.session_id);
+
 assert.equal(await nativeSession(new Request(primary,{headers:{Authorization:'Easybook-Session '+browserToken}}),env),null,'browser session cannot impersonate a native session');
 assert.equal((await workspacePrincipal(new Request(primary+'/api/workspaces',{headers:nativeHeaders}),env)).accountId,account);
 await assert.rejects(()=>workspacePrincipal(new Request(primary+'/api/workspaces',{headers:{...nativeHeaders,Origin:primary}}),env),e=>e.code==='native_origin_not_allowed');
 const beforeRevoke=await start(),beforeRevokeApproval=await consent(beforeRevoke.flow),code2=new URL(beforeRevokeApproval.headers.get('Location')).searchParams.get('code');
-sql.prepare('UPDATE account_sessions SET revoked_at=? WHERE id=?').run(Date.now(),browserId);
+assert.equal((await call('/account/native/sessions/revoke',{method:'POST',body:{id:browserId},headers:nativeHeaders})).status,200);
 assert.equal((await call('/account/native/token',{method:'POST',body:{...input,flow:beforeRevoke.flow,code:code2}})).status,400,'revoked approving session cannot mint a new device');
 assert.equal((await call('/account/native/session',{headers:nativeHeaders})).status,200,'revoking browser device does not revoke a different device');
 assert.equal((await call('/account/native/logout',{method:'POST',body:{},headers:nativeHeaders})).status,200);

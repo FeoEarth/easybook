@@ -195,6 +195,8 @@ public class MainActivity extends Activity {
             case "account.passkey":if(!(args.get("register") instanceof Boolean)||args.has("name")&&!(args.get("name") instanceof String)||args.optString("name").length()>100)throw new SecurityException("Invalid account request");nativeAccount.passkey(args.getBoolean("register"),args.optString("name",""));return new JSONObject().put("pending",true);
             case "account.login":nativeAccount.begin();return new JSONObject().put("externalBrowser",true);
             case "account.status":return nativeAccount.publicStatus();
+            case "account.devices":return nativeAccount.devices();
+            case "account.device.revoke":return nativeAccount.revokeDevice(bounded(args,"id",36));
             case "account.logout":nativeAccount.signOut();return new JSONObject().put("pending",true);
             case "security.mcp":security.mcpPairing();return new JSONObject().put("nativeDialog",true);
             case "security.pair":security.pairing(()->{if(!destroyed&&generation==documentGeneration)web.reload();});return new JSONObject().put("nativeDialog",true);
