@@ -1,11 +1,5 @@
 name: Deploy MCP pairing Workers
 on:
-  push:
-    branches: [main]
-    paths:
-      - 'mcp-oauth/**'
-      - 'worker/**'
-      - '.github/workflows/deploy-mcp-pairing.yml'
   workflow_dispatch:
 permissions:
   contents: read
@@ -33,16 +27,10 @@ jobs:
         run: |
           node scripts/generate-ui.mjs
           node --input-type=module -e "import html from './worker/ui.mjs'; if (!html.includes('mcpPairEntry') || !html.includes('AI 与 MCP')) process.exit(1)"
-      - name: Deploy sync Worker (preserve existing bindings and secrets)
-        working-directory: worker
-        env:
-          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-        run: npx --yes wrangler@4.105.0 deploy --keep-vars
       - name: Install OAuth Worker dependencies
         working-directory: mcp-oauth
         run: npm install --no-audit --no-fund
-      - name: Deploy OAuth Worker after sync Worker
+      - name: Deploy OAuth Worker only
         working-directory: mcp-oauth
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
