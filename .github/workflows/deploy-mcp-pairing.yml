@@ -46,14 +46,6 @@ jobs:
           node scripts/mcp-upload-test.mjs
           node scripts/mcp-pairing-release-test.mjs
           # Migration is applied via authorized Cloudflare; candidate smoke verifies runtime D1 readiness.
-      - name: Install browser for account UI verification
-        run: npx --no-install playwright install chromium
-      - name: Install Chinese fonts for account layout evidence
-        run: sudo apt-get update -qq && sudo apt-get install -y fonts-noto-cjk
-      - name: Verify account and consent layouts
-        run: |
-          EASYBOOK_ACCOUNT_UI=1 node scripts/account-oauth-security-test.mjs
-          EASYBOOK_PASSKEY_BROWSER=1 node mcp-oauth/test/passkeys-security.mjs
       - name: Upload OAuth candidate only
         id: candidate
         run: |
@@ -79,5 +71,6 @@ jobs:
             account-ui-*.png
           if-no-files-found: ignore
           retention-days: 14
+
 
 

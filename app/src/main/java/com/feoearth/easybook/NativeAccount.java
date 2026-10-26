@@ -25,7 +25,7 @@ final class NativeAccount {
     private final Activity activity;private final NoteRepository db;private final ExecutorService io;
     private volatile boolean starting;
     private volatile CancellationSignal cancellation;
-    static final class HttpFailure extends IOException {final int status;HttpFailure(int value){super("Account HTTP "+value);status=value;}}
+    static final class HttpFailure extends IOException {final int status;final boolean challenge;HttpFailure(int value,boolean challenged){super("Account HTTP "+value);status=value;challenge=challenged;}}
     NativeAccount(Activity activity,NoteRepository db,ExecutorService io){this.activity=activity;this.db=db;this.io=io;}
     private JSONObject read(String name)throws Exception{String value=db.setting(name,"");return value.isEmpty()?null:new JSONObject(db.vault.open(value,name));}
     private void write(String name,JSONObject value)throws Exception{String sealed=db.vault.seal(value.toString(),name);if(!value.toString().equals(db.vault.open(sealed,name)))throw new SecurityException("Account persistence verification failed");db.setSetting(name,sealed);}
@@ -34,7 +34,7 @@ final class NativeAccount {
         if(!java.util.Arrays.asList("/account/native/start","/account/native/token","/account/native/session","/account/native/logout","/account/native/sessions","/account/native/sessions/revoke","/account/native/passkeys/login/options","/account/native/passkeys/login/verify","/account/native/passkeys/register/options","/account/native/passkeys/register/verify").contains(path))throw new SecurityException("Account path denied");
         HttpsURLConnection connection=(HttpsURLConnection)new URL(ORIGIN+path).openConnection();connection.setInstanceFollowRedirects(false);connection.setConnectTimeout(12000);connection.setReadTimeout(15000);connection.setRequestMethod(body==null?"GET":"POST");connection.setRequestProperty("X-Easybook-Native","1");connection.setRequestProperty("Content-Type","application/json");if(token!=null)connection.setRequestProperty("Authorization","Easybook-Session "+token);
         try{if(body!=null){byte[] bytes=body.toString().getBytes(StandardCharsets.UTF_8);connection.setDoOutput(true);connection.setFixedLengthStreamingMode(bytes.length);try(OutputStream out=connection.getOutputStream()){out.write(bytes);}}
-            int status=connection.getResponseCode();if(status!=200)throw new HttpFailure(status);
+            int status=connection.getResponseCode();if(status!=200)throw new HttpFailure(status,"challenge".equals(connection.getHeaderField("cf-mitigated")));
             try(InputStream in=connection.getInputStream();ByteArrayOutputStream out=new ByteArrayOutputStream()){byte[] buffer=new byte[2048];int n;while((n=in.read(buffer))!=-1){if(out.size()+n>(path.contains("/passkeys/")?65536:16384))throw new IOException("Account response too large");out.write(buffer,0,n);}return new JSONObject(out.toString("UTF-8"));}
         }finally{connection.disconnect();}
     }
@@ -44,7 +44,7 @@ final class NativeAccount {
         JSONObject response=request("/account/native/start",new JSONObject().put("challenge",challenge).put("state",state),null);String flow=response.getString("flow"),destination=response.getString("authorization_url");Uri uri=Uri.parse(destination);
         if(!flow.matches("[a-f0-9]{64}")||!"https".equals(uri.getScheme())||!"easybook.loonxy.com".equals(uri.getHost())||uri.getPort()!=-1||uri.getUserInfo()!=null||!"/account/handoff".equals(uri.getPath())||!flow.equals(uri.getQueryParameter("flow"))||!state.equals(uri.getQueryParameter("state")))throw new SecurityException("Invalid authorization destination");
         if(activity.isDestroyed())return;write(PENDING,new JSONObject().put("kind","browser").put("flow",flow).put("state",state).put("verifier",verifier).put("expires",System.currentTimeMillis()+300000));browse(destination);
-    }catch(HttpFailure e){if(e.status==404)browse(LEGACY);else message("账户登录暂不可用，请稍后重试");}
+    }catch(HttpFailure e){if(e.status==404||e.status==403&&e.challenge)browse(LEGACY);else message("账户登录暂不可用，请稍后重试");}
     catch(Exception e){message("登录未开始，请检查网络后重试");}finally{starting=false;}});}
     boolean handle(Intent intent){if(intent==null||!Intent.ACTION_VIEW.equals(intent.getAction()))return false;Uri uri=intent.getData();if(uri==null||!"easybook".equals(uri.getScheme())||!"account".equals(uri.getHost())||!"/callback".equals(uri.getPath())||uri.getUserInfo()!=null||uri.getPort()!=-1||uri.getFragment()!=null)return false;
         if(uri.getQueryParameterNames().size()!=3||!uri.getQueryParameterNames().containsAll(java.util.Arrays.asList("flow","code","state")))return true;

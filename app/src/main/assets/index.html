@@ -289,7 +289,7 @@ body[data-page=mcp] .app{padding-bottom:max(32px,env(safe-area-inset-bottom))}
 <script>
 'use strict';
 (async()=>{
-const API='https://easybook.loonxy.com';
+const API=location.protocol==='https:'&&location.hostname!=='appassets.androidplatform.net'?location.origin:'https://easybook-sync.1902521952.workers.dev';
 const identityV2=document.querySelector('meta[name=easybook-identity]')?.content==='v2';
 async function workspaceIdentity(credential){const controller=new AbortController(),timeout=setTimeout(()=>controller.abort(),12000);try{const response=await fetch(API+'/api/workspaces',{headers:{Authorization:'Bearer '+credential},signal:controller.signal,cache:'no-store'});if(!response.ok)throw Error('工作区连接验证失败（'+response.status+'）');const value=await response.json();if(!Array.isArray(value.workspaces)||value.workspaces.length!==1)throw Error('工作区身份无效');return value.workspaces[0]}finally{clearTimeout(timeout)}}
 const $=id=>document.getElementById(id), device=window.EasybookDevice, uuid=()=>crypto.randomUUID();
