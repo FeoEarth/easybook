@@ -24,6 +24,7 @@ jobs:
           node scripts/web-store-test.mjs
           node scripts/workspace-oauth-security-test.mjs
           node scripts/native-account-security-test.mjs
+          node scripts/native-account-ui-test.mjs
           node mcp-oauth/test/native-passkeys-security.mjs
           node scripts/permanent-operations-test.mjs
           node scripts/account-deletion-test.mjs
