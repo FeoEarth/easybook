@@ -7,7 +7,7 @@ export async function manifest(ctx,id){
  else {const old=await b.head(ctx.workspace+'/'+id);if(!old)fail('NOT_FOUND','Attachment not found');let name='附件';try{name=decodeURIComponent(old.customMetadata?.name||name)}catch{}m={id,name,mime:old.customMetadata?.mime||'application/octet-stream',size:old.size,legacy:true,localOnly:false};}
  if(m.id!==id||typeof m.name!=='string'||typeof m.mime!=='string'||!Number.isSafeInteger(m.size))fail('INVALID_ATTACHMENT','Invalid attachment metadata');return m;
 }
-const safe=m=>({id:m.id,name:m.name,mime:m.mime,size:m.size,local_only:!!m.localOnly,download_available:!m.localOnly});
+const safe=m=>({id:m.id,name:m.name,mime:m.mime,size:m.size,local_only:!!m.localOnly,download_available:!m.localOnly,...(m.provenance?{provenance:m.provenance}:{}),...(m.width?{width:m.width,height:m.height}:{})});
 async function retired(ctx,id){return !!await ctx.env.DB.prepare('SELECT attachment FROM mcp_attachment_retirements WHERE workspace=? AND attachment=?').bind(ctx.workspace,id).first()}
 export async function attachmentTool(ctx,name,a){
  if(name==='attachments_list'||name==='attachments_search'){
@@ -37,8 +37,8 @@ export async function attachmentTool(ctx,name,a){
  if(name==='attachments_attach_to_note'){
   if(await retired(ctx,m.id))fail('ATTACHMENT_RETIRED','Attachment is retired');
   if(a.as_image&&!m.mime.startsWith('image/'))fail('INVALID_ARGUMENT','Attachment is not an image');
-  const node=a.as_image?{type:'image',attrs:{assetId:'sha256:'+m.id,alt:m.name}}:{type:'attachment',attrs:{assetId:'sha256:'+m.id,name:m.name,mime:m.mime,size:m.size}};
-  const i=a.index??n.document.doc.content.length;if(i>n.document.doc.content.length)fail('INVALID_ARGUMENT','Index out of range');n.document.doc.content.splice(i,0,node);
+  const node=a.as_image?{type:'image',attrs:{assetId:'sha256:'+m.id,alt:m.name,...(m.width?{width:m.width,height:m.height}:{})}}:{type:'attachment',attrs:{assetId:'sha256:'+m.id,name:m.name,mime:m.mime,size:m.size}};
+  const i=a.index??n.document.doc.content.length;if(i>n.document.doc.content.length)fail('INVALID_ARGUMENT','Index out of range');const nodes=[node];if(a.as_image&&m.provenance&&Object.keys(m.provenance).length){const p=m.provenance,label=[p.ai_generated?'AI 生成示意图，非新闻现场照片':'图片来源',p.author,p.license,p.source_url].filter(Boolean).join(' · ');nodes.push({type:'paragraph',content:[{type:'text',text:label}]})}n.document.doc.content.splice(i,0,...nodes);
  }else if(name==='attachments_detach_from_note'){
   const node=at(n.document.doc,a.path);if(!['image','attachment'].includes(node.type)||node.attrs.assetId!=='sha256:'+m.id)fail('CONFLICT','Attachment path mismatch');splice(n.document.doc,a.path,[]);if(!n.document.doc.content.length)n.document=textDocument('');
  }else fail('INVALID_ARGUMENT','Unknown attachment tool');

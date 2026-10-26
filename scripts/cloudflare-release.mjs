@@ -38,6 +38,7 @@ if(mode==='stage'){
   if(!same(active.versions,state.baseline.versions))throw Error('Production changed since staging; refusing stale promotion');
   state.promotionStarted=true;writeFileSync(stateFile,JSON.stringify(state,null,2));
   const deployment=await api('/deployments',{strategy:'percentage',versions:[{version_id:state.candidate,percentage:100}],annotations:{'workers/message':'Release '+state.sha}});
+  if(!oauth){const cronConfig=JSON.parse(readFileSync(config,'utf8'));if(cronConfig.triggers?.crons){const schedules=await fetch(base+'/schedules',{method:'PUT',headers:{Authorization:'Bearer '+token,'Content-Type':'application/json'},body:JSON.stringify(cronConfig.triggers.crons.map(cron=>({cron})))});const scheduleResult=await schedules.json();if(!schedules.ok||!scheduleResult.success)throw Error('Upload cleanup schedule configuration failed');}}
   state.deployment=deployment;writeFileSync(stateFile,JSON.stringify(state,null,2));summary(`Promoted ${state.candidate}; deployment ${deployment.id}`);
  }else{
   if(!state.promotionStarted){summary('Production was never promoted; rollback unnecessary.');process.exit(0)}

@@ -39,6 +39,7 @@ jobs:
           node scripts/check-web-runtime.mjs
           node scripts/mcp-pairing-release-test.mjs
           node scripts/mcp-capabilities-test.mjs
+          node scripts/mcp-upload-test.mjs
       - name: Install pinned Wrangler
         run: npm install --no-save --no-package-lock --no-audit --no-fund wrangler@4.152.0
       - name: Validate bundle without deployment
@@ -58,6 +59,8 @@ jobs:
         run: node scripts/web-release-smoke.mjs '${{ steps.candidate.outputs.url }}'
       - name: Verify live pairing with synthetic workspace only
         run: node scripts/live-pairing-probe.mjs '${{ steps.candidate.outputs.url }}'
+      - name: Verify real MCP uploads with synthetic workspace and temporary probe
+        run: node scripts/live-mcp-upload-probe.mjs '${{ steps.candidate.outputs.url }}'
       - name: Promote verified candidate
         if: github.ref == 'refs/heads/main'
         run: node scripts/cloudflare-release.mjs promote
@@ -80,6 +83,7 @@ jobs:
             rollback-probe-state.json
             custom-domain-baseline.json
             web-release-smoke.png
+            mcp-upload-live-evidence.json
           if-no-files-found: ignore
           retention-days: 14
 

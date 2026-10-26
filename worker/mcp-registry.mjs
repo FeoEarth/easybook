@@ -46,6 +46,14 @@ add('attachments_get_download_url','生成五分钟有效且可随工作区授�
 add('attachments_attach_to_note','插入已有附件的正文引用','attachments.write',{...version,attachment_id:asset,index:int(9999),as_image:bool},['id','version','attachment_id']);
 add('attachments_detach_from_note','仅移除精确节点路径处的附件引用','attachments.write',{...target,attachment_id:asset},['id','version','path','attachment_id']);
 add('attachments_delete','确认后停用无引用附件；保留 R2 字节以兼容离线同步，禁止永久清除','attachments.write',{attachment_id:asset,confirmation_id:uuid},['attachment_id','confirmation_id'],true);
+const provenance=schema({source_url:{...str(2048),pattern:'^https://[^\\s<>]+$'},author:str(200),license:str(1000),ai_generated:bool});
+const uploadMeta={filename:str(180,1),mime_type:{type:'string',enum:['image/png','image/jpeg','image/webp','image/gif','application/pdf','text/plain']},sha256:asset,request_id:uuid,provenance};
+add('attachments_prepare_upload','准备15分钟有效、绑定工作区和客户端的4 MiB分块上传','attachments.write',{...uploadMeta,size:int(52428800,1)},['filename','mime_type','size']);
+add('attachments_upload_base64','上传最多128 KiB的小文件；使用严格标准Base64，不能上传URL或假设客户端能读取文件','attachments.write',{...uploadMeta,content_base64:str(174764,4)},['filename','mime_type','content_base64']);
+add('attachments_complete_upload','验证全部分块、实际类型、大小和SHA-256后登记现有R2附件，幂等返回附件ID','attachments.write',{upload_id:uuid},['upload_id']);
+add('attachments_upload_status','读取当前OAuth客户端上传状态与已接收分块','attachments.write',{upload_id:uuid},['upload_id']);
+add('attachments_abort_upload','取消未提交的上传并清理临时对象，不删除已登记附件','attachments.write',{upload_id:uuid},['upload_id']);
+add('notes_get_attachments','列出指定笔记中图片和附件的元数据、节点路径和版本','notes.read',{id:uuid,...page},['id']);
 for(const [name,desc]of [['info','当前工作区信息'],['summary','笔记及文件夹计数；待办按有界分页统计'],['recent_activity','按同步游标列出最近变更元数据'],['capabilities','当前能力、权限和限制'],['sync_status','服务端同步游标，不代表设备已同步']])add('workspace_get_'+name,desc,'workspace.read',name==='summary'?page:name==='recent_activity'?page:{});
 add('workspace_search_all','跨笔记和文件夹搜索','workspace.read',{query:str(120,1),...page},['query']);
 add('access_request_permissions','请求用户在可信 Easybook 页面批准当前客户端写入权限','workspace.read',{scopes:arr({type:'string',enum:['notes.write','notes.delete','folders.manage','tasks.manage','attachments.write']},5)},['scopes']);

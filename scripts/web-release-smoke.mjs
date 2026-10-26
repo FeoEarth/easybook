@@ -24,4 +24,4 @@ try{
  await context.close();
 }finally{await browser.close()}
 
-const mcpReadiness=await fetch(origin+'/health/mcp');assert.equal(mcpReadiness.status,200,'MCP schema must be ready before promotion');assert.equal((await mcpReadiness.json()).mcp_schema_revision,8);
+const mcpReadiness=await fetch(origin+'/health/mcp');assert.equal(mcpReadiness.status,200,'MCP schema must be ready before promotion');assert.equal((await mcpReadiness.json()).mcp_schema_revision,9);

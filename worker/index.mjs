@@ -1,3 +1,4 @@
+import {cleanupUploads} from './mcp-uploads.mjs';
 import {mcp} from './mcp.mjs';
 import {mcpHealth} from './mcp-health.mjs';
 import {approvalPage,approvalAPI} from './mcp-access.mjs';
@@ -12,6 +13,7 @@ import {attachments} from './attachments.mjs';
 const headers = {'Access-Control-Allow-Origin':'*','Access-Control-Allow-Headers':'Authorization, Content-Type','Access-Control-Allow-Methods':'GET, PUT, OPTIONS','Cache-Control':'no-store','X-Content-Type-Options':'nosniff'};
 const json = (data, status=200) => Response.json(data, {status, headers});
 export default {
+ async scheduled(controller,env){await cleanupUploads(env,10)},
  async fetch(request, env) {
   const url = new URL(request.url);
   if(url.pathname==='/health/mcp'&&request.method==='GET')return mcpHealth(env);

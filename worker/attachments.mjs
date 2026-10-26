@@ -2,7 +2,7 @@ import {Buffer} from 'node:buffer';
 const CLOUD=50*1024*1024,LOCAL=1024*1024*1024,CHUNK=4*1024*1024;
 const hex=b=>Buffer.from(b).toString('hex'),hash=async b=>hex(await crypto.subtle.digest('SHA-256',b));
 const valid=h=>typeof h==='string'&&/^[a-f0-9]{64}$/.test(h);
-export async function attachments(request,env,workspace,id,headers){
+export async function attachments(request,env,workspace,id,headers,metadata={}){
  const reply=(v,status=200)=>Response.json(v,{status,headers});if(!env.ATTACHMENTS)return reply({error:'Storage unavailable'},503);
  const bucket=env.ATTACHMENTS,base=workspace+'/'+id,manifestKey=base+'/manifest-v2';
  async function manifest(){const m=await bucket.get(manifestKey);if(m)return m.json();const old=await bucket.head(base);return old?{v:2,id,name:decodeURIComponent(old.customMetadata?.name||'%E9%99%84%E4%BB%B6'),mime:old.customMetadata?.mime||'application/octet-stream',size:old.size,wireSize:old.size,wireId:id,encoding:'identity',parts:[{hash:id,size:old.size}],legacy:true,localOnly:false}:null;}
@@ -26,6 +26,9 @@ export async function attachments(request,env,workspace,id,headers){
  const m=v.manifest;
  if(v.op!=='commit'||!m||m.v!==2||m.id!==id||typeof m.name!=='string'||m.name.length>180||typeof m.mime!=='string'||!/^[\w.+-]+\/[\w.+-]+$/.test(m.mime)||!Number.isSafeInteger(m.size)||m.size<0||m.size>LOCAL||typeof m.localOnly!=='boolean')return reply({error:'Invalid manifest'},400);
  const safe={v:2,id,name:m.name,mime:m.mime,size:m.size,localOnly:m.localOnly};
+ const previous=await manifest();
+ if(previous?.provenance||metadata.provenance&&Object.keys(metadata.provenance).length)safe.provenance=previous?.provenance||metadata.provenance;
+ for(const k of ['width','height'])if(previous?.[k]||metadata.dimensions?.[k])safe[k]=previous?.[k]||metadata.dimensions[k];
  if(m.localOnly){const existing=await manifest();if(existing&&!existing.localOnly)return reply({id,size:m.size,localOnly:false});await bucket.put(manifestKey,JSON.stringify({...safe,parts:[],wireSize:0,encoding:'identity',wireId:id}));return reply({id,size:m.size,localOnly:true})}
  if(!valid(m.wireId)||!['identity','gzip'].includes(m.encoding)||!Number.isInteger(m.wireSize)||m.wireSize<0||m.wireSize>CLOUD||!Array.isArray(m.parts)||m.parts.length>13)return reply({error:'Cloud limit is 50 MB'},413);
  let wireSize=0;for(let i=0;i<m.parts.length;i++){const p=m.parts[i];if(!valid(p.hash)||!Number.isInteger(p.size)||p.size<1||p.size>CHUNK)return reply({error:'Invalid part'},400);const o=await bucket.head(base+'/'+m.wireId+'/'+i);if(!o||o.size!==p.size||o.customMetadata?.hash!==p.hash)return reply({error:'Missing verified part'},409);wireSize+=p.size}if(wireSize!==m.wireSize)return reply({error:'Wire size mismatch'},400);

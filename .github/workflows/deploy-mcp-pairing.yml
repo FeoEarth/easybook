@@ -32,11 +32,14 @@ jobs:
           node-version: '24'
       - run: npm ci --no-audit --no-fund
         working-directory: mcp-oauth
+      - name: Install shared client dependencies for upload compatibility check
+        run: npm ci --no-audit --no-fund
       - name: Validate OAuth bundle
         run: mcp-oauth/node_modules/.bin/wrangler deploy --config mcp-oauth/wrangler.jsonc --dry-run --outdir oauth-preflight
       - name: Validate MCP protocol before candidate upload
         run: |
           node scripts/mcp-capabilities-test.mjs
+          node scripts/mcp-upload-test.mjs
           node scripts/mcp-pairing-release-test.mjs
           # Migration is applied via authorized Cloudflare; candidate smoke verifies runtime D1 readiness.
       - name: Upload OAuth candidate only
