@@ -42,6 +42,8 @@ jobs:
           node-version: '24'
           cache: npm
       - run: npm ci
+      - name: Focused folder navigation regression
+        run: node scripts/folder-navigation-test.mjs
       - name: Attachment protocol static checks
         run: node --check shared/attachments.mjs && node --check worker/attachments.mjs && node --check app/src/main/assets/pdf/reader.mjs && node --check app/src/main/assets/pdf/glass.mjs
       - name: Build editor and focused table integrity
@@ -77,4 +79,5 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           TAG="v0.8.0-build${GITHUB_RUN_NUMBER}"
-          gh release create "$TAG" Easybook-0.8.0.apk SHA256SUMS.txt --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" --title "Easybook 0.8.0 · build ${GITHUB_RUN_NUMBER}" --notes "附件入口拆分为照片与视频、文件；加入2×2可编辑表格与行列操作，统一Android/Web文档校验与同步。设置加入持久极速模式，关闭原生及CSS玻璃。versionCode 55。必要构建、表格JSON/本地恢复/跨端校验及选择器静态检查；未运行模拟器、UI自动化或真机验证。"
+          gh release create "$TAG" Easybook-0.8.0.apk SHA256SUMS.txt --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" --title "Easybook 0.8.0 · build ${GITHUB_RUN_NUMBER}" --notes "修复文件夹触摸结束后残留 click 导致误打开笔记的问题；切换页面立即清理旧列表，校验异步查询上下文，保留全局搜索跨文件夹入口。通过针对性导航逻辑回归与必要构建。未做模拟器或真机验证。"
+
