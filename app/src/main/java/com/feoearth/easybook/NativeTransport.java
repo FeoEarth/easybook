@@ -16,12 +16,17 @@ final class NativeTransport {
   if(probe.available(secondary,account))return secondary;
   throw new IOException("NATIVE_TRANSPORT_UNAVAILABLE");
  }
- private static String identity,sync;private static long identityUntil,syncUntil;
+ private static String identity,sync;private static long identityUntil,syncUntil,identityPrimaryBlocked,identitySecondaryBlocked,syncPrimaryBlocked,syncSecondaryBlocked;
  static synchronized String origin(boolean account)throws IOException{
   long now=System.nanoTime();String cached=account?identity:sync;long until=account?identityUntil:syncUntil;
   if(cached!=null&&now<until)return cached;
-  String selected=select(account,NativeTransport::available);long expires=System.nanoTime()+300000000000L;
+  long primaryBlocked=account?identityPrimaryBlocked:syncPrimaryBlocked,secondaryBlocked=account?identitySecondaryBlocked:syncSecondaryBlocked;String selected=select(account,(candidate,kind)->now>=(candidate.equals(NativeAccount.ORIGIN)?primaryBlocked:secondaryBlocked)&&available(candidate,kind));long expires=System.nanoTime()+300000000000L;
   if(account){identity=selected;identityUntil=expires;}else{sync=selected;syncUntil=expires;}return selected;
+ }
+ static synchronized void reject(boolean account,String failed){
+  long until=System.nanoTime()+30000000000L;boolean primary=failed.equals(NativeAccount.ORIGIN);
+  if(account){identity=null;if(primary)identityPrimaryBlocked=until;else identitySecondaryBlocked=until;}
+  else{sync=null;if(primary)syncPrimaryBlocked=until;else syncSecondaryBlocked=until;}
  }
  private static boolean available(String origin,boolean account){
   HttpsURLConnection c=null;try{
