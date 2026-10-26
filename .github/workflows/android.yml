@@ -49,7 +49,7 @@ jobs:
       - name: Build editor and focused table integrity
         run: npm run build:editor && node scripts/table-integrity.mjs && node scripts/picker-static-check.mjs
       - name: Android and Web table contract consistency
-        run: gradle :app:testReleaseUnitTest --tests com.feoearth.easybook.TableContractTest --no-daemon
+        run: gradle :app:testReleaseUnitTest --tests com.feoearth.easybook.TableContractTest --tests com.feoearth.easybook.NativeMcpPairingTest --no-daemon
       - name: Build release APK
         run: gradle :app:assembleRelease --no-daemon
       - name: Verify APK signing
@@ -79,4 +79,4 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           TAG="v0.8.0-build${GITHUB_RUN_NUMBER}"
-          gh release create "$TAG" Easybook-0.8.0.apk SHA256SUMS.txt --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" --title "Easybook 0.8.0 · build ${GITHUB_RUN_NUMBER}" --notes "重设计 Android 连接其他设备原生底部面板，统一密钥输入、连接确认、查看及复制密钥和状态反馈。接入现有 QWEA0 玻璃导航，保留 Keystore、原生处理及 FLAG_SECURE。未做真机验证。"
+          gh release create "$TAG" Easybook-0.8.0.apk SHA256SUMS.txt --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" --title "Easybook 0.8.0 · build ${GITHUB_RUN_NUMBER}" --notes "Android AI 与 MCP 接入统一原生玻璃面板，支持一次性码配对、原生工作区验证及授权完成反馈。同步密钥和签名断言不进入 WebView。通过针对性配对测试及发行构建；未做真机验证。"

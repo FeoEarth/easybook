@@ -39,7 +39,7 @@ public final class SecurityManager {
             case "device.theme":fields=fields("value");break;
             case "device.copy":fields=fields("value");break;
             case "device.share":fields=fields("title","text");break;
-            case "snapshot":case "security.pair":case "security.status":case "migration.status":case "migration.retry":case "migration.rollback":case "migration.cleaned":case "ui.ready":case "device.haptic":case "device.exportNotes":case "device.importNotes":fields=Collections.emptySet();break;
+            case "snapshot":case "security.pair":case "security.mcp":case "security.status":case "migration.status":case "migration.retry":case "migration.rollback":case "migration.cleaned":case "ui.ready":case "device.haptic":case "device.exportNotes":case "device.importNotes":fields=Collections.emptySet();break;
             default:throw new SecurityException("Operation denied");
         }
         Iterator<String> names=args.keys();while(names.hasNext())if(!fields.contains(names.next()))throw new SecurityException("Unexpected parameter");
@@ -50,7 +50,7 @@ public final class SecurityManager {
     }
     synchronized void initialized(long generation){initialized=generation;}
     private ConnectionSheet connectionSheet;
-    private boolean dark;
+    private boolean dark; private long mcpGeneration;
     void setDark(boolean value){dark=value;}
     boolean back(){return connectionSheet!=null&&connectionSheet.back();}
     void dismissConnection(){if(connectionSheet!=null)connectionSheet.close();}
@@ -61,6 +61,14 @@ public final class SecurityManager {
             catch(Exception e){activity.runOnUiThread(()->{if(connectionSheet!=null)connectionSheet.error("连接未完成，本机笔记已保留，请重试");});}
         }),this::showCredential,()->connectionSheet=null);
         connectionSheet.show();
+    });}
+    void mcpPairing(){activity.runOnUiThread(()->{
+        if(connectionSheet!=null)return;
+        final long generation=++mcpGeneration;
+        connectionSheet=new ConnectionSheet(activity,dark,challenge->io.execute(()->{
+            try{String workspace=db.activeSpace();String credential=db.credential(workspace);NativeMcpPairing.pair(challenge,credential,new NativeMcpPairing.HttpsTransport());activity.runOnUiThread(()->{if(!activity.isDestroyed()&&generation==mcpGeneration&&connectionSheet!=null)connectionSheet.mcpSuccess();});}
+            catch(Exception e){String message=e instanceof java.net.SocketTimeoutException?"连接超时，请检查网络并重试":e instanceof CredentialVault.KeyUnavailable?"本机凭据不可用，请先重新连接设备":e instanceof java.io.IOException?e.getMessage():"配对未完成，请检查设备连接或获取新配对码";activity.runOnUiThread(()->{if(!activity.isDestroyed()&&generation==mcpGeneration&&connectionSheet!=null)connectionSheet.error(message);});}
+        }),()->{},()->{connectionSheet=null;mcpGeneration++;});connectionSheet.useMcp();connectionSheet.show();
     });}
     private void showCredential(){io.execute(()->{try{String k=db.credential(db.activeSpace());activity.runOnUiThread(()->{if(connectionSheet==null||activity.isDestroyed())return;connectionSheet.credential(k,()->{ClipData clip=ClipData.newPlainText("Easybook 同步密钥",k);if(Build.VERSION.SDK_INT>=24){PersistableBundle extras=new PersistableBundle();extras.putBoolean("android.content.extra.IS_SENSITIVE",true);clip.getDescription().setExtras(extras);}((ClipboardManager)activity.getSystemService(Context.CLIPBOARD_SERVICE)).setPrimaryClip(clip);});});}catch(Exception e){activity.runOnUiThread(()->{if(connectionSheet!=null)connectionSheet.error("本机凭据不可用。请输入原同步密钥重新配对；离线笔记仍可编辑和导出。");});}});}
     private void message(String value){activity.runOnUiThread(()->Toast.makeText(activity,value,Toast.LENGTH_LONG).show());}
