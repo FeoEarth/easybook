@@ -8,7 +8,7 @@ export async function deleteWorkspace(env,id,principal,input){
  if(principal.kind==='account'&&Date.now()-principal.authenticatedAt>300000)deny('reauthentication_required');
  const check=crypto.randomUUID(),job=crypto.randomUUID(),now=Date.now();
  const floor=await reserveWorkspaceFloor(env,id,w.version+1),intent=await reserveRevocations(env,[['workspace',id]]);
- const authority=principal.kind==='key'?"mode='personal' AND EXISTS(SELECT 1 FROM workspace_keys k WHERE k.workspace_id=workspaces.id AND k.key_hash=? AND k.revoked_at IS NULL)":"manager_account_id=? AND EXISTS(SELECT 1 FROM account_sessions s JOIN accounts a ON a.id=s.account_id WHERE s.id=? AND s.account_id=workspaces.manager_account_id AND s.revoked_at IS NULL AND s.expires_at>? AND s.authenticated_at>? AND a.deleted_at IS NULL)";
+ const authority=principal.kind==='key'?"mode='personal' AND EXISTS(SELECT 1 FROM workspace_keys k WHERE k.workspace_id=workspaces.id AND k.key_hash=? AND k.revoked_at IS NULL)":"manager_account_id=? AND EXISTS(SELECT 1 FROM account_sessions s JOIN accounts a ON a.id=s.account_id WHERE s.id=? AND s.account_id=workspaces.manager_account_id AND s.revoked_at IS NULL AND s.expires_at>? AND s.authenticated_at>? AND a.deleted_at IS NULL AND NOT EXISTS(SELECT 1 FROM account_session_passkeys sp JOIN account_passkeys p ON p.id=sp.credential_id WHERE sp.session_id=s.id AND p.revoked_at IS NOT NULL))";
  const params=principal.kind==='key'?[principal.keyHash]:[principal.accountId,principal.sessionId,now,now-300000];
  try{await env.DB.batch([
   env.DB.prepare(`INSERT INTO workspace_tx_assertions(id,valid) SELECT ?,EXISTS(SELECT 1 FROM workspaces WHERE id=? AND version=? AND deleted_at IS NULL AND ${authority})`).bind(check,id,w.version,...params),

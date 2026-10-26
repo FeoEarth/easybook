@@ -1,11 +1,12 @@
+import {workspaceAccess} from './workspace-identity.mjs';
 import {fail} from './mcp-common.mjs';
 const pageSize=50;
 export async function auditHistory(env,accountId,{workspaceId=null,cursor=null,category=null}={}){
  const clauses=[],params=[];
  if(workspaceId){
   if(!/^[a-f0-9]{64}$/.test(workspaceId))fail('INVALID_ARGUMENT','Invalid workspace');
-  const manager=await env.DB.prepare('SELECT 1 FROM workspaces WHERE id=? AND manager_account_id=? AND deleted_at IS NULL').bind(workspaceId,accountId).first();
-  clauses.push('workspace_id=?');params.push(workspaceId);if(!manager){clauses.push('account_id=?');params.push(accountId)}
+  const access=await workspaceAccess(env,workspaceId,{kind:'account',accountId}),manager=access?.role==='manager';
+  clauses.push('workspace_id=?');params.push(workspaceId);if(!manager){clauses.push('account_id=?');params.push(accountId)}else {clauses.push("(category IN('activity','execution') OR account_id=?)");params.push(accountId)}
  }else {clauses.push('account_id=?');params.push(accountId)}
  if(category){if(!['activity','security','execution'].includes(category))fail('INVALID_ARGUMENT','Invalid category');clauses.push('category=?');params.push(category)}
  if(cursor){let value;try{value=JSON.parse(atob(cursor))}catch{fail('INVALID_ARGUMENT','Invalid cursor')}
