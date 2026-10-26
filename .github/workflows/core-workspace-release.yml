@@ -36,5 +36,11 @@ jobs:
           node scripts/mcp-upload-test.mjs
           node scripts/check-web-runtime.mjs
       - run: npx playwright install --with-deps chromium
-      - run: node scripts/core-workspace-browser-test.mjs && node scripts/collaboration-browser-test.mjs
+      - run: node scripts/core-workspace-browser-test.mjs && node scripts/collaboration-browser-test.mjs && node scripts/account-settings-browser-test.mjs
 
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: account-settings-ui
+          path: account-settings-*.png
+          if-no-files-found: ignore
