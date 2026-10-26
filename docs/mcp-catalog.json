@@ -1,0 +1,2689 @@
+{
+  "protocol": "2025-03-26",
+  "tools": [
+    {
+      "name": "notes_list",
+      "description": "分页列出笔记，默认只返回元数据",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "limit": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 30
+          },
+          "cursor": {
+            "type": "string",
+            "minLength": 0,
+            "maxLength": 2048
+          },
+          "folder_id": {
+            "type": "string",
+            "minLength": 0,
+            "maxLength": 36,
+            "pattern": "^$|^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$"
+          },
+          "sort": {
+            "type": "string",
+            "enum": [
+              "updated_desc",
+              "updated_asc"
+            ]
+          },
+          "deleted": {
+            "type": "boolean"
+          },
+          "format": {
+            "type": "string",
+            "enum": [
+              "text",
+              "document",
+              "metadata"
+            ]
+          },
+          "offset": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 200000
+          },
+          "length": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 40000
+          },
+          "fields": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "enum": [
+                "id",
+                "title",
+                "icon",
+                "pinned",
+                "favorite",
+                "updated",
+                "folder_id",
+                "version",
+                "deleted"
+              ]
+            },
+            "minItems": 1,
+            "maxItems": 9
+          }
+        },
+        "required": [],
+        "additionalProperties": false
+      },
+      "scope": "notes.read",
+      "risk": false,
+      "annotations": {
+        "readOnlyHint": true,
+        "destructiveHint": false,
+        "idempotentHint": false,
+        "openWorldHint": false
+      }
+    },
+    {
+      "name": "notes_search",
+      "description": "按标题或正文文本搜索笔记",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "limit": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 30
+          },
+          "cursor": {
+            "type": "string",
+            "minLength": 0,
+            "maxLength": 2048
+          },
+          "folder_id": {
+            "type": "string",
+            "minLength": 0,
+            "maxLength": 36,
+            "pattern": "^$|^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$"
+          },
+          "query": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 120
+          },
+          "format": {
+            "type": "string",
+            "enum": [
+              "text",
+              "document",
+              "metadata"
+            ]
+          },
+          "offset": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 200000
+          },
+          "length": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 40000
+          },
+          "fields": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "enum": [
+                "id",
+                "title",
+                "icon",
+                "pinned",
+                "favorite",
+                "updated",
+                "folder_id",
+                "version",
+                "deleted"
+              ]
+            },
+            "minItems": 1,
+            "maxItems": 9
+          }
+        },
+        "required": [
+          "query"
+        ],
+        "additionalProperties": false
+      },
+      "scope": "notes.read",
+      "risk": false,
+      "annotations": {
+        "readOnlyHint": true,
+        "destructiveHint": false,
+        "idempotentHint": false,
+        "openWorldHint": false
+      }
+    },
+    {
+      "name": "notes_get",
+      "description": "读取笔记；大型 JSON 按顶层节点分段，文本按字符分段",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "pattern": "^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$"
+          },
+          "format": {
+            "type": "string",
+            "enum": [
+              "text",
+              "document",
+              "metadata"
+            ]
+          },
+          "offset": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 200000
+          },
+          "length": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 40000
+          },
+          "fields": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "enum": [
+                "id",
+                "title",
+                "icon",
+                "pinned",
+                "favorite",
+                "updated",
+                "folder_id",
+                "version",
+                "deleted"
+              ]
+            },
+            "minItems": 1,
+            "maxItems": 9
+          }
+        },
+        "required": [
+          "id"
+        ],
+        "additionalProperties": false
+      },
+      "scope": "notes.read",
+      "risk": false,
+      "annotations": {
+        "readOnlyHint": true,
+        "destructiveHint": false,
+        "idempotentHint": false,
+        "openWorldHint": false
+      }
+    },
+    {
+      "name": "notes_batch_get",
+      "description": "批量读取笔记，最多五条；每条独立报告错误",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "ids": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "pattern": "^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$"
+            },
+            "minItems": 1,
+            "maxItems": 5
+          },
+          "format": {
+            "type": "string",
+            "enum": [
+              "text",
+              "document",
+              "metadata"
+            ]
+          },
+          "offset": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 200000
+          },
+          "length": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 40000
+          },
+          "fields": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "enum": [
+                "id",
+                "title",
+                "icon",
+                "pinned",
+                "favorite",
+                "updated",
+                "folder_id",
+                "version",
+                "deleted"
+              ]
+            },
+            "minItems": 1,
+            "maxItems": 9
+          }
+        },
+        "required": [
+          "ids"
+        ],
+        "additionalProperties": false
+      },
+      "scope": "notes.read",
+      "risk": false,
+      "annotations": {
+        "readOnlyHint": true,
+        "destructiveHint": false,
+        "idempotentHint": false,
+        "openWorldHint": false
+      }
+    },
+    {
+      "name": "notes_create",
+      "description": "创建共享 JSON 文档模型笔记",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "title": {
+            "type": "string",
+            "minLength": 0,
+            "maxLength": 200
+          },
+          "icon": {
+            "type": "string",
+            "minLength": 0,
+            "maxLength": 16
+          },
+          "pinned": {
+            "type": "boolean"
+          },
+          "favorite": {
+            "type": "boolean"
+          },
+          "folder_id": {
+            "type": "string",
+            "minLength": 0,
+            "maxLength": 36,
+            "pattern": "^$|^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$"
+          },
+          "document": {
+            "type": "object",
+            "properties": {
+              "schemaVersion": {
+                "type": "integer",
+                "enum": [
+                  1
+                ]
+              },
+              "doc": {
+                "type": "object",
+                "properties": {},
+                "additionalProperties": true
+              }
+            },
+            "required": [
+              "schemaVersion",
+              "doc"
+            ],
+            "additionalProperties": false
+          },
+          "text": {
+            "type": "string",
+            "minLength": 0,
+            "maxLength": 100000
+          }
+        },
+        "required": [
+          "title"
+        ],
+        "additionalProperties": false
+      },
+      "scope": "notes.write",
+      "risk": false,
+      "annotations": {
+        "readOnlyHint": false,
+        "destructiveHint": false,
+        "idempotentHint": false,
+        "openWorldHint": false
+      }
+    },
+    {
+      "name": "notes_update",
+      "description": "按版本更新正文或元数据",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "pattern": "^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$"
+          },
+          "version": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 9007199254740991
+          },
+          "title": {
+            "type": "string",
+            "minLength": 0,
+            "maxLength": 200
+          },
+          "icon": {
+            "type": "string",
+            "minLength": 0,
+            "maxLength": 16
+          },
+          "pinned": {
+            "type": "boolean"
+          },
+          "favorite": {
+            "type": "boolean"
+          },
+          "folder_id": {
+            "type": "string",
+            "minLength": 0,
+            "maxLength": 36,
+            "pattern": "^$|^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$"
+          },
+          "document": {
+            "type": "object",
+            "properties": {
+              "schemaVersion": {
+                "type": "integer",
+                "enum": [
+                  1
+                ]
+              },
+              "doc": {
+                "type": "object",
+                "properties": {},
+                "additionalProperties": true
+              }
+            },
+            "required": [
+              "schemaVersion",
+              "doc"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "required": [
+          "id",
+          "version"
+        ],
+        "additionalProperties": false
+      },
+      "scope": "notes.write",
+      "risk": false,
+      "annotations": {
+        "readOnlyHint": false,
+        "destructiveHint": true,
+        "idempotentHint": false,
+        "openWorldHint": false
+      }
+    },
+    {
+      "name": "notes_append",
+      "description": "追加完整文档片段的顶层节点",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "pattern": "^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$"
+          },
+          "version": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 9007199254740991
+          },
+          "document": {
+            "type": "object",
+            "properties": {
+              "schemaVersion": {
+                "type": "integer",
+                "enum": [
+                  1
+                ]
+              },
+              "doc": {
+                "type": "object",
+                "properties": {},
+                "additionalProperties": true
+              }
+            },
+            "required": [
+              "schemaVersion",
+              "doc"
+            ],
+            "additionalProperties": false
+          },
+          "text": {
+            "type": "string",
+            "minLength": 0,
+            "maxLength": 100000
+          }
+        },
+        "required": [
+          "id",
+          "version"
+        ],
+        "additionalProperties": false
+      },
+      "scope": "notes.write",
+      "risk": false,
+      "annotations": {
+        "readOnlyHint": false,
+        "destructiveHint": false,
+        "idempotentHint": false,
+        "openWorldHint": false
+      }
+    },
+    {
+      "name": "notes_delete",
+      "description": "移入最近删除",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "pattern": "^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$"
+          },
+          "version": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 9007199254740991
+          }
+        },
+        "required": [
+          "id",
+          "version"
+        ],
+        "additionalProperties": false
+      },
+      "scope": "notes.delete",
+      "risk": false,
+      "annotations": {
+        "readOnlyHint": false,
+        "destructiveHint": true,
+        "idempotentHint": false,
+        "openWorldHint": false
+      }
+    },
+    {
+      "name": "notes_restore",
+      "description": "恢复笔记",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "pattern": "^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$"
+          },
+          "version": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 9007199254740991
+          }
+        },
+        "required": [
+          "id",
+          "version"
+        ],
+        "additionalProperties": false
+      },
+      "scope": "notes.delete",
+      "risk": false,
+      "annotations": {
+        "readOnlyHint": false,
+        "destructiveHint": false,
+        "idempotentHint": false,
+        "openWorldHint": false
+      }
+    },
+    {
+      "name": "notes_move",
+      "description": "移动笔记至文件夹或根目录",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "pattern": "^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$"
+          },
+          "version": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 9007199254740991
+          },
+          "folder_id": {
+            "type": "string",
+            "minLength": 0,
+            "maxLength": 36,
+            "pattern": "^$|^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$"
+          }
+        },
+        "required": [
+          "id",
+          "version",
+          "folder_id"
+        ],
+        "additionalProperties": false
+      },
+      "scope": "notes.write",
+      "risk": false,
+      "annotations": {
+        "readOnlyHint": false,
+        "destructiveHint": false,
+        "idempotentHint": false,
+        "openWorldHint": false
+      }
+    },
+    {
+      "name": "notes_pin",
+      "description": "置顶或取消置顶",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "pattern": "^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$"
+          },
+          "version": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 9007199254740991
+          },
+          "pinned": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "id",
+          "version",
+          "pinned"
+        ],
+        "additionalProperties": false
+      },
+      "scope": "notes.write",
+      "risk": false,
+      "annotations": {
+        "readOnlyHint": false,
+        "destructiveHint": false,
+        "idempotentHint": false,
+        "openWorldHint": false
+      }
+    },
+    {
+      "name": "folders_list",
+      "description": "分页列出文件夹及现有层级排序",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "limit": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 30
+          },
+          "cursor": {
+            "type": "string",
+            "minLength": 0,
+            "maxLength": 2048
+          }
+        },
+        "required": [],
+        "additionalProperties": false
+      },
+      "scope": "folders.read",
+      "risk": false,
+      "annotations": {
+        "readOnlyHint": true,
+        "destructiveHint": false,
+        "idempotentHint": false,
+        "openWorldHint": false
+      }
+    },
+    {
+      "name": "folders_get",
+      "description": "读取文件夹及管理版本",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "pattern": "^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$"
+          }
+        },
+        "required": [
+          "id"
+        ],
+        "additionalProperties": false
+      },
+      "scope": "folders.read",
+      "risk": false,
+      "annotations": {
+        "readOnlyHint": true,
+        "destructiveHint": false,
+        "idempotentHint": false,
+        "openWorldHint": false
+      }
+    },
+    {
+      "name": "folders_get_contents",
+      "description": "读取指定文件夹的笔记元数据",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "pattern": "^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$"
+          },
+          "limit": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 30
+          },
+          "cursor": {
+            "type": "string",
+            "minLength": 0,
+            "maxLength": 2048
+          }
+        },
+        "required": [
+          "id"
+        ],
+        "additionalProperties": false
+      },
+      "scope": "folders.read",
+      "risk": false,
+      "annotations": {
+        "readOnlyHint": true,
+        "destructiveHint": false,
+        "idempotentHint": false,
+        "openWorldHint": false
+      }
+    },
+    {
+      "name": "folders_create",
+      "description": "创建文件夹，支持根目录",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 60
+          },
+          "parent_id": {
+            "type": "string",
+            "minLength": 0,
+            "maxLength": 36,
+            "pattern": "^$|^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$"
+          },
+          "management_version": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991
+          }
+        },
+        "required": [
+          "name",
+          "management_version"
+        ],
+        "additionalProperties": false
+      },
+      "scope": "folders.manage",
+      "risk": false,
+      "annotations": {
+        "readOnlyHint": false,
+        "destructiveHint": false,
+        "idempotentHint": false,
+        "openWorldHint": false
+      }
+    },
+    {
+      "name": "folders_rename",
+      "description": "按更新时间校验重命名文件夹",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "pattern": "^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$"
+          },
+          "name": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 60
+          },
+          "updated": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "updated"
+        ],
+        "additionalProperties": false
+      },
+      "scope": "folders.manage",
+      "risk": false,
+      "annotations": {
+        "readOnlyHint": false,
+        "destructiveHint": false,
+        "idempotentHint": false,
+        "openWorldHint": false
+      }
+    },
+    {
+      "name": "folders_move",
+      "description": "按管理版本调整层级和排序，拒绝循环",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "pattern": "^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$"
+          },
+          "parent_id": {
+            "type": "string",
+            "minLength": 0,
+            "maxLength": 36,
+            "pattern": "^$|^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$"
+          },
+          "management_version": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991
+          },
+          "rank": {
+            "type": "number",
+            "minimum": -1000000000000,
+            "maximum": 1000000000000
+          }
+        },
+        "required": [
+          "id",
+          "parent_id",
+          "management_version"
+        ],
+        "additionalProperties": false
+      },
+      "scope": "folders.manage",
+      "risk": false,
+      "annotations": {
+        "readOnlyHint": false,
+        "destructiveHint": false,
+        "idempotentHint": false,
+        "openWorldHint": false
+      }
+    },
+    {
+      "name": "folders_delete",
+      "description": "确认后软删除空文件夹；非空文件夹禁止删除",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "pattern": "^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$"
+          },
+          "updated": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991
+          },
+          "management_version": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991
+          },
+          "confirmation_id": {
+            "type": "string",
+            "pattern": "^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$"
+          }
+        },
+        "required": [
+          "id",
+          "updated",
+          "management_version",
+          "confirmation_id"
+        ],
+        "additionalProperties": false
+      },
+      "scope": "folders.manage",
+      "risk": true,
+      "annotations": {
+        "readOnlyHint": false,
+        "destructiveHint": true,
+        "idempotentHint": false,
+        "openWorldHint": false
+      }
+    },
+    {
+      "name": "tasks_list",
+      "description": "分页读取原生 taskItem，保留节点路径和层级",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "limit": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 30
+          },
+          "cursor": {
+            "type": "string",
+            "minLength": 0,
+            "maxLength": 2048
+          },
+          "note_id": {
+            "type": "string",
+            "pattern": "^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$"
+          },
+          "completed": {
+            "type": "boolean"
+          }
+        },
+        "required": [],
+        "additionalProperties": false
+      },
+      "scope": "tasks.read",
+      "risk": false,
+      "annotations": {
+        "readOnlyHint": true,
+        "destructiveHint": false,
+        "idempotentHint": false,
+        "openWorldHint": false
+      }
+    },
+    {
+      "name": "tasks_get",
+      "description": "用笔记版本和路径定位任务",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "pattern": "^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$"
+          },
+          "version": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 9007199254740991
+          },
+          "path": {
+            "type": "array",
+            "items": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 9999
+            },
+            "minItems": 0,
+            "maxItems": 32
+          }
+        },
+        "required": [
+          "id",
+          "version",
+          "path"
+        ],
+        "additionalProperties": false
+      },
+      "scope": "tasks.read",
+      "risk": false,
+      "annotations": {
+        "readOnlyHint": true,
+        "destructiveHint": false,
+        "idempotentHint": false,
+        "openWorldHint": false
+      }
+    },
+    {
+      "name": "tasks_create",
+      "description": "在指定 taskList 追加任务，或新建顶层清单",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "pattern": "^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$"
+          },
+          "version": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 9007199254740991
+          },
+          "list_path": {
+            "type": "array",
+            "items": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 9999
+            },
+            "minItems": 0,
+            "maxItems": 32
+          },
+          "text": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 10000
+          },
+          "checked": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "id",
+          "version",
+          "text"
+        ],
+        "additionalProperties": false
+      },
+      "scope": "tasks.manage",
+      "risk": false,
+      "annotations": {
+        "readOnlyHint": false,
+        "destructiveHint": false,
+        "idempotentHint": false,
+        "openWorldHint": false
+      }
+    },
+    {
+      "name": "tasks_update",
+      "description": "修改单个任务文本或勾选状态；保留其他节点",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "pattern": "^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$"
+          },
+          "version": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 9007199254740991
+          },
+          "path": {
+            "type": "array",
+            "items": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 9999
+            },
+            "minItems": 0,
+            "maxItems": 32
+          },
+          "text": {
+            "type": "string",
+            "minLength": 0,
+            "maxLength": 10000
+          },
+          "checked": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "id",
+          "version",
+          "path"
+        ],
+        "additionalProperties": false
+      },
+      "scope": "tasks.manage",
+      "risk": false,
+      "annotations": {
+        "readOnlyHint": false,
+        "destructiveHint": false,
+        "idempotentHint": false,
+        "openWorldHint": false
+      }
+    },
+    {
+      "name": "tasks_complete",
+      "description": "按笔记版本修改指定任务",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "pattern": "^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$"
+          },
+          "version": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 9007199254740991
+          },
+          "path": {
+            "type": "array",
+            "items": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 9999
+            },
+            "minItems": 0,
+            "maxItems": 32
+          }
+        },
+        "required": [
+          "id",
+          "version",
+          "path"
+        ],
+        "additionalProperties": false
+      },
+      "scope": "tasks.manage",
+      "risk": false,
+      "annotations": {
+        "readOnlyHint": false,
+        "destructiveHint": false,
+        "idempotentHint": false,
+        "openWorldHint": false
+      }
+    },
+    {
+      "name": "tasks_reopen",
+      "description": "按笔记版本修改指定任务",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "pattern": "^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$"
+          },
+          "version": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 9007199254740991
+          },
+          "path": {
+            "type": "array",
+            "items": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 9999
+            },
+            "minItems": 0,
+            "maxItems": 32
+          }
+        },
+        "required": [
+          "id",
+          "version",
+          "path"
+        ],
+        "additionalProperties": false
+      },
+      "scope": "tasks.manage",
+      "risk": false,
+      "annotations": {
+        "readOnlyHint": false,
+        "destructiveHint": false,
+        "idempotentHint": false,
+        "openWorldHint": false
+      }
+    },
+    {
+      "name": "tasks_delete",
+      "description": "按笔记版本修改指定任务",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "pattern": "^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$"
+          },
+          "version": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 9007199254740991
+          },
+          "path": {
+            "type": "array",
+            "items": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 9999
+            },
+            "minItems": 0,
+            "maxItems": 32
+          }
+        },
+        "required": [
+          "id",
+          "version",
+          "path"
+        ],
+        "additionalProperties": false
+      },
+      "scope": "tasks.manage",
+      "risk": false,
+      "annotations": {
+        "readOnlyHint": false,
+        "destructiveHint": true,
+        "idempotentHint": false,
+        "openWorldHint": false
+      }
+    },
+    {
+      "name": "tasks_batch_complete",
+      "description": "同一笔记内一次 CAS 完成多个任务",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "pattern": "^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$"
+          },
+          "version": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 9007199254740991
+          },
+          "tasks": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "path": {
+                  "type": "array",
+                  "items": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 9999
+                  },
+                  "minItems": 0,
+                  "maxItems": 32
+                }
+              },
+              "required": [
+                "path"
+              ],
+              "additionalProperties": false
+            },
+            "minItems": 1,
+            "maxItems": 20
+          }
+        },
+        "required": [
+          "id",
+          "version",
+          "tasks"
+        ],
+        "additionalProperties": false
+      },
+      "scope": "tasks.manage",
+      "risk": false,
+      "annotations": {
+        "readOnlyHint": false,
+        "destructiveHint": false,
+        "idempotentHint": false,
+        "openWorldHint": false
+      }
+    },
+    {
+      "name": "notes_get_outline",
+      "description": "获取标题、级别和节点路径",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "pattern": "^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$"
+          }
+        },
+        "required": [
+          "id"
+        ],
+        "additionalProperties": false
+      },
+      "scope": "notes.read",
+      "risk": false,
+      "annotations": {
+        "readOnlyHint": true,
+        "destructiveHint": false,
+        "idempotentHint": false,
+        "openWorldHint": false
+      }
+    },
+    {
+      "name": "notes_find_in_note",
+      "description": "查找指定笔记中的文本和精确节点路径",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "pattern": "^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$"
+          },
+          "query": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 120
+          }
+        },
+        "required": [
+          "id",
+          "query"
+        ],
+        "additionalProperties": false
+      },
+      "scope": "notes.read",
+      "risk": false,
+      "annotations": {
+        "readOnlyHint": true,
+        "destructiveHint": false,
+        "idempotentHint": false,
+        "openWorldHint": false
+      }
+    },
+    {
+      "name": "notes_replace_text",
+      "description": "仅替换指定 text 节点内唯一匹配，保留 marks",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "pattern": "^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$"
+          },
+          "version": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 9007199254740991
+          },
+          "path": {
+            "type": "array",
+            "items": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 9999
+            },
+            "minItems": 0,
+            "maxItems": 32
+          },
+          "find": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 10000
+          },
+          "replace": {
+            "type": "string",
+            "minLength": 0,
+            "maxLength": 10000
+          }
+        },
+        "required": [
+          "id",
+          "version",
+          "path",
+          "find",
+          "replace"
+        ],
+        "additionalProperties": false
+      },
+      "scope": "notes.write",
+      "risk": false,
+      "annotations": {
+        "readOnlyHint": false,
+        "destructiveHint": false,
+        "idempotentHint": false,
+        "openWorldHint": false
+      }
+    },
+    {
+      "name": "notes_insert_section",
+      "description": "在顶层指定位置插入标题和完整文档片段",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "pattern": "^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$"
+          },
+          "version": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 9007199254740991
+          },
+          "index": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9999
+          },
+          "level": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 3
+          },
+          "title": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 200
+          },
+          "document": {
+            "type": "object",
+            "properties": {
+              "schemaVersion": {
+                "type": "integer",
+                "enum": [
+                  1
+                ]
+              },
+              "doc": {
+                "type": "object",
+                "properties": {},
+                "additionalProperties": true
+              }
+            },
+            "required": [
+              "schemaVersion",
+              "doc"
+            ],
+            "additionalProperties": false
+          },
+          "text": {
+            "type": "string",
+            "minLength": 0,
+            "maxLength": 100000
+          }
+        },
+        "required": [
+          "id",
+          "version",
+          "index",
+          "level",
+          "title"
+        ],
+        "additionalProperties": false
+      },
+      "scope": "notes.write",
+      "risk": false,
+      "annotations": {
+        "readOnlyHint": false,
+        "destructiveHint": false,
+        "idempotentHint": false,
+        "openWorldHint": false
+      }
+    },
+    {
+      "name": "notes_duplicate",
+      "description": "复制笔记并保留媒体及格式",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "pattern": "^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$"
+          },
+          "version": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 9007199254740991
+          },
+          "title": {
+            "type": "string",
+            "minLength": 0,
+            "maxLength": 200
+          },
+          "folder_id": {
+            "type": "string",
+            "minLength": 0,
+            "maxLength": 36,
+            "pattern": "^$|^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$"
+          }
+        },
+        "required": [
+          "id",
+          "version"
+        ],
+        "additionalProperties": false
+      },
+      "scope": "notes.write",
+      "risk": false,
+      "annotations": {
+        "readOnlyHint": false,
+        "destructiveHint": false,
+        "idempotentHint": false,
+        "openWorldHint": false
+      }
+    },
+    {
+      "name": "notes_batch_move",
+      "description": "逐条 CAS 批量移动；返回每条结果",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "id": {
+                  "type": "string",
+                  "pattern": "^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$"
+                },
+                "version": {
+                  "type": "integer",
+                  "minimum": 1,
+                  "maximum": 9007199254740991
+                }
+              },
+              "required": [
+                "id",
+                "version"
+              ],
+              "additionalProperties": false
+            },
+            "minItems": 1,
+            "maxItems": 20
+          },
+          "folder_id": {
+            "type": "string",
+            "minLength": 0,
+            "maxLength": 36,
+            "pattern": "^$|^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$"
+          },
+          "confirmation_id": {
+            "type": "string",
+            "pattern": "^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$"
+          }
+        },
+        "required": [
+          "items",
+          "folder_id",
+          "confirmation_id"
+        ],
+        "additionalProperties": false
+      },
+      "scope": "notes.write",
+      "risk": true,
+      "annotations": {
+        "readOnlyHint": false,
+        "destructiveHint": true,
+        "idempotentHint": false,
+        "openWorldHint": false
+      }
+    },
+    {
+      "name": "notes_batch_delete",
+      "description": "确认后逐条 CAS 批量软删除",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "id": {
+                  "type": "string",
+                  "pattern": "^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$"
+                },
+                "version": {
+                  "type": "integer",
+                  "minimum": 1,
+                  "maximum": 9007199254740991
+                }
+              },
+              "required": [
+                "id",
+                "version"
+              ],
+              "additionalProperties": false
+            },
+            "minItems": 1,
+            "maxItems": 20
+          },
+          "confirmation_id": {
+            "type": "string",
+            "pattern": "^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$"
+          }
+        },
+        "required": [
+          "items",
+          "confirmation_id"
+        ],
+        "additionalProperties": false
+      },
+      "scope": "notes.delete",
+      "risk": true,
+      "annotations": {
+        "readOnlyHint": false,
+        "destructiveHint": true,
+        "idempotentHint": false,
+        "openWorldHint": false
+      }
+    },
+    {
+      "name": "notes_batch_update",
+      "description": "仅批量更新标题、图标、置顶、收藏元数据",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "id": {
+                  "type": "string",
+                  "pattern": "^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$"
+                },
+                "version": {
+                  "type": "integer",
+                  "minimum": 1,
+                  "maximum": 9007199254740991
+                }
+              },
+              "required": [
+                "id",
+                "version"
+              ],
+              "additionalProperties": false
+            },
+            "minItems": 1,
+            "maxItems": 20
+          },
+          "metadata": {
+            "type": "object",
+            "properties": {
+              "title": {
+                "type": "string",
+                "minLength": 0,
+                "maxLength": 200
+              },
+              "icon": {
+                "type": "string",
+                "minLength": 0,
+                "maxLength": 16
+              },
+              "pinned": {
+                "type": "boolean"
+              },
+              "favorite": {
+                "type": "boolean"
+              }
+            },
+            "required": [],
+            "additionalProperties": false
+          },
+          "confirmation_id": {
+            "type": "string",
+            "pattern": "^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$"
+          }
+        },
+        "required": [
+          "items",
+          "metadata",
+          "confirmation_id"
+        ],
+        "additionalProperties": false
+      },
+      "scope": "notes.write",
+      "risk": true,
+      "annotations": {
+        "readOnlyHint": false,
+        "destructiveHint": true,
+        "idempotentHint": false,
+        "openWorldHint": false
+      }
+    },
+    {
+      "name": "attachments_list",
+      "description": "分页浏览 R2 附件元数据，不读取文件内容",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "limit": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 30
+          },
+          "cursor": {
+            "type": "string",
+            "minLength": 0,
+            "maxLength": 2048
+          }
+        },
+        "required": [],
+        "additionalProperties": false
+      },
+      "scope": "attachments.read",
+      "risk": false,
+      "annotations": {
+        "readOnlyHint": true,
+        "destructiveHint": false,
+        "idempotentHint": false,
+        "openWorldHint": false
+      }
+    },
+    {
+      "name": "attachments_search",
+      "description": "按名称和 MIME 筛选当前附件分页",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "limit": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 30
+          },
+          "cursor": {
+            "type": "string",
+            "minLength": 0,
+            "maxLength": 2048
+          },
+          "query": {
+            "type": "string",
+            "minLength": 0,
+            "maxLength": 180
+          },
+          "mime": {
+            "type": "string",
+            "minLength": 0,
+            "maxLength": 120
+          }
+        },
+        "required": [],
+        "additionalProperties": false
+      },
+      "scope": "attachments.read",
+      "risk": false,
+      "annotations": {
+        "readOnlyHint": true,
+        "destructiveHint": false,
+        "idempotentHint": false,
+        "openWorldHint": false
+      }
+    },
+    {
+      "name": "attachments_get_metadata",
+      "description": "获取附件安全元数据",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "attachment_id": {
+            "type": "string",
+            "pattern": "^[a-f0-9]{64}$"
+          }
+        },
+        "required": [
+          "attachment_id"
+        ],
+        "additionalProperties": false
+      },
+      "scope": "attachments.read",
+      "risk": false,
+      "annotations": {
+        "readOnlyHint": true,
+        "destructiveHint": false,
+        "idempotentHint": false,
+        "openWorldHint": false
+      }
+    },
+    {
+      "name": "attachments_get_download_url",
+      "description": "生成五分钟有效且可随工作区授权撤销的下载地址",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "attachment_id": {
+            "type": "string",
+            "pattern": "^[a-f0-9]{64}$"
+          }
+        },
+        "required": [
+          "attachment_id"
+        ],
+        "additionalProperties": false
+      },
+      "scope": "attachments.read",
+      "risk": false,
+      "annotations": {
+        "readOnlyHint": true,
+        "destructiveHint": false,
+        "idempotentHint": false,
+        "openWorldHint": false
+      }
+    },
+    {
+      "name": "attachments_attach_to_note",
+      "description": "插入已有附件的正文引用",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "pattern": "^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$"
+          },
+          "version": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 9007199254740991
+          },
+          "attachment_id": {
+            "type": "string",
+            "pattern": "^[a-f0-9]{64}$"
+          },
+          "index": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9999
+          },
+          "as_image": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "id",
+          "version",
+          "attachment_id"
+        ],
+        "additionalProperties": false
+      },
+      "scope": "attachments.write",
+      "risk": false,
+      "annotations": {
+        "readOnlyHint": false,
+        "destructiveHint": false,
+        "idempotentHint": false,
+        "openWorldHint": false
+      }
+    },
+    {
+      "name": "attachments_detach_from_note",
+      "description": "仅移除精确节点路径处的附件引用",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "pattern": "^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$"
+          },
+          "version": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 9007199254740991
+          },
+          "path": {
+            "type": "array",
+            "items": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 9999
+            },
+            "minItems": 0,
+            "maxItems": 32
+          },
+          "attachment_id": {
+            "type": "string",
+            "pattern": "^[a-f0-9]{64}$"
+          }
+        },
+        "required": [
+          "id",
+          "version",
+          "path",
+          "attachment_id"
+        ],
+        "additionalProperties": false
+      },
+      "scope": "attachments.write",
+      "risk": false,
+      "annotations": {
+        "readOnlyHint": false,
+        "destructiveHint": false,
+        "idempotentHint": false,
+        "openWorldHint": false
+      }
+    },
+    {
+      "name": "attachments_delete",
+      "description": "确认后停用无引用附件；保留 R2 字节以兼容离线同步，禁止永久清除",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "attachment_id": {
+            "type": "string",
+            "pattern": "^[a-f0-9]{64}$"
+          },
+          "confirmation_id": {
+            "type": "string",
+            "pattern": "^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$"
+          }
+        },
+        "required": [
+          "attachment_id",
+          "confirmation_id"
+        ],
+        "additionalProperties": false
+      },
+      "scope": "attachments.write",
+      "risk": true,
+      "annotations": {
+        "readOnlyHint": false,
+        "destructiveHint": true,
+        "idempotentHint": false,
+        "openWorldHint": false
+      }
+    },
+    {
+      "name": "workspace_get_info",
+      "description": "当前工作区信息",
+      "inputSchema": {
+        "type": "object",
+        "properties": {},
+        "required": [],
+        "additionalProperties": false
+      },
+      "scope": "workspace.read",
+      "risk": false,
+      "annotations": {
+        "readOnlyHint": true,
+        "destructiveHint": false,
+        "idempotentHint": false,
+        "openWorldHint": false
+      }
+    },
+    {
+      "name": "workspace_get_summary",
+      "description": "笔记及文件夹计数；待办按有界分页统计",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "limit": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 30
+          },
+          "cursor": {
+            "type": "string",
+            "minLength": 0,
+            "maxLength": 2048
+          }
+        },
+        "required": [],
+        "additionalProperties": false
+      },
+      "scope": "workspace.read",
+      "risk": false,
+      "annotations": {
+        "readOnlyHint": true,
+        "destructiveHint": false,
+        "idempotentHint": false,
+        "openWorldHint": false
+      }
+    },
+    {
+      "name": "workspace_get_recent_activity",
+      "description": "按同步游标列出最近变更元数据",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "limit": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 30
+          },
+          "cursor": {
+            "type": "string",
+            "minLength": 0,
+            "maxLength": 2048
+          }
+        },
+        "required": [],
+        "additionalProperties": false
+      },
+      "scope": "workspace.read",
+      "risk": false,
+      "annotations": {
+        "readOnlyHint": true,
+        "destructiveHint": false,
+        "idempotentHint": false,
+        "openWorldHint": false
+      }
+    },
+    {
+      "name": "workspace_get_capabilities",
+      "description": "当前能力、权限和限制",
+      "inputSchema": {
+        "type": "object",
+        "properties": {},
+        "required": [],
+        "additionalProperties": false
+      },
+      "scope": "workspace.read",
+      "risk": false,
+      "annotations": {
+        "readOnlyHint": true,
+        "destructiveHint": false,
+        "idempotentHint": false,
+        "openWorldHint": false
+      }
+    },
+    {
+      "name": "workspace_get_sync_status",
+      "description": "服务端同步游标，不代表设备已同步",
+      "inputSchema": {
+        "type": "object",
+        "properties": {},
+        "required": [],
+        "additionalProperties": false
+      },
+      "scope": "workspace.read",
+      "risk": false,
+      "annotations": {
+        "readOnlyHint": true,
+        "destructiveHint": false,
+        "idempotentHint": false,
+        "openWorldHint": false
+      }
+    },
+    {
+      "name": "workspace_search_all",
+      "description": "跨笔记和文件夹搜索",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "query": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 120
+          },
+          "limit": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 30
+          },
+          "cursor": {
+            "type": "string",
+            "minLength": 0,
+            "maxLength": 2048
+          }
+        },
+        "required": [
+          "query"
+        ],
+        "additionalProperties": false
+      },
+      "scope": "workspace.read",
+      "risk": false,
+      "annotations": {
+        "readOnlyHint": true,
+        "destructiveHint": false,
+        "idempotentHint": false,
+        "openWorldHint": false
+      }
+    },
+    {
+      "name": "access_request_permissions",
+      "description": "请求用户在可信 Easybook 页面批准当前客户端写入权限",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "scopes": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "enum": [
+                "notes.write",
+                "notes.delete",
+                "folders.manage",
+                "tasks.manage",
+                "attachments.write"
+              ]
+            },
+            "minItems": 1,
+            "maxItems": 5
+          }
+        },
+        "required": [
+          "scopes"
+        ],
+        "additionalProperties": false
+      },
+      "scope": "workspace.read",
+      "risk": false,
+      "annotations": {
+        "readOnlyHint": true,
+        "destructiveHint": false,
+        "idempotentHint": false,
+        "openWorldHint": false
+      }
+    },
+    {
+      "name": "operations_request_confirmation",
+      "description": "申请绑定工具及精确参数的一次性人工确认",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "tool": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 80
+          },
+          "arguments": {
+            "type": "object",
+            "properties": {},
+            "additionalProperties": true
+          }
+        },
+        "required": [
+          "tool",
+          "arguments"
+        ],
+        "additionalProperties": false
+      },
+      "scope": "workspace.read",
+      "risk": false,
+      "annotations": {
+        "readOnlyHint": true,
+        "destructiveHint": false,
+        "idempotentHint": false,
+        "openWorldHint": false
+      }
+    }
+  ],
+  "aliases": {
+    "list_folders": "folders_list",
+    "search_notes": "notes_search",
+    "get_note": "notes_get"
+  },
+  "resources": [
+    {
+      "uri": "easybook://workspace/info",
+      "name": "工作区信息",
+      "mimeType": "application/json"
+    },
+    {
+      "uri": "easybook://workspace/summary",
+      "name": "工作区摘要",
+      "mimeType": "application/json"
+    },
+    {
+      "uri": "easybook://workspace/capabilities",
+      "name": "工作区权限和能力",
+      "mimeType": "application/json"
+    },
+    {
+      "uri": "easybook://folders",
+      "name": "文件夹目录",
+      "mimeType": "application/json"
+    },
+    {
+      "uri": "easybook://notes/recent",
+      "name": "最近更新笔记",
+      "mimeType": "application/json"
+    },
+    {
+      "uri": "easybook://tasks/open",
+      "name": "未完成待办",
+      "mimeType": "application/json"
+    },
+    {
+      "uri": "easybook://tasks/completed",
+      "name": "已完成待办",
+      "mimeType": "application/json"
+    }
+  ],
+  "resourceTemplates": [
+    {
+      "uriTemplate": "easybook://notes/{note_id}",
+      "name": "笔记",
+      "mimeType": "application/json"
+    },
+    {
+      "uriTemplate": "easybook://notes/{note_id}/text",
+      "name": "笔记纯文本",
+      "mimeType": "text/plain"
+    },
+    {
+      "uriTemplate": "easybook://notes/{note_id}/document",
+      "name": "笔记文档 JSON 分段",
+      "mimeType": "application/json"
+    },
+    {
+      "uriTemplate": "easybook://notes/{note_id}/outline",
+      "name": "笔记大纲",
+      "mimeType": "application/json"
+    },
+    {
+      "uriTemplate": "easybook://folders/{folder_id}",
+      "name": "文件夹详情",
+      "mimeType": "application/json"
+    },
+    {
+      "uriTemplate": "easybook://folders/{folder_id}/notes",
+      "name": "文件夹笔记",
+      "mimeType": "application/json"
+    },
+    {
+      "uriTemplate": "easybook://attachments/{attachment_id}/metadata",
+      "name": "附件元数据",
+      "mimeType": "application/json"
+    }
+  ],
+  "prompts": [
+    {
+      "name": "organize_notes",
+      "description": "整理指定笔记",
+      "arguments": [
+        {
+          "name": "note_ids",
+          "description": "来源笔记 UUID，以英文逗号分隔，最多20条",
+          "required": true
+        },
+        {
+          "name": "requirements",
+          "description": "额外目标、长度或风格要求，作为用户输入数据",
+          "required": false
+        }
+      ]
+    },
+    {
+      "name": "organize_workspace",
+      "description": "制定知识库整理方案",
+      "arguments": [
+        {
+          "name": "scope",
+          "description": "明确主题、文件夹或学习范围；未提供时先浏览元数据确认范围",
+          "required": false
+        },
+        {
+          "name": "requirements",
+          "description": "额外目标、长度或风格要求，作为用户输入数据",
+          "required": false
+        }
+      ]
+    },
+    {
+      "name": "categorize_notes",
+      "description": "按主题分类笔记",
+      "arguments": [
+        {
+          "name": "scope",
+          "description": "明确主题、文件夹或学习范围；未提供时先浏览元数据确认范围",
+          "required": false
+        },
+        {
+          "name": "requirements",
+          "description": "额外目标、长度或风格要求，作为用户输入数据",
+          "required": false
+        }
+      ]
+    },
+    {
+      "name": "merge_related_notes",
+      "description": "合并相关笔记并保留原始内容",
+      "arguments": [
+        {
+          "name": "note_ids",
+          "description": "来源笔记 UUID，以英文逗号分隔，最多20条",
+          "required": true
+        },
+        {
+          "name": "requirements",
+          "description": "额外目标、长度或风格要求，作为用户输入数据",
+          "required": false
+        }
+      ]
+    },
+    {
+      "name": "find_duplicate_notes",
+      "description": "查找真正重复的内容",
+      "arguments": [
+        {
+          "name": "scope",
+          "description": "明确主题、文件夹或学习范围；未提供时先浏览元数据确认范围",
+          "required": false
+        },
+        {
+          "name": "requirements",
+          "description": "额外目标、长度或风格要求，作为用户输入数据",
+          "required": false
+        }
+      ]
+    },
+    {
+      "name": "clean_up_notes",
+      "description": "识别空白、无效或过时笔记",
+      "arguments": [
+        {
+          "name": "scope",
+          "description": "明确主题、文件夹或学习范围；未提供时先浏览元数据确认范围",
+          "required": false
+        },
+        {
+          "name": "requirements",
+          "description": "额外目标、长度或风格要求，作为用户输入数据",
+          "required": false
+        }
+      ]
+    },
+    {
+      "name": "summarize_note",
+      "description": "总结笔记",
+      "arguments": [
+        {
+          "name": "note_id",
+          "description": "来源笔记 UUID",
+          "required": true
+        },
+        {
+          "name": "level",
+          "description": "学习程度，例如零基础",
+          "required": false
+        },
+        {
+          "name": "requirements",
+          "description": "额外目标、长度或风格要求，作为用户输入数据",
+          "required": false
+        }
+      ]
+    },
+    {
+      "name": "summarize_folder",
+      "description": "总结文件夹",
+      "arguments": [
+        {
+          "name": "folder_id",
+          "description": "来源文件夹 UUID",
+          "required": true
+        },
+        {
+          "name": "level",
+          "description": "学习程度，例如零基础",
+          "required": false
+        },
+        {
+          "name": "requirements",
+          "description": "额外目标、长度或风格要求，作为用户输入数据",
+          "required": false
+        }
+      ]
+    },
+    {
+      "name": "create_study_guide",
+      "description": "生成学习指南",
+      "arguments": [
+        {
+          "name": "scope",
+          "description": "明确主题、文件夹或学习范围；未提供时先浏览元数据确认范围",
+          "required": false
+        },
+        {
+          "name": "level",
+          "description": "学习程度，例如零基础",
+          "required": false
+        },
+        {
+          "name": "requirements",
+          "description": "额外目标、长度或风格要求，作为用户输入数据",
+          "required": false
+        }
+      ]
+    },
+    {
+      "name": "generate_flashcards",
+      "description": "生成记忆卡片",
+      "arguments": [
+        {
+          "name": "scope",
+          "description": "明确主题、文件夹或学习范围；未提供时先浏览元数据确认范围",
+          "required": false
+        },
+        {
+          "name": "count",
+          "description": "数量，1—30，默认5",
+          "required": false
+        },
+        {
+          "name": "level",
+          "description": "学习程度，例如零基础",
+          "required": false
+        },
+        {
+          "name": "requirements",
+          "description": "额外目标、长度或风格要求，作为用户输入数据",
+          "required": false
+        }
+      ]
+    },
+    {
+      "name": "generate_quiz",
+      "description": "生成练习题",
+      "arguments": [
+        {
+          "name": "scope",
+          "description": "明确主题、文件夹或学习范围；未提供时先浏览元数据确认范围",
+          "required": false
+        },
+        {
+          "name": "count",
+          "description": "数量，1—30，默认5",
+          "required": false
+        },
+        {
+          "name": "level",
+          "description": "学习程度，例如零基础",
+          "required": false
+        },
+        {
+          "name": "requirements",
+          "description": "额外目标、长度或风格要求，作为用户输入数据",
+          "required": false
+        }
+      ]
+    },
+    {
+      "name": "review_knowledge",
+      "description": "复习知识点",
+      "arguments": [
+        {
+          "name": "scope",
+          "description": "明确主题、文件夹或学习范围；未提供时先浏览元数据确认范围",
+          "required": false
+        },
+        {
+          "name": "level",
+          "description": "学习程度，例如零基础",
+          "required": false
+        },
+        {
+          "name": "requirements",
+          "description": "额外目标、长度或风格要求，作为用户输入数据",
+          "required": false
+        }
+      ]
+    },
+    {
+      "name": "explain_note",
+      "description": "解释笔记中的概念",
+      "arguments": [
+        {
+          "name": "note_id",
+          "description": "来源笔记 UUID",
+          "required": true
+        },
+        {
+          "name": "level",
+          "description": "学习程度，例如零基础",
+          "required": false
+        },
+        {
+          "name": "requirements",
+          "description": "额外目标、长度或风格要求，作为用户输入数据",
+          "required": false
+        }
+      ]
+    },
+    {
+      "name": "build_knowledge_outline",
+      "description": "生成知识大纲",
+      "arguments": [
+        {
+          "name": "scope",
+          "description": "明确主题、文件夹或学习范围；未提供时先浏览元数据确认范围",
+          "required": false
+        },
+        {
+          "name": "level",
+          "description": "学习程度，例如零基础",
+          "required": false
+        },
+        {
+          "name": "requirements",
+          "description": "额外目标、长度或风格要求，作为用户输入数据",
+          "required": false
+        }
+      ]
+    },
+    {
+      "name": "plan_my_day",
+      "description": "制定今日计划",
+      "arguments": [
+        {
+          "name": "scope",
+          "description": "明确主题、文件夹或学习范围；未提供时先浏览元数据确认范围",
+          "required": false
+        },
+        {
+          "name": "period",
+          "description": "时间范围；缺失时先询问，不假设时区或日期",
+          "required": false
+        },
+        {
+          "name": "requirements",
+          "description": "额外目标、长度或风格要求，作为用户输入数据",
+          "required": false
+        }
+      ]
+    },
+    {
+      "name": "weekly_review",
+      "description": "每周回顾",
+      "arguments": [
+        {
+          "name": "scope",
+          "description": "明确主题、文件夹或学习范围；未提供时先浏览元数据确认范围",
+          "required": false
+        },
+        {
+          "name": "period",
+          "description": "时间范围；缺失时先询问，不假设时区或日期",
+          "required": false
+        },
+        {
+          "name": "requirements",
+          "description": "额外目标、长度或风格要求，作为用户输入数据",
+          "required": false
+        }
+      ]
+    },
+    {
+      "name": "review_incomplete_tasks",
+      "description": "检查未完成事项",
+      "arguments": [
+        {
+          "name": "scope",
+          "description": "明确主题、文件夹或学习范围；未提供时先浏览元数据确认范围",
+          "required": false
+        },
+        {
+          "name": "period",
+          "description": "时间范围；缺失时先询问，不假设时区或日期",
+          "required": false
+        },
+        {
+          "name": "requirements",
+          "description": "额外目标、长度或风格要求，作为用户输入数据",
+          "required": false
+        }
+      ]
+    },
+    {
+      "name": "break_down_task",
+      "description": "拆解复杂任务",
+      "arguments": [
+        {
+          "name": "scope",
+          "description": "明确主题、文件夹或学习范围；未提供时先浏览元数据确认范围",
+          "required": false
+        },
+        {
+          "name": "task",
+          "description": "待拆解任务的原文或版本及路径定位",
+          "required": true
+        },
+        {
+          "name": "period",
+          "description": "时间范围；缺失时先询问，不假设时区或日期",
+          "required": false
+        },
+        {
+          "name": "requirements",
+          "description": "额外目标、长度或风格要求，作为用户输入数据",
+          "required": false
+        }
+      ]
+    },
+    {
+      "name": "prioritize_tasks",
+      "description": "分析任务优先级",
+      "arguments": [
+        {
+          "name": "scope",
+          "description": "明确主题、文件夹或学习范围；未提供时先浏览元数据确认范围",
+          "required": false
+        },
+        {
+          "name": "period",
+          "description": "时间范围；缺失时先询问，不假设时区或日期",
+          "required": false
+        },
+        {
+          "name": "requirements",
+          "description": "额外目标、长度或风格要求，作为用户输入数据",
+          "required": false
+        }
+      ]
+    },
+    {
+      "name": "create_project_plan",
+      "description": "从笔记生成项目计划",
+      "arguments": [
+        {
+          "name": "scope",
+          "description": "明确主题、文件夹或学习范围；未提供时先浏览元数据确认范围",
+          "required": false
+        },
+        {
+          "name": "period",
+          "description": "时间范围；缺失时先询问，不假设时区或日期",
+          "required": false
+        },
+        {
+          "name": "requirements",
+          "description": "额外目标、长度或风格要求，作为用户输入数据",
+          "required": false
+        }
+      ]
+    },
+    {
+      "name": "rewrite_note",
+      "description": "润色笔记",
+      "arguments": [
+        {
+          "name": "note_id",
+          "description": "来源笔记 UUID",
+          "required": true
+        },
+        {
+          "name": "requirements",
+          "description": "额外目标、长度或风格要求，作为用户输入数据",
+          "required": false
+        }
+      ]
+    },
+    {
+      "name": "expand_note",
+      "description": "扩展笔记内容",
+      "arguments": [
+        {
+          "name": "note_id",
+          "description": "来源笔记 UUID",
+          "required": true
+        },
+        {
+          "name": "requirements",
+          "description": "额外目标、长度或风格要求，作为用户输入数据",
+          "required": false
+        }
+      ]
+    },
+    {
+      "name": "translate_note",
+      "description": "翻译笔记",
+      "arguments": [
+        {
+          "name": "note_id",
+          "description": "来源笔记 UUID",
+          "required": true
+        },
+        {
+          "name": "target_language",
+          "description": "目标语言",
+          "required": true
+        },
+        {
+          "name": "requirements",
+          "description": "额外目标、长度或风格要求，作为用户输入数据",
+          "required": false
+        }
+      ]
+    },
+    {
+      "name": "extract_action_items",
+      "description": "提取行动项",
+      "arguments": [
+        {
+          "name": "note_id",
+          "description": "来源笔记 UUID",
+          "required": true
+        },
+        {
+          "name": "requirements",
+          "description": "额外目标、长度或风格要求，作为用户输入数据",
+          "required": false
+        }
+      ]
+    },
+    {
+      "name": "convert_to_checklist",
+      "description": "转换为待办清单",
+      "arguments": [
+        {
+          "name": "note_id",
+          "description": "来源笔记 UUID",
+          "required": true
+        },
+        {
+          "name": "requirements",
+          "description": "额外目标、长度或风格要求，作为用户输入数据",
+          "required": false
+        }
+      ]
+    },
+    {
+      "name": "create_meeting_summary",
+      "description": "整理会议纪要",
+      "arguments": [
+        {
+          "name": "note_id",
+          "description": "来源笔记 UUID",
+          "required": true
+        },
+        {
+          "name": "requirements",
+          "description": "额外目标、长度或风格要求，作为用户输入数据",
+          "required": false
+        }
+      ]
+    }
+  ]
+}

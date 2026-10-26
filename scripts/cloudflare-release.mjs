@@ -25,7 +25,7 @@ if(mode==='stage'){
  if(!id||!url)throw Error('Upload did not return an exact version ID and URL');
  state.candidate=id;state.url=url;
  const detail=await api('/versions/'+id);
- const required=oauth?['DB','OAUTH_KV','GITHUB_CLIENT_ID','GITHUB_CLIENT_SECRET','MCP_GRANTS_ENABLED','MCP_PAIRING_SIGNING_KEY']:['DB','ATTACHMENTS','PDF_ASSETS','MCP_PAIRING_SIGNING_KEY'];
+ const required=oauth?['DB','ATTACHMENTS','OAUTH_KV','GITHUB_CLIENT_ID','GITHUB_CLIENT_SECRET','MCP_GRANTS_ENABLED','MCP_PAIRING_SIGNING_KEY']:['DB','ATTACHMENTS','PDF_ASSETS','MCP_PAIRING_SIGNING_KEY'];
  for(const name of required)if(!detail.resources.bindings.some(b=>b.name===name))throw Error('Candidate binding missing: '+name);
  writeFileSync(stateFile,JSON.stringify(state,null,2));
  if(process.env.GITHUB_OUTPUT)appendFileSync(process.env.GITHUB_OUTPUT,`url=${url}\nversion=${id}\n`);
@@ -48,3 +48,4 @@ if(mode==='stage'){
   state.rollback=rollback;writeFileSync(stateFile,JSON.stringify(state,null,2));summary(`Automatic rollback verified: ${rollback.id}. D1/R2 unchanged.`);
  }
 }else throw Error('Use stage, promote, or rollback');
+
