@@ -6,6 +6,8 @@ const browser=await chromium.launch({headless:true});
 try{
  const context=await browser.newContext({serviceWorkers:'block'}),page=await context.newPage();
  const errors=[];page.on('pageerror',e=>errors.push(e.message));
+ page.on('console',m=>{if(m.type()==='error')console.log('browser console',m.text())});
+ page.on('request',r=>{const p=new URL(r.url()).pathname;if(['/api/mcp/attest','/pairing/complete'].includes(p))console.log('pairing request',r.method(),p)});
  page.on('response',r=>{const p=new URL(r.url()).pathname;if(['/api/mcp/attest','/pairing/complete'].includes(p))console.log('pairing HTTP',p,r.status())});
  page.on('requestfailed',r=>{const p=new URL(r.url()).pathname;if(['/api/mcp/attest','/pairing/complete'].includes(p))console.log('pairing transport failure',p,r.failure()?.errorText)});
  if(process.env.OAUTH_CANDIDATE_ORIGIN)await page.route('https://easybook-mcp-oauth.1902521952.workers.dev/pairing/complete',route=>route.continue({url:process.env.OAUTH_CANDIDATE_ORIGIN+'/pairing/complete'}));
@@ -16,7 +18,7 @@ try{
  await page.getByRole('textbox',{name:'一次性配对码',exact:true}).fill(challenge);
  const completion=page.waitForResponse(r=>r.url().endsWith('/pairing/complete')&&r.request().method()==='POST');
  await page.getByRole('button',{name:'授权当前工作区',exact:true}).click();
- const response=await completion;assert.equal(response.status(),200,'Synthetic browser pairing failed');assert.equal((await response.json()).paired,true);
+ let response;try{response=await completion}catch(error){console.log('pairing hint',await page.locator('#mcpPairHint').textContent());throw error}assert.equal(response.status(),200,'Synthetic browser pairing failed');assert.equal((await response.json()).paired,true);
  await page.getByRole('dialog',{name:'AI 与 MCP 工作区授权'}).waitFor({state:'hidden'});
  assert.deepEqual(errors,[]);
  await page.screenshot({path:'browser-pairing-success.png'});
