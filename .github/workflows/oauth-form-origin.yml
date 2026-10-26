@@ -1,0 +1,22 @@
+name: OAuth browser form origin
+on:
+  push:
+    branches: [fix/oauth-form-origin]
+  pull_request:
+    paths: ['mcp-oauth/src/accounts.mjs', 'scripts/oauth-form-browser-test.mjs', '.github/workflows/oauth-form-origin.yml']
+permissions:
+  contents: read
+jobs:
+  browser:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - run: npm ci --no-audit --no-fund
+      - run: npm ci --prefix mcp-oauth --no-audit --no-fund
+      - run: node scripts/workspace-oauth-security-test.mjs
+      - run: npx playwright install --with-deps chromium
+      - run: node scripts/oauth-form-browser-test.mjs
