@@ -17,6 +17,7 @@ export default {
   const pairingAllowed=pairingOrigin==='https://easybook.loonxy.com'||pairingOrigin==='https://easybook-sync.1902521952.workers.dev';
   const pairingCors=pairingAllowed?{'Access-Control-Allow-Origin':pairingOrigin,'Access-Control-Allow-Headers':'Authorization, Content-Type','Access-Control-Allow-Methods':'POST, OPTIONS','Vary':'Origin'}:{};
   const pairingResponse=(response)=>{const h=new Headers(response.headers);for(const [name,value] of Object.entries(pairingCors))h.set(name,value);h.set('Cache-Control','no-store');return new Response(response.body,{status:response.status,headers:h});};
+  if(url.pathname==='/api/mcp/attest'&&pairingOrigin&&!pairingAllowed)return pairingResponse(Response.json({error:'Origin not allowed'},{status:403}));
   if(url.pathname==='/api/mcp/attest'&&request.method==='OPTIONS')
    return new Response(null,{status:pairingAllowed?204:403,headers:pairingCors});
   if(request.method === 'OPTIONS') return new Response(null,{status:204,headers});

@@ -1,50 +1,80 @@
 name: Deploy Cloudflare Worker
-
 on:
   workflow_dispatch:
-
+  push:
+    branches: [main]
+    paths:
+      - 'worker/**'
+      - 'editor/**'
+      - 'shared/**'
+      - 'app/src/main/assets/**'
+      - 'scripts/**'
+      - 'package*.json'
+      - '.github/workflows/deploy-cloudflare.yml'
 concurrency:
-  group: easybook-production-worker
-  cancel-in-progress: false
-
+  group: ${{ github.ref == 'refs/heads/main' && 'easybook-production-worker' || format('easybook-validation-{0}', github.ref_name) }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
 permissions:
   contents: read
-
 jobs:
   deploy:
     runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
-          node-version: '22'
-      - name: Install dependencies
-        run: npm ci --no-audit --no-fund
-      - name: Prepare PDF assets
-        run: node scripts/prepare-pdf.mjs
-      - name: Verify generated Web assets match source
+          node-version: '24'
+      - run: npm ci --no-audit --no-fund
+      - name: Build and verify exact committed Web artifacts
         run: |
+          node scripts/prepare-pdf.mjs
           node scripts/build-editor.mjs
           node scripts/generate-ui.mjs
           git diff --exit-code -- app/src/main/assets/editor.js worker/ui.mjs worker/editor.mjs worker/pdf-static.mjs
-      - name: Install current Wrangler
-        run: npm install --no-save --no-package-lock --no-audit --no-fund wrangler@4
-      - name: Validate Worker bundle without deployment
-        working-directory: worker
-        run: npx wrangler deploy --config wrangler.jsonc --dry-run --outdir ../.wrangler-preflight
-      - name: Deploy production Worker
-        uses: cloudflare/wrangler-action@v3
-        with:
-          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-          workingDirectory: worker
-          command: deploy --config wrangler.jsonc
-      - name: Verify production web and API
+          node scripts/check-web-runtime.mjs
+          node scripts/mcp-pairing-release-test.mjs
+      - name: Install pinned Wrangler
+        run: npm install --no-save --no-package-lock --no-audit --no-fund wrangler@4.152.0
+      - name: Validate bundle without deployment
+        run: npx --no-install wrangler deploy --config worker/wrangler.jsonc --dry-run --outdir .wrangler-preflight
+      - name: Install browser for release smoke test
+        run: npx --no-install playwright install chromium
+      - name: Record custom-domain baseline without weakening zone security
+        run: node scripts/custom-domain-release-check.mjs record
+      - name: Verify real rollback on binding-free probe Worker
+        run: node scripts/rollback-probe.mjs
+      - name: Record baseline and upload candidate without production traffic
+        id: candidate
+        run: node scripts/cloudflare-release.mjs stage
+      - name: Verify candidate in real Chromium
+        run: node scripts/web-release-smoke.mjs '${{ steps.candidate.outputs.url }}'
+      - name: Verify live pairing with synthetic workspace only
+        run: node scripts/live-pairing-probe.mjs '${{ steps.candidate.outputs.url }}'
+      - name: Promote verified candidate
+        if: github.ref == 'refs/heads/main'
+        run: node scripts/cloudflare-release.mjs promote
+      - name: Verify production browser and API
+        if: github.ref == 'refs/heads/main'
         run: |
-          set -euo pipefail
-          for origin in https://easybook-sync.1902521952.workers.dev https://easybook.loonxy.com; do
-            curl --fail --show-error --retry 3 --retry-delay 3 "$origin/health" | grep -q '"ok":true'
-            curl --fail --show-error --retry 3 --retry-delay 3 "$origin/" -o /tmp/easybook-home.html
-            grep -qi '<html' /tmp/easybook-home.html
-            grep -qi 'Easybook' /tmp/easybook-home.html
-          done
+          node scripts/web-release-smoke.mjs https://easybook-sync.1902521952.workers.dev
+          node scripts/live-pairing-probe.mjs https://easybook-sync.1902521952.workers.dev
+          node scripts/custom-domain-release-check.mjs verify
+      - name: Roll back failed or cancelled promotion
+        if: ${{ (failure() || cancelled()) && github.ref == 'refs/heads/main' }}
+        run: node scripts/cloudflare-release.mjs rollback
+      - name: Save release evidence even on failure
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: cloudflare-release-${{ github.run_id }}
+          path: |
+            release-state.json
+            rollback-probe-state.json
+            custom-domain-baseline.json
+            web-release-smoke.png
+          if-no-files-found: ignore
+          retention-days: 14
