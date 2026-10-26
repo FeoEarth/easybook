@@ -1,5 +1,5 @@
 import {session,csrf,rateLimit,readCookie,ACCOUNT_COOKIE} from '../mcp-oauth/src/accounts.mjs';
-import {boundedJSON} from './mcp-common.mjs';
+import {boundedJSON,object} from './mcp-common.mjs';
 import {
  WorkspaceError,workspaceAccess,createWorkspace,resolveWorkspaceKey,listWorkspaces,
  rotateWorkspaceKey,associateWorkspace,renameWorkspace,convertToShared,
@@ -9,6 +9,7 @@ import {
 const reply=(body,status=200)=>Response.json(body,{status,headers:{'Cache-Control':'no-store','Referrer-Policy':'no-referrer','X-Content-Type-Options':'nosniff'}});
 const problem=(code,status)=>{throw new WorkspaceError(code,status)};
 const bearer=request=>request.headers.get('Authorization')?.match(/^Bearer ([a-f0-9]{64})$/)?.[1];
+async function inputBody(request){const value=await boundedJSON(request,4096);if(!object(value))problem('invalid_request',400);return value;}
 
 export async function workspacePrincipal(request,env,{mutation=false,allowAnonymous=false}={}){
  const token=bearer(request);
@@ -44,7 +45,7 @@ export async function workspaceAPI(request,env){
    }
    if(request.method==='POST'){
     await rateLimit(request,env,'workspace-create',5);
-    const input=await boundedJSON(request,4096);
+    const input=await inputBody(request);
     if(principal?.kind==='key')problem('use_account_or_anonymous_creation',400);
     return reply(await createWorkspace(env,input.name,principal),201);
    }
@@ -56,14 +57,14 @@ export async function workspaceAPI(request,env){
   if(action==='associate'&&request.method==='POST'){
    if(principal.kind!=='account')problem('account_required',403);
    if(Date.now()-principal.authenticatedAt>300000)problem('reauthentication_required',403);
-   const input=await boundedJSON(request,4096),proof=await resolveWorkspaceKey(env,input.key);
+   const input=await inputBody(request),proof=await resolveWorkspaceKey(env,input.key);
    if(proof?.workspace.id!==id)problem('invalid_workspace_proof',403);
    return reply({workspace:await associateWorkspace(env,id,proof.principal,principal)});
   }
   const access=await workspaceAccess(env,id,principal);if(!access)problem('workspace_access_denied',403);
   if(request.method==='GET'&&!action)return reply({workspace:access});
   if(request.method!=='POST')problem('method_not_allowed',405);
-  const input=await boundedJSON(request,4096);
+  const input=await inputBody(request);
   if(!action)return reply({workspace:await renameWorkspace(env,id,principal,input.name)});
   // Native/app UI must present these actions explicitly. Recent authentication
   // is checked here rather than trusting a frontend confirmation flag alone.

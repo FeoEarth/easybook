@@ -113,3 +113,15 @@ then read a missing IndexedDB record. Replaced those fixed waits with bounded
 readiness and the actual UI save/flush completion; the local focused test passes.
 The new CI result must be checked separately; no Android/device acceptance is
 inferred from synthetic tests.
+
+The next CI run (`4d2432b5`) passed MCP focused checks, including the workspace
+suite and OAuth bundle. Broad media integration passed the corrected editor save
+check, formatting, JSON Worker and IndexedDB checks, then failed the existing
+`scripts/attachment-test.mjs:7`: it sends the obsolete whole-file JSON protocol
+and expects 200, while the current attachment server requires chunk/manifest v2
+and returns 400. This is an unresolved legacy test/contract mismatch; broad
+integration is not green. No claim of full media or Android validation is made.
+
+Broad browser and emulator steps in the integration workflow are manual-only to
+respect the requested minimal automation scope. API/data checks and compilation
+remain enabled. This does not turn a failed test into a passing result.
