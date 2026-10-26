@@ -79,4 +79,4 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           TAG="v0.8.0-build${GITHUB_RUN_NUMBER}"
-          gh release create "$TAG" Easybook-0.8.0.apk SHA256SUMS.txt --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" --title "Easybook 0.8.0 · build ${GITHUB_RUN_NUMBER}" --notes "重新设计 Android 连接其他设备及 AI 与 MCP：完整设置页面、返回导航、大标题和分组列表，输入及确认分步展示。复用 QWEA0 返回控件，保留原生配对与 Keystore 安全边界。通过针对性测试及发行构建；未做真机验证。"
+          gh release create "$TAG" Easybook-0.8.0.apk SHA256SUMS.txt --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" --title "Easybook 0.8.0 · build ${GITHUB_RUN_NUMBER}" --notes "依据 iOS 26.1 真实设置截图调整设备连接与 AI/MCP 页面：居中导航标题、44dp 图形返回键、紧凑输入分组、分组外说明和列表式操作，移除大标题与大面积黄色按钮。保留原生安全配对和 QWEA0。未做真机视觉验证。"
