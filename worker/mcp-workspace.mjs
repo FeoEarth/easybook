@@ -7,12 +7,13 @@ export async function workspaceTool(ctx,name,a){
  if(name==='workspace_get_capabilities')return {scopes:ctx.scopes,tools:registry.map(t=>({name:t.name,scope:t.scope,authorized:ctx.scopes.includes(t.scope),requires_owner_confirmation:t.risk})),resources:true,prompts:true,subscriptions:false,limits:{page:30,batch:20,task_scan_notes:5,summary_scan_notes:10,request_bytes:230000,response_bytes:220000},permanent_delete:false,attachment_delete:'reversible retirement; bytes preserved',device_sync_status:false};
  if(name==='workspace_get_sync_status'){const r=await ctx.env.DB.prepare('SELECT MAX(cursor) AS cursor FROM note_changes WHERE workspace=?').bind(ctx.workspace).first();return {server_cursor:r.cursor||0,device_status:'unknown',observed_at:Date.now()};}
  if(name==='workspace_get_recent_activity'){
+  need(ctx,'notes.read');
   const cursor=a.cursor||String(Number.MAX_SAFE_INTEGER);if(!/^\d{1,16}$/.test(cursor)||!Number.isSafeInteger(Number(cursor)))fail('INVALID_ARGUMENT','Invalid change cursor');
   const rows=(await ctx.env.DB.prepare('SELECT c.cursor,n.id,n.title,n.version,n.updated,n.deleted,n.purged FROM note_changes c JOIN notes_json n ON n.workspace=c.workspace AND n.id=c.note_id WHERE c.workspace=? AND c.cursor<? ORDER BY c.cursor DESC LIMIT ?').bind(ctx.workspace,Number(cursor),a.limit||20).all()).results;
   return {changes:rows,cursor:String(rows.at(-1)?.cursor||cursor),next_cursor:rows.length===(a.limit||20)?String(rows.at(-1).cursor):null,semantics:'change feed with latest note metadata; not a complete historical snapshot'};
  }
  if(name==='workspace_get_summary'){
-  need(ctx,'tasks.read');if(a.cursor!==undefined&&a.cursor!=='continue')fail('INVALID_ARGUMENT','Invalid summary cursor');
+  need(ctx,'notes.read');need(ctx,'folders.read');need(ctx,'tasks.read');if(a.cursor!==undefined&&a.cursor!=='continue')fail('INVALID_ARGUMENT','Invalid summary cursor');
   const counts=await ctx.env.DB.prepare('SELECT COUNT(*) AS notes,SUM(CASE WHEN updated>? THEN 1 ELSE 0 END) AS updated_last_7_days FROM notes_json WHERE workspace=? AND deleted=0 AND purged=0').bind(Date.now()-7*86400000,ctx.workspace).first();
   const folders=await ctx.env.DB.prepare('SELECT COUNT(*) AS folders FROM folders WHERE workspace=? AND deleted=0').bind(ctx.workspace).first();
   // Backfill no more than ten stale metrics. Triggers maintain subsequent writes atomically.
@@ -27,3 +28,4 @@ export async function workspaceTool(ctx,name,a){
  }
  fail('INVALID_ARGUMENT','Unknown workspace tool');
 }
+

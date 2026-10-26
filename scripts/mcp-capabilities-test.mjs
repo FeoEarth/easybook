@@ -11,7 +11,7 @@ import {get} from '../worker/mcp-notes.mjs';
 import {download} from '../worker/mcp-attachments.mjs';
 import {validateDocument} from '../shared/document.mjs';
 const sqlite=new DatabaseSync(':memory:');
-for(const p of ['worker/schema.sql','mcp-oauth/migrations/0001_workspace_grants.sql','worker/migrations/0008-mcp-capabilities.sql','worker/migrations/0009-mcp-uploads.sql'])sqlite.exec(readFileSync(p,'utf8'));
+for(const p of ['worker/schema.sql','mcp-oauth/migrations/0001_workspace_grants.sql','mcp-oauth/migrations/0002_accounts.sql','worker/migrations/0008-mcp-capabilities.sql','worker/migrations/0009-mcp-uploads.sql'])sqlite.exec(readFileSync(p,'utf8'));
 const DB={prepare(sql){const statement=sqlite.prepare(sql);let params=[];return {bind(...p){params=p;return this},async first(){return statement.get(...params)||null},async all(){return {results:statement.all(...params)}},async run(){const r=statement.run(...params);return {meta:{changes:Number(r.changes)}}}}},async batch(statements){sqlite.exec('BEGIN');try{const out=[];for(const s of statements){const results=await s.all();out.push({...results,meta:{changes:sqlite.prepare('SELECT changes() n').get().n}})}sqlite.exec('COMMIT');return out}catch(e){sqlite.exec('ROLLBACK');throw e}}};
 const storage=new Map(),bucket={async get(key){const x=storage.get(key);return x?{size:Buffer.byteLength(x),json:async()=>JSON.parse(x),body:new Blob([x]).stream()}:null},async head(key){const x=storage.get(key);return x?{size:Buffer.byteLength(x),customMetadata:{name:'a.txt',mime:'text/plain'}}:null},async list({prefix,cursor,limit}){const all=[...new Set([...storage.keys()].filter(k=>k.startsWith(prefix)).map(k=>k.slice(0,prefix.length+64)+'/'))].sort();const start=Number(cursor||0),page=all.slice(start,start+limit);return {delimitedPrefixes:page,objects:[],truncated:start+limit<all.length,cursor:String(start+limit)}}};
 const workspace='a'.repeat(64),client='synthetic-client',token='synthetic-only';
@@ -112,3 +112,4 @@ for(const row of sqlite.prepare('SELECT document FROM notes_json').all())validat
 assert.ok(sqlite.prepare('SELECT COUNT(*) n FROM note_changes').get().n>20);
 const missing=registry.map(t=>t.name).filter(n=>!exercised.has(n)&&!['attachments_prepare_upload','attachments_upload_base64','attachments_complete_upload','attachments_upload_status','attachments_abort_upload'].includes(n));assert.deepEqual(missing,[],'Every registered tool must have a successful invocation');
 console.log(`PASS ${registry.length} tools + 3 aliases, 16 resources, 27 prompts; upload tools covered by mcp-upload-test; real SQLite CAS/feed, permissions, confirmations/replay, isolation, revocable download, JSON contract`);
+

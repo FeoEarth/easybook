@@ -1,3 +1,4 @@
+import {accountPolicyId,accountGrant,hasWorkspaceGrant} from './account-grants.mjs';
 import {READ,WRITE,fail,hash,canonical,boundedJSON,validate,schema,uuid} from './mcp-common.mjs';
 export async function requestApproval(ctx,kind,payload){
  if(!ctx.client)fail('PERMISSION_DENIED','Owner approval requires a paired OAuth client');
@@ -15,6 +16,7 @@ export async function consumeApproval(ctx,name,args){
 }
 export async function permissions(env,workspace,client){
  if(!client)return READ;
+ if(accountPolicyId(client)){const row=await accountGrant(env,workspace,client);return row?JSON.parse(row.scopes):[];}
  const row=await env.DB.prepare('SELECT scopes FROM mcp_client_permissions WHERE workspace=? AND client=?').bind(workspace,client).first();
  return [...READ,...(row?JSON.parse(row.scopes).filter(s=>WRITE.includes(s)):[])];
 }
@@ -23,7 +25,8 @@ export async function approvalAPI(request,env,workspace){
  const row=await env.DB.prepare('SELECT id,client,kind,payload,expires,approved,consumed FROM mcp_approvals WHERE id=? AND workspace=? AND expires>? AND consumed=0').bind(input.id,workspace,Date.now()).first();
  if(!row)return Response.json({error:'Approval unavailable'},{status:404});
  const grant=await env.DB.prepare('SELECT id FROM mcp_workspace_grants WHERE workspace_id=? AND oauth_client_id=? AND revoked_at IS NULL').bind(workspace,row.client).first();
- if(!grant)return Response.json({error:'Client grant revoked'},{status:403});
+ const localGrant=!grant?await hasWorkspaceGrant(env,workspace,row.client):null;
+ if(!grant&&!localGrant)return Response.json({error:'Client grant revoked'},{status:403});
  if(input.approve===true){
   if(row.kind==='permissions'){
    const scopes=JSON.parse(row.payload).scopes;
@@ -57,3 +60,4 @@ else if(!id){detail.textContent='未提供授权请求';status('error','请从 A
 else call(false).then(d=>{detail.textContent=JSON.stringify(d,null,2);document.getElementById('client').textContent=d.client;document.getElementById('kind').textContent=d.kind==='permissions'?'权限授权':d.kind==='operation'?'单次操作确认':d.kind;document.getElementById('expires').textContent=new Date(d.expires).toLocaleString();if(d.approved){status('success','此请求已批准，请返回 AI 客户端继续。')}else{allow.disabled=false;status('ready','请核对完整请求后再批准。')}}).catch(e=>{detail.textContent='无法加载授权请求';status('error',e.message+'。请确认工作区或获取新的授权链接。')});
 allow.onclick=async()=>{allow.disabled=true;allow.textContent='正在批准…';allow.setAttribute('aria-busy','true');status('loading','正在提交授权…');try{await call(true);allow.textContent='已批准';status('success','已批准。请返回 AI 客户端继续。')}catch(e){allow.textContent='授权未完成';status('error',e.message+'。请重新打开确认链接核实状态。')}finally{allow.setAttribute('aria-busy','false')}};
 </script></body></html>`;
+

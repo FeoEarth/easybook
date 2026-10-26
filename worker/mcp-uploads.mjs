@@ -1,3 +1,4 @@
+import {hasWorkspaceGrant} from './account-grants.mjs';
 import {Buffer} from 'node:buffer';
 import {fail,hash,canonical,need} from './mcp-common.mjs';
 import {permissions} from './mcp-access.mjs';
@@ -9,7 +10,7 @@ const temp=(s,i)=>'_mcp_uploads/'+s.workspace+'/'+s.id+'/'+i;
 const publicStatus=s=>({upload_id:s.id,status:s.status,size:s.size,mime_type:s.mime,filename:s.filename,expires_at:s.expires,attachment_id:s.attachment_id||null,error:s.error||null});
 async function authorized(ctx){
  need(ctx,'attachments.write');if(!ctx.client)fail('PERMISSION_DENIED','Upload requires a paired OAuth client');
- const g=await ctx.env.DB.prepare('SELECT id FROM mcp_workspace_grants WHERE workspace_id=? AND oauth_client_id=? AND revoked_at IS NULL').bind(ctx.workspace,ctx.client).first();
+ const g=await hasWorkspaceGrant(ctx.env,ctx.workspace,ctx.client);
  if(!g||(await permissions(ctx.env,ctx.workspace,ctx.client)).includes('attachments.write')===false)fail('PERMISSION_DENIED','OAuth workspace upload permission is missing or revoked');
  if(!ctx.env.ATTACHMENTS||!ctx.env.MCP_PAIRING_SIGNING_KEY)fail('UNAVAILABLE','Upload storage is unavailable');
 }
@@ -114,3 +115,4 @@ export async function uploadHTTP(request,env){
   return reply(await putPart(ctx,s,index,await readBytes(request,size)));
  }catch(e){return reply({error:e.code||'STORAGE_ERROR',message:e.code?e.message:'Upload temporarily unavailable'},['PERMISSION_DENIED'].includes(e.code)?403:e.code==='NOT_FOUND'?404:e.code==='FILE_TOO_LARGE'?413:e.code==='UPLOAD_BUSY'?409:e.code==='QUOTA_EXCEEDED'?429:400)}
 }
+

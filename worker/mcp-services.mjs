@@ -1,3 +1,4 @@
+import {accountPolicyId} from './account-grants.mjs';
 import {registry} from './mcp-registry.mjs';
 import {validate,need,fail,WRITE,McpError} from './mcp-common.mjs';
 import {requestApproval,consumeApproval} from './mcp-access.mjs';
@@ -10,7 +11,8 @@ import {noteAttachments} from './mcp-note-attachments.mjs';
 import {workspaceTool} from './mcp-workspace.mjs';
 export async function callTool(ctx,name,a){
  const t=registry.find(t=>t.name===name);if(!t)fail('INVALID_ARGUMENT','Unknown tool');validate(t.inputSchema,a);need(ctx,t.scope);
- if(name==='access_request_permissions'){if(a.scopes.some(s=>!WRITE.includes(s)))fail('INVALID_ARGUMENT','Invalid scopes');return requestApproval(ctx,'permissions',{scopes:[...new Set(a.scopes)]});}
+ if(['attachments_attach_to_note','attachments_detach_from_note'].includes(name))need(ctx,'notes.write');
+ if(name==='access_request_permissions'){if(accountPolicyId(ctx.client))fail('REAUTHORIZATION_REQUIRED','Request a new OAuth authorization with the additional scopes; existing grants cannot be expanded by workspace approval');if(a.scopes.some(s=>!WRITE.includes(s)))fail('INVALID_ARGUMENT','Invalid scopes');return requestApproval(ctx,'permissions',{scopes:[...new Set(a.scopes)]});}
  if(name==='operations_request_confirmation'){
   const target=registry.find(t=>t.name===a.tool&&t.risk);if(!target)fail('INVALID_ARGUMENT','Tool does not accept confirmation');need(ctx,target.scope);
   if(Object.hasOwn(a.arguments,'confirmation_id'))fail('INVALID_ARGUMENT','Do not include confirmation_id in preview');
@@ -34,3 +36,4 @@ export async function callTool(ctx,name,a){
  }catch(e){if(e.message==='Invalid document schema v1')e=new McpError('INVALID_DOCUMENT','Document does not match shared schema v1');if(!t.annotations.readOnlyHint)await audit(ctx,name,e.code||'error');throw e}
 }
 async function audit(ctx,tool,status){try{await ctx.env.DB.prepare('INSERT INTO mcp_audit(id,workspace,client,tool,status,created) VALUES(?,?,?,?,?,?)').bind(crypto.randomUUID(),ctx.workspace,ctx.client||'legacy',tool,status,Date.now()).run();}catch{console.error(JSON.stringify({event:'mcp_audit_unavailable',tool}))}}
+

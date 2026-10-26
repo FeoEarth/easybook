@@ -38,10 +38,15 @@ jobs:
         run: mcp-oauth/node_modules/.bin/wrangler deploy --config mcp-oauth/wrangler.jsonc --dry-run --outdir oauth-preflight
       - name: Validate MCP protocol before candidate upload
         run: |
+          node scripts/account-oauth-security-test.mjs
           node scripts/mcp-capabilities-test.mjs
           node scripts/mcp-upload-test.mjs
           node scripts/mcp-pairing-release-test.mjs
           # Migration is applied via authorized Cloudflare; candidate smoke verifies runtime D1 readiness.
+      - name: Install browser for account UI verification
+        run: npx --no-install playwright install chromium
+      - name: Verify account and consent layouts
+        run: EASYBOOK_ACCOUNT_UI=1 node scripts/account-oauth-security-test.mjs
       - name: Upload OAuth candidate only
         id: candidate
         run: |
@@ -62,7 +67,10 @@ jobs:
         if: always()
         with:
           name: oauth-release-${{ github.run_id }}
-          path: release-state.json
+          path: |
+            release-state.json
+            account-ui-*.png
           if-no-files-found: ignore
           retention-days: 14
+
 

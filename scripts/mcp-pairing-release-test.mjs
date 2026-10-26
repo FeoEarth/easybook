@@ -3,7 +3,7 @@ import {DatabaseSync} from 'node:sqlite';
 import {readFileSync} from 'node:fs';
 import {registerHooks} from 'node:module';
 // Provider authentication is exercised separately in the live OAuth flow; this test supplies only a synthetic trusted context.
-const hook=registerHooks({resolve(specifier,context,next){if(specifier==='@cloudflare/workers-oauth-provider')return {url:'data:text/javascript,export default class Provider {constructor(options){Object.assign(this,options)}}',shortCircuit:true};return next(specifier,context)}});
+const hook=registerHooks({resolve(specifier,context,next){if(specifier==='@cloudflare/workers-oauth-provider')return {url:'data:text/javascript,export class OAuthError extends Error {}; export default class Provider {constructor(options){Object.assign(this,options)}}',shortCircuit:true};return next(specifier,context)}});
 const {apiHandler,oauthHandler}=await import('../mcp-oauth/src/index.mjs');
 hook.deregister();
 import {attestMcpWorkspace} from '../worker/mcp-pairing.mjs';
@@ -39,4 +39,5 @@ await rpc('tools/call',{name:'revoke_workspace_access'});
 assert.equal(JSON.parse((await (await rpc('tools/call',{name:'workspace_access_status'})).json()).result.content[0].text).paired,false);
 assert.equal((await rpc('initialize')).status,200);
 console.log('PASS: unpaired initialize, tools, grant isolation, challenge, HMAC, allowed/denied origins, completion, access status, replay, revoke; no notes queried');
+
 

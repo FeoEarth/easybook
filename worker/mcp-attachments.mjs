@@ -1,3 +1,4 @@
+import {hasWorkspaceGrant} from './account-grants.mjs';
 import {fail,hash,at,splice} from './mcp-common.mjs';
 import {get,save,revision,textDocument} from './mcp-notes.mjs';
 export async function manifest(ctx,id){
@@ -46,8 +47,8 @@ export async function attachmentTool(ctx,name,a){
 }
 export async function download(request,env){
  const ticket=new URL(request.url).searchParams.get('ticket');if(!/^[a-f0-9]{64}$/.test(ticket||''))return new Response('Invalid ticket',{status:403});
- const row=await env.DB.prepare('SELECT d.workspace,d.client,d.attachment FROM mcp_downloads d WHERE d.token_hash=? AND d.expires>? AND EXISTS(SELECT 1 FROM mcp_workspace_grants g WHERE g.workspace_id=d.workspace AND g.oauth_client_id=d.client AND g.revoked_at IS NULL)').bind(await hash(ticket),Date.now()).first();
- if(!row)return new Response('Expired or revoked ticket',{status:403});
+ const row=await env.DB.prepare('SELECT d.workspace,d.client,d.attachment FROM mcp_downloads d WHERE d.token_hash=? AND d.expires>? ').bind(await hash(ticket),Date.now()).first();
+ if(!row||!await hasWorkspaceGrant(env,row.workspace,row.client))return new Response('Expired or revoked ticket',{status:403});
  const ctx={env,workspace:row.workspace},m=await manifest(ctx,row.attachment);if(m.localOnly)return new Response('Device local',{status:404});
  const base=row.workspace+'/'+row.attachment;
  let body;
@@ -61,3 +62,4 @@ export async function download(request,env){
  let size=0;body=body.pipeThrough(new TransformStream({transform(chunk,c){size+=chunk.byteLength;if(size>m.size||size>1073741824)throw Error('Attachment size exceeded');c.enqueue(chunk)}}));
  return new Response(body,{headers:{'Content-Type':'application/octet-stream','Content-Disposition':"attachment; filename*=UTF-8''"+encodeURIComponent(m.name),'Cache-Control':'private, no-store','Referrer-Policy':'no-referrer','X-Content-Type-Options':'nosniff'}});
 }
+

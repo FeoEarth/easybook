@@ -1,4 +1,7 @@
-import OAuthProvider from '@cloudflare/workers-oauth-provider';
+import {grantClient} from '../../worker/account-grants.mjs';
+import OAuthProvider, {OAuthError} from '@cloudflare/workers-oauth-provider';
+import {accountRoutes,accountAuthorize,policyFor,rateLimit,SCOPES} from './accounts.mjs';
+import {guardTokens} from './token-guard.mjs';
 import {uploadHTTP} from '../../worker/mcp-uploads.mjs';
 import { mcp } from '../../worker/mcp.mjs';
 import {mcpHealth} from '../../worker/mcp-health.mjs';
@@ -7,20 +10,14 @@ import {permissions} from '../../worker/mcp-access.mjs';
 import { verifyGithubIdentity } from '../../worker/mcp-github-identity.mjs';
 import { verifyWorkspaceAssertion } from './pairing.mjs';
 
-const escape = s => String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
-
-// Standalone OAuth pages share Easybook's settings colors, type scale and control geometry.
-const oauthAppearance = `<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><meta name="color-scheme" content="light dark"><style>
-:root{--ink:#1c1c1e;--muted:#8e8e93;--accent:#b88a00;--bg:#f2f2f7;--paper:#fff;--line:#e5e5ea;--selected:#e9e9ee;--on-accent:#241c00;--danger:#ff3b30}
-*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--ink);font:17px -apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;line-height:1.6;padding:calc(28px + env(safe-area-inset-top)) max(20px,env(safe-area-inset-right)) max(28px,env(safe-area-inset-bottom)) max(20px,env(safe-area-inset-left));overflow-wrap:anywhere}body>*{max-width:640px;margin-left:auto;margin-right:auto}h1{font-size:34px;line-height:1.2;letter-spacing:-1px;margin-top:12px;margin-bottom:24px}p{font-size:15px;color:var(--muted)}strong{color:var(--ink);font-weight:600}form{display:flex;flex-wrap:wrap;gap:12px;padding:20px;background:var(--paper);border-radius:20px;margin-top:24px}button,a{font:inherit;min-height:44px;border:0;border-radius:22px;padding:11px 18px;cursor:pointer;transition:opacity .12s}button{background:var(--selected);color:var(--ink);flex:1 1 180px}button[value=allow],a{background:var(--accent);color:var(--on-accent);font-weight:600}button[value=deny]{color:var(--danger)}a{display:inline-block;text-decoration:none}button:active,a:active{opacity:.65}button:focus-visible,a:focus-visible{outline:2px solid var(--accent);outline-offset:3px}@media(prefers-color-scheme:dark){:root{--ink:#f2f2f7;--muted:#98989f;--accent:#e6bb32;--bg:#000;--paper:#1c1c1e;--line:#38383a;--selected:#333335;--on-accent:#241c00}}@media(prefers-reduced-motion:reduce){*{transition:none}}
-</style>`;
-
-const htmlHeaders = {'Content-Type':'text/html; charset=utf-8','Cache-Control':'no-store','X-Frame-Options':'DENY','Content-Security-Policy':"default-src 'none'; style-src 'unsafe-inline'; form-action 'self' https://github.com; frame-ancestors 'none'"};
+import {escape,oauthAppearance,htmlHeaders} from './appearance.mjs';
 const pairingWebOrigins = new Set(['https://easybook-sync.1902521952.workers.dev','https://easybook.loonxy.com']);
 const oauthHandler = {
  async fetch(request,env) {
   const url = new URL(request.url);
   const oauth = env.OAUTH_PROVIDER;
+  const account=await accountRoutes(request,env);if(account)return account;
+  if(url.pathname==='/oauth/authorize')return accountAuthorize(request,env);
   if(url.pathname.startsWith('/uploads/'))return uploadHTTP(request,env);
   if(url.pathname==='/health/mcp'&&request.method==='GET')return mcpHealth(env);
   if(url.pathname==='/pairing/complete' && request.method==='OPTIONS'){
@@ -56,7 +53,7 @@ const oauthHandler = {
    const authRequest = await oauth.parseAuthRequest(request);
    const client = await oauth.lookupClient(authRequest.clientId);
    const consent = await oauth.beginConsent(authRequest);
-   const page = `<!doctype html><html lang="zh-CN"><meta charset="utf-8"><title>AI 与 MCP 授权</title>${oauthAppearance}<body><h1>AI 与 MCP 授权</h1><p><strong>${escape(client?.clientName || client?.client_name || 'MCP client')}</strong> 请求只读访问你的 Easybook 笔记和文件夹。</p><p>仅已获准的 GitHub 账户可以继续。</p><form method="post" action="/authorize"><input type="hidden" name="handle" value="${escape(consent.handle)}"><button name="decision" value="allow">允许只读访问</button><button name="decision" value="deny">取消授权</button></form></body></html>`;
+   const page = `<!doctype html><html lang="zh-CN"><meta charset="utf-8"><title>AI 与 MCP 授权</title>${oauthAppearance}<body><h1>AI 与 MCP 授权</h1><p><strong>${escape(client?.clientName || client?.client_name || 'MCP client')}</strong> 请求只读访问你的 Easybook 笔记和文件夹。</p><p>仅已获准的 GitHub 账户可以继续。</p><p><a href="/oauth/authorize${escape(url.search)}">改用 Easybook 账户授权</a></p><form method="post" action="/authorize"><input type="hidden" name="handle" value="${escape(consent.handle)}"><button name="decision" value="allow">允许只读访问</button><button name="decision" value="deny">取消授权</button></form></body></html>`;
    const headers = new Headers(consent.headers);for(const [k,v] of Object.entries(htmlHeaders))headers.set(k,v);
    return new Response(page,{headers});
   }
@@ -130,6 +127,12 @@ const oauthHandler = {
 };
 const apiHandler={
  async fetch(request,env,ctx){
+  if(ctx?.props?.accountId){
+   const policy=await policyFor(env,ctx.props,ctx?.auth?.clientId,ctx?.auth?.scope||[]);
+   if(!policy)return new Response('Authorization revoked',{status:403});
+   const headers=new Headers(request.headers);headers.delete('Origin');headers.set('Authorization','Bearer internal-oauth-bridge');
+   return mcp(new Request(request,{headers}),{...env,MCP_ACCESS_TOKEN:'internal-oauth-bridge'},policy.workspace_id,{client:grantClient(policy.id),scopes:policy.scopes});
+  }
   if(String(ctx?.props?.githubUserId ?? '')!=='236202359' || !ctx?.auth?.scope?.includes('mcp:read'))
    return new Response('Forbidden',{status:403});
   // The OAuth provider validates the client token before this handler runs.
@@ -236,11 +239,34 @@ const apiHandler={
  }
 };
 export {apiHandler,oauthHandler};
-export default new OAuthProvider({
+export const provider = new OAuthProvider({
  apiRoute:'/mcp',apiHandler,defaultHandler:oauthHandler,
  resourceMetadata:{resource:'https://easybook-mcp-oauth.1902521952.workers.dev/mcp'},
  authorizeEndpoint:'/authorize',tokenEndpoint:'/token',clientRegistrationEndpoint:'/register',
- allowPlainPKCE:false,scopesSupported:['mcp:read'],requiredScopes:['mcp:read']
+ accessTokenTTL:300,refreshTokenTTL:2592000,
+ onError:({code,internal})=>{console.warn(JSON.stringify({event:'oauth_denied',code,category:internal?.category,reason:internal?.reason}))},
+ tokenExchangeCallback:async options=>{
+  if(options.props?.accountId){
+   const policy=await policyFor(options.env,options.props,options.clientId,options.requestedScope);
+   if(!policy||!policy.scopes.length)throw new OAuthError('invalid_grant',{description:'Authorization revoked'});
+   await options.env.DB.prepare('UPDATE oauth_grants SET provider_grant_id=? WHERE id=? AND account_id=? AND revoked_at IS NULL').bind(options.grantId,policy.id,options.userId).run();
+   return {accessTokenScope:policy.scopes};
+  }
+ },
+ clientIdMetadataDocumentEnabled:true,
+ allowPlainPKCE:false,scopesSupported:['mcp:read',...SCOPES],requiredScopes:[]
 });
 
 
+
+
+// Legacy endpoints and grants remain available alongside the new account flow.
+export default {async fetch(request,env,ctx){
+ try {
+  let requestUrl=new URL(request.url);
+  if(requestUrl.pathname==='/.well-known/oauth-protected-resource'){requestUrl.pathname+='\/mcp';request=new Request(requestUrl,request);}
+  const path=requestUrl.pathname;
+  if(['/token','/oauth/token','/oauth/revoke','/register'].includes(path))await rateLimit(request,env,'oauth',60);
+  return await guardTokens(request,env,ctx,provider);
+ }catch(error){if(error instanceof Response)return error;console.error(JSON.stringify({event:'account_oauth_failed',name:error?.name}));return new Response('Authorization temporarily unavailable',{status:503,headers:{'Cache-Control':'no-store'}});}
+}};
