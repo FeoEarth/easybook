@@ -16,7 +16,7 @@ try{
  const k=await p1.evaluate(()=>localStorage.getItem('easybook-key'));await p1.waitForTimeout(800);
  await p1.getByRole('button',{name:'新建笔记',exact:true}).click();await p1.locator('#title').fill('匿名跨设备验收');await p1.locator('#title').dispatchEvent('input');
  await p1.waitForTimeout(800);await p1.evaluate(()=>window.persistNow());
- await p1.locator('#back').click();await p1.locator('#syncButton').click();await p1.waitForTimeout(2000);
+ await p1.locator('#back').click();await settings(p1);await p1.locator('#activityEntry').click();await p1.locator('#syncNow').click();await p1.waitForTimeout(2000);
  const c2=await context();await c2.addInitScript(value=>localStorage.setItem('easybook-key',value),k);const p2=await ready(c2);await p2.getByText('匿名跨设备验收',{exact:true}).waitFor({timeout:20000});
  // Account cookie is seeded only in this isolated fixture; production login remains real OAuth/Passkey.
  const cookie='e'.repeat(64),sid=crypto.randomUUID(),now=Date.now();sql.prepare('INSERT INTO account_sessions VALUES(?,?,?,?,?,?,?,NULL)').run(sid,await hash(cookie),a.id,now,now+86400000,now,'Synthetic browser');
