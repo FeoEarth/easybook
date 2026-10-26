@@ -1,4 +1,3 @@
-import {passkeyRoutes} from './passkeys.mjs';
 import {grantClient} from '../../worker/account-grants.mjs';
 import OAuthProvider, {OAuthError} from '@cloudflare/workers-oauth-provider';
 import {accountRoutes,accountAuthorize,policyFor,rateLimit,SCOPES} from './accounts.mjs';
@@ -17,7 +16,7 @@ const oauthHandler = {
  async fetch(request,env) {
   const url = new URL(request.url);
   const oauth = env.OAUTH_PROVIDER;
-  const passkey=await passkeyRoutes(request,env);if(passkey)return passkey;
+  if(url.pathname.startsWith('/account/passkeys')){const {passkeyRoutes}=await import('./passkeys.mjs');return passkeyRoutes(request,env);}
   const account=await accountRoutes(request,env);if(account)return account;
   if(url.pathname==='/oauth/authorize')return accountAuthorize(request,env);
   if(url.pathname.startsWith('/uploads/'))return uploadHTTP(request,env);
