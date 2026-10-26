@@ -9,7 +9,9 @@ hook.deregister();
 import {attestMcpWorkspace} from '../worker/mcp-pairing.mjs';
 import {verifyWorkspaceAssertion} from '../mcp-oauth/src/pairing.mjs';
 const sqlite=new DatabaseSync(':memory:');
+sqlite.exec(readFileSync('worker/schema.sql','utf8'));
 sqlite.exec(readFileSync('mcp-oauth/migrations/0001_workspace_grants.sql','utf8'));
+sqlite.exec(readFileSync('worker/migrations/0008-mcp-capabilities.sql','utf8'));
 let injectFailure=false;
 const DB={async batch(statements){sqlite.exec('BEGIN');try{const results=[];for(const statement of statements){results.push(await statement.all());if(injectFailure){injectFailure=false;throw Error('synthetic DB failure')}}sqlite.exec('COMMIT');return results}catch(error){sqlite.exec('ROLLBACK');throw error}},prepare(sql){const stmt=sqlite.prepare(sql);return {bind(...params){return {async first(){return stmt.get(...params)||null},async all(){return {results:stmt.all(...params)}},async run(){return stmt.run(...params)}}}}}};
 const env={DB,MCP_GRANTS_ENABLED:'true',MCP_PAIRING_SIGNING_KEY:'synthetic-test-only-signing-key-123456789'};
@@ -37,3 +39,4 @@ await rpc('tools/call',{name:'revoke_workspace_access'});
 assert.equal(JSON.parse((await (await rpc('tools/call',{name:'workspace_access_status'})).json()).result.content[0].text).paired,false);
 assert.equal((await rpc('initialize')).status,200);
 console.log('PASS: unpaired initialize, tools, grant isolation, challenge, HMAC, allowed/denied origins, completion, access status, replay, revoke; no notes queried');
+

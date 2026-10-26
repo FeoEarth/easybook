@@ -1,4 +1,6 @@
 import {mcp} from './mcp.mjs';
+import {approvalPage,approvalAPI} from './mcp-access.mjs';
+import {download} from './mcp-attachments.mjs';
 import {attestMcpWorkspace} from './mcp-pairing.mjs';
 import {management} from './management.mjs';
 import {notes} from './notes.mjs';
@@ -12,6 +14,8 @@ export default {
  async fetch(request, env) {
   const url = new URL(request.url);
   if(url.pathname === '/mcp') return mcp(request,env);
+  if(url.pathname==='/mcp/approve'&&request.method==='GET')return new Response(approvalPage,{headers:{'Content-Type':'text/html; charset=utf-8','Cache-Control':'no-store','Referrer-Policy':'no-referrer','X-Frame-Options':'DENY','Content-Security-Policy':"default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; connect-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'none'"}});
+  if(url.pathname==='/api/mcp/download'&&request.method==='GET'){try{return await download(request,env)}catch{return new Response('Download unavailable',{status:404})}}
   // Browser pairing uses a cross-origin authenticated POST; ordinary sync CORS only permits GET/PUT.
   const pairingOrigin=request.headers.get('Origin');
   const pairingAllowed=pairingOrigin==='https://easybook.loonxy.com'||pairingOrigin==='https://easybook-sync.1902521952.workers.dev';
@@ -46,6 +50,10 @@ export default {
    if(url.pathname==='/api/mcp/attest'){
     return pairingResponse(await attestMcpWorkspace(request,env,workspace));
    }
+   if(url.pathname==='/api/mcp/approval'&&request.method==='POST'){
+    if(request.headers.get('Origin')!==url.origin)return json({error:'Origin not allowed'},403);
+    return await approvalAPI(request,env,workspace);
+   }
    if(url.pathname==='/api/management')return await management(request,env,workspace,json);
    const attachmentId=url.pathname.match(/^\/api\/attachments\/([a-f0-9]{64})$/)?.[1];if(attachmentId)return await attachments(request,env,workspace,attachmentId,headers);
    if(url.pathname==='/api/notes'||url.pathname.startsWith('/api/notes/'))return await notes(request,env,workspace,url,json);
@@ -75,6 +83,7 @@ export default {
   } catch(e) { console.error(JSON.stringify({event:'request_failed',name:e.name})); const response=json({error:'Service temporarily unavailable'},503); return url.pathname==='/api/mcp/attest'?pairingResponse(response):response; }
  }
 };
+
 
 
 

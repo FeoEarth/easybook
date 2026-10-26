@@ -5,8 +5,11 @@ on:
     branches: [main]
     paths:
       - 'mcp-oauth/**'
-      - 'worker/mcp.mjs'
-      - 'worker/mcp-github-identity.mjs'
+      - 'worker/mcp*.mjs'
+      - 'worker/migrations/0008-mcp-capabilities.sql'
+      - 'worker/notes.mjs'
+      - 'worker/management.mjs'
+      - 'shared/**'
       - 'scripts/cloudflare-release.mjs'
       - 'scripts/oauth-release-smoke.mjs'
       - '.github/workflows/deploy-mcp-pairing.yml'
@@ -31,6 +34,11 @@ jobs:
         working-directory: mcp-oauth
       - name: Validate OAuth bundle
         run: mcp-oauth/node_modules/.bin/wrangler deploy --config mcp-oauth/wrangler.jsonc --dry-run --outdir oauth-preflight
+      - name: Validate MCP protocol and apply additive control-plane migration
+        run: |
+          node scripts/mcp-capabilities-test.mjs
+          node scripts/mcp-pairing-release-test.mjs
+          mcp-oauth/node_modules/.bin/wrangler d1 execute easybook-data --remote --config mcp-oauth/wrangler.jsonc --file worker/migrations/0008-mcp-capabilities.sql
       - name: Upload OAuth candidate only
         id: candidate
         run: |
@@ -54,3 +62,4 @@ jobs:
           path: release-state.json
           if-no-files-found: ignore
           retention-days: 14
+

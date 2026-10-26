@@ -1,5 +1,7 @@
 import OAuthProvider from '@cloudflare/workers-oauth-provider';
 import { mcp } from '../../worker/mcp.mjs';
+import {boundedJSON,object,validate,schema,str} from '../../worker/mcp-common.mjs';
+import {permissions} from '../../worker/mcp-access.mjs';
 import { verifyGithubIdentity } from '../../worker/mcp-github-identity.mjs';
 import { verifyWorkspaceAssertion } from './pairing.mjs';
 
@@ -23,7 +25,7 @@ const oauthHandler = {
    if(!env.MCP_PAIRING_SIGNING_KEY)return fail('Pairing unavailable',503);
    try {
    let input;
-   try{const raw=await request.text();if(raw.length>4096)throw Error();input=JSON.parse(raw)}catch{return fail('Invalid pairing request',400)}
+   try{input=await boundedJSON(request,4096)}catch{return fail('Invalid pairing request',400)}
    const workspace=await verifyWorkspaceAssertion(input?.assertion,env.MCP_PAIRING_SIGNING_KEY,input?.challenge);
    if(!workspace)return fail('Invalid workspace proof',403);
    const bytes=await crypto.subtle.digest('SHA-256',new TextEncoder().encode(input.challenge));
@@ -124,9 +126,12 @@ const apiHandler={
   if(env.MCP_GRANTS_ENABLED==='true' && request.method==='POST'){
    const clientId=ctx?.auth?.clientId;
    if(typeof clientId!=='string'||!clientId)return new Response('Client identity unavailable',{status:403});
-   const raw=await request.text();
-   if(raw.length>16384)return new Response('Payload too large',{status:413});
-   let msg;try{msg=JSON.parse(raw)}catch{return new Response('Invalid JSON',{status:400})}
+   let msg;try{msg=await boundedJSON(request)}catch{return new Response('Invalid or oversized JSON',{status:400})}
+   if(!object(msg)||msg.jsonrpc!=='2.0'||typeof msg.method!=='string')return Response.json({jsonrpc:'2.0',id:null,error:{code:-32600,message:'Invalid Request'}});
+   if(msg.id===undefined)return new Response(null,{status:202});
+   const pairingNames=['begin_workspace_pairing','list_authorized_workspaces','select_authorized_workspace','workspace_access_status','revoke_workspace_access'];
+   if(msg.method==='tools/call'&&pairingNames.includes(msg.params?.name)){try{validate(msg.params.name==='select_authorized_workspace'?schema({workspaceId:{...str(64),pattern:'^[a-f0-9]{64}$'}},['workspaceId']):schema(),msg.params.arguments||{})}catch{return Response.json({jsonrpc:'2.0',id:msg.id,error:{code:-32602,message:'Invalid tool arguments'}})}}
+   const raw=JSON.stringify(msg);
    const reply=(value)=>Response.json({jsonrpc:'2.0',id:msg.id??null,result:value},{headers:{'Cache-Control':'no-store'}});
    if(msg.method==='tools/call' && msg.params?.name==='begin_workspace_pairing'){
     const githubId=String(ctx.props.githubUserId);
@@ -162,6 +167,7 @@ const apiHandler={
     const githubId=String(ctx.props.githubUserId);
     const active=await env.DB.prepare('SELECT workspace_id FROM mcp_active_workspaces WHERE github_user_id=? AND oauth_client_id=?').bind(githubId,clientId).first();
     if(active){
+     await env.DB.batch([env.DB.prepare('DELETE FROM mcp_client_permissions WHERE workspace=? AND client=?').bind(active.workspace_id,clientId),env.DB.prepare('DELETE FROM mcp_downloads WHERE workspace=? AND client=?').bind(active.workspace_id,clientId),env.DB.prepare('DELETE FROM mcp_approvals WHERE workspace=? AND client=?').bind(active.workspace_id,clientId)]);
      await env.DB.prepare('UPDATE mcp_workspace_grants SET revoked_at=? WHERE github_user_id=? AND oauth_client_id=? AND workspace_id=? AND revoked_at IS NULL').bind(Math.floor(Date.now()/1000),githubId,clientId,active.workspace_id).run();
      await env.DB.prepare('DELETE FROM mcp_active_workspaces WHERE github_user_id=? AND oauth_client_id=?').bind(githubId,clientId).run();
     }
@@ -169,7 +175,7 @@ const apiHandler={
    }
    // MCP clients must initialize before invoking pairing tools, even with no workspace grant.
    // Only protocol negotiation is available here; note reads remain grant-gated below.
-   if(msg.method==='initialize' || msg.method==='ping' || msg.method==='notifications/initialized'){
+   if(['initialize','ping','notifications/initialized','resources/list','resources/templates/list','prompts/list','prompts/get'].includes(msg.method)){
     const headers=new Headers(request.headers);
     headers.delete('Origin');
     headers.set('Authorization','Bearer internal-oauth-bridge');
@@ -197,6 +203,7 @@ const apiHandler={
   // Grant-based mode is opt-in until the authenticated pairing flow is deployed.
   // No workspace is ever selected from untrusted MCP request parameters.
   let workspaceId=null;
+  let client=null;
   if(env.MCP_GRANTS_ENABLED==='true'){
    const githubUserId=String(ctx.props.githubUserId);
    const clientId=ctx?.auth?.clientId;
@@ -205,7 +212,7 @@ const apiHandler={
     'SELECT a.workspace_id FROM mcp_active_workspaces a JOIN mcp_workspace_grants g ON g.github_user_id=a.github_user_id AND g.oauth_client_id=a.oauth_client_id AND g.workspace_id=a.workspace_id WHERE a.github_user_id=? AND a.oauth_client_id=? AND g.revoked_at IS NULL AND g.scope=?'
    ).bind(githubUserId,clientId,'mcp:read').first();
    if(!grant)return new Response('Workspace not paired',{status:503});
-   workspaceId=grant.workspace_id;
+   workspaceId=grant.workspace_id;client=clientId;
   }else{
    if(!env.MCP_WORKSPACE_KEY || !/^[a-f0-9]{64}$/.test(env.MCP_WORKSPACE_KEY))return new Response('Workspace not paired',{status:503});
   }
@@ -214,7 +221,7 @@ const apiHandler={
   const headers=new Headers(request.headers);
   headers.delete('Origin');headers.set('Authorization','Bearer internal-oauth-bridge');
   const trusted=new Request(request,{headers});
-  return mcp(trusted,{...env,MCP_ACCESS_TOKEN:'internal-oauth-bridge'},workspaceId);
+  return mcp(trusted,{...env,MCP_ACCESS_TOKEN:'internal-oauth-bridge'},workspaceId,{client,scopes:await permissions(env,workspaceId,client)});
  }
 };
 export {apiHandler,oauthHandler};
@@ -224,3 +231,4 @@ export default new OAuthProvider({
  authorizeEndpoint:'/authorize',tokenEndpoint:'/token',clientRegistrationEndpoint:'/register',
  allowPlainPKCE:false,scopesSupported:['mcp:read'],requiredScopes:['mcp:read']
 });
+

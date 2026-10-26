@@ -37,12 +37,15 @@ jobs:
           git diff --exit-code -- app/src/main/assets/editor.js worker/ui.mjs worker/editor.mjs worker/pdf-static.mjs
           node scripts/check-web-runtime.mjs
           node scripts/mcp-pairing-release-test.mjs
+          node scripts/mcp-capabilities-test.mjs
       - name: Install pinned Wrangler
         run: npm install --no-save --no-package-lock --no-audit --no-fund wrangler@4.152.0
       - name: Validate bundle without deployment
         run: npx --no-install wrangler deploy --config worker/wrangler.jsonc --dry-run --outdir .wrangler-preflight
       - name: Install browser for release smoke test
         run: npx --no-install playwright install chromium
+      - name: Apply additive MCP control-plane migration
+        run: npx --no-install wrangler d1 execute easybook-data --remote --config worker/wrangler.jsonc --file worker/migrations/0008-mcp-capabilities.sql
       - name: Record custom-domain baseline without weakening zone security
         run: node scripts/custom-domain-release-check.mjs record
       - name: Verify real rollback on binding-free probe Worker
@@ -78,3 +81,4 @@ jobs:
             web-release-smoke.png
           if-no-files-found: ignore
           retention-days: 14
+
