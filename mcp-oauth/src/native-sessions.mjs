@@ -39,7 +39,7 @@ async function establish(request,env,proof,native){
 }
 export async function nativeAccountRoutes(request,env){
  const url=new URL(request.url),path=url.pathname;
- if(!['/account/native/start','/account/native/token','/account/native/session','/account/native/logout','/account/native/sessions','/account/native/sessions/revoke','/account/handoff','/account/recover','/account/recover/complete'].includes(path))return null;
+ if(!['/account/native/start','/account/native/poll','/account/native/token','/account/native/session','/account/native/logout','/account/native/sessions','/account/native/sessions/revoke','/account/handoff','/account/recover','/account/recover/complete'].includes(path))return null;
  if(!identityEnabled(env))return json({error:'not_available'},404);
  const canonical=url.origin===IDENTITY_ORIGIN,legacy=url.origin===LEGACY_IDENTITY_ORIGIN;
  if(!canonical&&!(legacy&&path==='/account/handoff'))return json({error:'identity_origin_required'},403);
@@ -51,6 +51,15 @@ export async function nativeAccountRoutes(request,env){
   const handoff='/account/handoff?'+new URLSearchParams({flow,state:input.state});
   if(input.provider!==undefined&&input.provider!=='github')return json({error:'invalid_provider'},400);
   return json({flow,authorization_url:IDENTITY_ORIGIN+(input.provider==='github'?'/account/login?'+new URLSearchParams({return:handoff}):handoff),expires_in:300});
+ }
+ if(path==='/account/native/poll'&&request.method==='POST'){
+  await rateLimit(request,env,'native-poll',30);const input=await nativeBody(request);
+  if(!HEX.test(input.flow||'')||!HEX.test(input.state||'')||typeof input.verifier!=='string'||!/^[A-Za-z0-9._~-]{43,128}$/.test(input.verifier))return json({error:'invalid_request'},400);
+  // Status only: a poll never substitutes for the one-use code delivered to
+  // the initiating app. This avoids turning a forwarded approval URL into
+  // a cross-device session pickup capability.
+  const pending=await env.DB.prepare("SELECT approved_at FROM account_login_handoffs WHERE id=? AND kind='native' AND challenge=? AND state_hash=? AND expires_at>?").bind(input.flow,await s256(input.verifier),await hash(input.state),Date.now()).first();
+  return pending?json({status:pending.approved_at?'approved':'pending'}):json({error:'handoff_expired'},410);
  }
  if(path==='/account/native/token'&&request.method==='POST'){
   await rateLimit(request,env,'native-token',30);const input=await nativeBody(request),proof=await consume(env,input,'native');
@@ -108,9 +117,13 @@ export async function nativeAccountRoutes(request,env){
   if(request.method==='GET')return page(pending.kind==='native'?'登录 Easybook Android':'恢复新域名登录',`<p>以 <strong>${escape(s.display_name)}</strong> 继续。此操作建立一个新的账户会话；不会复制或转移工作区同步密钥。</p><form method="post" action="/account/handoff"><input type="hidden" name="csrf" value="${await csrf(request,s)}"><input type="hidden" name="flow" value="${id}"><input type="hidden" name="state" value="${state}"><button name="decision" value="allow">确认继续</button><button name="decision" value="deny">取消</button></form>${canonical?`<p>只有旧域名的通行密钥？<a class="link" href="${LEGACY_IDENTITY_ORIGIN+'/account/handoff?'+new URLSearchParams({flow:id,state})}">在旧域名验证后继续</a></p>`:''}`);
   if(input.get('decision')!=='allow'){await env.DB.prepare('DELETE FROM account_login_handoffs WHERE id=? AND state_hash=? AND approved_at IS NULL').bind(id,await hash(state)).run();return redirect(pending.kind==='native'?NATIVE_REDIRECT+'?'+new URLSearchParams({flow:id,state,error:'access_denied'}):'/account')}
   const code=random(),now=Date.now();
-  const approved=await env.DB.prepare(`UPDATE account_login_handoffs SET account_id=?,approved_session_id=?,code_hash=?,approved_at=?,expires_at=? WHERE id=? AND state_hash=? AND expires_at>? AND approved_at IS NULL AND EXISTS(SELECT 1 FROM account_sessions s JOIN accounts a ON a.id=s.account_id WHERE s.id=? AND s.account_id=? AND ${live}) RETURNING kind`).bind(s.account_id,s.id,await hash(code),now,now+60000,id,await hash(state),now,s.id,s.account_id,now).first();
+  const approved=await env.DB.prepare(`UPDATE account_login_handoffs SET account_id=?,approved_session_id=?,code_hash=?,approved_at=?,expires_at=? WHERE id=? AND state_hash=? AND expires_at>? AND approved_at IS NULL AND EXISTS(SELECT 1 FROM account_sessions s JOIN accounts a ON a.id=s.account_id WHERE s.id=? AND s.account_id=? AND ${live}) RETURNING kind`).bind(s.account_id,s.id,await hash(code),now,now+180000,id,await hash(state),now,s.id,s.account_id,now).first();
   if(!approved)return json({error:'handoff_changed'},409);
   const destination=new URL(approved.kind==='native'?NATIVE_REDIRECT:IDENTITY_ORIGIN+'/account/recover/complete');destination.search=new URLSearchParams({flow:id,code,state}).toString();
+  if(approved.kind==='native'){
+   const intent='intent://account/callback?'+destination.searchParams.toString()+'#Intent;scheme=easybook;package=com.feoearth.easybook.notes;end';
+   return page('登录已确认',`<p>浏览器身份验证已完成。请点击下方按钮返回 Easybook，完成本机登录。</p><div class="group"><a id="native-return" class="link" href="${escape(intent)}">返回 Easybook</a><a id="native-scheme-return" class="link" href="${escape(destination.href)}">使用系统链接返回</a></div><p>如果浏览器阻止打开应用，请允许此页面打开 Easybook，或选择系统链接。无需复制任何授权码。</p>`);
+  }
   return redirect(destination.href);
  }
  return json({error:'method_not_allowed'},405);

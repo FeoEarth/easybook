@@ -194,6 +194,8 @@ public class MainActivity extends Activity {
             case "attachment.export":{String space=repository.activeSpace(),id=bounded(args,"id",64);requireAttachmentReference(space,id);JSONObject f=repository.attachments.get(space,id);if(!f.optBoolean("available"))throw new IOException("Attachment only on original device");File bytes=repository.attachments.file(space,id);runOnUiThread(()->{if(destroyed||generation!=documentGeneration)return;attachmentExport=bytes;attachmentExportName=AttachmentStore.cleanName(f.optString("name","附件"));Intent i=new Intent(Intent.ACTION_CREATE_DOCUMENT);i.addCategory(Intent.CATEGORY_OPENABLE);i.setType("application/octet-stream");i.putExtra(Intent.EXTRA_TITLE,attachmentExportName);startActivityForResult(i,84);});return new JSONObject().put("picker",true);}
             case "security.account":nativeAccount.open();return new JSONObject().put("externalBrowser",true);
             case "account.passkey":if(!(args.get("register") instanceof Boolean)||args.has("name")&&!(args.get("name") instanceof String)||args.optString("name").length()>100)throw new SecurityException("Invalid account request");nativeAccount.passkey(args.getBoolean("register"),args.optString("name",""));return new JSONObject().put("pending",true);
+            case "account.browser":nativeAccount.beginBrowser();return new JSONObject().put("externalBrowser",true);
+            case "account.resume":nativeAccount.resume();return new JSONObject().put("pending",true);
             case "account.login":nativeAccount.begin();return new JSONObject().put("externalBrowser",true);
             case "account.status":return nativeAccount.publicStatus();
             case "workspace.action":{
@@ -373,6 +375,7 @@ public class MainActivity extends Activity {
         if (!ready) {super.onBackPressed(); return;}
         web.evaluateJavascript("window.handleBack()", handled -> {if (!"true".equals(handled)) MainActivity.super.onBackPressed();});
     }
+    @Override protected void onResume(){super.onResume();if(nativeAccount!=null)nativeAccount.resume();}
     @Override protected void onPause() { if(security!=null)security.dismissConnection(); if(nativeGlass!=null)nativeGlass.dismiss(true);web.evaluateJavascript("window.persistNow && window.persistNow()", null); super.onPause(); }
     @Override protected void onDestroy() { if(nativeAccount!=null)nativeAccount.cancel(); if(security!=null)security.dismissConnection(); if(connectivity!=null&&networkCallback!=null)connectivity.unregisterNetworkCallback(networkCallback); if(nativeGlass!=null){nativeGlass.clearFormatFrame();nativeGlass.dismiss(true);}ready=false; destroyed=true;if(WebViewFeature.isFeatureSupported(WebViewFeature.WEB_MESSAGE_LISTENER))WebViewCompat.removeWebMessageListener(web,"EasybookNative");web.destroy();io.shutdown();super.onDestroy(); }
 }
