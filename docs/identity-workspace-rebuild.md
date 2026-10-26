@@ -100,3 +100,16 @@ identity domain/Passkey re-enrollment; new OAuth multi-workspace policy integrat
 account-bound server-executed approvals; notifications, external revocation gate,
 retention/deletion and release acceptance. New service operations are not yet a
 complete user-facing system. No production deployment or APK release is claimed.
+
+Added an internal metadata backfill runner with fixed source-table identifiers,
+explicit recovery-checkpoint prerequisite, legacy membership preflight, per-space
+atomic metadata imports and retry safety. Synthetic checks confirm byte-for-byte
+folder preservation and no old-key resurrection after rotation and re-import.
+Production invocation and recovery-point verification are still outstanding.
+
+The first PR CI run passed MCP focused checks. The broad media job failed in an
+unchanged rich-editor test which waited 100 ms for asynchronous boot/save and
+then read a missing IndexedDB record. Replaced those fixed waits with bounded
+readiness and the actual UI save/flush completion; the local focused test passes.
+The new CI result must be checked separately; no Android/device acceptance is
+inferred from synthetic tests.

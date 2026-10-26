@@ -5,6 +5,7 @@ import * as service from '../worker/workspace-identity.mjs';
 import {hash,READ,WRITE} from '../worker/mcp-common.mjs';
 import worker from '../worker/index.mjs';
 import {workspaceAPI} from '../worker/workspace-api.mjs';
+import {inspectLegacyWorkspaces,backfillLegacyWorkspaces} from '../worker/workspace-migration.mjs';
 
 const sqlite=new DatabaseSync(':memory:');sqlite.exec('PRAGMA foreign_keys=ON');
 for(const file of ['worker/schema.sql','mcp-oauth/migrations/0002_accounts.sql','mcp-oauth/migrations/0003_passkeys.sql','worker/migrations/0010-workspace-identity.sql'])sqlite.exec(readFileSync(file,'utf8'));
@@ -99,4 +100,16 @@ assert.equal((await worker.fetch(new Request(origin+'/api/folders',{headers:alic
 assert.equal((await worker.fetch(new Request(origin+'/api/folders/'+crypto.randomUUID(),{method:'PUT',headers:{...aliceHeaders,Origin:origin,'X-Easybook-CSRF':await hash(aliceToken+'|'+aliceSession),'X-Role':'manager'},body:'{}'}),{...env,WORKSPACE_IDENTITY_V2:'true'})).status,403,'reader write denied despite forged role');
 assert.equal((await worker.fetch(new Request(origin+'/api/folders',{headers:{...aliceHeaders,'X-Easybook-Workspace':id}}),{...env,WORKSPACE_IDENTITY_V2:'true'})).status,403,'other workspace denied');
 assert.equal((await worker.fetch(new Request(origin+'/mcp'),{...env,WORKSPACE_IDENTITY_V2:'true'})).status,410,'legacy MCP bypass retired in new mode');
+const oldKey='e'.repeat(64),oldId=await hash(oldKey),folderId=crypto.randomUUID();
+sqlite.prepare('INSERT INTO folders VALUES(?,?,?,?,?)').run(oldId,folderId,'迁移前文件夹',now,0);
+const folderBefore=JSON.stringify(sqlite.prepare('SELECT * FROM folders').all());
+assert.ok((await inspectLegacyWorkspaces(env)).workspaceIds.includes(oldId));
+await assert.rejects(()=>backfillLegacyWorkspaces(env),/checkpoint/);
+await backfillLegacyWorkspaces(env,{recoveryCheckpointVerified:true});
+await backfillLegacyWorkspaces(env,{recoveryCheckpointVerified:true});
+assert.ok(await service.resolveWorkspaceKey(env,oldKey));
+assert.equal(JSON.stringify(sqlite.prepare('SELECT * FROM folders').all()),folderBefore,'backfill preserves content byte for byte');
+await service.rotateWorkspaceKey(env,oldId,(await service.resolveWorkspaceKey(env,oldKey)).principal);
+await backfillLegacyWorkspaces(env,{recoveryCheckpointVerified:true});
+assert.equal(await service.resolveWorkspaceKey(env,oldKey),null,'rerunning backfill does not revive old key');
 console.log('PASS: retryable migration; independent ID/key; personal dual access; anti-hijack association; key tombstones; shared roles; explicit conversion; atomic manager transfer; OAuth security denial; revocation; stale-state rollback.');
