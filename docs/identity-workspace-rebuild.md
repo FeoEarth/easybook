@@ -58,6 +58,45 @@ is not a security rollback: external revocation state must be reconciled first.
 Until that mechanism exists, do not claim disaster-recovery acceptance.
 
 Production schema, authentication routes and traffic have not been changed by
-this audit. Stages 2–8 remain incomplete. Each implementation commit must update
+this audit. Each implementation commit must update
 this ledger with actual checks and deployment state; documentation is not proof
 of implemented behavior.
+
+## Stage 2 implementation checkpoint
+
+Added an additive workspace registry, a single manager pointer, editor/reader
+memberships, one-current-key uniqueness and permanent revoked-key hash tombstones.
+Added create/resolve/rotate/associate/list/rename, explicit personal/shared
+conversion, member changes and atomic manager transfer service operations.
+Mutations recheck manager authority and workspace version in the D1 transaction.
+Association requires an authenticated account plus the live key and never
+reassigns another account's workspace. Shared mode revokes all key access;
+downgrade requires no remaining members and creates a new random key.
+
+Added bounded HTTP APIs with cookie-session verification, CSRF, same-origin
+mutation checks, explicit-credential failure without cookie fallback and creation
+rate limiting. Sync entry can enforce stable-ID key/account authentication and
+reader permissions under `WORKSPACE_IDENTITY_V2=true`. It also blocks legacy
+direct MCP/key approval entry points in that mode.
+
+**Activation is intentionally not configured.** Neither production D1 nor either
+Worker has been changed. New schema requires the existing account migrations.
+Legacy imports require a separate explicit transition setting; revoked verifiers
+are never accepted by that compatibility path.
+
+Verified locally with Node 24 + SQLite: migration retry; anonymous creation;
+hash-only key persistence; stable ID on rotation; dual key/account access;
+association hijack denial; shared key rejection; reader permissions; explicit
+mode conversion; atomic manager transfer; role/member OAuth revocation; stale
+transaction rollback; CSRF; origin rejection; HTTP credential isolation; actual
+sync route cross-workspace and reader-write denial. Existing Worker JSON/CAS/
+receipt/isolation regression and actual pinned-provider account OAuth security
+regression also pass. This is synthetic verification, not physical-device or
+production acceptance.
+
+Still required: metadata backfill/recovery checkpoint; stable-ID Android/Web
+storage migration and UI; native account sessions/Credential Manager; canonical
+identity domain/Passkey re-enrollment; new OAuth multi-workspace policy integration;
+account-bound server-executed approvals; notifications, external revocation gate,
+retention/deletion and release acceptance. New service operations are not yet a
+complete user-facing system. No production deployment or APK release is claimed.
