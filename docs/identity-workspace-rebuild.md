@@ -209,3 +209,35 @@ revocation, preserved auth freshness, primary RP options, legacy registration
 rejection and service-binding fail-closed behavior. Native browser round trips,
 physical-device Keystore, Credential Manager and production callback/App Links
 remain unverified/unfinished. This checkpoint has not been deployed.
+
+### Native Credential Manager continuation
+
+Added AndroidX Credential Manager 1.5.0 for direct native Passkey signup, login
+and enrollment. Public-key responses and PKCE verifiers stay native; the WebView
+can request an operation/name and read public account status only. Auth callbacks
+check the current encrypted pending-flow record before persisting a session, so
+an older browser/passkey result cannot overwrite a newer login attempt. Activity
+destruction cancels the system credential operation. The native account entry
+now opens a single account page with Passkey, browser/GitHub, enrollment and
+logout actions and browser/system back navigation. Full UI consolidation and
+native device-management views remain part of the remaining integration.
+
+Native WebAuthn endpoints verify the actual signature using SimpleWebAuthn,
+require user verification and the canonical RP, and pin the Android origin to the
+existing APK signing certificate. Credential IDs never move between accounts;
+enrollment is bound to the authenticated native session. Wrong certificate
+origin, browser origin, RP, challenge, UV, signature, user handle, PKCE, expired
+challenge and revoked credentials/sessions are rejected in synthetic P-256 tests.
+
+The reviewed development certificate comes from apksigner output of successful
+run 40303058214 (certificate SHA-256, not public-key SHA-256). The canonical
+assetlinks endpoint is gated with identity activation and grants credential
+sharing only to the actual Android package and certificate. Release compilation
+now also checks the APK signer against that association; a future signing-key
+change must be reviewed explicitly. No private signing key was read/exported.
+The user has not yet selected a final production signing scheme.
+
+This is source/test completion of the native credential paths, not a real-person
+or physical-device Passkey round trip. Canonical identity flags, D1 migration and
+Digital Asset Links are not live yet. Native account-workspace selection/sync,
+remaining OAuth policy work and full release acceptance are still outstanding.

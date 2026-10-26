@@ -54,6 +54,8 @@ jobs:
         run: gradle :app:assembleRelease --no-daemon
       - name: Verify APK signing
         run: '"$ANDROID_HOME/build-tools/35.0.0/apksigner" verify --verbose --print-certs app/build/outputs/apk/release/app-release.apk'
+      - name: Verify Passkey signing association
+        run: node scripts/check-android-identity.mjs app/build/outputs/apk/release/app-release.apk
       - name: Prepare APK
         run: |
           cp app/build/outputs/apk/release/app-release.apk Easybook-0.8.0.apk

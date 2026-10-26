@@ -1,3 +1,4 @@
+import {androidAssetLinks} from './android-identity.mjs';
 import {IDENTITY_ORIGIN,identityEnabled,identityPath} from './identity-origin.mjs';
 import {accountConnect} from './account-connect.mjs';
 import {workspaceAPI,workspacePrincipal} from './workspace-api.mjs';
@@ -20,6 +21,7 @@ export default {
  async scheduled(controller,env){await cleanupUploads(env,10)},
  async fetch(request, env) {
   const url = new URL(request.url);
+  if(url.pathname==='/.well-known/assetlinks.json'&&identityEnabled(env)&&url.origin===IDENTITY_ORIGIN&&request.method==='GET')return Response.json(androidAssetLinks,{headers:{'Cache-Control':'public, max-age=3600','X-Content-Type-Options':'nosniff'}});
   // Deliberately unset on production until the coordinated identity cutover.
   const identityV2=env.WORKSPACE_IDENTITY_V2==='true';
   if(identityEnabled(env)&&url.origin===IDENTITY_ORIGIN&&identityPath(url.pathname)){if(!env.IDENTITY_SERVICE)return json({error:'Identity service unavailable'},503);return env.IDENTITY_SERVICE.fetch(request);}

@@ -1,3 +1,4 @@
+import {nativePasskeyRoutes} from './native-passkeys.mjs';
 import {IDENTITY_ORIGIN,LEGACY_IDENTITY_ORIGIN,identityEnabled} from '../../worker/identity-origin.mjs';
 import {nativeAccountRoutes} from './native-sessions.mjs';
 import {grantClient} from '../../worker/account-grants.mjs';
@@ -19,6 +20,7 @@ const oauthHandler = {
   const url = new URL(request.url);
   const oauth = env.OAUTH_PROVIDER;
   if(identityEnabled(env)&&url.origin===LEGACY_IDENTITY_ORIGIN&&((url.pathname==='/callback'&&url.searchParams.get('state')?.startsWith('account_'))||url.pathname==='/account/login'))return new Response(null,{status:303,headers:{Location:IDENTITY_ORIGIN+url.pathname+url.search,'Cache-Control':'no-store','Referrer-Policy':'no-referrer'}});
+  const nativePasskey=await nativePasskeyRoutes(request,env);if(nativePasskey)return nativePasskey;
   const native=await nativeAccountRoutes(request,env);if(native)return native;
   if(url.pathname.startsWith('/account/passkeys')){const {passkeyRoutes}=await import('./passkeys.mjs');return passkeyRoutes(request,env);}
   const account=await accountRoutes(request,env);if(account)return account;

@@ -11,3 +11,9 @@ CREATE TABLE IF NOT EXISTS account_native_sessions(
 CREATE TABLE IF NOT EXISTS account_passkey_rps(
  credential_id TEXT PRIMARY KEY REFERENCES account_passkeys(id),rp_id TEXT NOT NULL
 );
+CREATE TABLE IF NOT EXISTS account_native_passkey_challenges(
+ id TEXT PRIMARY KEY,challenge TEXT NOT NULL,pkce_challenge TEXT NOT NULL,
+ state_hash TEXT NOT NULL,purpose TEXT NOT NULL CHECK(purpose IN ('login','signup','enroll')),
+ account_id TEXT,session_id TEXT,display_name TEXT,expires_at INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS account_native_passkey_expiry ON account_native_passkey_challenges(expires_at);

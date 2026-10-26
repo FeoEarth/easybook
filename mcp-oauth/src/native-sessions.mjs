@@ -14,10 +14,10 @@ export async function nativeSession(request,env){
  const current=await sessionToken(token,env);if(!current)return null;
  return await env.DB.prepare('SELECT session_id FROM account_native_sessions WHERE session_id=?').bind(current.id).first()?current:null;
 }
-async function body(request){
+export async function nativeBody(request,max=8192){
  if(request.headers.has('Origin')||request.headers.get('X-Easybook-Native')!=='1')throw json({error:'native_request_required'},403);
  if(request.headers.get('Content-Type')?.split(';')[0].trim().toLowerCase()!=='application/json')throw json({error:'json_required'},415);
- let value;try{value=await boundedJSON(request,8192)}catch{throw json({error:'invalid_request'},400)}
+ let value;try{value=await boundedJSON(request,max)}catch{throw json({error:'invalid_request'},400)}
  if(!object(value))throw json({error:'invalid_request'},400);return value;
 }
 async function newHandoff(env,kind,challenge,state){
@@ -43,14 +43,14 @@ export async function nativeAccountRoutes(request,env){
  const canonical=url.origin===IDENTITY_ORIGIN,legacy=url.origin===LEGACY_IDENTITY_ORIGIN;
  if(!canonical&&!(legacy&&path==='/account/handoff'))return json({error:'identity_origin_required'},403);
  if(path==='/account/native/start'&&request.method==='POST'){
-  await rateLimit(request,env,'native-login',10);const input=await body(request);
+  await rateLimit(request,env,'native-login',10);const input=await nativeBody(request);
   if(typeof input.challenge!=='string'||!/^[A-Za-z0-9_-]{43}$/.test(input.challenge)||!HEX.test(input.state||''))return json({error:'invalid_pkce_or_state'},400);
   // No caller-supplied redirect URI or client type is accepted.
   const flow=await newHandoff(env,'native',input.challenge,input.state);
   return json({flow,authorization_url:IDENTITY_ORIGIN+'/account/handoff?'+new URLSearchParams({flow,state:input.state}),expires_in:300});
  }
  if(path==='/account/native/token'&&request.method==='POST'){
-  await rateLimit(request,env,'native-token',30);const input=await body(request),proof=await consume(env,input,'native');
+  await rateLimit(request,env,'native-token',30);const input=await nativeBody(request),proof=await consume(env,input,'native');
   if(!proof)return json({error:'invalid_grant'},400);
   const established=await establish(request,env,proof,true);
   return json({token:established.token,session_id:established.id,expires_in:604800});
@@ -60,7 +60,7 @@ export async function nativeAccountRoutes(request,env){
   return json({account:{id:s.account_id,name:s.display_name},session:{id:s.id,expires_at:s.expires_at,authenticated_at:s.authenticated_at}});
  }
  if(path==='/account/native/logout'&&request.method==='POST'){
-  await body(request);const s=await nativeSession(request,env);if(!s)return json({error:'unauthorized'},401);
+  await nativeBody(request);const s=await nativeSession(request,env);if(!s)return json({error:'unauthorized'},401);
   await env.DB.prepare('UPDATE account_sessions SET revoked_at=? WHERE id=? AND account_id=?').bind(Date.now(),s.id,s.account_id).run();return json({ok:true});
  }
  if(path==='/account/recover'&&request.method==='GET'){
