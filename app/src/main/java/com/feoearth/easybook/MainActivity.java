@@ -62,7 +62,8 @@ public class MainActivity extends Activity {
             @Override public void onLost(android.net.Network n){changed(null);}
         };connectivity.registerDefaultNetworkCallback(networkCallback);
         boolean dark = (getResources().getConfiguration().uiMode & Configuration.UI_MODE_NIGHT_MASK) == Configuration.UI_MODE_NIGHT_YES;
-        int color = dark ? 0xff000000 : 0xfff2f2f7;
+        if(security!=null)security.setDark(dark);
+            int color = dark ? 0xff000000 : 0xfff2f2f7;
         getWindow().setStatusBarColor(color);
         getWindow().setNavigationBarColor(color);
         getWindow().getDecorView().setSystemUiVisibility(dark ? 0 : View.SYSTEM_UI_FLAG_LIGHT_STATUS_BAR | View.SYSTEM_UI_FLAG_LIGHT_NAVIGATION_BAR);
@@ -287,6 +288,7 @@ public class MainActivity extends Activity {
     public class DeviceActions {
         public void theme(String value) { runOnUiThread(() -> {
             boolean dark = "dark".equals(value) || (!"light".equals(value) && (getResources().getConfiguration().uiMode & Configuration.UI_MODE_NIGHT_MASK) == Configuration.UI_MODE_NIGHT_YES);
+            if(security!=null)security.setDark(dark);
             int color = dark ? 0xff000000 : 0xfff2f2f7;
             web.setBackgroundColor(color); safeArea.setBackgroundColor(color); getWindow().setStatusBarColor(color); getWindow().setNavigationBarColor(color);
             getWindow().getDecorView().setSystemUiVisibility(dark ? 0 : View.SYSTEM_UI_FLAG_LIGHT_STATUS_BAR | View.SYSTEM_UI_FLAG_LIGHT_NAVIGATION_BAR);
@@ -347,13 +349,15 @@ public class MainActivity extends Activity {
     }
     @Override protected void onNewIntent(Intent i) { super.onNewIntent(i); setIntent(i); receiveShare(i); }
     @Override public void onBackPressed() {
+        if(security!=null && security.back())return;
         if(nativeGlass!=null && nativeGlass.back())return;
         if (!ready) {super.onBackPressed(); return;}
         web.evaluateJavascript("window.handleBack()", handled -> {if (!"true".equals(handled)) MainActivity.super.onBackPressed();});
     }
-    @Override protected void onPause() { if(nativeGlass!=null)nativeGlass.dismiss(true);web.evaluateJavascript("window.persistNow && window.persistNow()", null); super.onPause(); }
-    @Override protected void onDestroy() { if(connectivity!=null&&networkCallback!=null)connectivity.unregisterNetworkCallback(networkCallback); if(nativeGlass!=null){nativeGlass.clearFormatFrame();nativeGlass.dismiss(true);}ready=false; destroyed=true;if(WebViewFeature.isFeatureSupported(WebViewFeature.WEB_MESSAGE_LISTENER))WebViewCompat.removeWebMessageListener(web,"EasybookNative");web.destroy();io.shutdown();super.onDestroy(); }
+    @Override protected void onPause() { if(security!=null)security.dismissConnection(); if(nativeGlass!=null)nativeGlass.dismiss(true);web.evaluateJavascript("window.persistNow && window.persistNow()", null); super.onPause(); }
+    @Override protected void onDestroy() { if(security!=null)security.dismissConnection(); if(connectivity!=null&&networkCallback!=null)connectivity.unregisterNetworkCallback(networkCallback); if(nativeGlass!=null){nativeGlass.clearFormatFrame();nativeGlass.dismiss(true);}ready=false; destroyed=true;if(WebViewFeature.isFeatureSupported(WebViewFeature.WEB_MESSAGE_LISTENER))WebViewCompat.removeWebMessageListener(web,"EasybookNative");web.destroy();io.shutdown();super.onDestroy(); }
 }
+
 
 
 
