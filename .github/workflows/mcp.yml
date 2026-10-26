@@ -7,9 +7,11 @@ on:
       - 'worker/workspace-*.mjs'
       - 'worker/oauth-*.mjs'
       - 'worker/account-*.mjs'
+      - 'worker/attachment*.mjs'
       - 'scripts/workspace-identity-test.mjs'
       - 'scripts/workspace-oauth-security-test.mjs'
       - 'scripts/atomic-note-batch-test.mjs'
+      - 'scripts/permanent-operations-test.mjs'
       - 'scripts/mcp*.mjs'
       - 'scripts/mcp-github-identity-test.mjs'
       - 'worker/mcp-github-identity.mjs'
@@ -26,9 +28,11 @@ on:
       - 'worker/workspace-*.mjs'
       - 'worker/oauth-*.mjs'
       - 'worker/account-*.mjs'
+      - 'worker/attachment*.mjs'
       - 'scripts/workspace-identity-test.mjs'
       - 'scripts/workspace-oauth-security-test.mjs'
       - 'scripts/atomic-note-batch-test.mjs'
+      - 'scripts/permanent-operations-test.mjs'
       - 'scripts/mcp*.mjs'
       - 'mcp-oauth/**'
       - 'shared/**'
@@ -48,7 +52,7 @@ jobs:
       - name: Bundle OAuth Worker (no deploy)
         run: cd mcp-oauth && npm ci --no-audit --no-fund && npx wrangler deploy --dry-run --outdir ../mcp-oauth-bundle
       - name: Account and OAuth security regression
-        run: node scripts/web-store-test.mjs && node scripts/attachment-test.mjs && node mcp-oauth/test/native-passkeys-security.mjs && node scripts/native-account-security-test.mjs && node scripts/atomic-note-batch-test.mjs && node scripts/workspace-oauth-security-test.mjs && node scripts/workspace-identity-test.mjs && node scripts/account-oauth-security-test.mjs && node mcp-oauth/test/passkeys-security.mjs
+        run: node scripts/web-store-test.mjs && node scripts/attachment-test.mjs && node mcp-oauth/test/native-passkeys-security.mjs && node scripts/native-account-security-test.mjs && node scripts/atomic-note-batch-test.mjs && node scripts/permanent-operations-test.mjs && node scripts/workspace-oauth-security-test.mjs && node scripts/workspace-identity-test.mjs && node scripts/account-oauth-security-test.mjs && node mcp-oauth/test/passkeys-security.mjs
       - name: Verify Passkeys with a real browser virtual authenticator
         run: |
           npx --no-install playwright install chromium

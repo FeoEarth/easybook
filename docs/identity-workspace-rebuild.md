@@ -336,3 +336,32 @@ Still incomplete in stage 5: permanent note/attachment deletion, folder clearing
 whole-document overwrite approval, durable R2 cleanup/recovery and scheduled
 retries. Stage 6 notifications/retention/account deletion/restore checkpoints and
 final workspace/UI integration remain outstanding. This is not the 0.8.0 release.
+
+### Stage 5 extension: permanent operations and recoverable R2 cleanup
+
+Adds approval executors for terminal note purge, whole-document overwrite and
+clearing up to 100 direct notes in a folder (subfolders are explicitly excluded).
+A normal notes_update containing a document is routed to approval. Purge clears
+content and previous receipt payloads in the same D1 transaction, while retaining
+the terminal note/sync tombstone. Folder clear also checks that its target set
+has not gained, lost or moved any active notes since the preview.
+
+Migration 0013 adds immutable attachment tombstones, reference-blocking SQL
+triggers and durable leased R2 purge jobs. Attachment versions are their SHA-256
+content addresses. Approval checks absence of references, including soft-deleted
+notes, in the D1 transaction that fences all future attachment access and queues
+cleanup. Every chunk/manifest reader and writer uses the fence; in-flight writes
+remove their own late objects. Failed physical cleanup leaves access revoked.
+The existing scheduled handler resumes bounded pages, with up to five storage
+failure retries. A daily reconciliation of completed jobs catches late objects;
+no whole-bucket deletion or shared D1/R2 transaction is assumed. Status queries
+expose cleanup separately from the committed authorization/deletion decision.
+
+Checks pass for terminal purge/offline replay, receipt content erasure, overwrite
+approval routing, folder target-set changes, reference races, blocked reattachment,
+R2 outage/retry/pagination, late PUT cleanup and preservation of adjacent objects
+and other workspaces. Existing MCP upload/attachment paths still pass. No live
+R2 objects or production D1 data were changed. Remaining stage 5 work includes
+bringing older empty-folder/reversible-retirement approvals into this executor
+and operational recovery UI; stage 6 and final client/UI integration still gate
+production activation.

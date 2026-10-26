@@ -3,7 +3,8 @@ import {DatabaseSync} from 'node:sqlite';
 import {readFileSync} from 'node:fs';
 import {mcp} from '../worker/mcp.mjs';
 import {mcpHealth} from '../worker/mcp-health.mjs';
-import {registry} from '../worker/mcp-registry.mjs';
+import {registry as allTools} from '../worker/mcp-registry.mjs';
+const registry=allTools.filter(t=>!t.modernOnly);
 import {promptDefinitions} from '../worker/mcp-prompts.mjs';
 import {READ,WRITE} from '../worker/mcp-common.mjs';
 import {approvalAPI,permissions} from '../worker/mcp-access.mjs';
@@ -112,4 +113,5 @@ for(const row of sqlite.prepare('SELECT document FROM notes_json').all())validat
 assert.ok(sqlite.prepare('SELECT COUNT(*) n FROM note_changes').get().n>20);
 const missing=registry.map(t=>t.name).filter(n=>!exercised.has(n)&&!['attachments_prepare_upload','attachments_upload_base64','attachments_complete_upload','attachments_upload_status','attachments_abort_upload'].includes(n));assert.deepEqual(missing,[],'Every registered tool must have a successful invocation');
 console.log(`PASS ${registry.length} tools + 3 aliases, 16 resources, 27 prompts; upload tools covered by mcp-upload-test; real SQLite CAS/feed, permissions, confirmations/replay, isolation, revocable download, JSON contract`);
+
 

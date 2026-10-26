@@ -58,6 +58,12 @@ for(const [name,desc]of [['info','当前工作区信息'],['summary','笔记及�
 add('workspace_search_all','跨笔记和文件夹搜索','workspace.read',{query:str(120,1),...page},['query']);
 add('access_request_permissions','请求用户在可信 Easybook 页面批准当前客户端写入权限','workspace.read',{scopes:arr({type:'string',enum:['notes.write','notes.delete','folders.manage','tasks.manage','attachments.write']},5)},['scopes']);
 add('operations_request_confirmation','申请绑定工具及精确参数的一次性人工确认','workspace.read',{tool:str(80,1),arguments:{type:'object',properties:{},additionalProperties:true}},['tool','arguments']);
+add('notes_permanent_delete','请求账户审批后永久清除指定版本的笔记正文；保留不可恢复的同步墓碑','notes.delete',{items:arr(schema(version,['id','version']),100)},['items'],true);
+add('notes_overwrite','请求账户审批后按冻结版本整体替换笔记正文','notes.write',{...version,document,title:str(200)},['id','version','document'],true);
+add('folders_clear','请求账户审批后软删除当前文件夹直接包含的全部笔记（不含子文件夹），最多100条','notes.delete',{folder_id:uuid},['folder_id'],true);
+add('attachments_permanent_delete','请求账户审批后永久删除无引用附件；先撤销访问，再由可恢复任务清理R2字节','attachments.write',{attachment_id:asset},['attachment_id'],true);
+for(const t of defs)if(['notes_permanent_delete','notes_overwrite','folders_clear','attachments_permanent_delete'].includes(t.name))t.modernOnly=true;
 export const registry=defs;
 export const aliases={list_folders:'folders_list',search_notes:'notes_search',get_note:'notes_get'};
 export const publicTool=t=>({name:t.name,description:t.description,inputSchema:t.inputSchema,annotations:t.annotations});
+

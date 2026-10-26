@@ -24,7 +24,7 @@ export async function mcp(request,env,workspaceId=null,access={}){
   if(msg.method==='initialize')return result(id,{protocolVersion:'2025-03-26',capabilities:{tools:{listChanged:false},resources:{subscribe:false,listChanged:false},prompts:{listChanged:false}},serverInfo:{name:'easybook-mcp',version:'0.8.0'}});
   if(msg.method==='ping')return result(id,{});
   if(params.cursor!==undefined&&['tools/list','resources/list','resources/templates/list','prompts/list'].includes(msg.method))fail('INVALID_ARGUMENT','Catalog is a single page; cursor is invalid');
-  if(msg.method==='tools/list')return result(id,{tools:[...registry.map(publicTool),...Object.entries(aliases).map(([name,target])=>({...publicTool(registry.find(t=>t.name===target)),name,description:'Legacy compatible alias: '+target}))]});
+  if(msg.method==='tools/list')return result(id,{tools:[...registry.filter(t=>!t.modernOnly||env.WORKSPACE_IDENTITY_V2==='true').map(publicTool),...Object.entries(aliases).map(([name,target])=>({...publicTool(registry.find(t=>t.name===target)),name,description:'Legacy compatible alias: '+target}))]});
   if(msg.method==='resources/list')return result(id,{resources:listResources()});
   if(msg.method==='resources/templates/list')return result(id,{resourceTemplates});
   if(msg.method==='prompts/list')return result(id,{prompts:listPrompts()});
@@ -33,6 +33,7 @@ export async function mcp(request,env,workspaceId=null,access={}){
   if(msg.method==='resources/read')return limited(id,await readResource(ctx,params.uri,callTool));
   if(msg.method==='tools/call'){
    const original=params.name,name=Object.hasOwn(aliases,original)?aliases[original]:original;
+   if(registry.find(t=>t.name===name)?.modernOnly&&env.WORKSPACE_IDENTITY_V2!=='true')return error(id,-32602,'Unknown tool');
    if(!registry.some(t=>t.name===name))return error(id,-32602,'Unknown tool');
    try{let value=await callTool(ctx,name,params.arguments||{});
     // Preserve old get_note/search/list wrapper shapes.
@@ -44,3 +45,4 @@ export async function mcp(request,env,workspaceId=null,access={}){
  }catch(e){if(!e.code)console.error(JSON.stringify({event:'mcp_error',name:e.name}));return error(id,e.code==='NOT_FOUND'?-32002:e.code==='PERMISSION_DENIED'?-32001:e.code?-32602:-32603,e.code?e.message:'Internal error');}
 }
 function limited(id,value){if(new TextEncoder().encode(JSON.stringify(value)).length>220000)fail('RESOURCE_TOO_LARGE','Result exceeds limit; use smaller pages or text segments');return result(id,value)}
+

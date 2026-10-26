@@ -12,7 +12,7 @@ import {grantClient,accountGrant} from '../worker/account-grants.mjs';
 import {session,csrf,ACCOUNT_COOKIE} from '../mcp-oauth/src/accounts.mjs';
 import {hash} from '../worker/mcp-common.mjs';
 const sql=new DatabaseSync(':memory:');sql.exec('PRAGMA foreign_keys=ON');
-for(const file of ['worker/schema.sql','mcp-oauth/migrations/0002_accounts.sql','mcp-oauth/migrations/0003_passkeys.sql','mcp-oauth/migrations/0004_native_identity.sql','worker/migrations/0008-mcp-capabilities.sql','worker/migrations/0009-mcp-uploads.sql','worker/migrations/0010-workspace-identity.sql','worker/migrations/0011-oauth-workspaces.sql','worker/migrations/0012-account-approvals.sql'])sql.exec(readFileSync(file,'utf8'));
+for(const file of ['worker/schema.sql','mcp-oauth/migrations/0002_accounts.sql','mcp-oauth/migrations/0003_passkeys.sql','mcp-oauth/migrations/0004_native_identity.sql','worker/migrations/0008-mcp-capabilities.sql','worker/migrations/0009-mcp-uploads.sql','worker/migrations/0010-workspace-identity.sql','worker/migrations/0011-oauth-workspaces.sql','worker/migrations/0012-account-approvals.sql','worker/migrations/0013-permanent-operations.sql'])sql.exec(readFileSync(file,'utf8'));
 sql.exec(readFileSync('worker/migrations/0011-oauth-workspaces.sql','utf8'));
 const DB={prepare(s){const q=sql.prepare(s);let p=[];return {bind(...args){p=args;return this},async first(){return q.get(...p)||null},async all(){return {results:q.all(...p)}},async run(){return q.run(...p)}}},async batch(statements){sql.exec('BEGIN');try{const values=[];for(const s of statements)values.push(await s.all());sql.exec('COMMIT');return values}catch(error){sql.exec('ROLLBACK');throw error}}};
 const kv=new Map(),OAUTH_KV={async get(key,options){const value=kv.get(key);return value===undefined?null:options==='json'||options?.type==='json'?JSON.parse(value):value},async put(k,v){kv.set(k,v)},async delete(k){kv.delete(k)},async list({prefix='',limit=1000}={}){return {keys:[...kv.keys()].filter(k=>k.startsWith(prefix)).slice(0,limit).map(name=>({name})),list_complete:true,cursor:''}}};
@@ -53,6 +53,7 @@ const foreignRead=await (await rpc('resources/read',{uri:'easybook://notes/'+not
 const resources=(await (await rpc('resources/list')).json()).result.resources;assert.ok(resources.every(r=>r.uri.includes('workspace_id=')));assert.ok(resources.every(r=>!r.uri.includes(foreign)));
 
 // Account-bound frozen batch: the AI receives a URL and cannot execute it.
+const overwriteRequest=await tool('notes_update',{id:noteId,version:1,document:{schemaVersion:1,doc:{type:'doc',content:[{type:'paragraph'}]}}});assert.equal(overwriteRequest.data.status,'pending','whole-document update cannot bypass account approval');assert.equal((await form(new URL(overwriteRequest.data.approval_url).pathname,{decision:'approve'})).status,303);
 const beforeApproval=sql.prepare('SELECT version,title FROM notes_json WHERE workspace=? AND id=?').get(personal,noteId);
 const pending=await tool('notes_batch_update',{items:[{id:noteId,version:beforeApproval.version}],metadata:{title:'Approved atomically'}});assert.ok(!pending.isError,JSON.stringify(pending));assert.equal(pending.data.status,'pending');assert.equal(sql.prepare('SELECT title FROM notes_json WHERE id=?').get(noteId).title,beforeApproval.title);
 assert.ok(pending.data.approval_url.startsWith(origin+'/account/operations/'));
