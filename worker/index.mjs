@@ -1,3 +1,4 @@
+import {maintainIdentity} from './identity-maintenance.mjs';
 import {runAttachmentPurges} from './attachment-purge.mjs';
 import {androidAssetLinks} from './android-identity.mjs';
 import {IDENTITY_ORIGIN,identityEnabled,identityPath} from './identity-origin.mjs';
@@ -19,7 +20,7 @@ import {attachments} from './attachments.mjs';
 const headers = {'Access-Control-Allow-Origin':'*','Access-Control-Allow-Headers':'Authorization, Content-Type','Access-Control-Allow-Methods':'GET, PUT, OPTIONS','Cache-Control':'no-store','X-Content-Type-Options':'nosniff'};
 const json = (data, status=200) => Response.json(data, {status, headers});
 export default {
- async scheduled(controller,env){await cleanupUploads(env,10);await runAttachmentPurges(env,10)},
+ async scheduled(controller,env){const results=await Promise.allSettled([cleanupUploads(env,10),runAttachmentPurges(env,10),maintainIdentity(env)]);if(results.some(r=>r.status==='rejected'))throw Error('Scheduled maintenance incomplete')},
  async fetch(request, env) {
   const url = new URL(request.url);
   if(url.pathname==='/.well-known/assetlinks.json'&&identityEnabled(env)&&url.origin===IDENTITY_ORIGIN&&request.method==='GET')return Response.json(androidAssetLinks,{headers:{'Cache-Control':'public, max-age=3600','X-Content-Type-Options':'nosniff'}});

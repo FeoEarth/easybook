@@ -365,3 +365,39 @@ R2 objects or production D1 data were changed. Remaining stage 5 work includes
 bringing older empty-folder/reversible-retirement approvals into this executor
 and operational recovery UI; stage 6 and final client/UI integration still gate
 production activation.
+
+### Stage 6 checkpoint: application notifications, audit privacy and retention
+
+Commit 6588db882342dec7b45306cd17cf21a3c6de4e31 passed MCP focused checks
+and Android APK compilation/signing CI. Production remains unchanged.
+
+Migration 0014 creates account notifications, two configurable ordinary/important
+preferences, account/workspace audit records and a daily maintenance lease.
+Critical alerts have no disable field. Database triggers record login, session or
+Passkey revocation, OAuth revocation, workspace security changes, approvals,
+permanent deletions and failed attachment cleanup. Only fixed codes and object
+identifiers are recorded; no note body, key, token or approval bearer credential
+is copied into these records. The account UI now links notifications and history.
+
+The history query gives a shared workspace manager all AI activity in that
+workspace, each member their own activity, and nobody another account's private
+security history. Bounded cursor pagination is supported. SQL tests cover these
+boundaries and disabled-preference behavior for critical events.
+
+Daily maintenance applies 90-day activity, 180-day security and 14-day execution
+retention, with leased retry after failures and continuation when a bounded page
+remains. It removes expired approval bodies, redacts completed/cancelled frozen
+content and expires completed operation receipts after 14 days. Unfinished R2
+recovery jobs and their necessary receipts are exempt; security tombstones are
+never treated as expiring logs. Existing hourly cron runs independent cleanup
+jobs so an upload cleanup failure does not suppress identity maintenance.
+
+External notification delivery is NOT complete: Cloudflare read-only inspection
+of loonxy.com Email Sending subdomains returned HTTP 401 Unauthorized (code 2036)
+with the current connection. No DNS, domain sending configuration or live mail
+was changed. Neither Worker currently has a send_email binding. Android push
+provisioning and verified email setup are still required. The Cloudflare Email
+Service skill and current Workers send API documentation were consulted; no
+unverified sender or fake delivery success is used. Account deletion, independent
+restore revocation checkpoints, 30-day self-backup lifecycle and final native /
+Web workspace/UI integration remain release blockers.

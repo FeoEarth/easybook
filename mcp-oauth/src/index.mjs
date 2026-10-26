@@ -25,6 +25,7 @@ const oauthHandler = {
   const native=await nativeAccountRoutes(request,env);if(native)return native;
   if(url.pathname.startsWith('/account/passkeys')){const {passkeyRoutes}=await import('./passkeys.mjs');return passkeyRoutes(request,env);}
   if(modernWorkspaces(env)&&url.pathname.startsWith('/account/operations/')){const {operationApprovalRoutes}=await import('./operation-approvals.mjs');const approval=await operationApprovalRoutes(request,env);if(approval)return approval;}
+  if(modernWorkspaces(env)&&['/account/notifications','/account/activity','/account/notification-preferences'].includes(url.pathname)){const {accountHistoryRoutes}=await import('./account-history.mjs');return accountHistoryRoutes(request,env);}
   const account=await accountRoutes(request,env);if(account)return account;
   if(url.pathname==='/oauth/authorize')return accountAuthorize(request,env);
   if(url.pathname.startsWith('/uploads/'))return uploadHTTP(request,env);
