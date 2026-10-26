@@ -11,7 +11,7 @@ const baseline=(await request('/deployments')).deployments[0];
 await upload(503);
 const failed=(await request('/deployments')).deployments[0];
 assert.notEqual(failed.versions[0].version_id,baseline.versions[0].version_id);
-writeFileSync('release-state.json',JSON.stringify({worker,baseline,candidate:failed.versions[0].version_id,promotionStarted:true,sha:process.env.GITHUB_SHA||'probe'}));
+writeFileSync('rollback-probe-state.json',JSON.stringify({worker,baseline,candidate:failed.versions[0].version_id,promotionStarted:true,sha:process.env.GITHUB_SHA||'probe'}));
 execFileSync(process.execPath,['scripts/cloudflare-release.mjs','rollback','--probe'],{stdio:'inherit'});
 assert.deepEqual((await request('/deployments')).deployments[0].versions,baseline.versions);
 console.log('PASS: exact automatic rollback code restored synthetic Worker baseline through Cloudflare API; production and storage untouched');

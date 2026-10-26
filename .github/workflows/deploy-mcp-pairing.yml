@@ -2,7 +2,7 @@ name: Deploy MCP OAuth Worker
 on:
   workflow_dispatch:
   push:
-    branches: [fix/production-runtime]
+    branches: [main]
     paths:
       - 'mcp-oauth/**'
       - 'worker/mcp.mjs'

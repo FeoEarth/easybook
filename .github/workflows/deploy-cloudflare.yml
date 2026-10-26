@@ -2,7 +2,7 @@ name: Deploy Cloudflare Worker
 on:
   workflow_dispatch:
   push:
-    branches: [fix/production-runtime]
+    branches: [main]
     paths:
       - 'worker/**'
       - 'editor/**'
@@ -73,6 +73,7 @@ jobs:
           name: cloudflare-release-${{ github.run_id }}
           path: |
             release-state.json
+            rollback-probe-state.json
             custom-domain-baseline.json
             web-release-smoke.png
           if-no-files-found: ignore

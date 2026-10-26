@@ -28,7 +28,7 @@ The first release ran Wrangler 4.152.0 at 19:56 UTC, did not regenerate the edit
 
 There was also a main Worker deployment by `deploy-mcp-pairing.yml` at 20:00:48 UTC, version `8826bbc8-d119-403e-8aa9-321fc31e161f`, between the rollback and the second main deployment. Independent workflows could overwrite the same Worker. The OAuth workflow must no longer upload the main Worker.
 
-The historical 403 is a separate observation: it is not proof of a Worker crash and its exact edge/security cause is not established here. Workers telemetry recorded 200/304 responses from the failed versions and no matching Worker exceptions in the incident window. Successful HTTP delivery did not imply that the application booted.
+The historical 403 is a separate observation, not proof of a Worker crash. A current runner request against the unchanged stable production version independently reproduced HTTP 403 with `cf-mitigated: challenge` and title `Just a moment...`. This establishes a current Cloudflare security challenge; the exact historical rule/ray was not recovered. Workers telemetry recorded 200/304 responses from the failed versions and no matching Worker exceptions in the incident window. Successful HTTP delivery did not imply that the application booted.
 
 ## Production baseline and configuration
 
@@ -44,9 +44,16 @@ The custom domain was enabled for `easybook-sync`. OAuth retained its DB, OAUTH_
 - Compare generated modules to committed source; parse every inline application script and the editor bundle before any upload.
 - Pin Wrangler 4.152.0. Upload versions without sending production traffic, then test the exact version URL with real Chromium.
 - Exercise list interaction and editor creation; check health and cross-Worker HMAC using a synthetic unknown challenge. This verification never reads notes or creates a real workspace grant.
+- Record the custom-domain pre-release HTTP baseline. If CI is already challenged by Cloudflare before deployment and remains identically challenged afterward, report that check as BLOCKED, never as a browser verification pass. The mandatory canonical Worker browser checks and API/HMAC checks still run, and the custom-domain-to-Worker mapping is verified through the Cloudflare API. Do not weaken zone security to make CI pass.
 - Record the current production version vector before upload. Promote only if the production baseline has not changed. After promotion verify both public origins. On failure/cancellation, restore the exact recorded version vector and verify it, unless a different deployment has intervened.
 - Exercise the same rollback implementation on a separate binding-free synthetic Worker before release. Rollback never runs SQL, migrations, or R2 operations.
 - Keep only one deployment workflow per Worker, with separate concurrency groups and release-state artifacts.
+
+## Confirmed pairing root cause
+
+The HTML CSP declared `connect-src 'self' https://easybook-sync.1902521952.workers.dev` but omitted the MCP OAuth origin. Real Chromium logged: connecting to the OAuth Worker's `/pairing/complete` violates that connect-src directive. The main Worker returned attest HTTP 200, then the browser blocked the next request locally, so no completion reached the OAuth Worker. This explains the generic network/CORS message even when attestation and signing were working. CORS-only patches could not fix it.
+
+The repair adds only `https://easybook-mcp-oauth.1902521952.workers.dev` to connect-src. No wildcard, untrusted Origin, workspace-key exposure, or authentication bypass is introduced. A static assertion guards this exact CSP dependency.
 
 ## Pairing corrections
 
@@ -59,3 +66,12 @@ Grant creation, active-workspace selection, and one-time challenge consumption a
 A real ChatGPT OAuth token is not available to this execution environment. Do not describe an authenticated ChatGPT reconnect or real-client tools call as verified merely because handler tests pass. Use only authorization-status tools for final user-client verification; never read real notes as a smoke test.
 
 Do not claim a browser pairing attempt succeeded unless the UI and synthetic grant state both confirm completion. Retain failed attempts as evidence and distinguish network/environment limitations from confirmed server defects.
+
+## Verified release evidence
+
+- GitHub run 40251721077 passed generated-source checks, real Chromium candidate boot and editor interaction, live HMAC verification, custom-domain baseline classification, and a real Cloudflare rollback drill.
+- Run 40251520493 captured the decisive CSP failure after attest HTTP 200 and before any OAuth completion request.
+- The new OAuth completion batch was exercised against production D1 using a synthetic GitHub identifier and synthetic client. A scoped query confirmed one consumed challenge and exactly one read-only grant. No user notes were accessed.
+- Temporary challenges and grants are scoped to `synthetic-release-probe` and task-generated client IDs; clean up only those exact rows after verification.
+
+Full browser pairing passed in run 40252311963: the exact fixed source HTML was served in a fresh synthetic browser context under the canonical production origin, using the unchanged production editor bundle and authenticated attestation endpoint. Chromium observed attest 200, completion 200, and the pairing dialog closed. An independent scoped D1 check confirmed the one-time challenge was consumed and a single read-only grant existed. The new atomic OAuth batch had additionally been exercised through candidate version 1149ffed-ddc7-4c24-b502-88f3491fdaf0 with a separate synthetic challenge.
