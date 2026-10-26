@@ -25,6 +25,7 @@ final class NativeAccount {
     static final String SYNC_API="https://easybook-sync.1902521952.workers.dev";
     private static final String SESSION="account-session-v1",PENDING="account-login-pending-v1",LOGOUT="account-logout-pending-v1";
     private final Activity activity;private final NoteRepository db;private final ExecutorService io;
+    private static final ExecutorService revocations=java.util.concurrent.Executors.newSingleThreadExecutor();
     private volatile boolean starting;
     private volatile String feedback="";
     private void changed(){if(activity instanceof MainActivity)((MainActivity)activity).accountChanged();}
@@ -32,7 +33,7 @@ final class NativeAccount {
     private void finishOperation(){starting=false;cancellation=null;changed();}
     private volatile CancellationSignal cancellation;
     static final class HttpFailure extends IOException {final int status;final boolean challenge;final String code;HttpFailure(int value,boolean challenged,String code){super("Account HTTP "+value);status=value;challenge=challenged;this.code=code;}}
-    NativeAccount(Activity activity,NoteRepository db,ExecutorService io){this.activity=activity;this.db=db;this.io=io;io.execute(this::retryLogout);}
+    NativeAccount(Activity activity,NoteRepository db,ExecutorService io){this.activity=activity;this.db=db;this.io=io;revocations.execute(this::retryLogout);}
     private JSONObject read(String name)throws Exception{String value=db.setting(name,"");return value.isEmpty()?null:new JSONObject(db.vault.open(value,name));}
     static String token(NoteRepository db)throws Exception{String raw=db.setting(SESSION,"");if(raw.isEmpty())throw new CredentialVault.KeyUnavailable();JSONObject s=new JSONObject(db.vault.open(raw,SESSION));if(s.getLong("expires")<=System.currentTimeMillis())throw new CredentialVault.KeyUnavailable();return s.getString("token");}
     private void write(String name,JSONObject value)throws Exception{String sealed=db.vault.seal(value.toString(),name);if(!value.toString().equals(db.vault.open(sealed,name)))throw new SecurityException("Account persistence verification failed");db.setSetting(name,sealed);}
@@ -113,12 +114,16 @@ final class NativeAccount {
     }
     JSONObject devices()throws Exception{JSONObject saved=read(SESSION);if(saved==null)throw new CredentialVault.KeyUnavailable();try{return request("/account/native/sessions",null,saved.getString("token"));}catch(HttpFailure error){if(error.status==401)db.setSetting(SESSION,"");throw error;}}
     JSONObject revokeDevice(String id)throws Exception{if(id==null||!id.matches("[a-f0-9-]{36}"))throw new SecurityException("Invalid device");JSONObject saved=read(SESSION);if(saved==null)throw new CredentialVault.KeyUnavailable();JSONObject result=request("/account/native/sessions/revoke",new JSONObject().put("id",id),saved.getString("token"));if(result.optBoolean("current"))db.setSetting(SESSION,"");return result;}
-    private void retryLogout(){try{JSONObject queued=read(LOGOUT);if(queued==null)return;JSONArray sessions=queued.getJSONArray("sessions");while(sessions.length()>0){try{request("/account/native/logout",new JSONObject(),sessions.getJSONObject(0).getString("token"));}catch(HttpFailure e){if(e.status!=401)throw e;}sessions.remove(0);if(sessions.length()==0)db.setSetting(LOGOUT,"");else write(LOGOUT,queued);}}catch(Exception ignored){}}
+    private void retryLogout(){try{for(;;){
+        String token;synchronized(db){JSONObject queued=read(LOGOUT);if(queued==null||queued.getJSONArray("sessions").length()==0)return;token=queued.getJSONArray("sessions").getJSONObject(0).getString("token");}
+        try{request("/account/native/logout",new JSONObject(),token);}catch(HttpFailure e){if(e.status!=401)throw e;}
+        synchronized(db){JSONObject queued=read(LOGOUT);if(queued==null)continue;JSONArray sessions=queued.getJSONArray("sessions");for(int i=sessions.length()-1;i>=0;i--)if(same(token,sessions.getJSONObject(i).getString("token")))sessions.remove(i);if(sessions.length()==0)db.setSetting(LOGOUT,"");else write(LOGOUT,queued);}
+    }}catch(Exception ignored){}}
     void signOut(){cancel();io.execute(()->{try{
-        db.setSetting(PENDING,"");JSONObject value=read(SESSION);
-        if(value!=null){JSONObject queued=read(LOGOUT);if(queued==null)queued=new JSONObject().put("sessions",new JSONArray());queued.getJSONArray("sessions").put(value);write(LOGOUT,queued);}
-        db.setSetting(SESSION,"");finishOperation();message("此设备账户已退出，正在撤销服务器会话…");retryLogout();
-        message(read(LOGOUT)==null?"此设备账户已退出":"此设备已退出，联网后将重试撤销服务器会话");
+        synchronized(db){db.setSetting(PENDING,"");JSONObject value=read(SESSION);
+            if(value!=null){JSONObject queued=read(LOGOUT);if(queued==null)queued=new JSONObject().put("sessions",new JSONArray());queued.getJSONArray("sessions").put(value);write(LOGOUT,queued);}
+            db.setSetting(SESSION,"");}
+        finishOperation();message("此设备账户已退出；服务器会话撤销正在后台重试");revocations.execute(this::retryLogout);
     }catch(Exception e){finishOperation();message("本机会话清理未完成，请重试");}});}
     private static boolean same(String a,String b){return MessageDigest.isEqual(a.getBytes(StandardCharsets.UTF_8),b.getBytes(StandardCharsets.UTF_8));}
     private void browse(String url){activity.runOnUiThread(()->{if(activity.isDestroyed())return;try{activity.startActivity(new Intent(Intent.ACTION_VIEW,Uri.parse(url)).addCategory(Intent.CATEGORY_BROWSABLE));}catch(ActivityNotFoundException e){message("未找到可用的系统浏览器");}});}
