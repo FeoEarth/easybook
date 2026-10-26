@@ -97,6 +97,8 @@ const afterRich=await get(ctx,rn.id);assert.deepEqual(afterRich.document.doc.con
 const largeDoc={schemaVersion:1,doc:{type:'doc',content:Array.from({length:90},(_,i)=>({type:'paragraph',content:[{type:'text',text:'段落'+i+' '+('x'.repeat(1000))}]}))}};
 const large=await call('notes_create',{title:'Large fixture',document:largeDoc});
 const segment=await call('notes_get',{id:large.id});assert.ok(segment.next_offset>0);const segment2=await call('notes_get',{id:large.id,offset:segment.next_offset});assert.notDeepEqual(segment.document,segment2.document);
+const bodyPage=await call('notes_list',{limit:1,format:'text'});assert.equal(typeof bodyPage.notes[0].text,'string');
+const activity=await call('workspace_get_recent_activity',{limit:2});assert.ok(activity.changes[0].cursor>activity.changes[1].cursor);
 const firstPage=await call('notes_list',{limit:1});assert.ok(firstPage.next_cursor);const nextPage=await call('notes_list',{limit:1,cursor:firstPage.next_cursor});assert.notEqual(firstPage.notes[0].id,nextPage.notes[0].id);
 const badResource=await protocol('resources/read',{uri:'easybook://notes/'+id+'?offset=-1'});assert.ok(badResource.error);
 

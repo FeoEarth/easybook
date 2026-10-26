@@ -23,7 +23,8 @@ export async function list(ctx,a={},search=false){
  const asc=a.sort==='updated_asc';if(a.cursor){let c;try{c=JSON.parse(atob(a.cursor))}catch{fail('INVALID_ARGUMENT','Invalid note cursor')}if(!Array.isArray(c)||!Number.isSafeInteger(c[0])||typeof c[1]!=='string'||c[2]!==JSON.stringify([a.folder_id??null,a.deleted||false,a.query??null,asc]))fail('INVALID_ARGUMENT','Cursor does not match query');clauses.push(`(updated ${asc?'>':'<'} ? OR (updated=? AND id ${asc?'>':'<'} ?))`);params.push(c[0],c[0],c[1])}
  const limit=a.limit||20;const rows=(await ctx.env.DB.prepare(`SELECT ${meta} FROM notes_json WHERE ${clauses.join(' AND ')} ORDER BY updated ${asc?'ASC':'DESC'},id ${asc?'ASC':'DESC'} LIMIT ?`).bind(...params,limit+1).all()).results;
  const more=rows.length>limit;rows.length=Math.min(rows.length,limit);const last=rows.at(-1);
- return {notes:rows.map(n=>summary(n,a.fields)),next_cursor:more?btoa(JSON.stringify([last.updated,last.id,JSON.stringify([a.folder_id??null,a.deleted||false,a.query??null,asc])])):null};
+ const output=[];if(a.format&&a.format!=='metadata'&&limit>5)fail('INVALID_ARGUMENT','Use limit<=5 for list body output');for(const n of rows)output.push(a.format&&a.format!=='metadata'?present(await get(ctx,n.id,!!a.deleted),a):summary(n,a.fields));
+ return {notes:output,next_cursor:more?btoa(JSON.stringify([last.updated,last.id,JSON.stringify([a.folder_id??null,a.deleted||false,a.query??null,asc])])):null};
 }
 export async function noteTool(ctx,name,a){
  if(name==='notes_list'||name==='notes_search')return list(ctx,a,name==='notes_search');
