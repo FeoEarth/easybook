@@ -9,7 +9,7 @@ try{
  const page=await context.newPage();const errors=[];
  page.on('pageerror',e=>errors.push(e.message));
  page.on('response',r=>{if(r.url()===origin+'/editor.js'&&r.status()!==200)errors.push('editor HTTP '+r.status())});
- const response=await page.goto(origin+'/',{waitUntil:'networkidle',timeout:45000});
+ const response=await page.goto(origin+'/',{waitUntil:'domcontentloaded',timeout:45000});
  assert.equal(response.status(),200);
  await page.getByRole('heading',{name:'全部备忘录',exact:true}).waitFor();
  await page.getByRole('button',{name:'列表更多操作',exact:true}).click();
