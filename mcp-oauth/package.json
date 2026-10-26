@@ -7,9 +7,9 @@
     "check": "node --check src/index.mjs"
   },
   "dependencies": {
-    "@cloudflare/workers-oauth-provider": "^1.2.0"
+    "@cloudflare/workers-oauth-provider": "1.2.4"
   },
   "devDependencies": {
-    "wrangler": "^4.105.0"
+    "wrangler": "4.152.0"
   }
 }
