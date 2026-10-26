@@ -20,8 +20,9 @@ jobs:
         run: node -e "fetch('https://easybook.loonxy.com/').then(async r=>console.log({status:r.status,mitigated:r.headers.get('cf-mitigated'),title:(await r.text()).match(/<title>(.*?)<\\/title>/i)?.[1]}))"
       - run: node scripts/browser-pairing-smoke.mjs
         env:
+          TEST_SOURCE_HTML: 'true'
           OAUTH_CANDIDATE_ORIGIN: https://1149ffed-easybook-mcp-oauth.1902521952.workers.dev
-          SYNTHETIC_PAIRING_CHALLENGE: b5hlwNVl0vlKvJCRdE1u0B907KHmNZDLrA0OWxBs1DU
+          SYNTHETIC_PAIRING_CHALLENGE: dOBTKuyLGM66visN5m5PZuJySrceuOhc_-fsnOGnj4c
       - uses: actions/upload-artifact@v4
         if: always()
         with:

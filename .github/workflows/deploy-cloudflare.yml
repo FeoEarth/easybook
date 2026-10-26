@@ -43,6 +43,8 @@ jobs:
         run: npx --no-install wrangler deploy --config worker/wrangler.jsonc --dry-run --outdir .wrangler-preflight
       - name: Install browser for release smoke test
         run: npx --no-install playwright install chromium
+      - name: Record custom-domain baseline without weakening zone security
+        run: node scripts/custom-domain-release-check.mjs record
       - name: Verify real rollback on binding-free probe Worker
         run: node scripts/rollback-probe.mjs
       - name: Record baseline and upload candidate without production traffic
@@ -59,8 +61,8 @@ jobs:
         if: github.ref == 'refs/heads/main'
         run: |
           node scripts/web-release-smoke.mjs https://easybook-sync.1902521952.workers.dev
-          node scripts/web-release-smoke.mjs https://easybook.loonxy.com
-          node scripts/live-pairing-probe.mjs https://easybook.loonxy.com
+          node scripts/live-pairing-probe.mjs https://easybook-sync.1902521952.workers.dev
+          node scripts/custom-domain-release-check.mjs verify
       - name: Roll back failed or cancelled promotion
         if: ${{ (failure() || cancelled()) && github.ref == 'refs/heads/main' }}
         run: node scripts/cloudflare-release.mjs rollback
@@ -71,6 +73,7 @@ jobs:
           name: cloudflare-release-${{ github.run_id }}
           path: |
             release-state.json
+            custom-domain-baseline.json
             web-release-smoke.png
           if-no-files-found: ignore
           retention-days: 14

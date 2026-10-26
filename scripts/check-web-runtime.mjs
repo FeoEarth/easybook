@@ -13,3 +13,5 @@ for(const match of html.matchAll(/<script\b([^>]*)>([\s\S]*?)<\/script\s*>/gi)){
 assert.ok(count>0,'No application script found');
 new Script(editor,{filename:'editor.js'});
 console.log(`Web generated assets and ${count} inline script syntax verified`);
+
+assert.match(html,/connect-src[^;]*https:\/\/easybook-mcp-oauth\.1902521952\.workers\.dev(?:[ ;])/,'Pairing OAuth endpoint must be explicitly allowed by page CSP');

@@ -1,5 +1,5 @@
 import {execFileSync} from 'node:child_process';
-import {readFileSync,writeFileSync,appendFileSync} from 'node:fs';
+import {readFileSync,writeFileSync,appendFileSync,existsSync} from 'node:fs';
 const mode=process.argv[2],oauth=process.argv.includes('--oauth');
 const worker=process.argv.includes('--probe')?'easybook-release-rollback-probe':oauth?'easybook-mcp-oauth':'easybook-sync';
 const config=oauth?'mcp-oauth/wrangler.jsonc':'worker/wrangler.jsonc';
@@ -11,6 +11,10 @@ const current=async()=>{const d=await api('/deployments');if(!d.deployments?.len
 const same=(a,b)=>JSON.stringify([...a].sort((x,y)=>x.version_id.localeCompare(y.version_id)))===JSON.stringify([...b].sort((x,y)=>x.version_id.localeCompare(y.version_id)));
 function summary(text){console.log(text);if(process.env.GITHUB_STEP_SUMMARY)appendFileSync(process.env.GITHUB_STEP_SUMMARY,text+'\n')}
 if(mode==='stage'){
+ if(!oauth){
+  const r=await fetch(`https://api.cloudflare.com/client/v4/accounts/${account}/workers/domains`,{headers:{Authorization:'Bearer '+token}});const d=await r.json();
+  if(!r.ok||!d.success||!d.result.some(x=>x.hostname==='easybook.loonxy.com'&&x.service===worker&&x.enabled))throw Error('Custom domain no longer points to expected Worker');
+ }
  const baseline=await current();
  const state={worker,baseline,candidate:null,sha:process.env.GITHUB_SHA||'local'};
  writeFileSync('release-state.json',JSON.stringify(state,null,2));
@@ -26,6 +30,7 @@ if(mode==='stage'){
  if(process.env.GITHUB_OUTPUT)appendFileSync(process.env.GITHUB_OUTPUT,`url=${url}\nversion=${id}\n`);
  summary(`Candidate ${id}; baseline deployment ${baseline.id}; no production traffic changed.`);
 }else if(mode==='promote'||mode==='rollback'){
+ if(mode==='rollback'&&!existsSync('release-state.json')){summary('No release state exists; no promotion was attempted.');process.exit(0)}
  const state=JSON.parse(readFileSync('release-state.json','utf8'));if(state.worker!==worker||!state.candidate)throw Error('Invalid release state');
  const active=await current();
  if(mode==='promote'){
