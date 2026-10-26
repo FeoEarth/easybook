@@ -1,0 +1,28 @@
+import assert from 'node:assert/strict';
+import {env,sql,a,b,id} from './core-workspace-release-test.mjs';
+import {nativeManagementRoutes} from '../mcp-oauth/src/native-management.mjs';
+import {prepareAccountOperation} from '../worker/account-operations.mjs';
+import {workspacePolicy} from '../worker/oauth-workspace-policy.mjs';
+const origin='https://easybook.loonxy.com';
+async function call(input,who=a,extra={}){return nativeManagementRoutes(new Request(origin+'/account/native/manage',{method:'POST',headers:{...who.headers,'Content-Type':'application/json','X-Easybook-Native':'1',...extra},body:JSON.stringify(input)}),env)}
+assert.equal((await call({action:'history'})).status,200);
+assert.equal((await call({action:'history'},a,{Origin:origin})).status,403,'browser Origin cannot invoke native management');
+assert.equal((await call({action:'history',category:'invalid'})).status,400);
+const policy=crypto.randomUUID(),scope=['notes.read','notes.write'];
+sql.prepare('INSERT INTO oauth_grants(id,account_id,client_id,workspace_id,scopes,created_at) VALUES(?,?,?,?,?,?)').run(policy,a.id,'synthetic-client',id,JSON.stringify(scope),Date.now());
+sql.prepare('INSERT INTO oauth_grant_workspaces(policy_id,workspace_id,scopes,created_at) VALUES(?,?,?,?)').run(policy,id,JSON.stringify(scope),Date.now());
+const target=sql.prepare('SELECT id,version FROM notes_json WHERE workspace=?').get(id);
+const op=await prepareAccountOperation(env,{policyId:policy,accountId:a.id,clientId:'synthetic-client',workspaceId:id,tokenScopes:scope},'notes_batch_update',{items:[target],metadata:{title:'Native approval fixture'}});
+assert.equal((await call({action:'approve',id:op.approval_id},b)).status,409,'other account cannot approve');
+assert.equal((await call({action:'approve',id:op.approval_id})).status,200);
+assert.equal((await call({action:'approve',id:op.approval_id})).status,200,'receipt retry succeeds without reapplying');
+assert.equal(sql.prepare('SELECT version FROM notes_json WHERE id=?').get(target.id).version,target.version+1);
+assert.equal((await (await call({action:'approvals'},b)).json()).approvals.length,0);
+assert.equal((await call({action:'revoke-workspace',id:policy,workspace:id},b)).status,404);
+assert.equal((await call({action:'revoke-workspace',id:policy,workspace:id})).status,200);
+assert.equal((await workspacePolicy(env,policy)).workspaces.length,0);
+assert.equal(sql.prepare('SELECT revoked_at FROM oauth_grants WHERE id=?').get(policy).revoked_at,null,'child revocation preserves parent');
+assert.equal((await call({action:'revoke',id:policy},b)).status,404);
+assert.equal((await call({action:'revoke',id:policy})).status,200);
+assert.equal(await workspacePolicy(env,policy),null);
+console.log('PASS native management: native-only boundary, account isolation, frozen server execution, receipt retry, history filters, per-workspace and parent revocation.');

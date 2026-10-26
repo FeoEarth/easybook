@@ -81,14 +81,17 @@ public final class NoteRepository extends SQLiteOpenHelper {
             try(Cursor c=db.rawQuery("SELECT local_id FROM workspace_credentials WHERE key_hash=?",new String[]{hash(credential)})){if(c.moveToFirst()&&!ref.equals(c.getString(0)))throw new SecurityException("Credential identity changed");}
             ContentValues entry=new ContentValues();entry.put("key",ref);entry.put("credential",encrypted);if(db.insertWithOnConflict("spaces",null,entry,SQLiteDatabase.CONFLICT_REPLACE)==-1)throw new SQLiteException("Credential persistence failed");
             ContentValues binding=new ContentValues();binding.put("key_hash",hash(credential));binding.put("local_id",ref);if(db.insertWithOnConflict("workspace_credentials",null,binding,SQLiteDatabase.CONFLICT_REPLACE)==-1)throw new SQLiteException("Credential binding failed");
-            bindWorkspaceIdentity("space:"+ref,identity);setSetting("active",ref);setSetting("account-workspace:space:"+ref,"");db.setTransactionSuccessful();
+            bindWorkspaceIdentity("space:"+ref,identity);setSetting("active",ref);setSetting("account-workspace:space:"+ref,"");setSetting("account-placeholder:space:"+ref,"");db.setTransactionSuccessful();
         }finally{db.endTransaction();}
     }
     synchronized void activateAccountWorkspace(JSONObject identity)throws Exception{
-        String id=identity.getString("id"),ref=null;if(!id.matches("[a-f0-9]{64}"))throw new SecurityException("Invalid workspace");
-        try(Cursor c=getReadableDatabase().rawQuery("SELECT local_id FROM workspace_identity WHERE workspace_id=?",new String[]{id})){if(c.moveToFirst())ref=c.getString(0);}
-        if(ref==null){String placeholder=newKey();pairWorkspace(placeholder,identity,false);ref=setting("active","");}else setSetting("active",ref);
-        setSetting("account-workspace:space:"+ref,id);
+        String id=identity.getString("id"),ref=null;if(!id.matches("[a-f0-9]{64}")||!Arrays.asList("personal","shared").contains(identity.optString("mode")))throw new SecurityException("Invalid workspace");
+        SQLiteDatabase db=getWritableDatabase();db.beginTransaction();try{
+            try(Cursor c=db.rawQuery("SELECT local_id FROM workspace_identity WHERE workspace_id=?",new String[]{id})){if(c.moveToFirst())ref=c.getString(0);}
+            if(ref==null){String placeholder=newKey();pairWorkspace(placeholder,new JSONObject(identity.toString()).put("mode","personal"),false);ref=setting("active","");setSetting("account-placeholder:space:"+ref,"1");}else setSetting("active",ref);
+            ContentValues metadata=new ContentValues();metadata.put("mode",identity.getString("mode"));metadata.put("name",identity.getString("name"));db.update("workspace_identity",metadata,"local_id=?",new String[]{ref});
+            setSetting("account-workspace:space:"+ref,id);db.setTransactionSuccessful();
+        }finally{db.endTransaction();}
     }
     /** Resumable, atomic upgrade. Encrypted checkpoint permits native-only rollback;
      * no record payload or revision is modified. Original keys never enter reports. */
@@ -154,6 +157,7 @@ public final class NoteRepository extends SQLiteOpenHelper {
         matches.sort((a,b)->Long.compare(b.optLong("updated"),a.optLong("updated")));JSONArray out=new JSONArray();for(JSONObject n:matches)out.put(n);return out;
     }
 }
+
 
 
 

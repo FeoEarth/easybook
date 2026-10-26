@@ -3,7 +3,7 @@ import {checkpointEnabled,requireRestoreAccess,sessionAllowed,reserveRevocations
 export async function deletionPreview(env,accountId){
  const {results}=await env.DB.prepare('SELECT id,name,mode,version FROM workspaces WHERE manager_account_id=? AND deleted_at IS NULL ORDER BY created_at,id LIMIT 101').bind(accountId).all();
  if(results.length>100)fail('ACCOUNT_TOO_LARGE','Contact recovery support to review more than 100 managed workspaces');
- return {personal:results.filter(w=>w.mode==='personal'),requires_transfer:results.filter(w=>w.mode==='shared')};
+ const shared=(await env.DB.prepare("SELECT w.id,w.name,w.mode,w.version,m.role FROM workspace_members m JOIN workspaces w ON w.id=m.workspace_id WHERE m.account_id=? AND w.mode='shared' AND w.deleted_at IS NULL ORDER BY w.id LIMIT 101").bind(accountId).all()).results;if(shared.length>100)fail('ACCOUNT_TOO_LARGE','Review shared workspace memberships first');return {personal:results.filter(w=>w.mode==='personal'),requires_transfer:results.filter(w=>w.mode==='shared'),shared};
 }
 export async function deleteAccount(env,s,choices){
  if(!checkpointEnabled(env))fail('CHECKPOINT_REQUIRED','Independent revocation protection is required before account deletion');await requireRestoreAccess(env);
@@ -71,3 +71,4 @@ export async function deleteAccount(env,s,choices){
  await finishRevocations(env,revocation,'committed');await finishWorkspaceFloors(env,floors,'committed');
  return {deleted:true,retained_workspaces:choices.filter(c=>c.action==='keep').map(c=>c.id),deleted_workspaces:choices.filter(c=>c.action==='delete').map(c=>c.id),physical_cleanup:'durable_jobs'};
 }
+

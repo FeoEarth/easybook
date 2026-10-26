@@ -1,3 +1,7 @@
+import {registerHooks} from 'node:module';
+const hook=registerHooks({resolve(name,context,next){if(name==='cloudflare:workers')return {url:'data:text/javascript,export class WorkerEntrypoint {}',shortCircuit:true};return next(name,context)}});
+globalThis.Cloudflare={compatibilityFlags:{global_fetch_strictly_public:true}};
+const {default:identityWorker}=await import('../mcp-oauth/src/index.mjs');hook.deregister();
 import assert from 'node:assert/strict';
 import {DatabaseSync} from 'node:sqlite';
 import {readFileSync} from 'node:fs';
@@ -22,6 +26,10 @@ async function start(){const r=await call('/account/native/start',{method:'POST'
 async function consent(flow,origin=primary){const request=new Request(origin+'/account/handoff',{headers:{Cookie:cookie}}),s=await session(request,env);try{return await nativeAccountRoutes(new Request(origin+'/account/handoff',{method:'POST',headers:{Origin:origin,Cookie:cookie,'Content-Type':'application/x-www-form-urlencoded'},body:new URLSearchParams({flow,state,csrf:await csrf(request,s),decision:'allow'})}),env)}catch(e){if(e instanceof Response)return e;throw e}}
 assert.equal((await call('/account/native/start',{method:'POST',body:{challenge:'bad',state}})).status,400);
 assert.equal((await call('/account/native/start',{method:'POST',body:{challenge:await s256(verifier),state},headers:{Origin:primary}})).status,403);
+const direct=await call('/account/native/start',{method:'POST',body:{challenge:await s256(verifier),state,provider:'github'}});const directURL=new URL((await direct.json()).authorization_url);assert.equal(directURL.pathname,'/account/login');assert.match(directURL.searchParams.get('return'),/^\/account\/handoff\?flow=[a-f0-9]{64}&state=[a-f0-9]{64}$/);
+const transport=await identityWorker.fetch(new Request(legacy+'/account/native/start',{method:'POST',headers:{'Content-Type':'application/json','X-Easybook-Native':'1'},body:JSON.stringify({challenge:await s256(verifier),state,provider:'github'})}),env,{});assert.equal(transport.status,200);assert.equal(new URL((await transport.json()).authorization_url).origin,primary);
+const nativeOriginDenied=await identityWorker.fetch(new Request(legacy+'/account/native/start',{method:'POST',headers:{Origin:primary,'Content-Type':'application/json','X-Easybook-Native':'1'},body:'{}'}),env,{});assert.equal(nativeOriginDenied.status,403);
+const cancelledFlow=await start();const cancelReq=new Request(primary+'/account/handoff',{headers:{Cookie:cookie}}),cancelSession=await session(cancelReq,env);const cancelled=await nativeAccountRoutes(new Request(primary+'/account/handoff',{method:'POST',headers:{Origin:primary,Cookie:cookie},body:new URLSearchParams({flow:cancelledFlow.flow,state,csrf:await csrf(cancelReq,cancelSession),decision:'deny'})}),env);const cancelledURL=new URL(cancelled.headers.get('Location'));assert.equal(cancelledURL.protocol,'easybook:');assert.equal(cancelledURL.searchParams.get('error'),'access_denied');assert.equal(sql.prepare('SELECT 1 FROM account_login_handoffs WHERE id=?').get(cancelledFlow.flow),undefined);
 const pending=await start();assert.ok(pending.authorization_url.startsWith(primary+'/account/handoff?'));
 assert.equal((await call('/account/handoff?flow='+pending.flow+'&state='+state)).status,303,'must authenticate before approving');
 const consentPage=await call('/account/handoff?flow='+pending.flow+'&state='+state,{headers:{Cookie:cookie}});assert.equal(consentPage.status,200);assert.match(await consentPage.text(),/确认继续/);
@@ -68,3 +76,4 @@ let forwarded=false;const proxyEnv={...env,IDENTITY_SERVICE:{async fetch(request
 const proxy=await worker.fetch(new Request(primary+'/account'),proxyEnv);assert.equal(await proxy.text(),'identity-service');assert.ok(forwarded);
 assert.equal((await worker.fetch(new Request(primary+'/account'),env)).status,503,'missing service fails closed');
 console.log('PASS native identity: PKCE/state/one-use handoff; browser CSRF and recovery-cookie binding; fixed callbacks; current session/revocation checks; separate device sessions; inherited auth freshness; primary RP; legacy re-enrollment boundary; service-binding proxy.');
+

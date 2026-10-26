@@ -19,6 +19,7 @@ if(process.argv[2]==='record'){
  }else{
   if(!healthy(result))throw Error('Custom-domain behavior regressed: '+JSON.stringify(result));
   execFileSync(process.execPath,['scripts/web-release-smoke.mjs',origin],{stdio:'inherit'});
-  execFileSync(process.execPath,['scripts/live-pairing-probe.mjs',origin],{stdio:'inherit'});
+  const identity=JSON.parse(readFileSync('release-state.json','utf8')).identityV2;execFileSync(process.execPath,[identity?'scripts/live-core-workspace-probe.mjs':'scripts/live-pairing-probe.mjs',origin],{stdio:'inherit'});
  }
 }
+

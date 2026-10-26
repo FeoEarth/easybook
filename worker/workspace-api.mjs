@@ -1,10 +1,11 @@
+import {deleteWorkspace} from './workspace-delete.mjs';
 import {nativeSession} from '../mcp-oauth/src/native-sessions.mjs';
 import {session,csrf,rateLimit,readCookie,ACCOUNT_COOKIE} from '../mcp-oauth/src/accounts.mjs';
 import {boundedJSON,object} from './mcp-common.mjs';
 import {
  WorkspaceError,workspaceAccess,createWorkspace,resolveWorkspaceKey,listWorkspaces,
  rotateWorkspaceKey,associateWorkspace,renameWorkspace,convertToShared,
- convertToPersonal,setWorkspaceMember,transferWorkspaceManager
+ convertToPersonal,setWorkspaceMember,transferWorkspaceManager,listWorkspaceMembers,leaveWorkspace
 } from './workspace-identity.mjs';
 
 const reply=(body,status=200)=>Response.json(body,{status,headers:{'Cache-Control':'no-store','Referrer-Policy':'no-referrer','X-Content-Type-Options':'nosniff'}});
@@ -61,7 +62,7 @@ export async function workspaceAPI(request,env){
    }
    problem('method_not_allowed',405);
   }
-  const match=path.match(/^\/api\/workspaces\/([a-f0-9]{64})(?:\/(key|associate|mode|members|manager))?$/);
+  const match=path.match(/^\/api\/workspaces\/([a-f0-9]{64})(?:\/(key|associate|mode|members|manager|leave|delete))?$/);
   if(!match)problem('not_found',404);
   const [,id,action]=match;
   if(action==='associate'&&request.method==='POST'){
@@ -72,6 +73,7 @@ export async function workspaceAPI(request,env){
    return reply({workspace:await associateWorkspace(env,id,proof.principal,principal)});
   }
   const access=await workspaceAccess(env,id,principal);if(!access)problem('workspace_access_denied',403);
+  if(request.method==='GET'&&action==='members')return reply(await listWorkspaceMembers(env,id,principal));
   if(request.method==='GET'&&!action)return reply({workspace:access});
   if(request.method!=='POST')problem('method_not_allowed',405);
   const input=await inputBody(request);
@@ -79,6 +81,8 @@ export async function workspaceAPI(request,env){
   // Native/app UI must present these actions explicitly. Recent authentication
   // is checked here rather than trusting a frontend confirmation flag alone.
   if(principal.kind==='account'&&Date.now()-principal.authenticatedAt>300000)problem('reauthentication_required',403);
+  if(action==='delete')return reply(await deleteWorkspace(env,id,principal,input));
+  if(action==='leave'){if(input.confirm!==true)problem('confirmation_required',409);return reply(await leaveWorkspace(env,id,principal));}
   if(action==='key'){
    if(input.confirm!==true)problem('confirmation_required',409);
    return reply(await rotateWorkspaceKey(env,id,principal));
@@ -101,4 +105,5 @@ export async function workspaceAPI(request,env){
   return reply({error:'workspace_service_unavailable'},503);
  }
 }
+
 

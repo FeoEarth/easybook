@@ -44,6 +44,7 @@ public class MainActivity extends Activity {
         return "OPERATION_FAILED";
     }
     private static String operationErrorMessage(Exception e){
+        if(e instanceof NativeAccount.HttpFailure)return NativeAccount.failureMessage(e);
         switch(operationErrorCode(e)){
             case "STORAGE_FULL":return "本机存储空间不足，请释放空间后重试";
             case "STORAGE_BUSY":return "本机数据库暂时被占用，请稍后重试";
@@ -198,9 +199,10 @@ public class MainActivity extends Activity {
             case "workspace.action":{
                 if(NativeSync.isRunning(repository.activeSpace()))throw new IllegalStateException("Sync running");
                 String action=bounded(args,"action",16);JSONObject result=WorkspaceClient.perform(repository,action,args);
-                if(action.equals("select")||action.equals("create")||action.equals("rotate"))runOnUiThread(()->{if(!destroyed&&generation==documentGeneration)web.reload();});
+                if(action.equals("select")||action.equals("create")||action.equals("rotate")||action.equals("mode"))runOnUiThread(()->{if(!destroyed&&generation==documentGeneration)web.reload();});
                 return result;
             }
+            case "account.manage":return nativeAccount.manage(args);
             case "account.devices":return nativeAccount.devices();
             case "account.device.revoke":return nativeAccount.revokeDevice(bounded(args,"id",36));
             case "account.logout":nativeAccount.signOut();return new JSONObject().put("pending",true);
@@ -374,6 +376,7 @@ public class MainActivity extends Activity {
     @Override protected void onPause() { if(security!=null)security.dismissConnection(); if(nativeGlass!=null)nativeGlass.dismiss(true);web.evaluateJavascript("window.persistNow && window.persistNow()", null); super.onPause(); }
     @Override protected void onDestroy() { if(nativeAccount!=null)nativeAccount.cancel(); if(security!=null)security.dismissConnection(); if(connectivity!=null&&networkCallback!=null)connectivity.unregisterNetworkCallback(networkCallback); if(nativeGlass!=null){nativeGlass.clearFormatFrame();nativeGlass.dismiss(true);}ready=false; destroyed=true;if(WebViewFeature.isFeatureSupported(WebViewFeature.WEB_MESSAGE_LISTENER))WebViewCompat.removeWebMessageListener(web,"EasybookNative");web.destroy();io.shutdown();super.onDestroy(); }
 }
+
 
 
 

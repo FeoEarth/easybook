@@ -1,0 +1,15 @@
+import assert from 'node:assert/strict';
+import {readFileSync} from 'node:fs';
+import {env,sql,a,id} from './core-workspace-release-test.mjs';
+import {auditHistory} from '../worker/account-history.mjs';
+const migration=readFileSync('worker/migrations/0017-stage-two-audit.sql','utf8');sql.exec(migration);sql.exec(migration);
+const key=crypto.randomUUID(),policy=crypto.randomUUID(),now=Date.now();
+sql.prepare('INSERT INTO account_passkeys(id,account_id,public_key,counter,transports,device_type,backed_up,label,created_at) VALUES(?,?,?,0,?,?,0,?,?)').run(key,a.id,'sensitive-key-fixture','[]','singleDevice','private-label-fixture',now);
+sql.prepare('INSERT INTO oauth_grants(id,account_id,client_id,workspace_id,scopes,created_at) VALUES(?,?,?,?,?,?)').run(policy,a.id,'client-fixture',id,'["notes.read"]',now);
+sql.prepare('INSERT INTO oauth_grant_workspaces(policy_id,workspace_id,scopes,created_at) VALUES(?,?,?,?)').run(policy,id,'["notes.read"]',now);
+sql.prepare('UPDATE oauth_grant_workspaces SET revoked_at=? WHERE policy_id=?').run(now,policy);
+const history=await auditHistory(env,a.id,{category:'security'});
+for(const code of ['account.passkey_added','oauth.authorized','oauth.workspace_revoked'])assert.equal(history.events.filter(e=>e.code===code).length,1,code);
+assert.ok(history.events.every(e=>e.category==='security'));
+assert.ok(!JSON.stringify(history).includes('sensitive-key-fixture'));assert.ok(!JSON.stringify(history).includes('private-label-fixture'));
+console.log('PASS stage two audit: idempotent migration, Passkey/OAuth lifecycle events, category filtering, no credential or private-label content.');

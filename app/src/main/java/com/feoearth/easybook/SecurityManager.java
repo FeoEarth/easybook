@@ -39,6 +39,8 @@ public final class SecurityManager {
             case "device.theme":fields=fields("value");break;
             case "device.copy":fields=fields("value");break;
             case "device.share":fields=fields("title","text");break;
+            case "workspace.action":fields=fields("action","name","account","id","accountId","role","mode","confirm","firstAccountId","version");break;
+            case "account.manage":fields=fields("action","id","workspace","cursor","category","choices","confirm");break;
             case "account.device.revoke":fields=fields("id");break;
             case "account.passkey":fields=fields("register","name");break;
             case "account.devices":case "account.login":case "account.status":case "account.logout":case "snapshot":case "security.pair":case "security.account":case "security.mcp":case "security.status":case "migration.status":case "migration.retry":case "migration.rollback":case "migration.cleaned":case "ui.ready":case "device.haptic":case "device.exportNotes":case "device.importNotes":fields=Collections.emptySet();break;
@@ -75,6 +77,7 @@ public final class SecurityManager {
     private void showCredential(){io.execute(()->{try{if(!db.setting("account-workspace:"+db.activeSpace(),"").isEmpty()){activity.runOnUiThread(()->{if(connectionSheet!=null)connectionSheet.error("当前通过账户访问，无需同步密钥。如需连接匿名设备，请先在工作区设置中轮换密钥；也可在此输入其他工作区的密钥。");});return;}String k=db.credential(db.activeSpace());activity.runOnUiThread(()->{if(connectionSheet==null||activity.isDestroyed())return;connectionSheet.credential(k,()->{ClipData clip=ClipData.newPlainText("Easybook 同步密钥",k);if(Build.VERSION.SDK_INT>=24){PersistableBundle extras=new PersistableBundle();extras.putBoolean("android.content.extra.IS_SENSITIVE",true);clip.getDescription().setExtras(extras);}((ClipboardManager)activity.getSystemService(Context.CLIPBOARD_SERVICE)).setPrimaryClip(clip);});});}catch(Exception e){activity.runOnUiThread(()->{if(connectionSheet!=null)connectionSheet.error("本机凭据不可用。请输入原同步密钥重新配对；离线笔记仍可编辑和导出。");});}});}
     private void message(String value){activity.runOnUiThread(()->Toast.makeText(activity,value,Toast.LENGTH_LONG).show());}
 }
+
 
 
 

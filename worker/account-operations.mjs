@@ -1,4 +1,4 @@
-import {sessionAllowed,oauthAllowed,workspaceAllowed} from './security-checkpoint.mjs';
+import {sessionAllowed,oauthAllowed,workspaceAllowed,reserveWorkspaceFloor,finishWorkspaceFloor} from './security-checkpoint.mjs';
 import {manifest} from './mcp-attachments.mjs';
 import {attachmentDeleted} from './attachment-purge.mjs';
 import {validateDocument} from '../shared/document.mjs';
@@ -49,6 +49,7 @@ export async function executeAccountOperation(env,id,s){
  const row=await env.DB.prepare('SELECT * FROM account_operation_approvals WHERE id=? AND account_id=?').bind(id,s.account_id).first();if(!row)fail('NOT_FOUND','Operation not found');
  const grant=await env.DB.prepare('SELECT * FROM oauth_grants WHERE id=?').bind(row.policy_id).first(),workspace=await env.DB.prepare('SELECT version FROM workspaces WHERE id=?').bind(row.workspace_id).first();
  if(!grant||!workspace||!await sessionAllowed(env,s)||!await oauthAllowed(env,grant)||!await workspaceAllowed(env,row.workspace_id,workspace.version))fail('PERMISSION_DENIED','Account or workspace security state changed');
+ const policy=await workspacePolicy(env,row.policy_id,{accountId:row.account_id,clientId:row.client_id});if(!policy?.workspaces.some(w=>w.id===row.workspace_id&&w.scopes.includes(row.scope)))fail('PERMISSION_DENIED','Workspace authorization was revoked');
  if(row.status==='completed')return JSON.parse(row.result);
  if(row.status!=='pending'||row.expires_at<=Date.now())fail('APPROVAL_EXPIRED','Operation is no longer pending');
  const payload=JSON.parse(row.payload);if(await hash(canonical({tool:row.tool,arguments:payload}))!==row.payload_hash)fail('INVALID_OPERATION','Frozen operation integrity check failed');
@@ -58,12 +59,15 @@ export async function executeAccountOperation(env,id,s){
  const receipt={atomic:true,approval_id:id,results:payload.items.map(i=>({id:i.id,version:i.version+1,ok:true}))};
  if(row.tool==='attachments_permanent_delete'){delete receipt.results;Object.assign(receipt,{attachment_id:payload.attachment_id,access_revoked:true,cleanup_job:id})}
  if(row.tool==='folders_clear')guards.push(authority(env,{...row,scope:'folders.manage'}));
+ const permanent=['notes_permanent_delete','attachments_permanent_delete'].includes(row.tool);
+ const floor=permanent?await reserveWorkspaceFloor(env,row.workspace_id,workspace.version+1):null;
+ if(permanent)guards.push(assertion(env,'SELECT 1 FROM workspaces WHERE id=? AND version=? AND deleted_at IS NULL',[row.workspace_id,workspace.version]),env.DB.prepare('UPDATE workspaces SET version=version+1 WHERE id=?').bind(row.workspace_id));
  guards.push(env.DB.prepare("UPDATE account_operation_approvals SET status='completed',result=?,completed_at=? WHERE id=? AND status='pending'").bind(JSON.stringify(receipt),now,id));
  try{
   if(row.tool==='attachments_permanent_delete'){
    guards.push(assertion(env,"SELECT 1 WHERE NOT EXISTS(SELECT 1 FROM notes_json WHERE workspace=? AND purged=0 AND EXISTS(SELECT 1 FROM json_tree(document) WHERE key='assetId' AND value=?))",[row.workspace_id,'sha256:'+payload.attachment_id]),env.DB.prepare('INSERT INTO attachment_tombstones(workspace,attachment,approval_id,created_at) VALUES(?,?,?,?)').bind(row.workspace_id,payload.attachment_id,id,now),env.DB.prepare("INSERT INTO attachment_purge_jobs(id,approval_id,workspace,attachment,status,created_at,updated_at) VALUES(?,?,?,?,'queued',?,?)").bind(id,id,row.workspace_id,payload.attachment_id,now,now),env.DB.prepare('DELETE FROM mcp_downloads WHERE workspace=? AND attachment=?').bind(row.workspace_id,payload.attachment_id),env.DB.prepare('DELETE FROM workspace_tx_assertions'));
    try{await env.DB.batch(guards)}catch(error){if(/constraint/i.test(error.message))fail('CONFLICT','Attachment references or authority changed; no deletion occurred');throw error}
-  }else await atomicNoteBatch(env,row.workspace_id,row.tool,payload,{guards});return receipt}catch(error){if(error.code==='CONFLICT')await env.DB.prepare("UPDATE account_operation_approvals SET status='conflict',completed_at=? WHERE id=? AND status='pending'").bind(Date.now(),id).run();throw error}
+  }else await atomicNoteBatch(env,row.workspace_id,row.tool,payload,{guards});await finishWorkspaceFloor(env,floor,'committed');return receipt}catch(error){if(error.code==='CONFLICT')await finishWorkspaceFloor(env,floor,'cancelled');if(error.code==='CONFLICT')await env.DB.prepare("UPDATE account_operation_approvals SET status='conflict',completed_at=? WHERE id=? AND status='pending'").bind(Date.now(),id).run();throw error}
 }
 export async function reserveSmallOperation(env,accountId,workspaceId){
  const now=Date.now();
@@ -74,3 +78,4 @@ export async function reserveSmallOperation(env,accountId,workspaceId){
   env.DB.prepare('DELETE FROM account_operation_budget WHERE id IN(SELECT id FROM account_operation_budget WHERE created_at<? LIMIT 100)').bind(now-600000)
  ])}catch(error){if(/constraint/i.test(error.message))return false;throw error}return true;
 }
+
