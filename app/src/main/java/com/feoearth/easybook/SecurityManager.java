@@ -72,9 +72,10 @@ public final class SecurityManager {
             catch(Exception e){String message=e instanceof java.net.SocketTimeoutException?"连接超时，请检查网络并重试":e instanceof CredentialVault.KeyUnavailable?"本机凭据不可用，请先重新连接设备":e instanceof java.io.IOException?e.getMessage():"配对未完成，请检查设备连接或获取新配对码";activity.runOnUiThread(()->{if(!activity.isDestroyed()&&generation==mcpGeneration&&connectionSheet!=null)connectionSheet.error(message);});}
         }),()->{},()->{connectionSheet=null;mcpGeneration++;});connectionSheet.useMcp();connectionSheet.show();
     });}
-    private void showCredential(){io.execute(()->{try{String k=db.credential(db.activeSpace());activity.runOnUiThread(()->{if(connectionSheet==null||activity.isDestroyed())return;connectionSheet.credential(k,()->{ClipData clip=ClipData.newPlainText("Easybook 同步密钥",k);if(Build.VERSION.SDK_INT>=24){PersistableBundle extras=new PersistableBundle();extras.putBoolean("android.content.extra.IS_SENSITIVE",true);clip.getDescription().setExtras(extras);}((ClipboardManager)activity.getSystemService(Context.CLIPBOARD_SERVICE)).setPrimaryClip(clip);});});}catch(Exception e){activity.runOnUiThread(()->{if(connectionSheet!=null)connectionSheet.error("本机凭据不可用。请输入原同步密钥重新配对；离线笔记仍可编辑和导出。");});}});}
+    private void showCredential(){io.execute(()->{try{if(!db.setting("account-workspace:"+db.activeSpace(),"").isEmpty()){activity.runOnUiThread(()->{if(connectionSheet!=null)connectionSheet.error("当前通过账户访问，无需同步密钥。如需连接匿名设备，请先在工作区设置中轮换密钥；也可在此输入其他工作区的密钥。");});return;}String k=db.credential(db.activeSpace());activity.runOnUiThread(()->{if(connectionSheet==null||activity.isDestroyed())return;connectionSheet.credential(k,()->{ClipData clip=ClipData.newPlainText("Easybook 同步密钥",k);if(Build.VERSION.SDK_INT>=24){PersistableBundle extras=new PersistableBundle();extras.putBoolean("android.content.extra.IS_SENSITIVE",true);clip.getDescription().setExtras(extras);}((ClipboardManager)activity.getSystemService(Context.CLIPBOARD_SERVICE)).setPrimaryClip(clip);});});}catch(Exception e){activity.runOnUiThread(()->{if(connectionSheet!=null)connectionSheet.error("本机凭据不可用。请输入原同步密钥重新配对；离线笔记仍可编辑和导出。");});}});}
     private void message(String value){activity.runOnUiThread(()->Toast.makeText(activity,value,Toast.LENGTH_LONG).show());}
 }
+
 
 
 

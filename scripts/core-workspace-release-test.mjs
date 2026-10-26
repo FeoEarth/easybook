@@ -1,0 +1,36 @@
+import assert from 'node:assert/strict';
+import {DatabaseSync} from 'node:sqlite';
+import {readFileSync} from 'node:fs';
+import worker from '../worker/index.mjs';
+import {hash} from '../worker/mcp-common.mjs';
+import {textDocument} from '../worker/mcp-notes.mjs';
+const sql=new DatabaseSync(':memory:');sql.exec('PRAGMA foreign_keys=ON');
+for(const path of ['worker/schema.sql','mcp-oauth/migrations/0002_accounts.sql','mcp-oauth/migrations/0003_passkeys.sql','mcp-oauth/migrations/0004_native_identity.sql','worker/migrations/0008-mcp-capabilities.sql','worker/migrations/0009-mcp-uploads.sql',...['0010-workspace-identity','0011-oauth-workspaces','0012-account-approvals','0013-permanent-operations','0014-notifications-audit','0015-restore-state','0016-account-deletion'].map(n=>'worker/migrations/'+n+'.sql')])sql.exec(readFileSync(path,'utf8'));
+const DB={prepare(s){const q=sql.prepare(s);let p=[];return {bind(...args){p=args;return this},async first(){return q.get(...p)||null},async all(){return {results:q.all(...p)}},async run(){return q.run(...p)}}},async batch(statements){sql.exec('BEGIN');try{const out=[];for(const s of statements)out.push(await s.all());sql.exec('COMMIT');return out}catch(e){sql.exec('ROLLBACK');throw e}}};
+const env={DB,WORKSPACE_IDENTITY_V2:'true',IDENTITY_CANONICAL_V2:'true'},origin='https://easybook.loonxy.com';
+async function req(path,{method='GET',body,headers={}}={}){return worker.fetch(new Request(origin+path,{method,headers:{'Content-Type':'application/json',...headers},body:body?JSON.stringify(body):undefined}),env)}
+const key='9'.repeat(64),keyHeaders={Authorization:'Bearer '+key};
+let r=await req('/api/workspaces',{method:'POST',body:{name:'离线首次联网',bootstrapKey:key}});assert.equal(r.status,201);const created=await r.json(),id=created.workspace.id;assert.notEqual(id,await hash(key));
+assert.equal((await req('/api/workspaces',{headers:keyHeaders})).status,200);
+assert.equal((await req('/api/workspaces',{method:'POST',body:{name:'重复',bootstrapKey:key}})).status,409);
+const note=crypto.randomUUID(),document=textDocument('匿名设备 A 创建');
+r=await req('/api/notes/'+note,{method:'PUT',headers:keyHeaders,body:{id:note,title:'A',document,icon:'📄',folder_id:'',favorite:0,pinned:0,deleted:0,version:0,mutation:crypto.randomUUID(),updated:Date.now()}});assert.equal(r.status,200,await r.clone().text());
+assert.equal((await (await req('/api/notes?cursor=0',{headers:keyHeaders})).json()).notes[0].title,'A');
+async function account(name){const id=crypto.randomUUID(),token=crypto.randomUUID().replaceAll('-','').repeat(2),sid=crypto.randomUUID(),now=Date.now();sql.prepare('INSERT INTO accounts VALUES(?,?,?,NULL)').run(id,name,now);sql.prepare('INSERT INTO account_sessions VALUES(?,?,?,?,?,?,?,NULL)').run(sid,await hash(token),id,now,now+86400000,now,'Synthetic native');sql.prepare('INSERT INTO account_native_sessions VALUES(?,?)').run(sid,now);return {id,headers:{Authorization:'Easybook-Session '+token}}}
+const a=await account('Alice'),b=await account('Bob');
+r=await req('/api/workspaces/'+id+'/associate',{method:'POST',headers:a.headers,body:{key}});assert.equal(r.status,200,await r.clone().text());
+assert.equal((await req('/api/workspaces/'+id+'/associate',{method:'POST',headers:b.headers,body:{key}})).status,409);
+const other=await (await req('/api/workspaces',{method:'POST',headers:a.headers,body:{name:'B'}})).json();
+assert.equal((await req('/api/workspaces',{headers:a.headers})).status,200);
+assert.equal((await (await req('/api/workspaces',{headers:a.headers})).json()).workspaces.length,2);
+assert.equal((await (await req('/api/notes?cursor=0',{headers:{...a.headers,'X-Easybook-Workspace':other.workspace.id}})).json()).notes.length,0);
+assert.equal((await req('/api/notes?cursor=0',{headers:{...b.headers,'X-Easybook-Workspace':id}})).status,403);
+assert.equal((await req('/api/notes?cursor=0',{headers:{...a.headers,'X-Easybook-Workspace':id,Origin:origin}})).status,403,'native credential rejected from browser');
+r=await req('/api/workspaces/'+id+'/key',{method:'POST',headers:a.headers,body:{confirm:true}});assert.equal(r.status,200);const rotated=await r.json();assert.equal(rotated.workspace.id,id);
+assert.equal((await req('/api/notes?cursor=0',{headers:keyHeaders})).status,401);
+assert.equal((await req('/api/workspaces',{method:'POST',body:{name:'cannot resurrect',bootstrapKey:key}})).status,409);
+assert.equal((await (await req('/api/notes?cursor=0',{headers:{Authorization:'Bearer '+rotated.key}})).json()).notes[0].title,'A');
+assert.equal((await req('/api/workspaces/'+id,{method:'POST',headers:b.headers,body:{name:'Hijack'}})).status,403);
+assert.equal((await req('/api/workspaces/session')).status,200);
+console.log('PASS phase 1 API: offline bootstrap, no credential resurrection, anonymous two-device reads, native account multiple workspaces, proof-based association, server isolation, rotation preserves original data, foreign-account denial.');
+export {env,sql,req,account,a,b,id,key,rotated};

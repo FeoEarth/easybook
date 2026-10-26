@@ -37,3 +37,4 @@ const legacy={schemaVersion:1,doc:{type:'doc',content:[{type:'attachment',attrs:
 const manifest=readFileSync('app/src/main/AndroidManifest.xml','utf8'),permissions=readFileSync('app/src/main/java/com/feoearth/easybook/SecurityManager.java','utf8');assert.match(manifest,/FileProvider[\s\S]*android:exported="false"/);assert.match(permissions,/case "attachment.open":case "attachment.share"/);
 console.log('PASS media/activity: caret image+file insertion, inline image/card DOM, JSON reload, preview/double-tap/close, safe TXT, real queued/running/failed/acknowledged states, wire progress, retry dedup, offline→online, mocked cross-client download and bounded history');
 page.window.close();
+

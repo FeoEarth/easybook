@@ -40,6 +40,9 @@ export async function workspaceAPI(request,env){
  const url=new URL(request.url),path=url.pathname;
  if(path!=='/api/workspaces'&&!path.startsWith('/api/workspaces/'))return null;
  try{
+  if(path==='/api/workspaces/session'&&request.method==='GET'){
+   const current=await session(request,env);return reply({signedIn:!!current,...(current?{name:current.display_name,csrf:await csrf(request,current)}:{})});
+  }
   const mutation=!['GET','HEAD'].includes(request.method);
   if(mutation&&request.headers.get('Origin')&&request.headers.get('Origin')!==url.origin)problem('origin_not_allowed',403);
   if(mutation&&!['POST','PATCH','DELETE'].includes(request.method))problem('method_not_allowed',405);
@@ -53,7 +56,8 @@ export async function workspaceAPI(request,env){
     await rateLimit(request,env,'workspace-create',5);
     const input=await inputBody(request);
     if(principal?.kind==='key')problem('use_account_or_anonymous_creation',400);
-    return reply(await createWorkspace(env,input.name,principal),201);
+    if(input.bootstrapKey!==undefined&&(!/^[a-f0-9]{64}$/.test(input.bootstrapKey)||principal))problem('invalid_bootstrap',400);
+    return reply(await createWorkspace(env,input.name,principal,input.bootstrapKey),201);
    }
    problem('method_not_allowed',405);
   }
@@ -97,3 +101,4 @@ export async function workspaceAPI(request,env){
   return reply({error:'workspace_service_unavailable'},503);
  }
 }
+

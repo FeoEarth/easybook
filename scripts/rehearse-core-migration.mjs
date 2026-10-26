@@ -1,0 +1,17 @@
+import {DatabaseSync} from 'node:sqlite';
+import {readFileSync} from 'node:fs';
+import assert from 'node:assert/strict';
+import {createHash} from 'node:crypto';
+import {backfillLegacyWorkspaces} from '../worker/workspace-migration.mjs';
+const file=process.argv[2];if(!file)throw Error('Pass isolated restored SQLite path');
+const sql=new DatabaseSync(file);sql.exec('PRAGMA foreign_keys=ON');
+const fingerprint=table=>{const rows=sql.prepare('SELECT * FROM '+table+' ORDER BY workspace,id').all();return {rows:rows.length,sha256:createHash('sha256').update(JSON.stringify(rows)).digest('hex')}};
+const before=Object.fromEntries(['notes','notes_json','folders'].map(t=>[t,fingerprint(t)]));
+for(const path of ['mcp-oauth/migrations/0004_native_identity.sql',...['0010-workspace-identity','0011-oauth-workspaces','0012-account-approvals','0013-permanent-operations','0014-notifications-audit','0015-restore-state','0016-account-deletion'].map(n=>'worker/migrations/'+n+'.sql')])sql.exec(readFileSync(path,'utf8'));
+const DB={prepare(s){const q=sql.prepare(s);let p=[];return {bind(...args){p=args;return this},async first(){return q.get(...p)||null},async all(){return {results:q.all(...p)}},async run(){return q.run(...p)}}},async batch(statements){sql.exec('BEGIN');try{const out=[];for(const s of statements)out.push(await s.all());sql.exec('COMMIT');return out}catch(e){sql.exec('ROLLBACK');throw e}}};
+const result=await backfillLegacyWorkspaces({DB},{recoveryCheckpointVerified:true});
+assert.deepEqual(Object.fromEntries(['notes','notes_json','folders'].map(t=>[t,fingerprint(t)])),before,'content and IDs stay byte-identical');
+assert.equal(sql.prepare('SELECT COUNT(*) n FROM notes_json n LEFT JOIN workspaces w ON w.id=n.workspace WHERE w.id IS NULL').get().n,0);
+assert.equal(sql.prepare('PRAGMA integrity_check').get().integrity_check,'ok');assert.equal(sql.prepare('PRAGMA foreign_key_check').all().length,0);
+const repeated=await backfillLegacyWorkspaces({DB},{recoveryCheckpointVerified:true});assert.equal(repeated.inspected,result.inspected);
+console.log(JSON.stringify({migration:'passed',result,preserved:before,foreignKeyCheck:'passed',integrity:'ok',retry:'passed'}));
