@@ -43,7 +43,7 @@ public final class SecurityManager {
             case "account.manage":fields=fields("action","id","workspace","cursor","category","choices","confirm");break;
             case "account.device.revoke":fields=fields("id");break;
             case "account.passkey":fields=fields("register","name");break;
-            case "account.devices":case "account.login":case "account.status":case "account.logout":case "snapshot":case "security.pair":case "security.account":case "security.mcp":case "security.status":case "migration.status":case "migration.retry":case "migration.rollback":case "migration.cleaned":case "ui.ready":case "device.haptic":case "device.exportNotes":case "device.importNotes":fields=Collections.emptySet();break;
+            case "account.devices":case "account.browser":case "account.resume":case "account.login":case "account.status":case "account.logout":case "snapshot":case "security.pair":case "security.account":case "security.mcp":case "security.status":case "migration.status":case "migration.retry":case "migration.rollback":case "migration.cleaned":case "ui.ready":case "device.haptic":case "device.exportNotes":case "device.importNotes":fields=Collections.emptySet();break;
             default:throw new SecurityException("Operation denied");
         }
         Iterator<String> names=args.keys();while(names.hasNext())if(!fields.contains(names.next()))throw new SecurityException("Unexpected parameter");

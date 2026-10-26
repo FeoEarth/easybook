@@ -8,6 +8,7 @@ public class AccountBridgePermissionTest {
   security.authorize("workspace.action",new JSONObject().put("action","list"),7);
   security.authorize("workspace.action",new JSONObject().put("action","member").put("accountId","fixture").put("role","reader"),7);
   security.authorize("account.manage",new JSONObject().put("action","history"),7);
+  security.authorize("account.browser",new JSONObject(),7);security.authorize("account.resume",new JSONObject(),7);
  }
  @Test public void bridgeStillRejectsUnknownFieldsAndStaleDocuments()throws Exception{
   SecurityManager security=new SecurityManager(null,null,null);security.initialized(7);

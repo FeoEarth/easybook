@@ -24,6 +24,7 @@ async function call(path,{method='GET',body,headers={},origin=primary}={}){try{r
 const verifier='V'.repeat(64),state='a'.repeat(64);
 async function start(){const r=await call('/account/native/start',{method:'POST',body:{challenge:await s256(verifier),state,redirect_uri:'https://evil.example/'}});assert.equal(r.status,200);return r.json()}
 async function consent(flow,origin=primary){const request=new Request(origin+'/account/handoff',{headers:{Cookie:cookie}}),s=await session(request,env);try{return await nativeAccountRoutes(new Request(origin+'/account/handoff',{method:'POST',headers:{Origin:origin,Cookie:cookie,'Content-Type':'application/x-www-form-urlencoded'},body:new URLSearchParams({flow,state,csrf:await csrf(request,s),decision:'allow'})}),env)}catch(e){if(e instanceof Response)return e;throw e}}
+async function nativeCallback(response){assert.equal(response.status,200);const html=await response.text();assert.ok(html.includes('package=com.feoearth.easybook.notes'));const href=html.match(/id="native-scheme-return" class="link" href="([^"]+)"/)[1].replaceAll('&amp;','&');return new URL(href)}
 assert.equal((await call('/account/native/start',{method:'POST',body:{challenge:'bad',state}})).status,400);
 assert.equal((await call('/account/native/start',{method:'POST',body:{challenge:await s256(verifier),state},headers:{Origin:primary}})).status,403);
 const direct=await call('/account/native/start',{method:'POST',body:{challenge:await s256(verifier),state,provider:'github'}});const directURL=new URL((await direct.json()).authorization_url);assert.equal(directURL.pathname,'/account/login');assert.match(directURL.searchParams.get('return'),/^\/account\/handoff\?flow=[a-f0-9]{64}&state=[a-f0-9]{64}$/);
@@ -33,7 +34,8 @@ const cancelledFlow=await start();const cancelReq=new Request(primary+'/account/
 const pending=await start();assert.ok(pending.authorization_url.startsWith(primary+'/account/handoff?'));
 assert.equal((await call('/account/handoff?flow='+pending.flow+'&state='+state)).status,303,'must authenticate before approving');
 const consentPage=await call('/account/handoff?flow='+pending.flow+'&state='+state,{headers:{Cookie:cookie}});assert.equal(consentPage.status,200);assert.match(await consentPage.text(),/确认继续/);
-const approved=await consent(pending.flow),destination=new URL(approved.headers.get('Location'));assert.equal(approved.status,303);assert.equal(destination.origin,'null');assert.equal(destination.protocol,'easybook:');assert.equal(destination.host,'account');
+const pollInput={flow:pending.flow,state,verifier};assert.equal((await (await call('/account/native/poll',{method:'POST',body:pollInput})).json()).status,'pending');assert.equal((await call('/account/native/poll',{method:'POST',body:{...pollInput,verifier:'X'.repeat(64)}})).status,410);
+const approved=await consent(pending.flow),destination=await nativeCallback(approved);const pollResponse=await call('/account/native/poll',{method:'POST',body:pollInput});const polled=await pollResponse.json();assert.deepEqual(polled,{status:'approved'});assert.equal(pollResponse.headers.get('Set-Cookie'),null);assert.equal((await call('/account/native/poll',{method:'POST',body:pollInput,headers:{Origin:primary}})).status,403);assert.equal(destination.origin,'null');assert.equal(destination.protocol,'easybook:');assert.equal(destination.host,'account');
 const input={flow:pending.flow,code:destination.searchParams.get('code'),state,verifier};
 assert.equal((await call('/account/native/token',{method:'POST',body:{...input,verifier:'X'.repeat(64)}})).status,400,'wrong PKCE denied');
 const exchanged=await call('/account/native/token',{method:'POST',body:input});assert.equal(exchanged.status,200);assert.equal(exchanged.headers.get('Set-Cookie'),null,'native credential never placed in browser cookie');
@@ -53,7 +55,7 @@ sql.prepare('UPDATE account_sessions SET authenticated_at=? WHERE id=?').run(ver
 assert.equal(await nativeSession(new Request(primary,{headers:{Authorization:'Easybook-Session '+browserToken}}),env),null,'browser session cannot impersonate a native session');
 assert.equal((await workspacePrincipal(new Request(primary+'/api/workspaces',{headers:nativeHeaders}),env)).accountId,account);
 await assert.rejects(()=>workspacePrincipal(new Request(primary+'/api/workspaces',{headers:{...nativeHeaders,Origin:primary}}),env),e=>e.code==='native_origin_not_allowed');
-const beforeRevoke=await start(),beforeRevokeApproval=await consent(beforeRevoke.flow),code2=new URL(beforeRevokeApproval.headers.get('Location')).searchParams.get('code');
+const beforeRevoke=await start(),beforeRevokeApproval=await consent(beforeRevoke.flow),code2=(await nativeCallback(beforeRevokeApproval)).searchParams.get('code');
 assert.equal((await call('/account/native/sessions/revoke',{method:'POST',body:{id:browserId},headers:nativeHeaders})).status,200);
 assert.equal((await call('/account/native/token',{method:'POST',body:{...input,flow:beforeRevoke.flow,code:code2}})).status,400,'revoked approving session cannot mint a new device');
 assert.equal((await call('/account/native/session',{headers:nativeHeaders})).status,200,'revoking browser device does not revoke a different device');

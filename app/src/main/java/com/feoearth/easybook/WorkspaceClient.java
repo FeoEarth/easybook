@@ -10,7 +10,7 @@ import java.nio.charset.StandardCharsets;
 final class WorkspaceClient {
  static JSONObject request(String path,JSONObject body,String credential,boolean account)throws Exception{
   if(!path.matches("/api/workspaces(?:/[a-f0-9]{64}(?:/(?:key|associate|mode|members|manager|leave|delete))?)?"))throw new SecurityException("Workspace path denied");
-  HttpsURLConnection c=(HttpsURLConnection)new URL(NativeAccount.SYNC_API+path).openConnection();c.setInstanceFollowRedirects(false);c.setConnectTimeout(12000);c.setReadTimeout(15000);c.setRequestMethod(body==null?"GET":"POST");c.setRequestProperty("Content-Type","application/json");
+  HttpsURLConnection c=(HttpsURLConnection)new URL(NativeTransport.origin(false)+path).openConnection();c.setInstanceFollowRedirects(false);c.setConnectTimeout(12000);c.setReadTimeout(15000);c.setRequestMethod(body==null?"GET":"POST");c.setRequestProperty("Content-Type","application/json");
   if(credential!=null)c.setRequestProperty("Authorization",(account?"Easybook-Session ":"Bearer ")+credential);
   try{if(body!=null){byte[] bytes=body.toString().getBytes(StandardCharsets.UTF_8);c.setDoOutput(true);c.setFixedLengthStreamingMode(bytes.length);try(OutputStream o=c.getOutputStream()){o.write(bytes);}}
    int status=c.getResponseCode();if(status!=200&&status!=201)throw new NativeSync.HttpsTransport.HttpFailure(status);
