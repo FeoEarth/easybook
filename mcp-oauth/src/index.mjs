@@ -21,6 +21,7 @@ const oauthHandler = {
    const cors=origin?{'Access-Control-Allow-Origin':origin,'Vary':'Origin'}:{};
    const fail=(error,status)=>Response.json({error},{status,headers:{...cors,'Cache-Control':'no-store'}});
    if(!env.MCP_PAIRING_SIGNING_KEY)return fail('Pairing unavailable',503);
+   try {
    let input;
    try{const raw=await request.text();if(raw.length>4096)throw Error();input=JSON.parse(raw)}catch{return fail('Invalid pairing request',400)}
    const workspace=await verifyWorkspaceAssertion(input?.assertion,env.MCP_PAIRING_SIGNING_KEY,input?.challenge);
@@ -28,11 +29,15 @@ const oauthHandler = {
    const bytes=await crypto.subtle.digest('SHA-256',new TextEncoder().encode(input.challenge));
    const hash=Array.from(new Uint8Array(bytes),b=>b.toString(16).padStart(2,'0')).join('');
    const now=Math.floor(Date.now()/1000);
-   const challenge=await env.DB.prepare('UPDATE mcp_pairing_challenges SET consumed_at=? WHERE challenge_hash=? AND consumed_at IS NULL AND expires_at>? RETURNING github_user_id,oauth_client_id').bind(now,hash,now).first();
-   if(!challenge)return fail('Pairing challenge expired',409);
-   await env.DB.prepare("INSERT INTO mcp_workspace_grants(id,github_user_id,oauth_client_id,workspace_id,scope,created_at) VALUES(?,?,?,?,?,?) ON CONFLICT(github_user_id,oauth_client_id,workspace_id) DO UPDATE SET revoked_at=NULL").bind(crypto.randomUUID(),challenge.github_user_id,challenge.oauth_client_id,workspace,'mcp:read',now).run();
-   await env.DB.prepare('INSERT INTO mcp_active_workspaces(github_user_id,oauth_client_id,workspace_id,updated_at) VALUES(?,?,?,?) ON CONFLICT(github_user_id,oauth_client_id) DO UPDATE SET workspace_id=excluded.workspace_id,updated_at=excluded.updated_at').bind(challenge.github_user_id,challenge.oauth_client_id,workspace,now).run();
+   // All grant writes and one-time consumption commit together; a DB failure leaves the challenge retryable.
+   const results=await env.DB.batch([
+    env.DB.prepare("INSERT INTO mcp_workspace_grants(id,github_user_id,oauth_client_id,workspace_id,scope,created_at) SELECT ?,github_user_id,oauth_client_id,?,'mcp:read',? FROM mcp_pairing_challenges WHERE challenge_hash=? AND consumed_at IS NULL AND expires_at>? ON CONFLICT(github_user_id,oauth_client_id,workspace_id) DO UPDATE SET revoked_at=NULL").bind(crypto.randomUUID(),workspace,now,hash,now),
+    env.DB.prepare('INSERT INTO mcp_active_workspaces(github_user_id,oauth_client_id,workspace_id,updated_at) SELECT github_user_id,oauth_client_id,?,? FROM mcp_pairing_challenges WHERE challenge_hash=? AND consumed_at IS NULL AND expires_at>? ON CONFLICT(github_user_id,oauth_client_id) DO UPDATE SET workspace_id=excluded.workspace_id,updated_at=excluded.updated_at').bind(workspace,now,hash,now),
+    env.DB.prepare('UPDATE mcp_pairing_challenges SET consumed_at=? WHERE challenge_hash=? AND consumed_at IS NULL AND expires_at>? RETURNING github_user_id,oauth_client_id').bind(now,hash,now)
+   ]);
+   if(!results[2].results?.length)return fail('Pairing challenge expired',409);
    return Response.json({paired:true},{headers:{'Cache-Control':'no-store',...(pairingWebOrigins.has(origin)?{'Access-Control-Allow-Origin':origin,'Vary':'Origin'}:{})}});
+   } catch(error) {console.error(JSON.stringify({event:'mcp_pairing_failed',name:error?.name}));return fail('Pairing temporarily unavailable',503)}
   }
   if (url.pathname === '/authorize' && request.method === 'GET') {
    const authRequest = await oauth.parseAuthRequest(request);
