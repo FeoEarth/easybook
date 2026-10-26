@@ -1,3 +1,4 @@
+import {githubCallback,identityEnabled} from '../../worker/identity-origin.mjs';
 import {hash, READ, WRITE} from '../../worker/mcp-common.mjs';
 import {verifyWorkspaceAssertion} from './pairing.mjs';
 import {escape,oauthAppearance,htmlHeaders} from './appearance.mjs';
@@ -15,10 +16,11 @@ export function page(title,content,headers={}){
  return new Response(`<!doctype html><html lang="zh-CN"><meta charset="utf-8"><title>${escape(title)} · Easybook</title>${oauthAppearance}<style>.group{background:var(--paper);border-radius:20px;padding:4px 16px;margin:20px 0}.row{padding:14px 0;border-bottom:1px solid var(--line)}.row:last-child{border:0}h2{font-size:13px;line-height:1.5;color:var(--muted);font-weight:500;margin:28px 16px 8px}.group{margin:0 0 20px}label{display:block;padding:12px 0;line-height:1.5}input,select{font:inherit;max-width:100%;accent-color:var(--accent)}input:not([type=checkbox]),select{display:block;width:100%;min-height:44px;margin-top:8px;padding:10px 12px;border:0;border-radius:10px;background:var(--bg);color:var(--ink);outline-offset:3px}input[type=checkbox]{width:18px;height:18px;vertical-align:middle;margin-right:8px}select{appearance:none;background-image:none}form{display:block;margin:18px 0;padding:16px;gap:0}.row form{margin:10px 0 0;padding:0;background:none;border-radius:0}form button{margin:8px 4px;min-height:44px}.row form button{margin:0;padding-left:0;background:none;color:var(--danger)}a.link{background:none;color:var(--accent);padding-left:0}small{display:block;color:var(--muted);font-size:13px}code{font-size:13px;word-break:break-all}.danger{color:var(--danger)}</style><body><a class="link" href="/account">‹ Easybook 账户</a><h1>${escape(title)}</h1>${content}</body></html>`,{headers:{...htmlHeaders,...noStore,...headers}});
 }
 export function redirect(path,cookies=[]){const headers=new Headers({...noStore,Location:path});for(const c of cookies)headers.append('Set-Cookie',c);return new Response(null,{status:303,headers});}
-export async function session(request,env){
- const token=readCookie(request,ACCOUNT_COOKIE);if(!/^[a-f0-9]{64}$/.test(token))return null;
+export async function sessionToken(token,env){
+ if(!/^[a-f0-9]{64}$/.test(token||''))return null;
  return env.DB.prepare('SELECT s.*,a.display_name FROM account_sessions s JOIN accounts a ON a.id=s.account_id WHERE s.token_hash=? AND s.revoked_at IS NULL AND s.expires_at>? AND a.deleted_at IS NULL AND NOT EXISTS(SELECT 1 FROM account_session_passkeys sp JOIN account_passkeys pk ON pk.id=sp.credential_id WHERE sp.session_id=s.id AND pk.revoked_at IS NOT NULL)').bind(await hash(token),Date.now()).first();
 }
+export async function session(request,env){const current=await sessionToken(readCookie(request,ACCOUNT_COOKIE),env);if(current&&identityEnabled(env)&&await env.DB.prepare('SELECT session_id FROM account_native_sessions WHERE session_id=?').bind(current.id).first())return null;return current}
 export async function csrf(request,s){return hash(readCookie(request,ACCOUNT_COOKIE)+'|'+s.id);}
 export async function boundedText(request,max=16384){
  const reader=request.body?.getReader();if(!reader)return '';let size=0;const parts=[];
@@ -38,14 +40,14 @@ export async function rateLimit(request,env,kind,limit=30){
  const row=await env.DB.prepare('INSERT INTO account_rate_limits(bucket,count,expires_at) VALUES(?,1,?) ON CONFLICT(bucket) DO UPDATE SET count=count+1 RETURNING count').bind(bucket,Date.now()+120000).first();
  if(row.count>limit)throw new Response('Too many requests',{status:429,headers:{...noStore,'Retry-After':'60'}});
 }
-export function safeReturn(value){return typeof value==='string'&&value.length<=6000&&(value==='/account'||value==='/account?connect=1'||value.startsWith('/oauth/authorize?'))?value:'/account';}
+export function safeReturn(value){return typeof value==='string'&&value.length<=6000&&(value==='/account'||value==='/account?connect=1'||/^\/account\/handoff\?flow=[a-f0-9]{64}&state=[a-f0-9]{64}$/.test(value)||value.startsWith('/oauth/authorize?'))?value:'/account';}
 export async function startLogin(request,env,linkSession=null){
  await rateLimit(request,env,'login',10);
  const state='account_'+random(),browser=random();
  const returnPath=linkSession?'/account?identity-link=github':safeReturn(new URL(request.url).searchParams.get('return'));
  await env.DB.prepare('INSERT INTO account_login_states(state_hash,browser_hash,return_path,expires_at) VALUES(?,?,?,?)').bind(await hash(state),await hash(browser),returnPath,Date.now()+300000).run();
  if(linkSession)await env.DB.prepare('INSERT INTO account_identity_link_requests(state_hash,account_id,session_id,expires_at) VALUES(?,?,?,?)').bind(await hash(state),linkSession.account_id,linkSession.id,Date.now()+300000).run();
- const url=new URL('https://github.com/login/oauth/authorize');url.searchParams.set('client_id',env.GITHUB_CLIENT_ID);url.searchParams.set('redirect_uri',new URL('/callback',request.url).href);url.searchParams.set('state',state);
+ const url=new URL('https://github.com/login/oauth/authorize');url.searchParams.set('client_id',env.GITHUB_CLIENT_ID);url.searchParams.set('redirect_uri',githubCallback(request,env));url.searchParams.set('state',state);
  return redirect(url.href,[cookie(LOGIN_COOKIE,browser,300)]);
 }
 export async function finishLogin(request,env,fetcher=fetch){
@@ -53,7 +55,7 @@ export async function finishLogin(request,env,fetcher=fetch){
  if(!browser||!state||state.length>100)return json({error:'Login expired'},400);
  const proof=await env.DB.prepare('DELETE FROM account_login_states WHERE state_hash=? AND browser_hash=? AND expires_at>? RETURNING return_path').bind(await hash(state),await hash(browser),Date.now()).first();
  if(!proof||url.searchParams.has('error')||!url.searchParams.get('code'))return json({error:'Login expired or declined'},400);
- const response=await fetcher('https://github.com/login/oauth/access_token',{method:'POST',headers:{Accept:'application/json','Content-Type':'application/json'},body:JSON.stringify({client_id:env.GITHUB_CLIENT_ID,client_secret:env.GITHUB_CLIENT_SECRET,code:url.searchParams.get('code'),redirect_uri:new URL('/callback',request.url).href})});
+ const response=await fetcher('https://github.com/login/oauth/access_token',{method:'POST',headers:{Accept:'application/json','Content-Type':'application/json'},body:JSON.stringify({client_id:env.GITHUB_CLIENT_ID,client_secret:env.GITHUB_CLIENT_SECRET,code:url.searchParams.get('code'),redirect_uri:githubCallback(request,env)})});
  if(!response.ok)return json({error:'Identity service unavailable'},502);
  const token=await response.json();if(typeof token.access_token!=='string'||token.access_token.length>512)return json({error:'Identity verification failed'},403);
  const identity=await fetcher('https://api.github.com/user',{headers:{Authorization:'Bearer '+token.access_token,Accept:'application/vnd.github+json','User-Agent':'Easybook-Accounts','X-GitHub-Api-Version':'2022-11-28'},redirect:'error'});
@@ -82,11 +84,11 @@ export async function finishLogin(request,env,fetcher=fetch){
  const established=await createSession(request,env,account.id);
  return redirect(proof.return_path,[established.cookie,cookie(LOGIN_COOKIE,'',0)]);
 }
-export async function createSession(request,env,accountId,credentialId=null){
+export async function createSession(request,env,accountId,credentialId=null,authenticatedAt=Date.now()){
  const token=random(),id=crypto.randomUUID(),now=Date.now();
- const statements=[env.DB.prepare('INSERT INTO account_sessions(id,token_hash,account_id,created_at,expires_at,authenticated_at,device) VALUES(?,?,?,?,?,?,?)').bind(id,await hash(token),accountId,now,now+7*86400000,now,(request.headers.get('User-Agent')||'Browser').slice(0,180))];
+ const statements=[env.DB.prepare('INSERT INTO account_sessions(id,token_hash,account_id,created_at,expires_at,authenticated_at,device) VALUES(?,?,?,?,?,?,?)').bind(id,await hash(token),accountId,now,now+7*86400000,authenticatedAt,(request.headers.get('User-Agent')||'Browser').slice(0,180))];
  if(credentialId)statements.push(env.DB.prepare('INSERT INTO account_session_passkeys(session_id,credential_id) VALUES(?,?)').bind(id,credentialId));
- await env.DB.batch(statements);return {id,cookie:cookie(ACCOUNT_COOKIE,token,7*86400)};
+ await env.DB.batch(statements);return {id,token,cookie:cookie(ACCOUNT_COOKIE,token,7*86400)};
 }
 export async function accountRoutes(request,env){
  const url=new URL(request.url),path=url.pathname;
@@ -195,3 +197,4 @@ export async function policyFor(env,props,clientId,tokenScopes){
  if(!row)return null;
  const allowed=JSON.parse(row.scopes);return {...row,scopes:tokenScopes.filter(x=>allowed.includes(x))};
 }
+

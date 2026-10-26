@@ -33,5 +33,11 @@
     "crons": [
       "17 * * * *"
     ]
-  }
+  },
+  "services": [
+    {
+      "binding": "IDENTITY_SERVICE",
+      "service": "easybook-mcp-oauth"
+    }
+  ]
 }

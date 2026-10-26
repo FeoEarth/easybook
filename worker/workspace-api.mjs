@@ -1,3 +1,4 @@
+import {nativeSession} from '../mcp-oauth/src/native-sessions.mjs';
 import {session,csrf,rateLimit,readCookie,ACCOUNT_COOKIE} from '../mcp-oauth/src/accounts.mjs';
 import {boundedJSON,object} from './mcp-common.mjs';
 import {
@@ -12,6 +13,11 @@ const bearer=request=>request.headers.get('Authorization')?.match(/^Bearer ([a-f
 async function inputBody(request){const value=await boundedJSON(request,4096);if(!object(value))problem('invalid_request',400);return value;}
 
 export async function workspacePrincipal(request,env,{mutation=false,allowAnonymous=false}={}){
+ if(request.headers.get('Authorization')?.startsWith('Easybook-Session ')){
+  if(request.headers.has('Origin'))problem('native_origin_not_allowed',403);
+  const s=await nativeSession(request,env);if(!s)problem('account_session_expired',401);
+  return {kind:'account',accountId:s.account_id,sessionId:s.id,authenticatedAt:s.authenticated_at};
+ }
  const token=bearer(request);
  // Explicit credentials never fall back to an unrelated cookie or anonymous mode.
  if(request.headers.has('Authorization')){

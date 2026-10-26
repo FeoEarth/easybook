@@ -1,3 +1,5 @@
+import {IDENTITY_ORIGIN,LEGACY_IDENTITY_ORIGIN,identityEnabled} from '../../worker/identity-origin.mjs';
+import {nativeAccountRoutes} from './native-sessions.mjs';
 import {grantClient} from '../../worker/account-grants.mjs';
 import OAuthProvider, {OAuthError} from '@cloudflare/workers-oauth-provider';
 import {accountRoutes,accountAuthorize,policyFor,rateLimit,SCOPES} from './accounts.mjs';
@@ -16,6 +18,8 @@ const oauthHandler = {
  async fetch(request,env) {
   const url = new URL(request.url);
   const oauth = env.OAUTH_PROVIDER;
+  if(identityEnabled(env)&&url.origin===LEGACY_IDENTITY_ORIGIN&&((url.pathname==='/callback'&&url.searchParams.get('state')?.startsWith('account_'))||url.pathname==='/account/login'))return new Response(null,{status:303,headers:{Location:IDENTITY_ORIGIN+url.pathname+url.search,'Cache-Control':'no-store','Referrer-Policy':'no-referrer'}});
+  const native=await nativeAccountRoutes(request,env);if(native)return native;
   if(url.pathname.startsWith('/account/passkeys')){const {passkeyRoutes}=await import('./passkeys.mjs');return passkeyRoutes(request,env);}
   const account=await accountRoutes(request,env);if(account)return account;
   if(url.pathname==='/oauth/authorize')return accountAuthorize(request,env);
@@ -240,7 +244,7 @@ const apiHandler={
  }
 };
 export {apiHandler,oauthHandler};
-export const provider = new OAuthProvider({
+const providerOptions={
  apiRoute:'/mcp',apiHandler,defaultHandler:oauthHandler,
  resourceMetadata:{resource:'https://easybook-mcp-oauth.1902521952.workers.dev/mcp'},
  authorizeEndpoint:'/authorize',tokenEndpoint:'/token',clientRegistrationEndpoint:'/register',
@@ -256,7 +260,9 @@ export const provider = new OAuthProvider({
  },
  clientIdMetadataDocumentEnabled:true,
  allowPlainPKCE:false,scopesSupported:['mcp:read',...SCOPES],requiredScopes:[]
-});
+};
+export const provider=new OAuthProvider(providerOptions);
+export const canonicalProvider=new OAuthProvider({...providerOptions,resourceMetadata:{resource:IDENTITY_ORIGIN+'/mcp'},authorizeEndpoint:'/oauth/authorize'});
 
 
 
@@ -268,6 +274,7 @@ export default {async fetch(request,env,ctx){
   if(requestUrl.pathname==='/.well-known/oauth-protected-resource'){requestUrl.pathname+='\/mcp';request=new Request(requestUrl,request);}
   const path=requestUrl.pathname;
   if(['/token','/oauth/token','/oauth/revoke','/register'].includes(path))await rateLimit(request,env,'oauth',60);
-  return await guardTokens(request,env,ctx,provider);
+  return await guardTokens(request,env,ctx,identityEnabled(env)&&new URL(request.url).origin===IDENTITY_ORIGIN?canonicalProvider:provider);
  }catch(error){if(error instanceof Response)return error;console.error(JSON.stringify({event:'account_oauth_failed',name:error?.name}));return new Response('Authorization temporarily unavailable',{status:503,headers:{'Cache-Control':'no-store'}});}
 }};
+

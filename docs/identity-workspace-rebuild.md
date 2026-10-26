@@ -169,3 +169,43 @@ focused storage/permission/attachment checks and Android Release compilation are
 enabled instead. Skipped UI/emulator checks are not reported as passing.
 Physical-device SQLite/Keystore upgrade and reconnection are not yet verified.
 This checkpoint has not been deployed and production D1 has not been migrated.
+
+## Stage 3 native sessions and canonical-domain checkpoint
+
+Added a gated service-binding proxy from the canonical domain to the existing
+OAuth Worker. Canonical OAuth discovery uses the canonical MCP audience and
+account authorization endpoint; legacy discovery remains unchanged before
+cutover. No activation variable has been enabled on production.
+
+Added native browser-login handoffs bound to S256 PKCE, state, a fixed callback,
+recent browser authentication and same-origin CSRF approval. Codes expire in one
+minute after approval and are atomically consumed. Exchange rechecks the
+approving session, account and credential revocation. Native sessions are tracked
+separately, stored hash-only in D1 and accepted with a distinct native header,
+never confused with a workspace bearer. Browser session cookies cannot substitute
+for a native session. Native tokens cannot be used as browser session cookies in
+the new mode. Handoffs preserve the original authentication timestamp rather than
+renewing the recent-auth security window.
+
+Android stores pending PKCE verifier/state and the resulting session only in
+Keystore envelopes. The WebView sees public status/session metadata only. A
+strict callback handler validates flow/state/expiry; browser callbacks contain
+only a one-use code. Native logout revokes that device session and explicitly
+leaves independent workspace-key access intact. The old-server 404 compatibility
+path opens the previous browser portal; other failures do not fall back.
+
+Passkeys use the canonical RP when accessed through the canonical domain. Old RP
+credentials remain explicitly usable for recovery at the legacy domain; new
+registrations there are blocked in canonical mode. Browser recovery is bound to
+an HttpOnly primary-domain cookie plus PKCE and one-use exchange, then asks the
+user to register a new-domain credential. Existing credentials are not silently
+rewritten. A fixed GitHub callback bridge permits the existing registered legacy
+callback to return to the primary-domain login cookie; the exchange continues to
+use the configured, strictly allowlisted registered callback.
+
+Additive D1 migration 0004 is required before enabling canonical mode. Local
+checks pass for PKCE/state/replay, approval/recovery binding, session/device
+revocation, preserved auth freshness, primary RP options, legacy registration
+rejection and service-binding fail-closed behavior. Native browser round trips,
+physical-device Keystore, Credential Manager and production callback/App Links
+remain unverified/unfinished. This checkpoint has not been deployed.
