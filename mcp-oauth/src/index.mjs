@@ -16,6 +16,7 @@ const oauthHandler = {
  async fetch(request,env) {
   const url = new URL(request.url);
   const oauth = env.OAUTH_PROVIDER;
+  if(url.pathname.startsWith('/account/passkeys')){const {passkeyRoutes}=await import('./passkeys.mjs');return passkeyRoutes(request,env);}
   const account=await accountRoutes(request,env);if(account)return account;
   if(url.pathname==='/oauth/authorize')return accountAuthorize(request,env);
   if(url.pathname.startsWith('/uploads/'))return uploadHTTP(request,env);

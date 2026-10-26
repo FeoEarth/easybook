@@ -4,10 +4,14 @@
   "type": "module",
   "scripts": {
     "deploy": "wrangler deploy",
-    "check": "node --check src/index.mjs"
+    "check": "node --check src/index.mjs",
+    "test:passkeys": "node test/passkeys-security.mjs",
+    "build:passkey-client": "node scripts/build-passkey-client.mjs"
   },
   "dependencies": {
-    "@cloudflare/workers-oauth-provider": "1.2.4"
+    "@cloudflare/workers-oauth-provider": "1.2.4",
+    "@simplewebauthn/browser": "14.0.0",
+    "@simplewebauthn/server": "14.0.3"
   },
   "devDependencies": {
     "wrangler": "4.152.0"

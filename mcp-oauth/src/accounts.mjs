@@ -7,7 +7,7 @@ const LOGIN_COOKIE='__Host-easybook-login';
 export const SCOPES=[...READ,...WRITE];
 const labels={'notes.read':'读取笔记','notes.write':'创建和修改笔记','notes.delete':'删除笔记','folders.read':'读取文件夹','folders.manage':'管理文件夹','tasks.read':'读取待办','tasks.manage':'管理待办','attachments.read':'读取附件','attachments.write':'上传和修改附件','workspace.read':'读取工作区信息'};
 export const random=()=>Array.from(crypto.getRandomValues(new Uint8Array(32)),b=>b.toString(16).padStart(2,'0')).join('');
-const cookie=(name,value,age)=>`${name}=${value}; Path=/; HttpOnly; Secure; SameSite=Lax; Max-Age=${age}`;
+export const cookie=(name,value,age)=>`${name}=${value}; Path=/; HttpOnly; Secure; SameSite=Lax; Max-Age=${age}`;
 export const readCookie=(request,name)=>(request.headers.get('Cookie')||'').split(';').map(x=>x.trim()).find(x=>x.startsWith(name+'='))?.slice(name.length+1)||'';
 const noStore={'Cache-Control':'no-store','Referrer-Policy':'no-referrer','X-Content-Type-Options':'nosniff'};
 export const json=(data,status=200)=>Response.json(data,{status,headers:noStore});
@@ -17,7 +17,7 @@ export function page(title,content,headers={}){
 export function redirect(path,cookies=[]){const headers=new Headers({...noStore,Location:path});for(const c of cookies)headers.append('Set-Cookie',c);return new Response(null,{status:303,headers});}
 export async function session(request,env){
  const token=readCookie(request,ACCOUNT_COOKIE);if(!/^[a-f0-9]{64}$/.test(token))return null;
- return env.DB.prepare('SELECT s.*,a.display_name FROM account_sessions s JOIN accounts a ON a.id=s.account_id WHERE s.token_hash=? AND s.revoked_at IS NULL AND s.expires_at>? AND a.deleted_at IS NULL').bind(await hash(token),Date.now()).first();
+ return env.DB.prepare('SELECT s.*,a.display_name FROM account_sessions s JOIN accounts a ON a.id=s.account_id WHERE s.token_hash=? AND s.revoked_at IS NULL AND s.expires_at>? AND a.deleted_at IS NULL AND NOT EXISTS(SELECT 1 FROM account_session_passkeys sp JOIN account_passkeys pk ON pk.id=sp.credential_id WHERE sp.session_id=s.id AND pk.revoked_at IS NOT NULL)').bind(await hash(token),Date.now()).first();
 }
 export async function csrf(request,s){return hash(readCookie(request,ACCOUNT_COOKIE)+'|'+s.id);}
 export async function boundedText(request,max=16384){
@@ -38,12 +38,13 @@ export async function rateLimit(request,env,kind,limit=30){
  const row=await env.DB.prepare('INSERT INTO account_rate_limits(bucket,count,expires_at) VALUES(?,1,?) ON CONFLICT(bucket) DO UPDATE SET count=count+1 RETURNING count').bind(bucket,Date.now()+120000).first();
  if(row.count>limit)throw new Response('Too many requests',{status:429,headers:{...noStore,'Retry-After':'60'}});
 }
-function safeReturn(value){return typeof value==='string'&&value.length<=6000&&(value==='/account'||value==='/account?connect=1'||value.startsWith('/oauth/authorize?'))?value:'/account';}
-export async function startLogin(request,env){
+export function safeReturn(value){return typeof value==='string'&&value.length<=6000&&(value==='/account'||value==='/account?connect=1'||value.startsWith('/oauth/authorize?'))?value:'/account';}
+export async function startLogin(request,env,linkSession=null){
  await rateLimit(request,env,'login',10);
  const state='account_'+random(),browser=random();
- const returnPath=safeReturn(new URL(request.url).searchParams.get('return'));
+ const returnPath=linkSession?'/account?identity-link=github':safeReturn(new URL(request.url).searchParams.get('return'));
  await env.DB.prepare('INSERT INTO account_login_states(state_hash,browser_hash,return_path,expires_at) VALUES(?,?,?,?)').bind(await hash(state),await hash(browser),returnPath,Date.now()+300000).run();
+ if(linkSession)await env.DB.prepare('INSERT INTO account_identity_link_requests(state_hash,account_id,session_id,expires_at) VALUES(?,?,?,?)').bind(await hash(state),linkSession.account_id,linkSession.id,Date.now()+300000).run();
  const url=new URL('https://github.com/login/oauth/authorize');url.searchParams.set('client_id',env.GITHUB_CLIENT_ID);url.searchParams.set('redirect_uri',new URL('/callback',request.url).href);url.searchParams.set('state',state);
  return redirect(url.href,[cookie(LOGIN_COOKIE,browser,300)]);
 }
@@ -58,6 +59,18 @@ export async function finishLogin(request,env,fetcher=fetch){
  const identity=await fetcher('https://api.github.com/user',{headers:{Authorization:'Bearer '+token.access_token,Accept:'application/vnd.github+json','User-Agent':'Easybook-Accounts','X-GitHub-Api-Version':'2022-11-28'},redirect:'error'});
  if(!identity.ok)return json({error:'Identity service unavailable'},502);
  const user=await identity.json();if(!Number.isSafeInteger(user?.id)||user.id<=0||user.type!=='User'||typeof user.login!=='string')return json({error:'Invalid identity'},403);
+ const link=await env.DB.prepare('DELETE FROM account_identity_link_requests WHERE state_hash=? AND expires_at>? RETURNING account_id,session_id').bind(await hash(state),Date.now()).first();
+ if(link){
+  const current=await session(request,env);
+  if(!current||current.id!==link.session_id||current.account_id!==link.account_id||Date.now()-current.authenticated_at>300000)return json({error:'Link session expired or changed'},403);
+  const existing=await env.DB.prepare("SELECT account_id FROM account_identities WHERE provider='github' AND subject=?").bind(String(user.id)).first();
+  if(existing&&existing.account_id!==current.account_id)return json({error:'This GitHub identity belongs to another account'},409);
+  try{await env.DB.prepare("INSERT INTO account_identities(provider,subject,account_id) VALUES('github',?,?) ON CONFLICT(provider,subject) DO NOTHING").bind(String(user.id),current.account_id).run()}catch{return json({error:'Identity cannot be linked'},409)}
+  const linked=await env.DB.prepare("SELECT account_id FROM account_identities WHERE provider='github' AND subject=?").bind(String(user.id)).first();
+  if(linked?.account_id!==current.account_id)return json({error:'Identity cannot be linked'},409);
+  return redirect('/account',[cookie(LOGIN_COOKIE,'',0)]);
+ }
+ if(proof.return_path==='/account?identity-link=github')return json({error:'Identity link request expired'},403);
  // Provider subject is never used as the local account ID, and names/emails never link accounts.
  const candidate=crypto.randomUUID(),now=Date.now();
  await env.DB.batch([
@@ -66,9 +79,14 @@ export async function finishLogin(request,env,fetcher=fetch){
  ]);
  const account=await env.DB.prepare("SELECT a.id FROM accounts a JOIN account_identities i ON i.account_id=a.id WHERE i.provider='github' AND i.subject=? AND a.deleted_at IS NULL").bind(String(user.id)).first();
  if(!account)return json({error:'Account unavailable'},403);
- const secret=random();
- await env.DB.prepare('INSERT INTO account_sessions(id,token_hash,account_id,created_at,expires_at,authenticated_at,device) VALUES(?,?,?,?,?,?,?)').bind(crypto.randomUUID(),await hash(secret),account.id,now,now+7*86400000,now,(request.headers.get('User-Agent')||'Browser').slice(0,180)).run();
- return redirect(proof.return_path,[cookie(ACCOUNT_COOKIE,secret,7*86400),cookie(LOGIN_COOKIE,'',0)]);
+ const established=await createSession(request,env,account.id);
+ return redirect(proof.return_path,[established.cookie,cookie(LOGIN_COOKIE,'',0)]);
+}
+export async function createSession(request,env,accountId,credentialId=null){
+ const token=random(),id=crypto.randomUUID(),now=Date.now();
+ const statements=[env.DB.prepare('INSERT INTO account_sessions(id,token_hash,account_id,created_at,expires_at,authenticated_at,device) VALUES(?,?,?,?,?,?,?)').bind(id,await hash(token),accountId,now,now+7*86400000,now,(request.headers.get('User-Agent')||'Browser').slice(0,180))];
+ if(credentialId)statements.push(env.DB.prepare('INSERT INTO account_session_passkeys(session_id,credential_id) VALUES(?,?)').bind(id,credentialId));
+ await env.DB.batch(statements);return {id,cookie:cookie(ACCOUNT_COOKIE,token,7*86400)};
 }
 export async function accountRoutes(request,env){
  const url=new URL(request.url),path=url.pathname;
@@ -77,10 +95,14 @@ export async function accountRoutes(request,env){
  if(!path.startsWith('/account')&&!['/oauth/grants','/oauth/clients'].includes(path))return null;
  const s=await session(request,env);
  if(!s&&['/oauth/grants','/oauth/clients'].includes(path))return json({error:'unauthorized'},401);
- if(!s)return page('登录 Easybook',`<p>使用 GitHub 验证身份，建立独立的 Easybook 账户。此账户与同步密钥分开；登录不会自动获得任何已有工作区。</p><a href="/account/login?return=${encodeURIComponent(safeReturn(path+url.search))}">继续使用 GitHub</a><p>Passkey 将在后续版本提供。</p>`);
+ if(!s)return page('登录 Easybook',`<p>使用 GitHub 验证身份，建立独立的 Easybook 账户。此账户与同步密钥分开；登录不会自动获得任何已有工作区。</p><a href="/account/login?return=${encodeURIComponent(safeReturn(path+url.search))}">继续使用 GitHub</a><p><a class="link" href="/account/passkeys?return=${encodeURIComponent(safeReturn(path+url.search))}">使用通行密钥登录或创建账户</a></p>`);
  const c=await csrf(request,s),hidden=`<input type="hidden" name="csrf" value="${c}">`;
  if(request.method==='POST'){
   const f=await requireForm(request,s);
+  if(path==='/account/identities/github'){
+   if(Date.now()-s.authenticated_at>300000)return page('请重新验证身份','<p>关联登录身份前，请先使用通行密钥或 GitHub 重新登录。</p><a href="/account/passkeys">重新登录</a>');
+   return startLogin(request,env,s);
+  }
   if(path==='/account/logout'){
    await env.DB.prepare('UPDATE account_sessions SET revoked_at=? WHERE id=? AND account_id=?').bind(Date.now(),s.id,s.account_id).run();return redirect('/account',[cookie(ACCOUNT_COOKIE,'',0)]);
   }
@@ -133,7 +155,7 @@ export async function accountRoutes(request,env){
  ]);
  const challenge=random();await env.DB.prepare('INSERT INTO account_workspace_claims(challenge_hash,account_id,session_id,expires_at) VALUES(?,?,?,?)').bind(await hash(challenge),s.account_id,s.id,Date.now()+300000).run();
  const connect=`<p>在已连接工作区的 Easybook Web 打开“账户连接”，由现有设备证明工作区访问权。</p><a href="https://easybook.loonxy.com/account/connect" target="_blank" rel="noopener">打开工作区连接</a>`;
- return page('账户与安全',`<p>${escape(s.display_name)}<small>账户 ID：${escape(s.account_id)}</small></p><form method="post" action="/account/profile">${hidden}<label>账户名称 <input name="name" value="${escape(s.display_name)}" maxlength="100" required></label><button>保存</button></form><h2>工作区</h2><div class="group">${workspaces.results.map(w=>`<div class="row"><code>${escape(w.workspace_id)}</code><small>${escape(w.role)}</small></div>`).join('')||'<p>尚未关联工作区</p>'}</div>${connect}<form method="post" action="/account/workspaces/claim" id="claim">${hidden}<input type="hidden" name="challenge" value="${challenge}"><label>设备生成的工作区证明 <input name="assertion" maxlength="8192" required></label><button>关联工作区</button><small>本页挑战码：<code>${challenge}</code>。仅凭同步密钥的可信设备生成证明。若该工作区已有其他所有者，认领会被拒绝。</small></form><h2>已登录设备</h2><div class="group">${devices.results.map(d=>`<div class="row">${escape(d.device)}<small>${d.id===s.id?'当前设备 · ':''}${escape(new Date(d.created_at).toISOString())}</small><form method="post" action="/account/sessions/revoke">${hidden}<input type="hidden" name="id" value="${escape(d.id)}"><button class="danger">退出此设备</button></form></div>`).join('')}</div><h2>已授权应用</h2><div class="group">${grants.results.map(g=>`<div class="row"><code>${escape(g.client_id)}</code><small>工作区 ${escape(g.workspace_id.slice(0,12))}</small><p>${escape(JSON.parse(g.scopes).map(x=>labels[x]||x).join('、'))}</p><form method="post" action="/oauth/grants">${hidden}<input type="hidden" name="id" value="${escape(g.id)}"><button class="danger">撤销授权</button></form></div>`).join('')||'<p>暂无新账户授权</p>'}</div><p>旧 GitHub OAuth 与配对授权继续可用；不会自动成为账户工作区。已有数据和同步密钥保持独立。</p><form method="post" action="/account/logout">${hidden}<button>退出登录</button></form><form method="post" action="/account/delete">${hidden}<button class="danger">删除账户…</button></form>`);
+ return page('账户与安全',`<p>${escape(s.display_name)}<small>账户 ID：${escape(s.account_id)}</small></p><form method="post" action="/account/profile">${hidden}<label>账户名称 <input name="name" value="${escape(s.display_name)}" maxlength="100" required></label><button>保存</button></form><h2>工作区</h2><div class="group">${workspaces.results.map(w=>`<div class="row"><code>${escape(w.workspace_id)}</code><small>${escape(w.role)}</small></div>`).join('')||'<p>尚未关联工作区</p>'}</div>${connect}<form method="post" action="/account/workspaces/claim" id="claim">${hidden}<input type="hidden" name="challenge" value="${challenge}"><label>设备生成的工作区证明 <input name="assertion" maxlength="8192" required></label><button>关联工作区</button><small>本页挑战码：<code>${challenge}</code>。仅凭同步密钥的可信设备生成证明。若该工作区已有其他所有者，认领会被拒绝。</small></form><h2>登录方式</h2><div class="group"><a class="link" href="/account/passkeys">通行密钥与独立登录 ›</a></div><h2>已登录设备</h2><div class="group">${devices.results.map(d=>`<div class="row">${escape(d.device)}<small>${d.id===s.id?'当前设备 · ':''}${escape(new Date(d.created_at).toISOString())}</small><form method="post" action="/account/sessions/revoke">${hidden}<input type="hidden" name="id" value="${escape(d.id)}"><button class="danger">退出此设备</button></form></div>`).join('')}</div><h2>已授权应用</h2><div class="group">${grants.results.map(g=>`<div class="row"><code>${escape(g.client_id)}</code><small>工作区 ${escape(g.workspace_id.slice(0,12))}</small><p>${escape(JSON.parse(g.scopes).map(x=>labels[x]||x).join('、'))}</p><form method="post" action="/oauth/grants">${hidden}<input type="hidden" name="id" value="${escape(g.id)}"><button class="danger">撤销授权</button></form></div>`).join('')||'<p>暂无新账户授权</p>'}</div><p>旧 GitHub OAuth 与配对授权继续可用；不会自动成为账户工作区。已有数据和同步密钥保持独立。</p><form method="post" action="/account/logout">${hidden}<button>退出登录</button></form><form method="post" action="/account/delete">${hidden}<button class="danger">删除账户…</button></form>`);
 }
 
 export async function accountAuthorize(request,env){
