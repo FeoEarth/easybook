@@ -1,3 +1,4 @@
+import {accountAllowed,workspaceAllowed,allowedWorkspaces,requireRestoreAccess,checkpointEnabled,reserveWorkspaceFloor,finishWorkspaceFloor} from './security-checkpoint.mjs';
 import {hash, READ, WRITE} from './mcp-common.mjs';
 
 const HEX=/^[a-f0-9]{64}$/;
@@ -8,14 +9,14 @@ const deny=(code,status)=>{throw new WorkspaceError(code,status)};
 export const newWorkspaceSecret=()=>Array.from(crypto.getRandomValues(new Uint8Array(32)),b=>b.toString(16).padStart(2,'0')).join('');
 function nameValue(value){if(typeof value!=='string'||!value.trim()||value.trim().length>60)deny('invalid_name',400);return value.trim();}
 function stmt(env,sql,...args){return env.DB.prepare(sql).bind(...args);}
-const activeAccount=(env,id)=>stmt(env,'SELECT id FROM accounts WHERE id=? AND deleted_at IS NULL',id).first();
+const activeAccount=async(env,id)=>await accountAllowed(env,id)?stmt(env,'SELECT id FROM accounts WHERE id=? AND deleted_at IS NULL',id).first():null;
 const metadata=(env,id)=>stmt(env,'SELECT * FROM workspaces WHERE id=? AND deleted_at IS NULL',id).first();
 const event=(env,id,actor,kind)=>stmt(env,'INSERT INTO workspace_security_events(id,workspace_id,actor_account_id,event,created_at) VALUES(?,?,?,?,?)',crypto.randomUUID(),id,actor?.accountId||null,kind,Date.now());
 
 // Called only with a server-verified principal. HTTP callers cannot supply one.
 export async function workspaceAccess(env,id,principal){
  if(!HEX.test(id||''))return null;
- const w=await metadata(env,id);if(!w)return null;
+ const w=await metadata(env,id);if(!w||!await workspaceAllowed(env,id,w.version))return null;
  if(principal?.kind==='key'&&w.mode==='personal'){
   const key=await stmt(env,'SELECT key_hash FROM workspace_keys WHERE workspace_id=? AND key_hash=? AND revoked_at IS NULL',id,principal.keyHash||'').first();
   return key?{...w,role:'manager',via:'key'}:null;
@@ -44,10 +45,10 @@ function guard(env,w,principal){
   : 'manager_account_id=? AND EXISTS(SELECT 1 FROM accounts a WHERE a.id=workspaces.manager_account_id AND a.deleted_at IS NULL)';
  return {checkId,statement:stmt(env,`INSERT INTO workspace_tx_assertions(id,valid) SELECT ?,EXISTS(SELECT 1 FROM workspaces WHERE id=? AND version=? AND deleted_at IS NULL AND ${authority})`,checkId,w.id,w.version,principal.kind==='key'?principal.keyHash:principal.accountId)};
 }
-async function change(env,w,principal,statements){
- const g=guard(env,w,principal);
- try{return await env.DB.batch([g.statement,...statements,stmt(env,'DELETE FROM workspace_tx_assertions WHERE id=?',g.checkId)]);}
- catch(e){if(String(e.message).includes('workspace_tx_assertions')||String(e.message).includes('valid=1'))deny('workspace_changed_retry',409);throw e;}
+async function change(env,w,principal,statements,{security=true}={}){
+ const g=guard(env,w,principal),floor=security?await reserveWorkspaceFloor(env,w.id,w.version+1):null;
+ try{const result=await env.DB.batch([g.statement,...statements,stmt(env,'DELETE FROM workspace_tx_assertions WHERE id=?',g.checkId)]);await finishWorkspaceFloor(env,floor,'committed');return result;}
+ catch(e){if(String(e.message).includes('workspace_tx_assertions')||String(e.message).includes('valid=1')){await finishWorkspaceFloor(env,floor,'cancelled');deny('workspace_changed_retry',409)}throw e;}
 }
 function invalidate(env,id,account=null){
  if(env.WORKSPACE_IDENTITY_V2==='true')return stmt(env,'UPDATE oauth_grant_workspaces SET revoked_at=? WHERE workspace_id=? AND revoked_at IS NULL'+(account?' AND policy_id IN(SELECT id FROM oauth_grants WHERE account_id=?)':''),...[Date.now(),id,...(account?[account]:[])]);
@@ -56,12 +57,14 @@ function invalidate(env,id,account=null){
 }
 
 export async function createWorkspace(env,name,principal=null){
+ await requireRestoreAccess(env);
  const id=newWorkspaceSecret(),key=newWorkspaceSecret(),now=Date.now();name=nameValue(name);
  if(principal&&(!['account','oauth'].includes(principal.kind)||!await activeAccount(env,principal.accountId)))deny('account_required');
  if(principal?.kind==='oauth'&&!principal.scopes?.includes('workspace.create'))deny('insufficient_scope');
  // AI may create an account-associated personal workspace but never receives its key.
  const statements=[stmt(env,"INSERT INTO workspaces(id,name,mode,manager_account_id,created_at) VALUES(?,?,'personal',?,?)",id,name,principal?.accountId||null,now),
   stmt(env,'INSERT INTO workspace_keys(key_hash,workspace_id,created_at) VALUES(?,?,?)',await hash(key),id,now),event(env,id,principal,'workspace_created')];
+ if(principal){const check=crypto.randomUUID();statements.unshift(stmt(env,'INSERT INTO workspace_tx_assertions(id,valid) SELECT ?,EXISTS(SELECT 1 FROM accounts WHERE id=? AND deleted_at IS NULL)',check,principal.accountId));statements.push(stmt(env,'DELETE FROM workspace_tx_assertions WHERE id=?',check))}
  await env.DB.batch(statements);
  return {workspace:await metadata(env,id),...(principal?.kind==='oauth'?{}:{key})};
 }
@@ -72,7 +75,7 @@ export async function resolveWorkspaceKey(env,key,{allowLegacy=false}={}){
  if(!HEX.test(key||''))return null;
  const keyHash=await hash(key);
  let row=await stmt(env,'SELECT workspace_id,revoked_at FROM workspace_keys WHERE key_hash=?',keyHash).first();
- if(!row&&allowLegacy){
+ if(!row&&allowLegacy&&!checkpointEnabled(env)){
   const now=Date.now();
   await env.DB.batch([
    stmt(env,"INSERT INTO workspaces(id,name,mode,created_at) VALUES(?,'我的工作区','personal',?) ON CONFLICT(id) DO NOTHING",keyHash,now),
@@ -114,14 +117,14 @@ export async function associateWorkspace(env,id,keyPrincipal,accountPrincipal){
 
 export async function listWorkspaces(env,principal){
  if(principal?.kind!=='account'||!await activeAccount(env,principal.accountId))deny('account_required');
- const {results}=await stmt(env,"SELECT w.*,CASE WHEN w.manager_account_id=? THEN 'manager' ELSE m.role END role FROM workspaces w LEFT JOIN workspace_members m ON m.workspace_id=w.id AND m.account_id=? WHERE w.deleted_at IS NULL AND (w.manager_account_id=? OR (w.mode='shared' AND m.account_id=?)) ORDER BY w.created_at,w.id",...Array(4).fill(principal.accountId)).all();return results;
+ const {results}=await stmt(env,"SELECT w.*,CASE WHEN w.manager_account_id=? THEN 'manager' ELSE m.role END role FROM workspaces w LEFT JOIN workspace_members m ON m.workspace_id=w.id AND m.account_id=? WHERE w.deleted_at IS NULL AND (w.manager_account_id=? OR (w.mode='shared' AND m.account_id=?)) ORDER BY w.created_at,w.id",...Array(4).fill(principal.accountId)).all();return allowedWorkspaces(env,results);
 }
 
 export async function renameWorkspace(env,id,principal,name){
  name=nameValue(name);const w=await workspaceAccess(env,id,principal);
  if(!w||w.role!=='manager')deny('manager_required');
  if(principal.kind==='oauth'&&!principal.scopes?.includes('workspace.write'))deny('insufficient_scope');
- await change(env,w,principal,[stmt(env,'UPDATE workspaces SET name=?,version=version+1 WHERE id=?',name,id)]);
+ await change(env,w,principal,[stmt(env,'UPDATE workspaces SET name=?,version=version+1 WHERE id=?',name,id)],{security:false});
  return metadata(env,id);
 }
 

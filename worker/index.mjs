@@ -1,3 +1,5 @@
+import {runWorkspacePurges} from './workspace-purge.mjs';
+import {requireRestoreAccess} from './security-checkpoint.mjs';
 import {maintainIdentity} from './identity-maintenance.mjs';
 import {runAttachmentPurges} from './attachment-purge.mjs';
 import {androidAssetLinks} from './android-identity.mjs';
@@ -20,9 +22,10 @@ import {attachments} from './attachments.mjs';
 const headers = {'Access-Control-Allow-Origin':'*','Access-Control-Allow-Headers':'Authorization, Content-Type','Access-Control-Allow-Methods':'GET, PUT, OPTIONS','Cache-Control':'no-store','X-Content-Type-Options':'nosniff'};
 const json = (data, status=200) => Response.json(data, {status, headers});
 export default {
- async scheduled(controller,env){const results=await Promise.allSettled([cleanupUploads(env,10),runAttachmentPurges(env,10),maintainIdentity(env)]);if(results.some(r=>r.status==='rejected'))throw Error('Scheduled maintenance incomplete')},
+ async scheduled(controller,env){const results=await Promise.allSettled([cleanupUploads(env,10),runAttachmentPurges(env,10),runWorkspacePurges(env,5),maintainIdentity(env)]);if(results.some(r=>r.status==='rejected'))throw Error('Scheduled maintenance incomplete')},
  async fetch(request, env) {
   const url = new URL(request.url);
+  if(url.pathname.startsWith('/api/')||identityPath(url.pathname)){try{await requireRestoreAccess(env)}catch{return json({error:'Security recovery in progress'},503)}}
   if(url.pathname==='/.well-known/assetlinks.json'&&identityEnabled(env)&&url.origin===IDENTITY_ORIGIN&&request.method==='GET')return Response.json(androidAssetLinks,{headers:{'Cache-Control':'public, max-age=3600','X-Content-Type-Options':'nosniff'}});
   // Deliberately unset on production until the coordinated identity cutover.
   const identityV2=env.WORKSPACE_IDENTITY_V2==='true';

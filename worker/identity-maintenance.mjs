@@ -1,3 +1,4 @@
+import {requireRestoreAccess} from './security-checkpoint.mjs';
 const DAY=86400000;
 // Recovery jobs, tombstones and revocation state are deliberately not log data.
 const retention=[
@@ -13,7 +14,7 @@ const retention=[
  ['account_operation_approvals',"status<>'pending' AND completed_at<? AND NOT EXISTS(SELECT 1 FROM attachment_purge_jobs j WHERE j.approval_id=account_operation_approvals.id AND j.status<>'complete')",14]
 ];
 export async function maintainIdentity(env,now=Date.now()){
- if(env.WORKSPACE_IDENTITY_V2!=='true')return;
+ if(env.WORKSPACE_IDENTITY_V2!=='true')return;await requireRestoreAccess(env);
  const name='identity-daily',lease=crypto.randomUUID(),start=Math.floor(now/DAY)*DAY;
  const claimed=await env.DB.prepare('INSERT INTO identity_maintenance_runs(name,lease,lease_until) VALUES(?,?,?) ON CONFLICT(name) DO UPDATE SET lease=excluded.lease,lease_until=excluded.lease_until WHERE identity_maintenance_runs.completed_at<? AND identity_maintenance_runs.lease_until<? RETURNING name').bind(name,lease,now+120000,start,now).first();if(!claimed)return;
  try{

@@ -401,3 +401,46 @@ Service skill and current Workers send API documentation were consulted; no
 unverified sender or fake delivery success is used. Account deletion, independent
 restore revocation checkpoints, 30-day self-backup lifecycle and final native /
 Web workspace/UI integration remain release blockers.
+
+### Stage 6 extension: deletion and independent restore safety
+
+Adds migrations 0015–0016 and an independent security schema. Security state is
+stored in a separate primary-read D1 binding, not the ordinary business database.
+The security D1 `easybook-security` was created on Cloudflare (UUID
+`d1761c2d-6372-489c-ae5e-114f3d5baa80`), and only its empty schema was installed.
+Verification found zero epochs, revocations, floors, intents or business tables.
+Worker bindings are prepared in source but are not deployed; no production
+business migration or checkpoint initialization was performed.
+
+Security mutations persist a protective intent / workspace version floor before
+committing business state. Known CAS rollback cancels its own intent; unknown
+commit outcomes remain fenced. Session/Passkey/OAuth revocation, manager/member
+changes, mode conversion and key rotation consult the external checkpoint.
+Authentication is closed if the binding, epoch or recovery gate is invalid.
+Recovery functions close access before a restore, revoke all sessions/OAuth,
+cancel pending approvals/challenges, require reconciliation and preserve stale
+workspace quarantine. There is no public management or MCP recovery endpoint.
+See docs/security-restore-runbook.md for the verified scope and operator sequence.
+
+Account deletion requires this checkpoint, recent authentication, shared-manager
+handoff and an explicit disposition for every managed personal workspace. Keeping
+a workspace requires proof of its current key; the key is never returned by the
+page. A D1 transaction removes authentication data, sessions, account association,
+pending approvals and personal security records, anonymizes shared activity,
+keeps selected anonymous workspace keys/data valid, and terminally purges selected
+workspace content. Explicitly deleted workspace bytes are cleared by leased,
+retryable, bounded namespace jobs protected by permanent external tombstones.
+Existing offline caches cannot be remotely erased; the confirmation explains it.
+
+Checks pass for HTTP deletion/CSRF/key non-disclosure, manager prerequisite,
+explicit choices, live key proof, concurrent rollback, preserved anonymous key,
+audit anonymization, scoped R2 cleanup and lost commit response. A real SQLite
+business snapshot rollback cannot revive deleted accounts, old keys, removed
+members, sessions or OAuth policies. Missing/wrong security bindings and epochs
+fail closed. Existing account OAuth and native/browser Passkey checks pass.
+
+Remaining: production recovery points/activation, operational management runner,
+verified email and push delivery, 30-day self-backup lifecycle, full account-only
+workspace client integration and final UI consolidation. Current deletion has no
+active push/email subscription records to remove because those channels are not
+yet provisioned. Production remains on the existing main deployment.

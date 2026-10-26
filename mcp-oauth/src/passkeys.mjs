@@ -1,3 +1,4 @@
+import {reserveRevocations,finishRevocations} from '../../worker/security-checkpoint.mjs';
 import {IDENTITY_ORIGIN,LEGACY_IDENTITY_ORIGIN,identityEnabled} from '../../worker/identity-origin.mjs';
 import {Buffer} from 'node:buffer';
 import {generateRegistrationOptions,verifyRegistrationResponse,generateAuthenticationOptions,verifyAuthenticationResponse} from '@simplewebauthn/server';
@@ -99,10 +100,12 @@ export async function passkeyRoutes(request,env){
   await protectAccountMutation(request,s,input);
   if(typeof input.id!=='string'||input.id.length>2048)return error('Invalid credential');
   const now=Date.now();
+  const revocation=await reserveRevocations(env,[['passkey',input.id]]);
   const result=await env.DB.batch([
    env.DB.prepare("UPDATE account_passkeys SET revoked_at=? WHERE id=? AND account_id=? AND revoked_at IS NULL AND (EXISTS(SELECT 1 FROM account_identities WHERE account_id=? AND provider='github') OR EXISTS(SELECT 1 FROM account_passkeys p WHERE p.account_id=? AND p.id<>? AND p.revoked_at IS NULL)) RETURNING id").bind(now,input.id,s.account_id,s.account_id,s.account_id,input.id),
    env.DB.prepare('UPDATE account_sessions SET revoked_at=? WHERE account_id=? AND id IN (SELECT session_id FROM account_session_passkeys WHERE credential_id=?) AND EXISTS(SELECT 1 FROM account_passkeys WHERE id=? AND revoked_at IS NOT NULL)').bind(now,s.account_id,input.id,input.id)
   ]);
+  await finishRevocations(env,revocation,result[0].results.length?'committed':'cancelled');
   if(!result[0].results.length)return error('不能移除唯一登录方式；请先添加另一把通行密钥',409);
   return json({ok:true,redirect:'/account/passkeys'});
  }

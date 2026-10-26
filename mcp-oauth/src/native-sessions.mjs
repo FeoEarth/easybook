@@ -1,3 +1,4 @@
+import {sessionAllowed,reserveRevocations,finishRevocations} from '../../worker/security-checkpoint.mjs';
 import {Buffer} from 'node:buffer';
 import {hash,boundedJSON,object} from '../../worker/mcp-common.mjs';
 import {IDENTITY_ORIGIN,LEGACY_IDENTITY_ORIGIN,NATIVE_REDIRECT,identityEnabled} from '../../worker/identity-origin.mjs';
@@ -30,8 +31,8 @@ async function consume(env,input,kind){
 }
 async function establish(request,env,proof,native){
  const factor=await env.DB.prepare('SELECT credential_id FROM account_session_passkeys WHERE session_id=?').bind(proof.approved_session_id).first();
- const source=await env.DB.prepare('SELECT authenticated_at FROM account_sessions WHERE id=?').bind(proof.approved_session_id).first();
- if(!source)throw json({error:'source_session_unavailable'},403);
+ const source=await env.DB.prepare('SELECT * FROM account_sessions WHERE id=?').bind(proof.approved_session_id).first();
+ if(!source||!await sessionAllowed(env,source))throw json({error:'source_session_unavailable'},403);
  const established=await createSession(request,env,proof.account_id,factor?.credential_id||null,source.authenticated_at);
  if(native)await env.DB.prepare('INSERT INTO account_native_sessions(session_id,created_at) VALUES(?,?)').bind(established.id,Date.now()).run();
  return established;
@@ -69,13 +70,15 @@ export async function nativeAccountRoutes(request,env){
   if(typeof input.id!=='string'||!/^[a-f0-9-]{36}$/.test(input.id))return json({error:'invalid_session'},400);
   if(input.id!==s.id&&Date.now()-s.authenticated_at>300000)return json({error:'reauthentication_required'},403);
   await rateLimit(request,env,'native-device-revoke',20);
+  if(!await env.DB.prepare('SELECT 1 FROM account_sessions WHERE id=? AND account_id=?').bind(input.id,s.account_id).first())return json({error:'session_not_found'},404);
+  const revocation=await reserveRevocations(env,[['session',input.id]]);
   const changed=await env.DB.prepare('UPDATE account_sessions SET revoked_at=? WHERE id=? AND account_id=? AND revoked_at IS NULL RETURNING id').bind(Date.now(),input.id,s.account_id).first();
-  if(!changed)return json({error:'session_not_found'},404);
+  await finishRevocations(env,revocation,changed?'committed':'cancelled');if(!changed)return json({error:'session_not_found'},404);
   return json({revoked:true,current:input.id===s.id,independent_key_access_unchanged:true});
  }
  if(path==='/account/native/logout'&&request.method==='POST'){
   await nativeBody(request);const s=await nativeSession(request,env);if(!s)return json({error:'unauthorized'},401);
-  await env.DB.prepare('UPDATE account_sessions SET revoked_at=? WHERE id=? AND account_id=?').bind(Date.now(),s.id,s.account_id).run();return json({ok:true});
+  const revocation=await reserveRevocations(env,[['session',s.id]]);await env.DB.prepare('UPDATE account_sessions SET revoked_at=? WHERE id=? AND account_id=?').bind(Date.now(),s.id,s.account_id).run();await finishRevocations(env,revocation,'committed');return json({ok:true});
  }
  if(path==='/account/recover'&&request.method==='GET'){
   await rateLimit(request,env,'identity-recovery',10);

@@ -1,8 +1,10 @@
+import {requireRestoreAccess,revoked,checkpointEnabled} from './security-checkpoint.mjs';
 export const permanentAttachments=env=>env.WORKSPACE_IDENTITY_V2==='true';
-export async function attachmentDeleted(env,workspace,id){return permanentAttachments(env)&&!!await env.DB.prepare('SELECT 1 FROM attachment_tombstones WHERE workspace=? AND attachment=?').bind(workspace,id).first()}
+export async function attachmentDeleted(env,workspace,id){if(checkpointEnabled(env)&&await revoked(env,'workspace',workspace))return true;return permanentAttachments(env)&&!!await env.DB.prepare('SELECT 1 FROM attachment_tombstones WHERE workspace=? AND attachment=?').bind(workspace,id).first()}
 // No R2/D1 transaction is assumed. The D1 tombstone is the access fence. Only
 // this exact content-addressed namespace may be removed, never an entire bucket.
 export async function runAttachmentPurges(env,limit=5){
+ await requireRestoreAccess(env);
  if(!permanentAttachments(env)||!env.ATTACHMENTS)return;
  const now=Date.now(),rows=(await env.DB.prepare("SELECT id FROM attachment_purge_jobs WHERE (status IN('queued','running') OR (status='complete' AND updated_at<?)) AND lease_until<? ORDER BY updated_at LIMIT ?").bind(now-86400000,now,limit).all()).results;
  for(const candidate of rows){

@@ -1,3 +1,4 @@
+import {requireRestoreAccess} from '../../worker/security-checkpoint.mjs';
 import {modernWorkspaces,V2_SCOPES} from '../../worker/oauth-workspace-policy.mjs';
 import {IDENTITY_ORIGIN,LEGACY_IDENTITY_ORIGIN,identityEnabled} from '../../worker/identity-origin.mjs';
 import {nativeAccountRoutes} from './native-sessions.mjs';
@@ -26,6 +27,7 @@ const oauthHandler = {
   if(url.pathname.startsWith('/account/passkeys')){const {passkeyRoutes}=await import('./passkeys.mjs');return passkeyRoutes(request,env);}
   if(modernWorkspaces(env)&&url.pathname.startsWith('/account/operations/')){const {operationApprovalRoutes}=await import('./operation-approvals.mjs');const approval=await operationApprovalRoutes(request,env);if(approval)return approval;}
   if(modernWorkspaces(env)&&['/account/notifications','/account/activity','/account/notification-preferences'].includes(url.pathname)){const {accountHistoryRoutes}=await import('./account-history.mjs');return accountHistoryRoutes(request,env);}
+  if(modernWorkspaces(env)&&url.pathname==='/account/delete'){const {accountDeletionRoutes}=await import('./account-deletion.mjs');return accountDeletionRoutes(request,env);}
   const account=await accountRoutes(request,env);if(account)return account;
   if(url.pathname==='/oauth/authorize')return accountAuthorize(request,env);
   if(url.pathname.startsWith('/uploads/'))return uploadHTTP(request,env);
@@ -278,6 +280,7 @@ export const canonicalProvider=new OAuthProvider({...providerOptions,resourceMet
 // Legacy endpoints and grants remain available alongside the new account flow.
 export default {async fetch(request,env,ctx){
  try {
+  await requireRestoreAccess(env);
   let requestUrl=new URL(request.url);
   if(requestUrl.pathname==='/.well-known/oauth-protected-resource'){requestUrl.pathname+='\/mcp';request=new Request(requestUrl,request);}
   const path=requestUrl.pathname;

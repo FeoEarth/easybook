@@ -1,3 +1,4 @@
+import {sessionAllowed,oauthAllowed,workspaceAllowed} from './security-checkpoint.mjs';
 import {manifest} from './mcp-attachments.mjs';
 import {attachmentDeleted} from './attachment-purge.mjs';
 import {validateDocument} from '../shared/document.mjs';
@@ -46,6 +47,8 @@ export async function operationStatus(env,id,{accountId,policyId,clientId}){
 }
 export async function executeAccountOperation(env,id,s){
  const row=await env.DB.prepare('SELECT * FROM account_operation_approvals WHERE id=? AND account_id=?').bind(id,s.account_id).first();if(!row)fail('NOT_FOUND','Operation not found');
+ const grant=await env.DB.prepare('SELECT * FROM oauth_grants WHERE id=?').bind(row.policy_id).first(),workspace=await env.DB.prepare('SELECT version FROM workspaces WHERE id=?').bind(row.workspace_id).first();
+ if(!grant||!workspace||!await sessionAllowed(env,s)||!await oauthAllowed(env,grant)||!await workspaceAllowed(env,row.workspace_id,workspace.version))fail('PERMISSION_DENIED','Account or workspace security state changed');
  if(row.status==='completed')return JSON.parse(row.result);
  if(row.status!=='pending'||row.expires_at<=Date.now())fail('APPROVAL_EXPIRED','Operation is no longer pending');
  const payload=JSON.parse(row.payload);if(await hash(canonical({tool:row.tool,arguments:payload}))!==row.payload_hash)fail('INVALID_OPERATION','Frozen operation integrity check failed');
