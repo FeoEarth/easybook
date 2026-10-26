@@ -1,4 +1,4 @@
-name: Deploy MCP pairing Workers
+name: Deploy MCP OAuth Worker
 on:
   workflow_dispatch:
 permissions:
@@ -21,12 +21,6 @@ jobs:
         run: |
           test -n "$CLOUDFLARE_API_TOKEN" || { echo "::error::Set CLOUDFLARE_API_TOKEN in repository secrets"; exit 1; }
           test -n "$CLOUDFLARE_ACCOUNT_ID" || { echo "::error::Set CLOUDFLARE_ACCOUNT_ID in repository secrets"; exit 1; }
-      - name: Install editor dependencies and build assets
-        run: npm ci && npm run build:editor
-      - name: Verify generated production UI contains MCP settings
-        run: |
-          node scripts/generate-ui.mjs
-          node --input-type=module -e "import html from './worker/ui.mjs'; if (!html.includes('mcpPairEntry') || !html.includes('AI 与 MCP')) process.exit(1)"
       - name: Install OAuth Worker dependencies
         working-directory: mcp-oauth
         run: npm install --no-audit --no-fund
