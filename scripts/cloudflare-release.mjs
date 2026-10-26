@@ -27,8 +27,11 @@ if(mode==='stage'){
  if(!id||!url)throw Error('Upload did not return an exact version ID and URL');
  state.candidate=id;state.url=url;
  const detail=await api('/versions/'+id);
- const required=oauth?['DB','ATTACHMENTS','OAUTH_KV','GITHUB_CLIENT_ID','GITHUB_CLIENT_SECRET','MCP_GRANTS_ENABLED','MCP_PAIRING_SIGNING_KEY']:['DB','ATTACHMENTS','PDF_ASSETS','MCP_PAIRING_SIGNING_KEY'];
+ const required=oauth?['DB','SECURITY_DB','ATTACHMENTS','OAUTH_KV','GITHUB_CLIENT_ID','GITHUB_CLIENT_SECRET','MCP_GRANTS_ENABLED','MCP_PAIRING_SIGNING_KEY']:['DB','SECURITY_DB','ATTACHMENTS','PDF_ASSETS','MCP_PAIRING_SIGNING_KEY'];
  for(const name of required)if(!detail.resources.bindings.some(b=>b.name===name))throw Error('Candidate binding missing: '+name);
+ const bindings=detail.resources.bindings;const businessDb=bindings.find(b=>b.name==='DB'),securityDb=bindings.find(b=>b.name==='SECURITY_DB');if(!securityDb?.id||securityDb.id===businessDb?.id)throw Error('Independent security D1 binding invalid');
+ for(const name of ['WORKSPACE_IDENTITY_V2','IDENTITY_CANONICAL_V2','SECURITY_CHECKPOINT_V2'])if(bindings.some(b=>b.name===name&&b.text==='true'))throw Error('Identity cutover is not part of this incremental release');
+ if(bindings.some(b=>b.name==='SECURITY_ADMIN_ACTION'&&b.text))throw Error('Clear security administration configuration before application deployment');
  writeFileSync(stateFile,JSON.stringify(state,null,2));
  if(process.env.GITHUB_OUTPUT)appendFileSync(process.env.GITHUB_OUTPUT,`url=${url}\nversion=${id}\n`);
  summary(`Candidate ${id}; baseline deployment ${baseline.id}; no production traffic changed.`);
@@ -52,4 +55,5 @@ if(mode==='stage'){
   state.rollback=rollback;writeFileSync(stateFile,JSON.stringify(state,null,2));summary(`Automatic rollback verified: ${rollback.id}. D1/R2 unchanged.`);
  }
 }else throw Error('Use stage, promote, or rollback');
+
 

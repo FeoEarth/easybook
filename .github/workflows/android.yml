@@ -81,6 +81,6 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           TAG="v0.8.0-build${GITHUB_RUN_NUMBER}"
-          gh release create "$TAG" Easybook-0.8.0.apk SHA256SUMS.txt --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" --title "Easybook 0.8.0 · build ${GITHUB_RUN_NUMBER}" --notes "新增 Easybook 独立账户、会话及工作区关联；保留旧 GitHub OAuth 与配对。账户管理使用外部浏览器，不向 WebView 暴露 OAuth 凭据；保留 Keystore、离线笔记和 QWEA0。账户现支持 Passkey 独立注册、登录及 GitHub 备用身份关联；通行密钥由系统浏览器管理。"
+          gh release create "$TAG" Easybook-0.8.0.apk SHA256SUMS.txt --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" --title "Easybook 0.8.0 · build ${GITHUB_RUN_NUMBER}" --notes "账户与权限重构的阶段性发布，沿用现有签名。保留当前账户登录、同步、编辑器、表格、附件及 QWEA0。新工作区、OAuth、账户删除与恢复保护代码已纳入，待客户端接入和生产迁移完成后统一启用。当前请使用浏览器账户入口；原生通行密钥随后续服务启用。此 APK 不代表全部重构功能已经开放。"
 
 
