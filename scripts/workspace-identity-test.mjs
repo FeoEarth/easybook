@@ -100,6 +100,13 @@ assert.equal((await worker.fetch(new Request(origin+'/api/folders',{headers:alic
 assert.equal((await worker.fetch(new Request(origin+'/api/folders/'+crypto.randomUUID(),{method:'PUT',headers:{...aliceHeaders,Origin:origin,'X-Easybook-CSRF':await hash(aliceToken+'|'+aliceSession),'X-Role':'manager'},body:'{}'}),{...env,WORKSPACE_IDENTITY_V2:'true'})).status,403,'reader write denied despite forged role');
 assert.equal((await worker.fetch(new Request(origin+'/api/folders',{headers:{...aliceHeaders,'X-Easybook-Workspace':id}}),{...env,WORKSPACE_IDENTITY_V2:'true'})).status,403,'other workspace denied');
 assert.equal((await worker.fetch(new Request(origin+'/mcp'),{...env,WORKSPACE_IDENTITY_V2:'true'})).status,410,'legacy MCP bypass retired in new mode');
+const memberPage=await api(base+'/members',undefined,aliceHeaders);assert.equal(memberPage.status,200);
+assert.equal((await memberPage.json()).members.length,2);
+assert.equal((await api(base+'/leave',{confirm:true},{Cookie:cookies,'X-Easybook-CSRF':csrfToken})).status,409,'manager must transfer first');
+assert.equal((await api(base+'/leave',{confirm:true},aliceHeaders)).status,403,'leave requires CSRF');
+assert.equal((await api(base+'/leave',{confirm:true},{...aliceHeaders,'X-Easybook-CSRF':await hash(aliceToken+'|'+aliceSession)})).status,200);
+assert.equal((await api(base+'/members',undefined,aliceHeaders)).status,403,'former member cannot enumerate members');
+assert.equal((await worker.fetch(new Request(origin+'/api/folders',{headers:aliceHeaders}),{...env,WORKSPACE_IDENTITY_V2:'true'})).status,403,'leave immediately closes content access');
 const oldKey='e'.repeat(64),oldId=await hash(oldKey),folderId=crypto.randomUUID();
 sqlite.prepare('INSERT INTO folders VALUES(?,?,?,?,?)').run(oldId,folderId,'迁移前文件夹',now,0);
 const folderBefore=JSON.stringify(sqlite.prepare('SELECT * FROM folders').all());
@@ -113,3 +120,4 @@ await service.rotateWorkspaceKey(env,oldId,(await service.resolveWorkspaceKey(en
 await backfillLegacyWorkspaces(env,{recoveryCheckpointVerified:true});
 assert.equal(await service.resolveWorkspaceKey(env,oldKey),null,'rerunning backfill does not revive old key');
 console.log('PASS: retryable migration; independent ID/key; personal dual access; anti-hijack association; key tombstones; shared roles; explicit conversion; atomic manager transfer; OAuth security denial; revocation; stale-state rollback.');
+

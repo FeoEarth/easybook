@@ -75,7 +75,7 @@ jobs:
         if: github.ref == 'refs/heads/main'
         run: |
           node scripts/web-release-smoke.mjs https://easybook-sync.1902521952.workers.dev
-          if [ '${{ steps.candidate.outputs.identity_v2 }}' = 'true' ]; then node scripts/live-core-workspace-probe.mjs https://easybook.loonxy.com; else node scripts/live-pairing-probe.mjs https://easybook-sync.1902521952.workers.dev; fi
+          if [ '${{ steps.candidate.outputs.identity_v2 }}' = 'true' ]; then node scripts/live-core-workspace-probe.mjs https://easybook-sync.1902521952.workers.dev; else node scripts/live-pairing-probe.mjs https://easybook-sync.1902521952.workers.dev; fi
           node scripts/custom-domain-release-check.mjs verify
       - name: Roll back failed or cancelled promotion
         if: ${{ (failure() || cancelled()) && github.ref == 'refs/heads/main' }}
@@ -94,6 +94,7 @@ jobs:
             mcp-upload-live-evidence.json
           if-no-files-found: ignore
           retention-days: 14
+
 
 
 

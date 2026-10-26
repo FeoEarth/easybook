@@ -100,3 +100,12 @@ export async function reserveWorkspaceFloors(env,workspaces){
  await store(env).prepare("INSERT INTO workspace_security_floors SELECT json_extract(value,'$.operation'),json_extract(value,'$.id'),json_extract(value,'$.version'),'pending',? FROM json_each(?)").bind(Date.now(),JSON.stringify(rows)).run();return rows.map(w=>w.operation);
 }
 export async function finishWorkspaceFloors(env,ids,status){if(ids.length)await store(env).prepare("UPDATE workspace_security_floors SET status=? WHERE operation_id IN(SELECT value FROM json_each(?)) AND status='pending'").bind(status,JSON.stringify(ids)).run()}
+
+// A child authorization has its own terminal fence; revoking it must not revoke
+// the client's other workspaces or become reversible after a business restore.
+export async function allowedChildGrants(env,rows){
+ await requireRestoreAccess(env);if(!checkpointEnabled(env)||!rows.length)return rows;
+ const subjects=JSON.stringify(rows.map(r=>r.policy_id+':'+r.workspace_id));
+ const {results}=await store(env).prepare("SELECT subject FROM security_revocations WHERE kind='oauth' AND subject IN(SELECT value FROM json_each(?)) UNION SELECT subject FROM security_revocation_intents WHERE kind='oauth' AND status<>'cancelled' AND subject IN(SELECT value FROM json_each(?))").bind(subjects,subjects).all();
+ const denied=new Set(results.map(r=>r.subject));return rows.filter(r=>!denied.has(r.policy_id+':'+r.workspace_id));
+}

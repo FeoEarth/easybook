@@ -20,6 +20,9 @@ import java.util.concurrent.ExecutorService;
  * Browser callbacks carry a short-lived one-use code, never a session token. */
 final class NativeAccount {
     static final String ORIGIN="https://easybook.loonxy.com";
+    // Native HTTP cannot complete browser bot challenges. Browser/RP stay canonical.
+    static final String IDENTITY_API="https://easybook-mcp-oauth.1902521952.workers.dev";
+    static final String SYNC_API="https://easybook-sync.1902521952.workers.dev";
     private static final String SESSION="account-session-v1",PENDING="account-login-pending-v1",LOGOUT="account-logout-pending-v1";
     private final Activity activity;private final NoteRepository db;private final ExecutorService io;
     private volatile boolean starting;
@@ -28,26 +31,28 @@ final class NativeAccount {
     private synchronized boolean startOperation(){if(starting)return false;starting=true;feedback="正在准备账户验证…";changed();return true;}
     private void finishOperation(){starting=false;cancellation=null;changed();}
     private volatile CancellationSignal cancellation;
-    static final class HttpFailure extends IOException {final int status;final boolean challenge;HttpFailure(int value,boolean challenged){super("Account HTTP "+value);status=value;challenge=challenged;}}
+    static final class HttpFailure extends IOException {final int status;final boolean challenge;final String code;HttpFailure(int value,boolean challenged,String code){super("Account HTTP "+value);status=value;challenge=challenged;this.code=code;}}
     NativeAccount(Activity activity,NoteRepository db,ExecutorService io){this.activity=activity;this.db=db;this.io=io;io.execute(this::retryLogout);}
     private JSONObject read(String name)throws Exception{String value=db.setting(name,"");return value.isEmpty()?null:new JSONObject(db.vault.open(value,name));}
     static String token(NoteRepository db)throws Exception{String raw=db.setting(SESSION,"");if(raw.isEmpty())throw new CredentialVault.KeyUnavailable();JSONObject s=new JSONObject(db.vault.open(raw,SESSION));if(s.getLong("expires")<=System.currentTimeMillis())throw new CredentialVault.KeyUnavailable();return s.getString("token");}
     private void write(String name,JSONObject value)throws Exception{String sealed=db.vault.seal(value.toString(),name);if(!value.toString().equals(db.vault.open(sealed,name)))throw new SecurityException("Account persistence verification failed");db.setSetting(name,sealed);}
     JSONObject publicStatus()throws Exception{return status().put("busy",starting).put("feedback",feedback);}
     private JSONObject status()throws Exception{try{JSONObject value=read(SESSION);if(value==null)return new JSONObject().put("signedIn",false);return new JSONObject().put("signedIn",value.getLong("expires")>System.currentTimeMillis()).put("sessionId",value.getString("sessionId")).put("expiresAt",value.getLong("expires"));}catch(Exception e){return new JSONObject().put("signedIn",false).put("reauthenticationRequired",true);}}
+    private static String serverError(HttpsURLConnection connection){try(InputStream in=connection.getErrorStream();ByteArrayOutputStream out=new ByteArrayOutputStream()){if(in==null)return "";byte[] bytes=new byte[1024];int n;while((n=in.read(bytes))!=-1){if(out.size()+n>4096)return "";out.write(bytes,0,n);}String code=new JSONObject(out.toString("UTF-8")).optString("error");return code.matches("[A-Za-z_]{1,80}")?code:"";}catch(Exception ignored){return "";}}
     private static JSONObject request(String path,JSONObject body,String token)throws Exception{
-        if(!java.util.Arrays.asList("/account/native/start","/account/native/token","/account/native/session","/account/native/logout","/account/native/sessions","/account/native/sessions/revoke","/account/native/passkeys/login/options","/account/native/passkeys/login/verify","/account/native/passkeys/register/options","/account/native/passkeys/register/verify").contains(path))throw new SecurityException("Account path denied");
-        HttpsURLConnection connection=(HttpsURLConnection)new URL(ORIGIN+path).openConnection();connection.setInstanceFollowRedirects(false);connection.setConnectTimeout(12000);connection.setReadTimeout(15000);connection.setRequestMethod(body==null?"GET":"POST");connection.setRequestProperty("X-Easybook-Native","1");connection.setRequestProperty("Content-Type","application/json");if(token!=null)connection.setRequestProperty("Authorization","Easybook-Session "+token);
+        if(!java.util.Arrays.asList("/account/native/manage","/account/native/start","/account/native/token","/account/native/session","/account/native/logout","/account/native/sessions","/account/native/sessions/revoke","/account/native/passkeys/login/options","/account/native/passkeys/login/verify","/account/native/passkeys/register/options","/account/native/passkeys/register/verify").contains(path))throw new SecurityException("Account path denied");
+        HttpsURLConnection connection=(HttpsURLConnection)new URL(IDENTITY_API+path).openConnection();connection.setInstanceFollowRedirects(false);connection.setConnectTimeout(12000);connection.setReadTimeout(15000);connection.setRequestMethod(body==null?"GET":"POST");connection.setRequestProperty("X-Easybook-Native","1");connection.setRequestProperty("Content-Type","application/json");if(token!=null)connection.setRequestProperty("Authorization","Easybook-Session "+token);
         try{if(body!=null){byte[] bytes=body.toString().getBytes(StandardCharsets.UTF_8);connection.setDoOutput(true);connection.setFixedLengthStreamingMode(bytes.length);try(OutputStream out=connection.getOutputStream()){out.write(bytes);}}
-            int status=connection.getResponseCode();if(status!=200)throw new HttpFailure(status,"challenge".equals(connection.getHeaderField("cf-mitigated")));
-            try(InputStream in=connection.getInputStream();ByteArrayOutputStream out=new ByteArrayOutputStream()){byte[] buffer=new byte[2048];int n;while((n=in.read(buffer))!=-1){if(out.size()+n>(path.contains("/passkeys/")?65536:16384))throw new IOException("Account response too large");out.write(buffer,0,n);}return new JSONObject(out.toString("UTF-8"));}
+            int status=connection.getResponseCode();if(status!=200)throw new HttpFailure(status,"challenge".equals(connection.getHeaderField("cf-mitigated")),serverError(connection));
+            try(InputStream in=connection.getInputStream();ByteArrayOutputStream out=new ByteArrayOutputStream()){byte[] buffer=new byte[2048];int n;while((n=in.read(buffer))!=-1){if(out.size()+n>(path.equals("/account/native/manage")?4194304:path.contains("/passkeys/")?65536:16384))throw new IOException("Account response too large");out.write(buffer,0,n);}return new JSONObject(out.toString("UTF-8"));}
         }finally{connection.disconnect();}
     }
     void open(){try{if(publicStatus().optBoolean("signedIn")){browse(ORIGIN+"/account");return;}}catch(Exception ignored){}begin();}
     void begin(){if(!startOperation())return;io.execute(()->{try{
         String verifier=NoteRepository.newKey(),state=NoteRepository.newKey();String challenge=android.util.Base64.encodeToString(MessageDigest.getInstance("SHA-256").digest(verifier.getBytes(StandardCharsets.UTF_8)),android.util.Base64.URL_SAFE|android.util.Base64.NO_WRAP|android.util.Base64.NO_PADDING);
-        JSONObject response=request("/account/native/start",new JSONObject().put("challenge",challenge).put("state",state),null);String flow=response.getString("flow"),destination=response.getString("authorization_url");Uri uri=Uri.parse(destination);
-        if(!flow.matches("[a-f0-9]{64}")||!"https".equals(uri.getScheme())||!"easybook.loonxy.com".equals(uri.getHost())||uri.getPort()!=-1||uri.getUserInfo()!=null||!"/account/handoff".equals(uri.getPath())||!flow.equals(uri.getQueryParameter("flow"))||!state.equals(uri.getQueryParameter("state")))throw new SecurityException("Invalid authorization destination");
+        JSONObject response=request("/account/native/manage","/account/native/start",new JSONObject().put("challenge",challenge).put("state",state),null);String flow=response.getString("flow"),destination=response.getString("authorization_url");Uri uri=Uri.parse(destination);
+        if(!flow.matches("[a-f0-9]{64}")||!"https".equals(uri.getScheme())||!"easybook.loonxy.com".equals(uri.getHost())||uri.getPort()!=-1||uri.getUserInfo()!=null||!"/account/login".equals(uri.getPath()))throw new SecurityException("Invalid authorization destination");
+        Uri handoff=Uri.parse(uri.getQueryParameter("return")==null?"":uri.getQueryParameter("return"));if(handoff.isAbsolute()||!"/account/handoff".equals(handoff.getPath())||!flow.equals(handoff.getQueryParameter("flow"))||!state.equals(handoff.getQueryParameter("state")))throw new SecurityException("Invalid login return path");
         if(activity.isDestroyed())return;write(PENDING,new JSONObject().put("kind","browser").put("flow",flow).put("state",state).put("verifier",verifier).put("expires",System.currentTimeMillis()+300000));feedback="请在系统浏览器中完成登录，再返回 Easybook";browse(destination);
     }catch(Exception e){message(failureMessage(e));}finally{finishOperation();}});}
     boolean handle(Intent intent){if(intent==null||!Intent.ACTION_VIEW.equals(intent.getAction()))return false;Uri uri=intent.getData();if(uri==null||!"easybook".equals(uri.getScheme())||!"account".equals(uri.getHost())||!"/callback".equals(uri.getPath())||uri.getUserInfo()!=null||uri.getPort()!=-1||uri.getFragment()!=null)return false;
@@ -88,6 +93,21 @@ final class NativeAccount {
         JSONObject pending=read(PENDING);if(pending==null||!pending.optString("kind").equals("passkey")||!same(flow,pending.getString("flow"))||!same(state,pending.getString("state"))||pending.getLong("expires")<System.currentTimeMillis())return;
         JSONObject result=request("/account/native/passkeys/"+kind+"/verify",new JSONObject().put("flow",flow).put("state",state).put("verifier",verifier).put("response",new JSONObject(response)),token);synchronized(db){JSONObject active=read(PENDING);if(activity.isDestroyed()||active==null||!same(flow,active.getString("flow"))||!same(state,active.getString("state")))return;storeSession(result);db.setSetting(PENDING,"");}message("通行密钥验证成功，账户已登录");
     }catch(Exception error){message(failureMessage(error));}finally{finishOperation();}});}
+    private String workspaceProof(String id)throws Exception{
+        if(!id.matches("[a-f0-9]{64}"))throw new SecurityException("Invalid workspace");
+        try(android.database.Cursor cursor=db.getReadableDatabase().rawQuery("SELECT local_id FROM workspace_identity WHERE workspace_id=?",new String[]{id})){
+            if(!cursor.moveToFirst()||db.setting("account-placeholder:space:"+cursor.getString(0),"").equals("1"))throw new CredentialVault.KeyUnavailable();return db.credential("space:"+cursor.getString(0));
+        }
+    }
+    JSONObject manage(JSONObject args)throws Exception{
+        String action=args.getString("action");if(action.equals("deletion")){browse(ORIGIN+"/account/delete");return new JSONObject().put("externalBrowser",true);}
+        if(!java.util.Arrays.asList("history","grants","approvals","approve","cancel","revoke","revoke-workspace","deletion-preview","delete-account").contains(action))throw new SecurityException("Management action denied");
+        if(action.equals("delete-account")){JSONArray choices=args.getJSONArray("choices");for(int i=0;i<choices.length();i++){JSONObject choice=choices.getJSONObject(i);if(choice.optString("action").equals("keep"))choice.put("key",workspaceProof(choice.getString("id")));}}
+        JSONObject result=request("/account/native/manage",args,token(db));
+        if(action.equals("deletion-preview")){JSONArray personal=result.getJSONArray("personal");for(int i=0;i<personal.length();i++){JSONObject w=personal.getJSONObject(i);boolean available=false;try{workspaceProof(w.getString("id"));available=true;}catch(Exception ignored){}w.put("canProveKey",available);}}
+        if(action.equals("delete-account")){db.setSetting(SESSION,"");db.setSetting(PENDING,"");changed();}
+        return result;
+    }
     JSONObject devices()throws Exception{JSONObject saved=read(SESSION);if(saved==null)throw new CredentialVault.KeyUnavailable();try{return request("/account/native/sessions",null,saved.getString("token"));}catch(HttpFailure error){if(error.status==401)db.setSetting(SESSION,"");throw error;}}
     JSONObject revokeDevice(String id)throws Exception{if(id==null||!id.matches("[a-f0-9-]{36}"))throw new SecurityException("Invalid device");JSONObject saved=read(SESSION);if(saved==null)throw new CredentialVault.KeyUnavailable();JSONObject result=request("/account/native/sessions/revoke",new JSONObject().put("id",id),saved.getString("token"));if(result.optBoolean("current"))db.setSetting(SESSION,"");return result;}
     private void retryLogout(){try{JSONObject queued=read(LOGOUT);if(queued==null)return;JSONArray sessions=queued.getJSONArray("sessions");while(sessions.length()>0){try{request("/account/native/logout",new JSONObject(),sessions.getJSONObject(0).getString("token"));}catch(HttpFailure e){if(e.status!=401)throw e;}sessions.remove(0);if(sessions.length()==0)db.setSetting(LOGOUT,"");else write(LOGOUT,queued);}}catch(Exception ignored){}}
@@ -107,8 +127,12 @@ final class NativeAccount {
         if(type.contains("INVALID_STATE"))return "此通行密钥已存在，请使用登录或选择其他凭据";
         return register?"系统无法创建通行密钥，请检查密码管理器后重试":"系统无法读取通行密钥，请检查密码管理器后重试";
     }
-    private static String failureMessage(Exception error){
+    static String failureMessage(Exception error){
         if(error instanceof HttpFailure){HttpFailure e=(HttpFailure)error;
+            if(e.code.equalsIgnoreCase("reauthentication_required"))return "请先使用通行密钥重新验证身份，再执行此操作";
+            if(e.code.equals("KEY_PROOF_REQUIRED"))return "本机保存的同步密钥不是当前有效密钥，请重新连接工作区后重试";
+            if(e.code.equals("MANAGER_TRANSFER_REQUIRED"))return "请先转移所有共享工作区的管理权";
+            if(e.code.equals("CONFLICT"))return "目标或工作区状态已变化，请刷新后重新确认";
             if(e.challenge)return "账户请求被网络安全验证拦截，请稍后重试";
             if(e.status==401)return "账户会话已失效，请重新登录";
             if(e.status==403)return "服务器未允许此账户操作，请重新验证身份";

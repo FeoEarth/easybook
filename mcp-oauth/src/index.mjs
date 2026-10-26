@@ -23,6 +23,8 @@ const oauthHandler = {
   if(identityEnabled(env)&&url.origin===LEGACY_IDENTITY_ORIGIN&&((url.pathname==='/callback'&&url.searchParams.get('state')?.startsWith('account_'))||url.pathname==='/account/login'))return new Response(null,{status:303,headers:{Location:IDENTITY_ORIGIN+url.pathname+url.search,'Cache-Control':'no-store','Referrer-Policy':'no-referrer'}});
   if(modernWorkspaces(env)&&(url.pathname==='/pairing/complete'||url.pathname==='/callback'&&!url.searchParams.get('state')?.startsWith('account_')))return new Response('Legacy authorization retired; authorize your Easybook account',{status:410});
   if(url.pathname.startsWith('/account/native/passkeys/')){const {nativePasskeyRoutes}=await import('./native-passkeys.mjs');return nativePasskeyRoutes(request,env);}
+  if(url.pathname==='/oauth/workspace-grants'){const {session,requireForm,redirect,json}=await import('./accounts.mjs');const s=await session(request,env);if(!s)return json({error:'unauthorized'},401);if(request.method!=='POST')return json({error:'method_not_allowed'},405);const form=await requireForm(request,s);const {revokeWorkspaceGrant}=await import('../../worker/grant-revocation.mjs');if(!await revokeWorkspaceGrant(env,s.account_id,form.get('id'),form.get('workspace')))return json({error:'not_found'},404);return redirect('/account');}
+  if(url.pathname==='/account/native/manage'){const {nativeManagementRoutes}=await import('./native-management.mjs');return nativeManagementRoutes(request,env);}
   const native=await nativeAccountRoutes(request,env);if(native)return native;
   if(url.pathname.startsWith('/account/passkeys')){const {passkeyRoutes}=await import('./passkeys.mjs');return passkeyRoutes(request,env);}
   if(modernWorkspaces(env)&&url.pathname.startsWith('/account/operations/')){const {operationApprovalRoutes}=await import('./operation-approvals.mjs');const approval=await operationApprovalRoutes(request,env);if(approval)return approval;}
@@ -284,9 +286,17 @@ export default {async fetch(request,env,ctx){
   let requestUrl=new URL(request.url);
   if(requestUrl.pathname==='/.well-known/oauth-protected-resource'){requestUrl.pathname+='\/mcp';request=new Request(requestUrl,request);}
   const path=requestUrl.pathname;
+  // Fixed first-party native API transport. Do not redirect POSTs or proxy OAuth
+  // endpoints: browser login/consent and the WebAuthn RP remain canonical.
+  if(identityEnabled(env)&&(requestUrl.origin===LEGACY_IDENTITY_ORIGIN||/^https:\/\/[a-f0-9]{8}-easybook-mcp-oauth\.1902521952\.workers\.dev$/.test(requestUrl.origin))&&path.startsWith('/account/native/')){
+   if(request.headers.has('Origin')||request.headers.get('X-Easybook-Native')!=='1')return Response.json({error:'native_request_required'},{status:403,headers:{'Cache-Control':'no-store'}});
+   return await oauthHandler.fetch(new Request(IDENTITY_ORIGIN+path+requestUrl.search,request),env);
+  }
+
   if(modernWorkspaces(env)&&requestUrl.origin===LEGACY_IDENTITY_ORIGIN){if(path.startsWith('/.well-known/oauth-')||path==='/oauth/authorize'||path==='/authorize')return new Response(null,{status:303,headers:{Location:IDENTITY_ORIGIN+path+requestUrl.search,'Cache-Control':'no-store','Referrer-Policy':'no-referrer'}});if(['/register','/token','/oauth/token'].includes(path))return Response.json({error:'legacy_issuer_retired',authorization_server:IDENTITY_ORIGIN},{status:410,headers:{'Cache-Control':'no-store'}});}
   if(['/token','/oauth/token','/oauth/revoke','/register'].includes(path))await rateLimit(request,env,'oauth',60);
   return await guardTokens(request,env,ctx,identityEnabled(env)&&new URL(request.url).origin===IDENTITY_ORIGIN?canonicalProvider:provider);
  }catch(error){if(error instanceof Response)return error;console.error(JSON.stringify({event:'account_oauth_failed',name:error?.name}));return new Response('Authorization temporarily unavailable',{status:503,headers:{'Cache-Control':'no-store'}});}
 }};
+
 

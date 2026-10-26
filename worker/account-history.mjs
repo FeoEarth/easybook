@@ -1,12 +1,13 @@
 import {fail} from './mcp-common.mjs';
 const pageSize=50;
-export async function auditHistory(env,accountId,{workspaceId=null,cursor=null}={}){
+export async function auditHistory(env,accountId,{workspaceId=null,cursor=null,category=null}={}){
  const clauses=[],params=[];
  if(workspaceId){
   if(!/^[a-f0-9]{64}$/.test(workspaceId))fail('INVALID_ARGUMENT','Invalid workspace');
   const manager=await env.DB.prepare('SELECT 1 FROM workspaces WHERE id=? AND manager_account_id=? AND deleted_at IS NULL').bind(workspaceId,accountId).first();
   clauses.push('workspace_id=?');params.push(workspaceId);if(!manager){clauses.push('account_id=?');params.push(accountId)}
  }else {clauses.push('account_id=?');params.push(accountId)}
+ if(category){if(!['activity','security','execution'].includes(category))fail('INVALID_ARGUMENT','Invalid category');clauses.push('category=?');params.push(category)}
  if(cursor){let value;try{value=JSON.parse(atob(cursor))}catch{fail('INVALID_ARGUMENT','Invalid cursor')}
   if(!Array.isArray(value)||value.length!==2||!Number.isSafeInteger(value[0])||typeof value[1]!=='string'||!/^[a-f0-9-]{32,36}$/.test(value[1]))fail('INVALID_ARGUMENT','Invalid cursor');
   clauses.push('(created_at<? OR (created_at=? AND id<?))');params.push(value[0],value[0],value[1]);
@@ -16,3 +17,4 @@ export async function auditHistory(env,accountId,{workspaceId=null,cursor=null}=
  return {events:results,next_cursor:more?btoa(JSON.stringify([last.created_at,last.id])):null};
 }
 export async function notifications(env,accountId){const {results}=await env.DB.prepare('SELECT id,severity,code,created_at,read_at FROM account_notifications WHERE account_id=? ORDER BY created_at DESC,id DESC LIMIT 100').bind(accountId).all();return results}
+

@@ -178,3 +178,21 @@ export async function transferWorkspaceManager(env,id,principal,newManagerId,{co
  ]);return metadata(env,id);
 }
 
+
+// Members are resolved only after live account access, including the external floor.
+export async function listWorkspaceMembers(env,id,principal){
+ const w=await workspaceAccess(env,id,principal);if(!w||w.via!=='account')deny('account_required');
+ const {results}=await stmt(env,"SELECT a.id account_id,a.display_name,'manager' role FROM accounts a WHERE a.id=? AND a.deleted_at IS NULL UNION ALL SELECT a.id,a.display_name,m.role FROM workspace_members m JOIN accounts a ON a.id=m.account_id WHERE m.workspace_id=? AND a.deleted_at IS NULL",w.manager_account_id,id).all();return {workspace:w,members:results};
+}
+export async function leaveWorkspace(env,id,principal){
+ const w=await workspaceAccess(env,id,principal);
+ if(!w||w.via!=='account'||w.mode!=='shared')deny('shared_member_required');
+ if(w.role==='manager')deny('manager_transfer_required',409);
+ const check=crypto.randomUUID(),floor=await reserveWorkspaceFloor(env,id,w.version+1);
+ try{await env.DB.batch([
+  stmt(env,"INSERT INTO workspace_tx_assertions(id,valid) SELECT ?,EXISTS(SELECT 1 FROM workspaces w JOIN workspace_members m ON m.workspace_id=w.id JOIN accounts a ON a.id=m.account_id WHERE w.id=? AND w.version=? AND w.mode='shared' AND w.deleted_at IS NULL AND w.manager_account_id<>? AND m.account_id=? AND a.deleted_at IS NULL)",check,id,w.version,principal.accountId,principal.accountId),
+  stmt(env,'DELETE FROM workspace_members WHERE workspace_id=? AND account_id=?',id,principal.accountId),invalidate(env,id,principal.accountId),
+  stmt(env,'UPDATE workspaces SET version=version+1 WHERE id=?',id),event(env,id,principal,'member_left'),stmt(env,'DELETE FROM workspace_tx_assertions WHERE id=?',check)
+ ]);await finishWorkspaceFloor(env,floor,'committed');return {left:true};
+ }catch(e){if(/workspace_tx_assertions|valid=1|CHECK constraint failed/.test(e.message)){await finishWorkspaceFloor(env,floor,'cancelled');deny('workspace_changed_retry',409)}throw e;}
+}

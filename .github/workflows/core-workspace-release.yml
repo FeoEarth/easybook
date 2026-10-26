@@ -28,9 +28,12 @@ jobs:
           node scripts/permanent-operations-test.mjs
           node scripts/account-deletion-test.mjs
           node scripts/account-history-test.mjs
+          node scripts/native-management-test.mjs
+          node scripts/workspace-delete-test.mjs
+          node scripts/stage-two-audit-test.mjs
           node scripts/security-restore-test.mjs
           node scripts/mcp-upload-test.mjs
           node scripts/check-web-runtime.mjs
       - run: npx playwright install --with-deps chromium
-      - run: node scripts/core-workspace-browser-test.mjs
+      - run: node scripts/core-workspace-browser-test.mjs && node scripts/collaboration-browser-test.mjs
 

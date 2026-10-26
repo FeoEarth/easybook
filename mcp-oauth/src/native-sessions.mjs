@@ -48,7 +48,9 @@ export async function nativeAccountRoutes(request,env){
   if(typeof input.challenge!=='string'||!/^[A-Za-z0-9_-]{43}$/.test(input.challenge)||!HEX.test(input.state||''))return json({error:'invalid_pkce_or_state'},400);
   // No caller-supplied redirect URI or client type is accepted.
   const flow=await newHandoff(env,'native',input.challenge,input.state);
-  return json({flow,authorization_url:IDENTITY_ORIGIN+'/account/handoff?'+new URLSearchParams({flow,state:input.state}),expires_in:300});
+  const handoff='/account/handoff?'+new URLSearchParams({flow,state:input.state});
+  if(input.provider!==undefined&&input.provider!=='github')return json({error:'invalid_provider'},400);
+  return json({flow,authorization_url:IDENTITY_ORIGIN+(input.provider==='github'?'/account/login?'+new URLSearchParams({return:handoff}):handoff),expires_in:300});
  }
  if(path==='/account/native/token'&&request.method==='POST'){
   await rateLimit(request,env,'native-token',30);const input=await nativeBody(request),proof=await consume(env,input,'native');
@@ -113,3 +115,4 @@ export async function nativeAccountRoutes(request,env){
  }
  return json({error:'method_not_allowed'},405);
 }
+

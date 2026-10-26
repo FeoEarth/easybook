@@ -52,13 +52,13 @@ jobs:
           export PATH="$PWD/mcp-oauth/node_modules/.bin:$PATH"
           node scripts/cloudflare-release.mjs stage --oauth
       - name: Verify OAuth candidate
-        run: node scripts/oauth-release-smoke.mjs '${{ steps.candidate.outputs.url }}'
+        run: node scripts/oauth-release-smoke.mjs '${{ steps.candidate.outputs.url }}' && node scripts/native-transport-release-probe.mjs '${{ steps.candidate.outputs.url }}'
       - name: Promote OAuth candidate only
         if: github.ref == 'refs/heads/main'
         run: node scripts/cloudflare-release.mjs promote --oauth
       - name: Verify OAuth production
         if: github.ref == 'refs/heads/main'
-        run: node scripts/oauth-release-smoke.mjs https://easybook-mcp-oauth.1902521952.workers.dev
+        run: node scripts/oauth-release-smoke.mjs https://easybook-mcp-oauth.1902521952.workers.dev && node scripts/native-transport-release-probe.mjs https://easybook-mcp-oauth.1902521952.workers.dev
       - name: Roll back failed OAuth promotion
         if: ${{ (failure() || cancelled()) && github.ref == 'refs/heads/main' }}
         run: node scripts/cloudflare-release.mjs rollback --oauth
@@ -71,6 +71,7 @@ jobs:
             account-ui-*.png
           if-no-files-found: ignore
           retention-days: 14
+
 
 
 
