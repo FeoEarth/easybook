@@ -99,8 +99,12 @@ jobs:
           CANDIDATES
           [[ ${#candidates[@]} -eq 50 ]] || exit 1
           shopt -s nullglob
-          workflows=(.github/workflows/*.yml .github/workflows/*.yaml)
-          [[ ${#workflows[@]} -gt 0 ]] || { echo 'No workflow definitions found'; exit 1; }
+          workflows=()
+          for workflow in .github/workflows/*.yml .github/workflows/*.yaml; do
+            [[ "$workflow" == '.github/workflows/cleanup-merged-branches.yml' ]] && continue
+            workflows+=("$workflow")
+          done
+          [[ ${#workflows[@]} -gt 0 ]] || { echo 'No other workflow definitions found'; exit 1; }
           echo '| Branch | Decision |' >> "$GITHUB_STEP_SUMMARY"
           echo '|---|---|' >> "$GITHUB_STEP_SUMMARY"
           eligible=0; deleted=0; skipped=0; errors=0
@@ -112,7 +116,9 @@ jobs:
               if ! protected=$(gh api "repos/$repo/branches/$branch" --jq '.protected' 2>/dev/null); then reason='cannot inspect branch protection';
               elif [[ "$protected" != 'false' ]]; then reason='protected branch'; fi
             fi
-            if [[ -z "$reason" ]] && grep -hE '^[[:space:]]*branches:' "${workflows[@]}" | grep -F -- "$branch" >/dev/null; then reason='still listed in workflow branch triggers'; fi
+            # Any literal branch reference in an active workflow prevents deletion.
+            # The cleanup allowlist workflow is excluded as it contains all candidates.
+            if [[ -z "$reason" ]] && grep -F -q -- "$branch" "${workflows[@]}"; then reason='referenced by an active workflow'; fi
             if [[ -z "$reason" ]]; then
               if ! ahead=$(gh api "repos/$repo/compare/main...$branch" --jq '.ahead_by' 2>/dev/null); then reason='comparison unavailable';
               elif [[ "$ahead" != '0' ]]; then reason="unmerged commits: $ahead"; fi
@@ -122,7 +128,10 @@ jobs:
               elif [[ "$open_prs" != '0' ]]; then reason='open pull request exists'; fi
             fi
             if [[ -z "$reason" && "$MODE" == 'delete' ]]; then
-              if ! latest_sha=$(gh api "repos/$repo/git/ref/heads/$branch" --jq '.object.sha' 2>/dev/null); then reason='branch disappeared';
+              if ! main_sha=$(gh api "repos/$repo/git/ref/heads/main" --jq '.object.sha' 2>/dev/null); then reason='cannot verify current main tip';
+              elif [[ "$main_sha" != "$GITHUB_SHA" ]]; then reason='main changed since workflow started';
+              elif grep -F -q -- "$branch" "${workflows[@]}"; then reason='now referenced by an active workflow';
+              elif ! latest_sha=$(gh api "repos/$repo/git/ref/heads/$branch" --jq '.object.sha' 2>/dev/null); then reason='branch disappeared';
               elif [[ "$latest_sha" != "$ref_sha" ]]; then reason='branch tip changed';
               elif ! latest_ahead=$(gh api "repos/$repo/compare/main...$branch" --jq '.ahead_by' 2>/dev/null); then reason='final merge check unavailable';
               elif [[ "$latest_ahead" != '0' ]]; then reason='new unmerged commits'; fi
