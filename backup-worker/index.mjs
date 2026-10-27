@@ -114,6 +114,12 @@ export async function backup(env,now=Date.now()){
   const code=/^[a-z_]+$/.test(error.message)?error.message:'backup_failed';
   try{await putJSON(prefix+'status.json',{...status,status:'failed',code});}catch{}
   await env.DB.prepare("UPDATE identity_maintenance_runs SET lease=NULL,lease_until=0,error=? WHERE name='business-backup' AND lease=?").bind('BACKUP_RETRY:'+code,lease).run();
+  // Backup failures are serious operational events. Planned restore gating is
+  // not itself an alert. Fixed codes only; one application notice per day/owner.
+  if(!code.startsWith('security_'))try{
+   const managers=await rows(env.DB.prepare('SELECT DISTINCT manager_account_id AS account_id FROM workspaces WHERE manager_account_id IS NOT NULL AND deleted_at IS NULL'));
+   for(let i=0;i<managers.length;i+=50)await env.DB.batch(managers.slice(i,i+50).map(m=>env.DB.prepare("INSERT OR IGNORE INTO account_notifications(id,account_id,severity,code,created_at,read_at) VALUES(?,?,'critical','operation.backup_failed',?,NULL)").bind(sha('backup-failed:'+day+':'+m.account_id).slice(0,32),m.account_id,Date.now())));
+  }catch{console.warn('backup_alert_persist_failed');}
   throw Error('Business backup failed: '+code);
  }
 }

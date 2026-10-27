@@ -9,6 +9,7 @@ function bucket(){const data=new Map();return {data,async put(key,value,options=
 function fixture(){
  const db=new DatabaseSync(':memory:'),security=new DatabaseSync(':memory:');
  db.exec(`CREATE TABLE notes_json(workspace TEXT,document TEXT,purged INTEGER); CREATE TABLE security_restore_state(id INTEGER PRIMARY KEY,epoch TEXT); INSERT INTO security_restore_state VALUES(1,'synthetic'); CREATE TABLE attachment_tombstones(workspace TEXT,attachment TEXT); CREATE TABLE identity_maintenance_runs(name TEXT PRIMARY KEY,completed_at INTEGER NOT NULL DEFAULT 0,lease_until INTEGER NOT NULL DEFAULT 0,lease TEXT,error TEXT); CREATE TABLE fixture(id INTEGER PRIMARY KEY AUTOINCREMENT,body TEXT,bytes BLOB); INSERT INTO fixture(body,bytes) VALUES('quote '' and Unicode 中文',X'00FF');`);
+ db.exec("CREATE TABLE workspaces(id TEXT,manager_account_id TEXT,deleted_at INTEGER); INSERT INTO workspaces VALUES('fixture','fixture-owner',NULL); CREATE TABLE account_notifications(id TEXT PRIMARY KEY,account_id TEXT,severity TEXT,code TEXT,created_at INTEGER,read_at INTEGER);");
  security.exec("CREATE TABLE security_state(id INTEGER,epoch TEXT,mode TEXT);INSERT INTO security_state VALUES(1,'synthetic','open');CREATE TABLE security_installation(id INTEGER);INSERT INTO security_installation VALUES(1);");
  return {db,security,env:{DB:adapter(db),SECURITY_DB:adapter(security),ATTACHMENTS:bucket(),BACKUPS:bucket(),RELEASE_SHA:'synthetic'}};
 }
@@ -26,8 +27,11 @@ assert.equal((await verifyBackup(completed,e=>f.env.BACKUPS.data.get(e.storageKe
 assert.equal((await backup(f.env)).status,'skipped','daily completion prevents duplicate snapshots');
 const broken=fixture();broken.db.prepare('INSERT INTO notes_json VALUES(?,?,0)').run(workspace,JSON.stringify({doc:{type:'doc',content:[{type:'image',attrs:{assetId:'sha256:'+id}}]}}));
 await assert.rejects(backup(broken.env),/attachment_missing/);assert.ok(!broken.env.BACKUPS.data.has('status/latest-success.json'));assert.ok([...broken.env.BACKUPS.data.keys()].every(k=>!k.endsWith('/manifest.json')));
+assert.equal(broken.db.prepare("SELECT count(*) AS n FROM account_notifications WHERE severity='critical' AND code='operation.backup_failed'").get().n,1);
+await assert.rejects(backup(broken.env),/attachment_missing/);assert.equal(broken.db.prepare('SELECT count(*) AS n FROM account_notifications').get().n,1,'same daily failure does not duplicate critical notices');
 // A failed attempt releases its lease and the next scheduled attempt can recover.
 await broken.env.ATTACHMENTS.put(base,raw);assert.equal((await backup(broken.env)).status,'complete');
 const locked=fixture();locked.security.exec("UPDATE security_state SET mode='blocked'");await assert.rejects(backup(locked.env),/security_locked/);
+assert.equal(locked.db.prepare('SELECT count(*) AS n FROM account_notifications').get().n,0,'planned restore gate is not a severe incident');
 for(const x of [f,broken,locked]){x.db.close();x.security.close();}
 console.log('PASS binding backup: one-transaction SQL export restores quotes/Unicode/BLOBs, full compressed R2 closure passes independent verifier, daily exclusion, missing attachment fail-closed, failed-job retry and recovery gate.');
