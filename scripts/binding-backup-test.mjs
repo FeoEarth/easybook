@@ -1,11 +1,12 @@
 import assert from 'node:assert/strict';
 import {DatabaseSync} from 'node:sqlite';
 import {gzipSync} from 'node:zlib';
-import {backup,snapshot} from '../backup-worker/index.mjs';
+import {readFileSync} from 'node:fs';
+import {backup,snapshot,archiveSecurity} from '../backup-worker/index.mjs';
 import {digest,inspectSnapshot,verifyBackup} from './backup-core.mjs';
 
 function adapter(sql){return {prepare(text){const q=sql.prepare(text);let p=[];return {bind(...args){p=args;return this},async first(){return q.get(...p)||null},async all(){return {results:q.all(...p)}},async run(){return q.run(...p)}}},async batch(statements){sql.exec('BEGIN');try{const r=[];for(const s of statements)r.push(await s.all());sql.exec('COMMIT');return r}catch(e){sql.exec('ROLLBACK');throw e}}};}
-function bucket(){const data=new Map();return {data,async put(key,value,options={}){data.set(key,{value:Buffer.from(value),...options});},async get(key){const row=data.get(key);return row?{size:row.value.length,customMetadata:row.customMetadata,httpMetadata:row.httpMetadata,body:new Blob([row.value]).stream(),async arrayBuffer(){return Uint8Array.from(row.value).buffer}}:null},async list(){return {truncated:false,objects:[...data].map(([key,row])=>({key,size:row.value.length}))}}};}
+function bucket(){const data=new Map();return {data,async put(key,value,options={}){data.set(key,{value:Buffer.from(value),...options});},async get(key){const row=data.get(key);return row?{size:row.value.length,customMetadata:row.customMetadata,httpMetadata:row.httpMetadata,body:new Blob([row.value]).stream(),async json(){return JSON.parse(row.value)},async arrayBuffer(){return Uint8Array.from(row.value).buffer}}:null},async list(){return {truncated:false,objects:[...data].map(([key,row])=>({key,size:row.value.length}))}}};}
 function fixture(){
  const db=new DatabaseSync(':memory:'),security=new DatabaseSync(':memory:');
  db.exec(`CREATE TABLE notes_json(workspace TEXT,document TEXT,purged INTEGER); CREATE TABLE security_restore_state(id INTEGER PRIMARY KEY,epoch TEXT); INSERT INTO security_restore_state VALUES(1,'synthetic'); CREATE TABLE attachment_tombstones(workspace TEXT,attachment TEXT); CREATE TABLE identity_maintenance_runs(name TEXT PRIMARY KEY,completed_at INTEGER NOT NULL DEFAULT 0,lease_until INTEGER NOT NULL DEFAULT 0,lease TEXT,error TEXT); CREATE TABLE fixture(id INTEGER PRIMARY KEY AUTOINCREMENT,body TEXT,bytes BLOB); INSERT INTO fixture(body,bytes) VALUES('quote '' and Unicode 中文',X'00FF');`);
@@ -28,11 +29,21 @@ assert.equal((await verifyBackup(completed,e=>f.env.BACKUPS.data.get(e.storageKe
 assert.equal((await backup(f.env)).status,'skipped','daily completion prevents duplicate snapshots');
 const broken=fixture();broken.db.prepare('INSERT INTO notes_json VALUES(?,?,0)').run(workspace,JSON.stringify({doc:{type:'doc',content:[{type:'image',attrs:{assetId:'sha256:'+id}}]}}));
 await assert.rejects(backup(broken.env),/attachment_missing/);assert.ok(!broken.env.BACKUPS.data.has('status/latest-success.json'));assert.ok([...broken.env.BACKUPS.data.keys()].every(k=>!k.endsWith('/manifest.json')));
+assert.ok([...broken.env.BACKUPS.data.keys()].some(k=>k.endsWith('/missing-references.json')),'pre-existing missing references are reported before copying objects');
+assert.ok([...broken.env.BACKUPS.data.keys()].every(k=>!k.includes('/objects/')),'known missing source bytes avoid a futile full copy');
 assert.equal(broken.db.prepare("SELECT count(*) AS n FROM account_notifications WHERE severity='critical' AND code='operation.backup_failed'").get().n,1);
 await assert.rejects(backup(broken.env),/attachment_missing/);assert.equal(broken.db.prepare('SELECT count(*) AS n FROM account_notifications').get().n,1,'same daily failure does not duplicate critical notices');
 // A failed attempt releases its lease and the next scheduled attempt can recover.
 await broken.env.ATTACHMENTS.put(base,raw);assert.equal((await backup(broken.env)).status,'complete');
 const locked=fixture();locked.security.exec("UPDATE security_state SET mode='blocked'");await assert.rejects(backup(locked.env),/security_locked/);
 assert.equal(locked.db.prepare('SELECT count(*) AS n FROM account_notifications').get().n,0,'planned restore gate is not a severe incident');
+const securityArchive=new DatabaseSync(':memory:');securityArchive.exec(readFileSync('worker/security-migrations/0001-checkpoint.sql','utf8'));securityArchive.exec("INSERT INTO security_state VALUES(1,'fixture','open',0,0);INSERT INTO security_installation VALUES(1,0);INSERT INTO security_revocations VALUES('account','synthetic-deleted',0);");
+const archives=bucket(),securityEnv={SECURITY_DB:adapter(securityArchive),SECURITY_BACKUPS:archives,RELEASE_SHA:'fixture'};
+const archived=await archiveSecurity(securityEnv);assert.equal(archived.format,'security-checkpoint-v1');assert.equal(archived.automaticRestoreAllowed,false);
+const restoredSecurity=new DatabaseSync(':memory:');restoredSecurity.exec(archives.data.get(archived.sqlKey).value.toString());
+assert.equal(restoredSecurity.prepare('SELECT count(*) n FROM security_revocations').get().n,1);assert.throws(()=>restoredSecurity.exec('DELETE FROM security_revocations'),/permanent revocation/,'archive retains immutable safety triggers');
+assert.throws(()=>inspectSnapshot(archives.data.get(archived.sqlKey).value.toString()),/wrong_database/,'security archive cannot be treated as a business backup');
+assert.equal((await archiveSecurity(securityEnv)).status,'skipped');await assert.rejects(archiveSecurity({...securityEnv,SECURITY_DB:f.env.DB,SECURITY_BACKUPS:bucket()}),/security_archive_wrong_database/);
+restoredSecurity.close();securityArchive.close();
 for(const x of [f,broken,locked]){x.db.close();x.security.close();}
 console.log('PASS binding backup: one-transaction SQL export restores quotes/Unicode/BLOBs, full compressed R2 closure passes independent verifier, daily exclusion, missing attachment fail-closed, failed-job retry and recovery gate.');

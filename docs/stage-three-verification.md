@@ -53,8 +53,26 @@ deleted by the drill.
 
 ## Remaining release gates
 
+The scheduled business backup subsequently failed with `attachment_missing`.
+An inventory check found 32 distinct document references, of which 12 had no
+legacy object or V2 manifest in the live attachment bucket. All 12 IDs were
+single hex characters repeated 64 times, consistent with placeholder references.
+They were in active workspaces, had no cross-workspace object match, and had no
+match among the 50 existing release-recovery objects. No notes or references were
+deleted to bypass verification. The exporter now saves inventory/missing-reference
+reports and fails before copying all bytes when this condition is present.
+These missing sources remain a completeness blocker; no successful business
+backup receipt is claimed. The cron returns to minute 43 each hour after initial
+bootstrap attempts rather than repeatedly copying incomplete source data.
+
+Independent security archives now use a separate private no-expiration bucket.
+The archive format explicitly forbids automatic restore; a local test restores
+its SQL and confirms permanent revocation triggers still prevent deletion.
+Real archive execution and its receipt must be checked separately from code and
+bucket provisioning.
+
 Do not declare 0.8.0 released from these results. A completed production backup
-receipt, independent security archival/recovery protection, external email/push
+receipt, authoritative security recovery protection, external email/push
 delivery, physical Android account acceptance and final candidate APK evidence
 remain separate gates. Email Sending inspection previously returned 401; token
 permission discovery also stalled and was abandoned. No third-party mail provider
