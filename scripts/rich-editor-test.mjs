@@ -13,14 +13,34 @@ for(const type of ['bold','italic','underline','strike','highlight','textColor',
 assert.throws(()=>rich.load('<p>unsupported</p>'));assert.deepEqual(rich.value(),value);
 rich.editor.commands.setTextSelection(2);rich.editor.commands.insertContent('输入');assert.ok(saved.doc);assert.ok(!('body' in saved));
 rich.attachment('c'.repeat(64),'文件.pdf','application/pdf',123);assert.ok(R.assetRefs(rich.value()).has('c'.repeat(64)));
-const clean=R.sanitize('<p onclick="x">safe<script>alert(1)</script><a href="javascript:x">bad</a></p>');assert.ok(!/onclick|<script|javascript:/.test(clean));rich.editor.destroy();dom.window.close();
+const clean=R.sanitize('<p onclick="x">safe<script>alert(1)</script><a href="javascript:x">bad</a></p>');assert.ok(!/onclick|<script|javascript:/.test(clean));rich.editor.destroy();dom.window.close();console.log('editor offline test: standalone rich editor passed');
 const page=new JSDOM(readFileSync('app/src/main/assets/index.html','utf8'),{url:'https://easybook.test',runScripts:'outside-only',pretendToBeVisual:true});
 page.window.TextEncoder=TextEncoder;page.window.indexedDB=indexedDB;page.window.HTMLDialogElement.prototype.showModal=function(){this.open=true};page.window.HTMLDialogElement.prototype.close=function(){this.open=false};page.window.scrollTo=()=>{};Object.defineProperty(page.window,'crypto',{value:crypto});Object.defineProperty(page.window.navigator,'onLine',{value:false});page.window.eval(readFileSync('app/src/main/assets/editor.js','utf8'));page.window.eval(readFileSync('app/src/main/assets/index.html','utf8').match(/<script>([\s\S]*?)<\/script>/)[1]);
 // Wait for app readiness, then use the actual save/flush completion. Fixed 100ms
 // sleeps race module loading and IndexedDB on shared CI runners.
 const deadline=Date.now()+5000;
 while(!page.window.easybookRich||typeof page.window.document.getElementById('newTop').onclick!=='function'){assert.ok(Date.now()<deadline,'app boots within 5s');await new Promise(r=>setTimeout(r,10))}
-page.window.document.getElementById('newTop').click();page.window.easybookRich.editor.commands.insertContent('离线保存');page.window.easybookRich.flushInput();await page.window.document.getElementById('done').onclick();
-const {WebStore}=await import('../shared/web-store.mjs');const store=new WebStore(indexedDB);await store.open();const data=await store.load(page.window.localStorage.getItem('easybook-key'));assert.ok(R.plain(data.notes[0].document).includes('离线保存'));assert.equal(data.notes[0].dirty,true);assert.equal(data.notes[0].body,undefined);page.window.close();store.db.close();
+// Bound asynchronous persistence steps individually. This preserves the actual
+// save assertion but turns CI hangs into an actionable failure location.
+async function bounded(label,promise){
+ let timer;
+ try{return await Promise.race([promise,new Promise((_,reject)=>{timer=setTimeout(()=>reject(Error(label+' exceeded 12s')),12000)})])}
+ finally{clearTimeout(timer)}
+}
+let store;
+try{
+ console.log('editor offline test: UI ready; exercising save');
+ page.window.document.getElementById('newTop').click();page.window.easybookRich.editor.commands.insertContent('离线保存');page.window.easybookRich.flushInput();
+ await bounded('UI save/flush',page.window.document.getElementById('done').onclick());
+ console.log('editor offline test: UI flushed; reading IndexedDB');
+ const {WebStore}=await import('../shared/web-store.mjs');store=new WebStore(indexedDB);
+ await bounded('IndexedDB open',store.open());
+ // The active sync credential moved into the encrypted IndexedDB vault. The
+ // legacy easybook-key localStorage slot is intentionally removed on boot.
+ const active=await bounded('read active credential',store.activeCredential());
+ const data=await bounded('IndexedDB load',store.load(active));
+ assert.ok(R.plain(data.notes[0].document).includes('离线保存'));
+ assert.equal(data.notes[0].dirty,true);assert.equal(data.notes[0].body,undefined);
+}finally{page.window.close();store?.db?.close()}
 console.log('PASS editor: all nodes/marks stable JSON restore, invalid load keeps document, tasks/media, paste safety, app offline IndexedDB save');
 
