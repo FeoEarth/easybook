@@ -701,9 +701,18 @@ async function refreshWorkspaces(){
   else{
    const local=await webStore.listWorkspaces();
    if(key.startsWith('account:'))current=key.slice(8);
-   else{const w=await workspaceIdentity(key);current=w.id;entries=[w]}
+   else{
+    let active=null;
+    try{active=await workspaceIdentity(key)}catch{active=await webStore.workspaceForCredential(key)}
+    if(active)current=active.id;
+   }
    let session=null;try{session=await browserAccount()}catch{}
    signedIn=!!session?.signedIn;accountName=session?.name||'';
+   // A signed-out client can switch every personal workspace whose real key
+   // is already sealed in this device's local vault, including while offline.
+   const localAvailable=[];
+   for(const w of local)if(w.mode==='personal'&&await webStore.personalWorkspaceCredential(w.id))localAvailable.push(w);
+   entries=localAvailable;
    if(signedIn){try{entries=entries.concat((await workspaceRequest()).workspaces)}catch{}}
    if(!entries.some(w=>w.id===current)){const cached=local.find(w=>w.id===current);if(cached)entries.unshift(cached)}
    $('workspaceAssociate').hidden=!signedIn||key.startsWith('account:');
@@ -724,7 +733,15 @@ async function switchWorkspaceChoice(id){
  workspacePending=true;renderWorkspaceChoices();$('workspaceSwitchStatus').textContent='正在保存并切换…';
  try{
   if(native){rich.flushInput();persistNow();await flushLocal();await native.call('workspace.action',{action:'select',id});$('workspaceSwitchDialog').close()}
-  else await selectWebWorkspace('account:'+id,w);
+  else{
+   const localKey=w.mode==='personal'?await webStore.personalWorkspaceCredential(w.id):null;
+   if(localKey){await selectWebWorkspace(localKey,w)}
+   else{
+    const account=await browserAccount();
+    if(!account?.signedIn)throw Error('此工作区需要账户访问，请先登录');
+    await selectWebWorkspace('account:'+id,w);
+   }
+  }
  }catch(e){$('workspaceSwitchStatus').textContent=e?.message||'切换失败，原工作区保持不变';toast(e?.message||'工作区切换失败')}
  finally{workspacePending=false;renderWorkspaceChoices()}
 }
