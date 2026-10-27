@@ -71,6 +71,19 @@ its SQL and confirms permanent revocation triggers still prevent deletion.
 Real archive execution and its receipt must be checked separately from code and
 bucket provisioning.
 
+Actual execution was subsequently verified at 2026-10-27 14:39 Singapore time
+(06:39 UTC). The first security archive completed with 28,518 SQL bytes and
+SHA-256 `c2c261295055fa023cbc15fd849f00b5cd9b160e62f87ca2f5850ca8c63f6826`.
+Its SQL was independently downloaded in bounded segments, the checksum matched,
+and isolated SQLite import/integrity checks passed. The permanent-revocation
+trigger was tested on that local clone with a synthetic row and rejected deletion.
+The local copy and transient credential were removed; the final temporary
+verification Worker was deleted. The production archive receipt identifies code
+commit `31621824645ce2d0b66552f1286e323cecbdb183` and explicitly forbids automatic
+security restoration. The cron was read back as `43 * * * *`; public and preview
+access remained disabled. Business backup execution returned `attachment_missing`
+with no success timestamp, correctly keeping the data-completeness gate closed.
+
 Do not declare 0.8.0 released from these results. A completed production backup
 receipt, authoritative security recovery protection, external email/push
 delivery, physical Android account acceptance and final candidate APK evidence
