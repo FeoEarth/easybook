@@ -17,6 +17,8 @@ jobs:
           node-version: '24'
       - run: npm ci --no-audit --no-fund
       - run: npm ci --prefix mcp-oauth --no-audit --no-fund
+      - name: Verify production third-party license inventory
+        run: npm run licenses:check
       - name: Focused account, migration, isolation, OAuth and restore checks
         run: |
           node scripts/core-workspace-release-test.mjs
