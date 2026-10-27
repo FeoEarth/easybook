@@ -1,5 +1,3 @@
-#Easybook
-
 Easybook 是一款跨设备笔记应用，提供 Android 与 Web 客户端，支持笔记管理、富文本编辑、工作区管理及 Cloudflare 云端同步。
 
 项目基于 Android、Web、Cloudflare构建。
