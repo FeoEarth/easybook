@@ -9,6 +9,6 @@
   {"binding":"DB","database_name":"easybook-data","database_id":"af430aed-01b5-41ca-9653-31212bed3f9f"},
   {"binding":"SECURITY_DB","database_name":"easybook-security","database_id":"d1761c2d-6372-489c-ae5e-114f3d5baa80"}
  ],
- "r2_buckets":[{"binding":"ATTACHMENTS","bucket_name":"easybook-attachments"},{"binding":"BACKUPS","bucket_name":"easybook-backups"}],
+ "r2_buckets":[{"binding":"ATTACHMENTS","bucket_name":"easybook-attachments"},{"binding":"BACKUPS","bucket_name":"easybook-backups"},{"binding":"SECURITY_BACKUPS","bucket_name":"easybook-security-checkpoints"}],
  "triggers":{"crons":["43 * * * *"]}
 }

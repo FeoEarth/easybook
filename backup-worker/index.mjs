@@ -92,10 +92,20 @@ export async function backup(env,now=Date.now()){
   const security=await checkpoint(env),dump=await snapshot(env);if(dump.epoch!==security.epoch)throw Error('security_epoch');
   const sqlBytes=new TextEncoder().encode(dump.sql),database={storageKey:prefix+'database.sql',size:sqlBytes.length,sha256:sha(sqlBytes)};
   await env.BACKUPS.put(database.storageKey,sqlBytes);await checkedObject(env.BACKUPS,database.storageKey,database);
-  const objects=[];let cursor,temporaryUploadsExcluded=0,total=0;
+  const inventory=[];let cursor;
   do{
-   const page=await env.ATTACHMENTS.list({limit:100,...(cursor?{cursor}:{})});
-   for(const listed of page.objects){
+   const page=await env.ATTACHMENTS.list({limit:100,include:['httpMetadata','customMetadata'],...(cursor?{cursor}:{})});
+   inventory.push(...page.objects);if(inventory.length>10000)throw Error('backup_work_limit');
+   if(!page.truncated)break;if(!page.cursor || page.cursor===cursor)throw Error('listing_cursor');cursor=page.cursor;
+  }while(true);
+  await putJSON(prefix+'inventory.json',{status:'inventory',objects:inventory});
+  const keys=new Set(inventory.map(x=>x.key)),missing=dump.references.filter(key=>!keys.has(key)&&!keys.has(key+'/manifest-v2'));
+  if(missing.length){
+   await putJSON(prefix+'missing-references.json',{status:'incomplete',sourceSqlSha256:database.sha256,missingReferences:missing});
+   throw Error('attachment_missing');
+  }
+  const objects=[];let temporaryUploadsExcluded=0,total=0;
+   for(const listed of inventory){
     if(Date.now()-now>720000 || objects.length>=10000)throw Error('backup_work_limit');
     if(listed.key.startsWith('_mcp_uploads/')){temporaryUploadsExcluded++;continue;}
     if(!validKey(listed.key))throw Error('unknown_object');
@@ -104,9 +114,8 @@ export async function backup(env,now=Date.now()){
     if((entry.customMetadata.hash || entry.customMetadata.sha256) && entry.sha256!==(entry.customMetadata.hash || entry.customMetadata.sha256))throw Error('source_hash');
     await env.BACKUPS.put(entry.storageKey,value);await checkedObject(env.BACKUPS,entry.storageKey,entry);objects.push(entry);
    }
-   if(!page.truncated)break;if(!page.cursor || page.cursor===cursor)throw Error('listing_cursor');cursor=page.cursor;
-  }while(true);
   const manifest={...status,status:'complete',format:1,database,objects,temporaryUploadsExcluded,source:{database:'easybook-data',bucket:'easybook-attachments'},securityDatabaseIncluded:false,consistency:'One D1 batch transaction plus verified R2 reference closure; no cross-service atomic snapshot',completedAt:new Date().toISOString()};
+  await putJSON(prefix+'candidate-manifest.json',{...manifest,status:'pending_verification'});
   const verified=await verifyStored(env,manifest,dump.references);if((await checkpoint(env)).epoch!==security.epoch)throw Error('security_changed');
   const encoded=JSON.stringify(manifest);await env.BACKUPS.put(prefix+'manifest.json',encoded);
   const receipt={...status,status:'complete',completedAt:manifest.completedAt,manifestKey:prefix+'manifest.json',manifestSha256:sha(encoded),objects:objects.length,localOnly:verified.localOnly};
@@ -125,4 +134,28 @@ export async function backup(env,now=Date.now()){
   throw Error('Business backup failed: '+code);
  }
 }
-export default {async fetch(){return new Response('Not found',{status:404});},async scheduled(controller,env){await backup(env);}};
+// Independent security archives have a separate private bucket and no ordinary
+// log/business-backup TTL. This never restores or initializes security state.
+export async function archiveSecurity(env,now=Date.now()){
+ if(!env.SECURITY_BACKUPS)throw Error('security_archive_binding_missing');
+ const hour=new Date(now).toISOString().slice(0,13),previous=await env.SECURITY_BACKUPS.get('status/latest.json');
+ if(previous && (await previous.json()).hour===hour)return {status:'skipped'};
+ const db=env.SECURITY_DB.withSession?.('first-primary') || env.SECURITY_DB;
+ const schema=await rows(db.prepare(schemaSQL)),tables=schema.filter(x=>x.type==='table');
+ if(!tables.some(t=>t.name==='security_revocations') || !tables.some(t=>t.name==='security_installation') || tables.some(t=>!/^security_|^workspace_security_floors$/.test(t.name)))throw Error('security_archive_wrong_database');
+ const statements=[db.prepare(schemaSQL)];
+ for(const table of tables){
+  const columns=(await rows(db.prepare('PRAGMA table_info('+quoteId(table.name)+')'))).map(c=>quoteId(c.name));
+  const prefix='INSERT INTO '+quoteId(table.name)+'('+columns.join(',')+') VALUES(';
+  const literal=value=>"'"+value.replaceAll("'","''")+"'";
+  statements.push(db.prepare('SELECT '+literal(prefix)+'||'+columns.map(c=>'quote('+c+')').join("||','||")+"||');' AS line FROM "+quoteId(table.name)));
+ }
+ const result=await db.batch(statements);if(JSON.stringify(result[0].results)!==JSON.stringify(schema))throw Error('security_archive_schema_changed');
+ const sql=['PRAGMA foreign_keys=OFF;','PRAGMA defer_foreign_keys=ON;',...tables.map(t=>t.sql+';'),...result.slice(1).flatMap(r=>r.results.map(x=>x.line)),...schema.filter(t=>t.type!=='table').map(t=>t.sql+';'),'PRAGMA foreign_keys=ON;'].join('\n');
+ const bytes=new TextEncoder().encode(sql);if(bytes.length>MAX_SQL)throw Error('security_archive_too_large');
+ const checksum=sha(bytes),prefix='checkpoints/'+new Date(now).toISOString().replace(/[:.]/g,'-')+'-'+crypto.randomUUID()+'/';
+ await env.SECURITY_BACKUPS.put(prefix+'security.sql',bytes);await checkedObject(env.SECURITY_BACKUPS,prefix+'security.sql',{size:bytes.length,sha256:checksum});
+ const manifest={format:'security-checkpoint-v1',status:'complete',capturedAt:new Date(now).toISOString(),hour,sqlKey:prefix+'security.sql',sqlSha256:checksum,sqlBytes:bytes.length,independentSecurityOnly:true,automaticRestoreAllowed:false,release:env.RELEASE_SHA};
+ await env.SECURITY_BACKUPS.put(prefix+'manifest.json',JSON.stringify(manifest));await env.SECURITY_BACKUPS.put('status/latest.json',JSON.stringify(manifest));return manifest;
+}
+export default {async fetch(){return new Response('Not found',{status:404});},async scheduled(controller,env){const results=await Promise.allSettled([archiveSecurity(env),backup(env)]);if(results.some(r=>r.status==='rejected'))throw Error('Backup maintenance incomplete');}};

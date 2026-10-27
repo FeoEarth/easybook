@@ -74,7 +74,22 @@ permanent revocations and security floors must never be replaced with this
 business snapshot. Follow `security-restore-runbook.md` for gate, reconciliation,
 credential invalidation and reopening. Deleted accounts and stale workspaces
 remain denied by current independent security state. Separate security database
-backup/protection and a full remote D1/R2 restore drill are still required.
+archival is performed by `archiveSecurity` into `easybook-security-checkpoints`,
+a separate private bucket with no object expiration rule. It uses one D1 batch
+transaction, preserves immutable safety triggers, reads the SQL back and records
+its SHA-256 in a `security-checkpoint-v1` manifest. It archives at most once per
+UTC hour. Neither client-facing Worker has a binding to this archive bucket.
+There is deliberately no automatic security restore. A prior archive alone does
+not prove that later revocations never existed: stop access if the security DB
+is lost, reconcile its complete authoritative history separately, and never
+initialize a replacement empty checkpoint against an old business snapshot.
+Archives are recovery evidence, not permission to rewind safety history.
+
+Source R2 inventory and missing reference reports are retained privately before
+object copying. Known missing bytes abort early without a futile full copy.
+Candidate manifests retain copied-object metadata but remain explicitly pending
+until verification succeeds; they are not completed recovery points. See the
+stage-three verification record for actual production gaps.
 
 ## Evidence and limits
 
