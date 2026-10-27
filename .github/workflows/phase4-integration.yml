@@ -35,9 +35,7 @@ jobs:
         run: timeout 180s node scripts/attachment-test.mjs
       # Full media upload/retry integration runs on demand; PRs retain attachment API and data checks.
       - name: Media tests
-        # Enable exactly this patch branch for one focused PR acceptance check.
-        # Revert the temporary exception after the targeted run.
-        if: github.event_name == 'workflow_dispatch' || github.head_ref == 'fix/ci-media-v2-protocol-081'
+        if: github.event_name == 'workflow_dispatch'
         run: timeout 360s npm run test:media
       # Full sync UI navigation/history checks run on demand; PRs keep sync activity and API assertions.
       - name: Sync UI tests
