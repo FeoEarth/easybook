@@ -1,0 +1,143 @@
+name: Review and clean merged legacy branches
+on:
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: 'Preview only, or delete verified merged branches'
+        type: choice
+        required: true
+        default: preview
+        options:
+          - preview
+          - delete
+      confirmation:
+        description: 'For deletion, type DELETE-50 exactly; preview needs no confirmation'
+        type: string
+        required: false
+        default: ''
+concurrency:
+  group: easybook-merged-branch-cleanup
+  cancel-in-progress: false
+permissions:
+  contents: read
+jobs:
+  cleanup:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: write
+      pull-requests: read
+    env:
+      GH_TOKEN: ${{ github.token }}
+      MODE: ${{ inputs.mode }}
+      CONFIRM: ${{ inputs.confirmation }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Recheck each of 50 approved merged branches, then preview or delete
+        shell: bash
+        run: |
+          set -euo pipefail
+          repo='FeoEarth/easybook'
+          [[ "$GITHUB_REPOSITORY" == "$repo" && "$GITHUB_REF" == 'refs/heads/main' ]] || { echo 'This workflow only runs on FeoEarth/easybook main'; exit 1; }
+          [[ "$MODE" == 'preview' || "$MODE" == 'delete' ]] || exit 1
+          if [[ "$MODE" == 'delete' && "$CONFIRM" != 'DELETE-50' ]]; then echo 'Deletion requires the exact confirmation DELETE-50'; exit 1; fi
+          default_branch=$(gh api "repos/$repo" --jq '.default_branch')
+          [[ "$default_branch" == 'main' ]] || { echo 'Default branch is not main; refusing'; exit 1; }
+          mapfile -t candidates <<'CANDIDATES'
+          android-adaptive-editor-tools
+          android-highlight-quick-palette
+          android-native-toolbar-glass
+          android-qwea0-delivery
+          easybook-0.8.0-scroll-toolbar
+          fix-adaptive-toolbar-label
+          fix-android-folder-save
+          fix-bottom-dock-inset-position
+          fix-context-preview-glass
+          fix-format-glass-coverage
+          fix-format-panel-restoration
+          fix-media-preview-toolbar-visibility
+          fix-move-sheet-native-glass
+          fix-note-long-press-selection
+          management-placement
+          native-glass-bottom-dock
+          prototype-native-liquid-glass
+          ui-liquid-glass-consistency
+          ui-liquid-glass-followup
+          ui-liquid-glass-layout-polish
+          ui-more-menu
+          ui-selection-move
+          unified-pdfjs-reader
+          easybook-0.8.0-phase2
+          easybook-0.8.0-phase3
+          easybook-0.8.0-phase4
+          easybook-native-data
+          feat/core-workspace-release
+          feat/easybook-accounts-oauth
+          feat/easybook-passkeys
+          feat/unified-workspace-identity
+          feat/mcp-scoped-workspace-foundation
+          restore-phase4-media-sync
+          fix/android-sync-policy-save
+          fix/oauth-form-origin
+          fix/staged-sync-origin
+          fix/sync-policies-active-space
+          fix/sync-policies-ci-condition
+          fix/sync-policies-history-scope
+          fix/sync-policies-large-attachments
+          fix/sync-policies-list-gestures
+          fix/sync-policies-list-hit-area
+          fix/sync-policies-pdf-interaction
+          fix/sync-policies-pdf-loading
+          fix/sync-policies-pdf-reader
+          fix/sync-policies-scope-checkpoint
+          fix/sync-policies-tables-pickers
+          fix/sync-policies-ui-glass
+          mcp-attachment-uploads
+          mcp-full-capabilities
+          CANDIDATES
+          [[ ${#candidates[@]} -eq 50 ]] || exit 1
+          shopt -s nullglob
+          workflows=(.github/workflows/*.yml .github/workflows/*.yaml)
+          [[ ${#workflows[@]} -gt 0 ]] || { echo 'No workflow definitions found'; exit 1; }
+          echo '| Branch | Decision |' >> "$GITHUB_STEP_SUMMARY"
+          echo '|---|---|' >> "$GITHUB_STEP_SUMMARY"
+          eligible=0; deleted=0; skipped=0; errors=0
+          for branch in "${candidates[@]}"; do
+            [[ "$branch" != 'main' ]] || { echo 'Refusing to delete main'; exit 1; }
+            reason=''
+            if ! ref_sha=$(gh api "repos/$repo/git/ref/heads/$branch" --jq '.object.sha' 2>/dev/null); then reason='missing or inaccessible'; fi
+            if [[ -z "$reason" ]]; then
+              if ! protected=$(gh api "repos/$repo/branches/$branch" --jq '.protected' 2>/dev/null); then reason='cannot inspect branch protection';
+              elif [[ "$protected" != 'false' ]]; then reason='protected branch'; fi
+            fi
+            if [[ -z "$reason" ]] && grep -hE '^[[:space:]]*branches:' "${workflows[@]}" | grep -F -- "$branch" >/dev/null; then reason='still listed in workflow branch triggers'; fi
+            if [[ -z "$reason" ]]; then
+              if ! ahead=$(gh api "repos/$repo/compare/main...$branch" --jq '.ahead_by' 2>/dev/null); then reason='comparison unavailable';
+              elif [[ "$ahead" != '0' ]]; then reason="unmerged commits: $ahead"; fi
+            fi
+            if [[ -z "$reason" ]]; then
+              if ! open_prs=$(gh api -X GET "repos/$repo/pulls" -f state=open -f "head=FeoEarth:$branch" --jq 'length' 2>/dev/null); then reason='open PR check unavailable';
+              elif [[ "$open_prs" != '0' ]]; then reason='open pull request exists'; fi
+            fi
+            if [[ -z "$reason" && "$MODE" == 'delete' ]]; then
+              if ! latest_sha=$(gh api "repos/$repo/git/ref/heads/$branch" --jq '.object.sha' 2>/dev/null); then reason='branch disappeared';
+              elif [[ "$latest_sha" != "$ref_sha" ]]; then reason='branch tip changed';
+              elif ! latest_ahead=$(gh api "repos/$repo/compare/main...$branch" --jq '.ahead_by' 2>/dev/null); then reason='final merge check unavailable';
+              elif [[ "$latest_ahead" != '0' ]]; then reason='new unmerged commits'; fi
+            fi
+            if [[ -n "$reason" ]]; then
+              echo "KEEP $branch: $reason"; echo "| \`$branch\` | KEEP: $reason |" >> "$GITHUB_STEP_SUMMARY"; skipped=$((skipped+1)); continue
+            fi
+            eligible=$((eligible+1))
+            if [[ "$MODE" == 'preview' ]]; then
+              echo "WOULD DELETE $branch"; echo "| \`$branch\` | Would delete (merged) |" >> "$GITHUB_STEP_SUMMARY"
+            elif gh api -X DELETE "repos/$repo/git/refs/heads/$branch" --silent; then
+              echo "DELETED $branch"; echo "| \`$branch\` | Deleted |" >> "$GITHUB_STEP_SUMMARY"; deleted=$((deleted+1))
+            else
+              echo "DELETE FAILED $branch"; echo "| \`$branch\` | Delete failed |" >> "$GITHUB_STEP_SUMMARY"; errors=$((errors+1))
+            fi
+          done
+          echo "Mode=$MODE, eligible=$eligible, deleted=$deleted, skipped=$skipped, errors=$errors"
+          [[ "$errors" -eq 0 ]]
