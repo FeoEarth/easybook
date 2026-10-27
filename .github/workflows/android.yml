@@ -2,11 +2,19 @@ name: Build Android APK
 on:
   push:
     branches: [main]
-    # Routine tests, docs, backend-only and package metadata must not mint APK releases.
+    # Runtime, dependency and build-tool edits trigger an APK validation build;
+    # only explicit manual dispatch can publish a Release.
     paths:
       - 'app/**'
       - 'editor/**'
       - 'shared/**'
+      - 'package.json'
+      - 'package-lock.json'
+      - 'scripts/build-editor.mjs'
+      - 'scripts/generate-ui.mjs'
+      - 'scripts/prepare-pdf.mjs'
+      - 'scripts/check-android-identity.mjs'
+      - 'worker/android-identity.mjs'
       - 'gradle/**'
       - 'gradle.properties'
       - 'gradlew'
@@ -27,6 +35,8 @@ permissions:
   actions: read
 jobs:
   apk:
+    outputs:
+      version: ${{ steps.apk_version.outputs.name }}
     if: github.event_name != 'pull_request' || (github.head_ref == 'fix/android-passkey-website-association' || github.head_ref == 'fix/android-account-settings-ui' || github.head_ref == 'fix/android-account-handoff' || github.head_ref == 'feat/phase-two-collaboration' || github.head_ref == 'fix/android-account-phase-two' || github.head_ref == 'feat/core-workspace-release' || github.head_ref == 'feat/unified-workspace-identity' || github.head_ref == 'feat/easybook-passkeys' || github.head_ref == 'feat/easybook-accounts-oauth' || github.head_ref == 'fix/android-sync-policy-save' || github.head_ref == 'fix/sync-policies-active-space' || github.head_ref == 'fix/sync-policies-list-gestures' || github.head_ref == 'fix/sync-policies-list-hit-area' || github.head_ref == 'fix/sync-policies-large-attachments' || github.head_ref == 'fix/sync-policies-pdf-reader' || github.head_ref == 'fix/sync-policies-pdf-loading' || github.head_ref == 'fix/sync-policies-pdf-interaction' || github.head_ref == 'fix/sync-policies-tables-pickers')
     runs-on: ubuntu-latest
     steps:
@@ -72,15 +82,22 @@ jobs:
         run: '"$ANDROID_HOME/build-tools/35.0.0/apksigner" verify --verbose --print-certs app/build/outputs/apk/release/app-release.apk'
       - name: Verify Passkey signing association
         run: node scripts/check-android-identity.mjs app/build/outputs/apk/release/app-release.apk
+      - name: Read version from Android Gradle release configuration
+        id: apk_version
+        shell: bash
+        run: |
+          VERSION=$(awk -F"'" '/versionName / {print $2; exit}' app/build.gradle)
+          [[ "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || { echo 'Invalid Android versionName'; exit 1; }
+          echo "name=$VERSION" >> "$GITHUB_OUTPUT"
       - name: Prepare APK
         run: |
-          cp app/build/outputs/apk/release/app-release.apk Easybook-0.8.0.apk
-          sha256sum Easybook-0.8.0.apk > SHA256SUMS.txt
+          cp app/build/outputs/apk/release/app-release.apk 'Easybook-${{ steps.apk_version.outputs.name }}.apk'
+          sha256sum 'Easybook-${{ steps.apk_version.outputs.name }}.apk' > SHA256SUMS.txt
       - uses: actions/upload-artifact@v4
         with:
           name: Easybook-APK
           path: |
-            Easybook-0.8.0.apk
+            Easybook-${{ steps.apk_version.outputs.name }}.apk
             SHA256SUMS.txt
   release:
     needs: apk
@@ -98,8 +115,10 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          TAG="v0.8.0-build${GITHUB_RUN_NUMBER}"
-          gh release create "$TAG" Easybook-0.8.0.apk SHA256SUMS.txt --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" --title "Easybook 0.8.0 · build ${GITHUB_RUN_NUMBER}" --notes "第二阶段账户与协作更新，沿用现有签名并保留 QWEA0。包含 Android GitHub/通行密钥交互修复、工作区桥接权限修复、共享成员管理、AI/MCP 授权与高风险审批、账户删除和安全历史。服务功能以对应 Worker 部署为准；APK 编译和签名检查不等同于 Android 实机登录验收。"
+          VERSION='${{ needs.apk.outputs.version }}'
+          [[ "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || { echo 'Invalid release version'; exit 1; }
+          TAG="v${VERSION}-build${GITHUB_RUN_NUMBER}"
+          gh release create "$TAG" "Easybook-${VERSION}.apk" SHA256SUMS.txt --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" --title "Easybook ${VERSION} · build ${GITHUB_RUN_NUMBER}" --notes "用户手动批准发布的 Android APK。沿用现有签名，保留 QWEA0；编译、签名和自动化检查通过不等同于 Android 通行密钥实机登录及生产备份恢复验收。"
 
 
 
