@@ -19,8 +19,20 @@ jobs:
       - run: npm ci
       - run: npm run build:editor
       - run: git diff --exit-code -- app/src/main/assets/editor.js worker/editor.mjs worker/ui.mjs
-      - name: Core Node tests
-        run: timeout 600s npm test
+      - name: Client and Worker syntax
+        run: timeout 60s node scripts/check.mjs
+      - name: Document contracts
+        run: timeout 60s node scripts/document-test.mjs
+      - name: Rich editor and offline save
+        run: timeout 120s node scripts/rich-editor-test.mjs
+      - name: Editor formatting
+        run: timeout 120s node scripts/format-editor-test.mjs
+      - name: Worker integration
+        run: timeout 240s node scripts/worker-integration.mjs
+      - name: Web local storage
+        run: timeout 180s node scripts/web-store-test.mjs
+      - name: Attachments
+        run: timeout 180s node scripts/attachment-test.mjs
       - name: Media tests
         run: timeout 360s npm run test:media
       - name: Sync UI tests
