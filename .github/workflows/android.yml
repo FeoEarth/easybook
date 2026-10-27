@@ -2,10 +2,26 @@ name: Build Android APK
 on:
   push:
     branches: [main]
-    paths-ignore: ['README.md']
+    # Routine tests, docs, backend-only and package metadata must not mint APK releases.
+    paths:
+      - 'app/**'
+      - 'editor/**'
+      - 'shared/**'
+      - 'gradle/**'
+      - 'gradle.properties'
+      - 'gradlew'
+      - 'build.gradle'
+      - 'settings.gradle'
+      - '.github/workflows/android.yml'
   pull_request:
     branches: [main]
   workflow_dispatch:
+    inputs:
+      publish_release:
+        description: 'Publish the validated APK as a GitHub Release'
+        required: false
+        type: boolean
+        default: false
 permissions:
   contents: read
   actions: read
@@ -68,7 +84,9 @@ jobs:
             SHA256SUMS.txt
   release:
     needs: apk
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    # A successful automatic APK build is only a CI artifact.
+    # Release publication requires an explicit manual dispatch from main.
+    if: github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main' && inputs.publish_release == true
     runs-on: ubuntu-latest
     permissions:
       contents: write
