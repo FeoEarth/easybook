@@ -21,7 +21,7 @@ jobs:
           VERIFIED_SHA: ${{ github.event.workflow_run.head_sha }}
         run: |
           test "$(gh api repos/$GITHUB_REPOSITORY/commits/main --jq .sha)" = "$VERIFIED_SHA"
-          grep -q "versionCode 61; versionName '0.8.3'" app/build.gradle
-          EXISTING=$(gh api "repos/$GITHUB_REPOSITORY/releases?per_page=100" --jq '[.[] | select(.tag_name | startswith("v0.8.3-build"))] | length')
+          grep -q "versionCode 62; versionName '0.8.3'" app/build.gradle
+          EXISTING=$(gh api "repos/$GITHUB_REPOSITORY/releases?per_page=100" --jq '[.[] | select(.tag_name | startswith("v0.8.3-build")) | select(.target_commitish == env.VERIFIED_SHA)] | length')
           if [ "$EXISTING" != 0 ]; then exit 0; fi
           gh workflow run android.yml --repo "$GITHUB_REPOSITORY" --ref main -f publish_release=true
