@@ -13,4 +13,10 @@ public class NativeAccountErrorsTest {
   assertTrue(NativeAccount.credentialMessage("androidx.credentials.TYPE_INVALID_STATE_ERROR",true).contains("已存在"));
   assertTrue(NativeAccount.credentialMessage("android.credentials.CreateCredentialException.TYPE_INTERRUPTED",true).contains("中断"));
  }
+ @Test public void associationAndMissingCredentialGuideExistingUsers(){
+  assertTrue(NativeAccount.credentialMessage("androidx.credentials.TYPE_SECURITY_ERROR",true).contains("关联验证"));
+  String missing=NativeAccount.credentialMessage("android.credentials.GetCredentialException.TYPE_NO_CREDENTIAL",false);
+  assertTrue(missing.contains("密码管理器"));assertTrue(missing.contains("旧域名"));
+ }
 }
+

@@ -9,4 +9,8 @@ const certificate=output.match(/Signer #1 certificate SHA-256 digest: ([a-f0-9]{
 assert.equal(certificate,ANDROID_SIGNING_SHA256,'APK signing certificate differs from the reviewed Passkey association');
 assert.equal(ANDROID_APP_ORIGIN,'android:apk-key-hash:'+Buffer.from(certificate,'hex').toString('base64url'));
 assert.equal(androidAssetLinks[0].target.package_name,'com.feoearth.easybook.notes');
+const manifest=execFileSync(join(sdk,'build-tools','35.0.0','aapt2'),['dump','xmltree',apk,'--file','AndroidManifest.xml'],{encoding:'utf8',maxBuffer:1024*1024});
+assert.ok(manifest.includes('com.feoearth.easybook.notes'),'APK package must match the Passkey association');
+assert.ok(manifest.includes('asset_statements'),'APK must declare its website credential association');
 console.log('PASS APK signing certificate matches the native Passkey origin and Digital Asset Links');
+
