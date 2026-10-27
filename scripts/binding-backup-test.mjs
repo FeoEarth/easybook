@@ -9,7 +9,7 @@ function bucket(){const data=new Map();return {data,async put(key,value,options=
 function fixture(){
  const db=new DatabaseSync(':memory:'),security=new DatabaseSync(':memory:');
  db.exec(`CREATE TABLE notes_json(workspace TEXT,document TEXT,purged INTEGER); CREATE TABLE security_restore_state(id INTEGER PRIMARY KEY,epoch TEXT); INSERT INTO security_restore_state VALUES(1,'synthetic'); CREATE TABLE attachment_tombstones(workspace TEXT,attachment TEXT); CREATE TABLE identity_maintenance_runs(name TEXT PRIMARY KEY,completed_at INTEGER NOT NULL DEFAULT 0,lease_until INTEGER NOT NULL DEFAULT 0,lease TEXT,error TEXT); CREATE TABLE fixture(id INTEGER PRIMARY KEY AUTOINCREMENT,body TEXT,bytes BLOB); INSERT INTO fixture(body,bytes) VALUES('quote '' and Unicode 中文',X'00FF');`);
- db.exec("CREATE TABLE workspaces(id TEXT,manager_account_id TEXT,deleted_at INTEGER); INSERT INTO workspaces VALUES('fixture','fixture-owner',NULL); CREATE TABLE account_notifications(id TEXT PRIMARY KEY,account_id TEXT,severity TEXT,code TEXT,created_at INTEGER,read_at INTEGER);");
+ db.exec("CREATE TABLE workspaces(id TEXT,manager_account_id TEXT,deleted_at INTEGER); INSERT INTO workspaces VALUES('fixture','fixture-owner',NULL); CREATE TABLE account_notifications(id TEXT PRIMARY KEY,account_id TEXT,severity TEXT,code TEXT,created_at INTEGER,read_at INTEGER); CREATE TABLE z_parent(id INTEGER PRIMARY KEY); CREATE TABLE a_child(parent_id INTEGER REFERENCES z_parent(id)); INSERT INTO z_parent VALUES(1); INSERT INTO a_child VALUES(1);");
  security.exec("CREATE TABLE security_state(id INTEGER,epoch TEXT,mode TEXT);INSERT INTO security_state VALUES(1,'synthetic','open');CREATE TABLE security_installation(id INTEGER);INSERT INTO security_installation VALUES(1);");
  return {db,security,env:{DB:adapter(db),SECURITY_DB:adapter(security),ATTACHMENTS:bucket(),BACKUPS:bucket(),RELEASE_SHA:'synthetic'}};
 }
@@ -20,6 +20,7 @@ f.db.prepare('INSERT INTO notes_json VALUES(?,?,0)').run(workspace,JSON.stringif
 const dump=await snapshot(f.env),restored=new DatabaseSync(':memory:');restored.exec(dump.sql);
 assert.equal(restored.prepare('PRAGMA integrity_check').get().integrity_check,'ok');
 assert.equal(restored.prepare('SELECT body FROM fixture').get().body,"quote ' and Unicode 中文");assert.equal(Buffer.from(restored.prepare('SELECT bytes FROM fixture').get().bytes).toString('hex'),'00ff');restored.close();
+const strict=new DatabaseSync(':memory:');strict.exec('PRAGMA foreign_keys=ON;BEGIN;');strict.exec(dump.sql);strict.exec('COMMIT;');assert.equal(strict.prepare('PRAGMA foreign_key_check').all().length,0,'D1-style enforced foreign keys allow out-of-order inserts only with transaction deferral');strict.close();
 assert.equal(inspectSnapshot(dump.sql).references.length,1);
 const result=await backup(f.env);assert.equal(result.status,'complete');
 const completed=JSON.parse(f.env.BACKUPS.data.get(result.manifestKey).value);assert.equal(completed.temporaryUploadsExcluded,1);

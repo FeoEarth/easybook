@@ -32,7 +32,9 @@ export async function snapshot(env){
  const data=result.slice(1,1+tables.length).flatMap(x=>x.results.map(r=>r.line));
  const sequence=result.at(-1).results;
  const sequenceSQL=sequence.length?["DELETE FROM sqlite_sequence;",...sequence.map(r=>"INSERT INTO sqlite_sequence(name,seq) VALUES('"+r.name.replaceAll("'","''")+"',"+Number(r.seq)+');')]:[];
- const sql=['PRAGMA foreign_keys=OFF;',...definitions,...data,...sequenceSQL,...schema.filter(x=>x.type!=='table').map(x=>x.sql+';'),'PRAGMA foreign_keys=ON;'].join('\n');
+ // D1 always enforces foreign keys and ignores foreign_keys=OFF. Defer checks
+ // within its import transaction; desktop SQLite can disable them for import.
+ const sql=['PRAGMA foreign_keys=OFF;','PRAGMA defer_foreign_keys=ON;',...definitions,...data,...sequenceSQL,...schema.filter(x=>x.type!=='table').map(x=>x.sql+';'),'PRAGMA foreign_keys=ON;'].join('\n');
  if(new TextEncoder().encode(sql).length>MAX_SQL)throw Error('snapshot_too_large');
  const tombstones=new Set(result.at(-2).results.map(r=>r.workspace+'/'+r.attachment)),references=new Set();
  function walk(node,workspace){

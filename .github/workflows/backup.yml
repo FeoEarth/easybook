@@ -10,6 +10,7 @@ on:
       - 'scripts/backup-runner-test.mjs'
       - 'backup-worker/**'
       - 'scripts/binding-backup-test.mjs'
+      - 'scripts/remote-restore-drill-*.mjs'
       - '.github/workflows/backup.yml'
   pull_request:
     paths:
@@ -19,6 +20,7 @@ on:
       - 'scripts/backup-runner-test.mjs'
       - 'backup-worker/**'
       - 'scripts/binding-backup-test.mjs'
+      - 'scripts/remote-restore-drill-*.mjs'
       - '.github/workflows/backup.yml'
 permissions:
   contents: read
@@ -37,6 +39,7 @@ jobs:
       - run: node scripts/backup-test.mjs
       - run: node scripts/backup-runner-test.mjs
       - run: node scripts/binding-backup-test.mjs
+      - run: node scripts/remote-restore-drill-test.mjs
       - run: node scripts/security-restore-test.mjs
   backup:
     if: github.ref == 'refs/heads/main' && github.event_name == 'workflow_dispatch' && vars.ENABLE_LEGACY_GITHUB_BACKUP == 'true'
