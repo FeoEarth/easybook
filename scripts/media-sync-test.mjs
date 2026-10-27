@@ -19,8 +19,17 @@ w.fetch=async(url,options={})=>{requests.push({method:options.method||'GET',url}
 w.eval(readFileSync('app/src/main/assets/editor.js','utf8'));w.eval(html.match(/<script>([\s\S]*?)<\/script>/)[1]);
 await until(()=>w.easybookRich&&typeof w.document.getElementById('newTop').onclick==='function','media app boot');
 const $=id=>w.document.getElementById(id),r=w.easybookRich;assert.ok(r,'app boots');$('newTop').click();r.editor.commands.insertContent('前文');r.editor.commands.setTextSelection(2);
-async function pick(file){$('attachmentButton').click();await sleep(10);Object.defineProperty($('attachmentFile'),'files',{configurable:true,value:[file]});await $('attachmentFile').onchange();await sleep(70)}
-const png=Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jA1cAAAAASUVORK5CYII=','base64');await pick(new w.File([png],'图片.png',{type:'image/png'}));assert.equal(r.value().doc.content[1].type,'image','image inserted at saved caret');await until(()=>w.document.querySelector('[data-type=image] img')?.src.startsWith('blob:'),'inline image');assert.ok(w.document.querySelector('[data-type=image] img').src.startsWith('blob:'));assert.equal(w.document.querySelector('[data-type=image] img').hidden,false);
+async function pick(file){
+ $('attachmentButton').click();
+ // Follow the real split picker menu so selection retention is exercised.
+ const action=/^(image|video)\//.test(file.type)?'media':'files';
+ const button=w.document.querySelector('[data-content-action="'+action+'"]');
+ assert.ok(button,'picker offers '+action);button.click();await sleep(10);
+ const input=$(action==='media'?'mediaFile':'attachmentFile');
+ Object.defineProperty(input,'files',{configurable:true,value:[file]});
+ await input.onchange();await sleep(70);
+}
+const png=Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jA1cAAAAASUVORK5CYII=','base64');await pick(new w.File([png],'图片.png',{type:'image/png'}));assert.equal(r.value().doc.content[1]?.type,'image','image inserted at saved caret after real photo picker: '+JSON.stringify(r.value().doc.content.map(n=>n.type)));await until(()=>w.document.querySelector('[data-type=image] img')?.src.startsWith('blob:'),'inline image');assert.ok(w.document.querySelector('[data-type=image] img').src.startsWith('blob:'));assert.equal(w.document.querySelector('[data-type=image] img').hidden,false);
 const saved=w.RichNotes.serialize(r.value());r.load(JSON.parse(saved));await sleep(30);assert.equal(w.RichNotes.serialize(r.value()),saved);assert.ok(w.document.querySelector('[data-type=image] img').src);
 w.document.querySelector('.media-open').click();await sleep(40);assert.equal($('attachmentDialog').open,true);$('previewStage').dispatchEvent(new w.MouseEvent('dblclick'));assert.ok($('attachmentPreview').style.transform.includes('scale(2)'));$('attachmentDialog').close();assert.equal($('attachmentPreview').getAttribute('src'),null);
 await pick(new w.File(['<script>safe text</script>'],'文档.txt',{type:'text/plain'}));assert.ok(r.value().doc.content.some(n=>n.type==='attachment'));await until(()=>w.document.querySelector('[data-type=attachment] .media-detail')?.textContent.includes('KB'),'file card ready');w.document.querySelector('[data-type=attachment] .media-open').click();await until(()=>$('previewStage').querySelector('pre'),'TXT preview');assert.equal($('previewStage').querySelector('pre').textContent,'<script>safe text</script>');assert.equal($('previewStage').querySelector('script'),null);$('attachmentDialog').close();
