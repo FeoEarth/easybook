@@ -15,7 +15,11 @@ try{
  await settings();await page.locator('#workspaceCreate').click();await page.locator('#workspaceNameEditor').waitFor({state:'visible'});await page.locator('#workspaceName').fill('共享界面验收');await Promise.all([page.waitForEvent('load'),page.locator('#workspaceNameSave').click()]);await settings();await page.locator('#workspaceList [aria-current=true]').getByText('共享界面验收',{exact:true}).waitFor();
  await page.locator('#workspaceMembersOpen').click();await page.locator('#workspaceMemberSummary').filter({hasText:'manager'}).waitFor();
  await page.locator('#workspaceMemberId').fill(b.id);await page.locator('#workspaceMemberRole').selectOption('reader');await page.locator('#workspaceShare').click();await page.locator('#confirmAccept').click();
- await page.waitForLoadState('domcontentloaded');await page.waitForTimeout(500);await settings();await page.locator('#workspaceMembersOpen').click();await page.getByText(b.id+' · reader',{exact:true}).waitFor();
+ await page.waitForLoadState('domcontentloaded');await page.waitForTimeout(500);await settings();
+ // Shared workspaces never reveal a sync key, even if this device once owned a personal key.
+ await page.locator('#pairButton').click();await page.waitForTimeout(150);
+ assert.equal(await page.locator('#pairDialog').isVisible(),false,'shared workspace key must stay hidden');
+ await page.locator('#workspaceMembersOpen').click();await page.getByText(b.id+' · reader',{exact:true}).waitFor();
  await page.locator('#workspaceMemberId').fill(b.id);await page.locator('#workspaceMemberRole').selectOption('editor');await page.locator('#workspaceMemberSave').click();await page.getByText(b.id+' · editor',{exact:true}).waitFor();
  for(const theme of ['light','dark']){await page.evaluate(theme=>document.documentElement.dataset.theme=theme,theme);assert.ok(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth));await page.screenshot({path:'phase-two-members-'+theme+'.png',fullPage:true})}
  await page.locator('#workspaceManagerTransfer').click();await page.locator('#confirmAccept').click();await page.waitForFunction(()=>document.querySelector('#workspaceManagerControls').hidden);assert.equal(await page.locator('#workspaceLeave').isVisible(),true);
