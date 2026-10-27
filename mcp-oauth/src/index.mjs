@@ -28,6 +28,7 @@ const oauthHandler = {
   const native=await nativeAccountRoutes(request,env);if(native)return native;
   if(url.pathname.startsWith('/account/passkeys')){const {passkeyRoutes}=await import('./passkeys.mjs');return passkeyRoutes(request,env);}
   if(modernWorkspaces(env)&&url.pathname.startsWith('/account/operations/')){const {operationApprovalRoutes}=await import('./operation-approvals.mjs');const approval=await operationApprovalRoutes(request,env);if(approval)return approval;}
+  if(modernWorkspaces(env)&&url.pathname==='/account/backup-status'){const {backupDiagnosticsRoute}=await import('./backup-diagnostics.mjs');return backupDiagnosticsRoute(request,env);}
   if(modernWorkspaces(env)&&['/account/notifications','/account/activity','/account/notification-preferences'].includes(url.pathname)){const {accountHistoryRoutes}=await import('./account-history.mjs');return accountHistoryRoutes(request,env);}
   if(modernWorkspaces(env)&&url.pathname==='/account/delete'){const {accountDeletionRoutes}=await import('./account-deletion.mjs');return accountDeletionRoutes(request,env);}
   const account=await accountRoutes(request,env);if(account)return account;
@@ -298,5 +299,6 @@ export default {async fetch(request,env,ctx){
   return await guardTokens(request,env,ctx,identityEnabled(env)&&new URL(request.url).origin===IDENTITY_ORIGIN?canonicalProvider:provider);
  }catch(error){if(error instanceof Response)return error;console.error(JSON.stringify({event:'account_oauth_failed',name:error?.name}));return new Response('Authorization temporarily unavailable',{status:503,headers:{'Cache-Control':'no-store'}});}
 }};
+
 
 
