@@ -1,5 +1,8 @@
 import {requireRestoreAccess} from './security-checkpoint.mjs';
 const DAY=86400000;
+const BATCH=500;
+const expired="status='pending' AND expires_at<=?";
+const sensitive="status<>'pending' AND (json_type(payload,'$.document') IS NOT NULL OR json_type(payload,'$.metadata.title') IS NOT NULL OR json_type(payload,'$.metadata.icon') IS NOT NULL OR json_type(payload,'$.title') IS NOT NULL)";
 // Recovery jobs, tombstones and revocation state are deliberately not log data.
 const retention=[
  ['mcp_audit','created<?',90],
@@ -19,14 +22,16 @@ export async function maintainIdentity(env,now=Date.now()){
  const claimed=await env.DB.prepare('INSERT INTO identity_maintenance_runs(name,lease,lease_until) VALUES(?,?,?) ON CONFLICT(name) DO UPDATE SET lease=excluded.lease,lease_until=excluded.lease_until WHERE identity_maintenance_runs.completed_at<? AND identity_maintenance_runs.lease_until<? RETURNING name').bind(name,lease,now+120000,start,now).first();if(!claimed)return;
  try{
   const statements=retention.map(([table,where,days])=>env.DB.prepare('DELETE FROM '+table+' WHERE rowid IN(SELECT rowid FROM '+table+' WHERE '+where+' LIMIT 500)').bind(now-days*DAY));
-  statements.push(env.DB.prepare("UPDATE account_operation_approvals SET status='cancelled',completed_at=? WHERE status='pending' AND expires_at<=?").bind(now,now));
+  statements.push(env.DB.prepare("UPDATE account_operation_approvals SET status='cancelled',completed_at=? WHERE rowid IN(SELECT rowid FROM account_operation_approvals WHERE "+expired+' LIMIT '+BATCH+')').bind(now,now));
   // Frozen document bodies are needed only while pending. Completion receipts
   // preserve idempotency without retaining note contents in an execution record.
-  statements.push(env.DB.prepare("UPDATE account_operation_approvals SET payload=json_remove(payload,'$.document','$.metadata.title','$.metadata.icon','$.title') WHERE status<>'pending'"));
+  statements.push(env.DB.prepare("UPDATE account_operation_approvals SET payload=json_remove(payload,'$.document','$.metadata.title','$.metadata.icon','$.title') WHERE rowid IN(SELECT rowid FROM account_operation_approvals WHERE "+sensitive+' LIMIT '+BATCH+')'));
   await env.DB.batch(statements);
   let remaining=false;for(const [table,where,days]of retention)if(await env.DB.prepare('SELECT 1 FROM '+table+' WHERE '+where+' LIMIT 1').bind(now-days*DAY).first()){remaining=true;break}
+  if(await env.DB.prepare('SELECT 1 FROM account_operation_approvals WHERE '+expired+' LIMIT 1').bind(now).first()||await env.DB.prepare('SELECT 1 FROM account_operation_approvals WHERE '+sensitive+' LIMIT 1').first())remaining=true;
   await env.DB.prepare('UPDATE identity_maintenance_runs SET completed_at=?,lease=NULL,lease_until=0,error=NULL WHERE name=? AND lease=?').bind(remaining?0:now,name,lease).run();
  }catch{
   await env.DB.prepare("UPDATE identity_maintenance_runs SET lease=NULL,lease_until=0,error='CLEANUP_RETRY' WHERE name=? AND lease=?").bind(name,lease).run();
  }
 }
+
