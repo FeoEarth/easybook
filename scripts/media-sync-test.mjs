@@ -24,7 +24,8 @@ w.XMLHttpRequest=class {
     const value=JSON.parse(body);
     this.upload.onprogress?.({loaded:20,total:40,lengthComputable:true});
     progress.push(w.easybookActivity.tasks.find(t=>t.id==='asset:'+id+':up')?.state);
-    if(value.op==='part'&&address.searchParams.has('part-upload')){
+    // Both v2 PUT operations use the same URL; the JSON 'op' selects the action.
+    if(value.op==='part'){
      const bytes=Buffer.from(value.data,'base64');
      remoteParts.set(id+':'+value.index,{data:value.data,hash:value.hash,size:bytes.length});
      data={hash:value.hash,size:bytes.length};
