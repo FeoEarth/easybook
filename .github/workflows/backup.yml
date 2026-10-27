@@ -1,0 +1,49 @@
+name: Verified business backup
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: '43 19 * * *'
+  push:
+    branches: [main]
+    paths:
+      - 'scripts/backup-core.mjs'
+      - 'scripts/cloudflare-backup.mjs'
+      - 'scripts/backup-test.mjs'
+      - '.github/workflows/backup.yml'
+  pull_request:
+    paths:
+      - 'scripts/backup-core.mjs'
+      - 'scripts/cloudflare-backup.mjs'
+      - 'scripts/backup-test.mjs'
+      - '.github/workflows/backup.yml'
+permissions:
+  contents: read
+concurrency:
+  group: easybook-business-backup
+  cancel-in-progress: false
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - run: node scripts/backup-test.mjs
+      - run: node scripts/security-restore-test.mjs
+  backup:
+    if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
+    needs: verify
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - name: Export, copy, read back and verify private backup
+        run: node scripts/cloudflare-backup.mjs
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}

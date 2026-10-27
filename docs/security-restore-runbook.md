@@ -1,16 +1,16 @@
 # Independent revocation checkpoint and disaster recovery
 
-Status: implemented and checked with synthetic databases. Not activated in the
-production Workers. Do not enable identity/workspace production flags until the
-remaining client integration and release checks are complete.
+Status checked on 2026-10-27: production settings bind the independent security
+D1 in both Workers with `SECURITY_CHECKPOINT_V2=true`. Read-only production
+queries found one installation marker and an open security state. Do not
+initialize or overwrite this existing checkpoint. The local synthetic rollback
+test passes; a complete remote recovery drill remains outstanding.
 
 Business D1: `easybook-data` (`af430aed-01b5-41ca-9653-31212bed3f9f`).
 Independent security D1: `easybook-security`
-(`d1761c2d-6372-489c-ae5e-114f3d5baa80`). Its schema is installed, but all six
-tables are empty and no security epoch has been initialized. Production Worker
-bindings and traffic have not been changed.
+(`d1761c2d-6372-489c-ae5e-114f3d5baa80`). Never import business backups here.
 
-## Initial coordinated activation
+## Initial coordinated activation (reference only; already initialized in production)
 
 1. Capture and verify recoverable business D1/R2 recovery points and current
    Worker deployment/configuration references. Preserve secrets out of logs.
@@ -72,18 +72,17 @@ against an old business backup. Security records have no ordinary log TTL.
 
 ## Current delivery limits
 
-The separate D1 infrastructure and empty schema exist. Business migrations,
-checkpoint initialization, production bindings/flags and restore operations have
-not been applied. The internal administrative functions are not exposed through
-a deployed management endpoint. Production execution uses the operator-controlled cron runner described below,
-with both bindings and recorded recovery points.
+The production checkpoint exists and is open; both bindings and flags were
+observed. This is an operational state check, not proof that every recovery
+scenario has been exercised remotely. The operator-controlled cron runner below
+remains the recovery interface; there is no public initialization endpoint.
 
-Verified email delivery is blocked by the current connector's HTTP 401 response
-for Email Sending inspection. Android push provisioning and the self-built
-30-day backup lifecycle are not implemented. No push/email registration currently
-exists for account deletion to unregister; this must be wired when those channels
-are introduced. These are release blockers, not completed capabilities.
-
+Email Sending inspection still returns HTTP 401 with the current connection.
+Verified email delivery and Android push remain release blockers. See
+`business-backups.md` for the new business backup workflow, its 30-day bucket
+policy, verification boundary and remaining independent-security protection /
+remote recovery drill requirements. Code and configured lifecycle must not be
+reported as a successfully executed backup until run evidence confirms it.
 
 ## Operator-controlled cron runner
 
@@ -105,4 +104,6 @@ reviewed action finishes, and preserve the ordinary cron configuration.
 
 The completed baseline has an immutable `security_installation` marker. An
 interrupted initial copy cannot be reopened using the restore/reconcile runner.
-The empty production checkpoint has no installation marker and remains inactive.
+Production has an installation marker. Never rerun initialization to repair a
+restore mismatch; inspect the existing state and follow the gated recovery flow.
+
