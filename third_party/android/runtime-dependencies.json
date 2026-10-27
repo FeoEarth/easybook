@@ -512,7 +512,7 @@
       "version": "23.0.0",
       "type": "jar",
       "spdx": "Apache-2.0",
-      "author": "Upstream project contributors",
+      "author": "JetBrains s.r.o.",
       "license_url": "https://www.apache.org/licenses/LICENSE-2.0.txt",
       "source_pom": "https://repo.maven.apache.org/maven2/org/jetbrains/annotations/23.0.0/annotations-23.0.0.pom",
       "license_file": "third_party/pdfjs/LICENSE",
