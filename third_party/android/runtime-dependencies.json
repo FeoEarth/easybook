@@ -502,7 +502,7 @@
       "type": "jar",
       "spdx": "Apache-2.0",
       "author": "Google LLC",
-      "license_url": "https://github.com/google/guava/blob/master/COPYING",
+      "license_url": "https://www.apache.org/licenses/LICENSE-2.0",
       "source_pom": "https://repo.maven.apache.org/maven2/com/google/guava/listenablefuture/1.0/listenablefuture-1.0.pom",
       "license_file": "third_party/pdfjs/LICENSE",
       "note": "Google Guava listenablefuture 1.0 empty compatibility artifact; POM omits license metadata. Apache-2.0 per upstream Guava."
