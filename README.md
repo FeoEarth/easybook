@@ -32,11 +32,7 @@ Current development work: versioned JSON document, native SQLite / Web IndexedDB
 ## 构建
 
 JDK 17、Android SDK 35、Gradle 8.9：`gradle :app:assembleRelease`。
-GitHub Actions 在推送 main 后构建并发布带 SHA-256 校验文件的 APK，构建时检查 JavaScript 语法，并在 Android 35 模拟器上验证创建、编辑、返回导航和Activity 重建后持久保存、待办勾选、深色外观和原生操作接口。升级兼容签名通过 Actions 缓存保留；新发行版为非调试 Release 构建。正式长期分发仍应将现有签名密钥迁入可靠的专用签名管理，避免丢失后无法覆盖升级。安全设计与恢复说明见 [第二阶段文档](docs/native-security-stage-2.md)。
-
-## 后端
-
-`worker/schema.sql` 为 D1 表结构，`worker/index.mjs` 实现版本条件写入和幂等重试。`worker/ui.mjs` 由 Android HTML 生成，两个端共享同一界面。修改 HTML 后执行 `node scripts/generate-ui.mjs`。`worker/wrangler.jsonc` 提供部署配置；Cloudflare 认证凭据不要提交到仓库。
+GitHub Actions 在推送 main 后构建并发布带 SHA-256 校验文件的 APK，构建时检查 JavaScript 语法，并在 Android 35 模拟器上验证创建、编辑、返回导航和Activity 重建后持久保存、待办勾选、深色外观和原生操作接口。升级兼容签名通过 Actions 缓存保留；新发行版为非调试 Release 构建。
 
 ## 富文本、待办与附件（0.7.0）
 
