@@ -1,5 +1,52 @@
 # Stage three verification — 2026-10-27
 
+## Durable purge retry deployment
+
+PR 94 merged as `44e601bfe7cabcf66081a95eafc36027142409b4`. Attachment and
+workspace cleanup jobs marked `R2_CLEANUP_RETRY` now remain eligible after the
+fifth failure. The retry deadline doubles from one minute to a maximum of one
+day, with execution also subject to the existing hourly cron. Failed retries
+keep their failed status during lease claim so a continuing outage does not
+repeatedly emit the existing attachment failure notification. Invalid-fence
+failures remain terminal and release their leases. Every execution still
+rechecks the deletion fence before touching the frozen R2 namespace.
+
+Real SQLite tests passed six consecutive storage failures followed by successful
+paginated cleanup of 251 objects in each namespace, plus a legacy attachment.
+They also checked retry deadlines, lease exclusion, one attachment failure
+notification during the outage, unrelated-object preservation, permanent
+fences, invalid-fence rejection and recovery gating. Existing account-deletion
+and notification/audit tests passed locally. No migration was introduced.
+
+Candidates were uploaded with existing bindings/secrets retained and main PDF
+assets preserved. Candidate main homepage/editor/PDF hashes matched production;
+unauthenticated workspace access remained 401. OAuth candidate discovery,
+authentication rejection, pairing error handling and schema readiness passed.
+Main version `557177a8-e280-4269-9996-1c53b44ecc61` and OAuth version
+`ce514cc0-c61a-4b65-8ede-405a4f87f716` were promoted. Their deployment IDs are
+`af053f7b-ba36-4e1f-ac24-6e12612366e7` and
+`15cba650-bfb4-4737-97e4-c32e33a80c53`, respectively. Previous rollback versions
+are main `b93ff08f-7149-4794-82d2-4e69104e8fff` and OAuth
+`cd4762e9-7f6e-4aec-83ee-b1cab9a7d4f6`.
+
+Production main health returned the exact new source SHA and its PDF module
+remained 200 with the expected length. Production OAuth discovery, unauthenticated
+MCP rejection and schema-9 readiness passed, including exact release SHA checks
+on both the canonical origin and the OAuth Worker origin. The generic OAuth smoke
+initially failed on canonical `/pairing/complete` CORS: that retired route is
+absent (404) on main, while it returns 410 on the OAuth Worker. Comparison with
+the previous main version proved identical 204 preflight/404 POST behavior. The
+smoke script now explicitly checks that canonical preflight does not allow POST
+and the retired route remains 404, while retaining the direct OAuth checks.
+Both live deployment readbacks show the new versions at 100%; main cron remains
+`17 * * * *`.
+
+A read-only production query found no attachment/workspace purge jobs. Thus
+there was no production backlog to exercise; failure/recovery execution evidence
+is isolated testing. No production deletion test or direct data edit was run.
+Full business backup completeness, external delivery, Android physical-device
+acceptance and final APK remain separate release gates.
+
 ## Bounded approval maintenance deployment
 
 PR 93 merged as `1f281634fd3ba5cd1e4604881225b889a9c93a71`.
