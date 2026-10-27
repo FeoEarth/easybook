@@ -1,9 +1,30 @@
 # Business backups and release status
 
-The business backup workflow runs daily at 19:43 UTC (03:43 Singapore time),
-after a relevant main push, or by manual dispatch. GitHub scheduling can be
-delayed. Runs are serialized with cancellation disabled. This is independent
-of D1 Time Travel and does not import data into production.
+The `easybook-backup` Worker runs at minute 43 of every hour, completing at most
+one backup per UTC day and retrying failed days on later invocations. It uses
+D1/R2 bindings rather than a long-lived API token or GitHub runner. The existing
+GitHub runner could not start; its automatic backup schedule is removed. Its
+older API-based exporter is available only for explicit manual dispatch with
+`ENABLE_LEGACY_GITHUB_BACKUP=true`. Do not enable both as primary schedulers.
+This is independent of D1 Time Travel and does not import data into production.
+
+The binding exporter reads every table in one D1 batch transaction. It checks
+that the schema discovered during planning agrees with the schema inside the
+snapshot and captures document references and the business security epoch in
+that same batch. SQL uses SQLite's quote() for values, preserving BLOBs and text.
+It creates tables, inserts data and preserves autoincrement sequences before
+creating indexes/triggers, avoiding replay of audit triggers during import.
+It refuses unsupported virtual tables, more than 75 tables, SQL over 16 MiB,
+more than 10,000 objects or over 5 GiB of objects. It stops incomplete work after
+12 minutes; a 15-minute D1 lease prevents concurrent invocations. A successful
+daily receipt suppresses additional runs. No application data rows are modified;
+only its own maintenance lease/result row is written to the business database.
+
+R2 metadata is preserved in the manifest, every copied object is read back, and
+the stored reference closure is verified including decompressed content hashes.
+An isolated test imports the generated SQL and checks Unicode, quotes, BLOBs,
+compressed attachments, missing-object failure, retry and recovery-gate denial.
+Deployment, a real completed run and a remote restore drill remain distinct.
 
 ## Storage and consistency
 
@@ -11,12 +32,12 @@ of D1 Time Travel and does not import data into production.
 after 2,592,000 seconds (30 days); R2 expiration is asynchronous. The production
 attachment bucket and existing release recovery points are not given a new TTL.
 R2 provides encryption at rest; transfers use HTTPS. This is not application-level
-encryption and not an isolated account. The workflow currently uses the existing
-deployment credential; dedicated least-privilege backup credentials remain a
-release hardening requirement. No backup bytes or SQL are uploaded as Actions
+encryption and not an isolated account. The scheduled Worker uses resource bindings and needs no API credential. The
+older optional API exporter uses the deployment credential unless a dedicated
+least-privilege credential is provided. No backup bytes or SQL are uploaded as Actions
 artifacts or printed in logs.
 
-The exporter obtains a D1 SQL snapshot, imports it into an isolated in-memory
+The older API-based exporter obtains a D1 SQL snapshot, imports it into an isolated in-memory
 SQLite database, checks integrity/foreign keys, and extracts document attachment
 references. D1 export may briefly suspend database queries. R2 is copied after
 that snapshot and is not a cross-service atomic snapshot. Every copied object
