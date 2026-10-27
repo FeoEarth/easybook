@@ -8,8 +8,23 @@ on:
       - 'editor/**'
       - 'shared/**'
       - 'app/src/main/assets/**'
-      - 'scripts/**'
-      - 'package*.json'
+      # Only release tooling may trigger an otherwise unchanged production bundle.
+      # Unit tests, media mocks, docs and license/package metadata cannot deploy.
+      - 'scripts/cloudflare-release.mjs'
+      - 'scripts/custom-domain-release-check.mjs'
+      - 'scripts/rollback-probe.mjs'
+      - 'scripts/web-release-smoke.mjs'
+      - 'scripts/live-core-workspace-probe.mjs'
+      - 'scripts/live-pairing-probe.mjs'
+      - 'scripts/live-mcp-upload-probe.mjs'
+      - 'scripts/build-editor.mjs'
+      - 'scripts/generate-ui.mjs'
+      - 'scripts/prepare-pdf.mjs'
+      - 'scripts/folder-navigation-test.mjs'
+      - 'scripts/check-web-runtime.mjs'
+      - 'scripts/mcp-pairing-release-test.mjs'
+      - 'scripts/mcp-capabilities-test.mjs'
+      - 'scripts/mcp-upload-test.mjs'
       - '.github/workflows/deploy-cloudflare.yml'
 concurrency:
   group: ${{ github.ref == 'refs/heads/main' && 'easybook-production-worker' || format('easybook-validation-{0}', github.ref_name) }}
