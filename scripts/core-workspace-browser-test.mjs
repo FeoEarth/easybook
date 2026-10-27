@@ -25,9 +25,28 @@ try{
  // Account cookie is seeded only in this isolated fixture; production login remains real OAuth/Passkey.
  const cookie='e'.repeat(64),sid=crypto.randomUUID(),now=Date.now();sql.prepare('INSERT INTO account_sessions VALUES(?,?,?,?,?,?,?,NULL)').run(sid,await hash(cookie),a.id,now,now+86400000,now,'Synthetic browser');
  const ca=await context();await ca.addCookies([{name:'__Host-easybook-session',value:cookie,domain:'easybook.loonxy.com',path:'/',secure:true,httpOnly:true,sameSite:'Lax'}]);const pa=await ready(ca);await settings(pa);
- await pa.locator('#workspaceName').fill('浏览器工作区');await pa.locator('#workspaceCreate').click();await pa.waitForLoadState('domcontentloaded');await pa.waitForTimeout(800);await settings(pa);
- await pa.getByText('浏览器工作区 · 当前',{exact:true}).waitFor();const old=await readKey(pa);
+ // Create and rename have distinct, explicit editor states.
+ await pa.locator('#workspaceCreate').click();await pa.locator('#workspaceNameEditor').waitFor({state:'visible'});
+ assert.equal(await pa.locator('#workspaceEditorTitle').innerText(),'新工作区名称');
+ await pa.locator('#workspaceName').fill('浏览器工作区');await pa.locator('#workspaceNameSave').click();
+ await pa.waitForLoadState('domcontentloaded');await settings(pa);
+ await pa.locator('#workspaceList [aria-current=true]').getByText('浏览器工作区',{exact:true}).waitFor();
+ await pa.locator('#workspaceRename').click();assert.equal(await pa.locator('#workspaceName').inputValue(),'浏览器工作区');
+ await pa.locator('#workspaceName').fill('我的主工作区');await pa.locator('#workspaceNameSave').click();
+ await pa.locator('#workspaceList [aria-current=true]').getByText('我的主工作区',{exact:true}).waitFor();
+ await pa.locator('#workspaceCreate').click();await pa.locator('#workspaceName').fill('其他工作区');await pa.locator('#workspaceNameSave').click();
+ await pa.waitForLoadState('domcontentloaded');await settings(pa);
+ await pa.locator('#workspaceList [aria-current=true]').getByText('其他工作区',{exact:true}).waitFor();
+ // Quick switch on the home page, with no internal workspace ID shown to users.
+ await pa.locator('#foldersButton').click();await pa.locator('[data-tab=all]').click();
+ await pa.locator('#workspaceHome').waitFor({state:'visible'});await pa.locator('#workspaceHome').click();
+ await pa.locator('#workspaceSwitchDialog').waitFor({state:'visible'});
+ assert.equal(await pa.locator('#workspaceSwitchList [aria-current=true]').count(),1);
+ await pa.locator('#workspaceSwitchList button').filter({hasText:'我的主工作区'}).click();
+ await pa.waitForLoadState('domcontentloaded');await settings(pa);
+ await pa.locator('#workspaceList [aria-current=true]').getByText('我的主工作区',{exact:true}).waitFor();
+ const old=await readKey(pa);
  await pa.locator('#workspaceRotate').click();await pa.locator('#confirmAccept').click();await pa.waitForTimeout(1500);const fresh=await readKey(pa);assert.notEqual(fresh,old);
  assert.equal((await req('/api/notes?cursor=0',{headers:{Authorization:'Bearer '+old}})).status,401);
- assert.deepEqual(errors,[]);console.log('PASS browser: anonymous UI edit and two-device sync; account workspace creation, settings, rotation and invalidation; no runtime errors.');
+ assert.deepEqual(errors,[]);console.log('PASS browser: anonymous two-device sync; workspace create, rename, home quick-switch and isolation; key rotation and no runtime errors.');
 }finally{await browser.close()}
