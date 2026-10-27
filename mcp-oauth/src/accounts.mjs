@@ -1,5 +1,6 @@
 import {accountAllowed,sessionAllowed,revoked,reserveRevocations,finishRevocations} from '../../worker/security-checkpoint.mjs';
 import {modernWorkspaces,workspacePolicy} from '../../worker/oauth-workspace-policy.mjs';
+import {requestedScopes,readOnlyConsentNotice} from './requested-scopes.mjs';
 import {githubCallback,identityEnabled} from '../../worker/identity-origin.mjs';
 import {hash, READ, WRITE} from '../../worker/mcp-common.mjs';
 import {verifyWorkspaceAssertion} from './pairing.mjs';
@@ -183,15 +184,15 @@ export async function accountAuthorize(request,env){
   const client=await oauth.lookupClient(auth.clientId),consent=await oauth.beginConsent(auth);
   const {results}=await env.DB.prepare('SELECT workspace_id FROM workspace_memberships WHERE account_id=? AND revoked_at IS NULL').bind(s.account_id).all();
   if(!results.length)return page('先关联工作区','<p>登录不代表拥有旧工作区。请先使用可信设备关联工作区，再返回客户端重新授权。</p><a href="/account">账户与工作区</a>');
-  const requested=auth.scope.includes('mcp:read')?READ:auth.scope.length?auth.scope:['workspace.read'];
-  const response=page('授权应用',`<p><strong>${escape(client?.clientName||'第三方应用')}</strong> 请求访问你的 Easybook。</p><div class="group"><div class="row">客户端 ID<code>${escape(auth.clientId)}</code></div><div class="row">返回地址<code>${escape(auth.redirectUri)}</code></div></div><p>名称由应用提供。请根据客户端 ID 和返回地址确认身份。</p><form method="post" action="/oauth/authorize"><input type="hidden" name="csrf" value="${await csrf(request,s)}"><input type="hidden" name="handle" value="${escape(consent.handle)}"><label>工作区 <select name="workspace">${results.map(w=>`<option value="${w.workspace_id}">${w.workspace_id.slice(0,12)}</option>`).join('')}</select></label>${requested.map(scope=>`<label><input type="checkbox" name="scope" value="${scope}" ${READ.includes(scope)?'checked':''}> ${escape(labels[scope])} <small>${scope}</small></label>`).join('')}<button name="decision" value="allow">允许所选权限</button><button name="decision" value="deny">取消</button></form>`);
+  const requested=requestedScopes(auth.scope);
+  const response=page('授权应用',`<p><strong>${escape(client?.clientName||'第三方应用')}</strong> 请求访问你的 Easybook。</p><div class="group"><div class="row">客户端 ID<code>${escape(auth.clientId)}</code></div><div class="row">返回地址<code>${escape(auth.redirectUri)}</code></div></div><p>名称由应用提供。请根据客户端 ID 和返回地址确认身份。</p>${readOnlyConsentNotice(requested)}<form method="post" action="/oauth/authorize"><input type="hidden" name="csrf" value="${await csrf(request,s)}"><input type="hidden" name="handle" value="${escape(consent.handle)}"><label>工作区 <select name="workspace">${results.map(w=>`<option value="${w.workspace_id}">${w.workspace_id.slice(0,12)}</option>`).join('')}</select></label>${requested.map(scope=>`<label><input type="checkbox" name="scope" value="${scope}" ${READ.includes(scope)?'checked':''}> ${escape(labels[scope])} <small>${scope}</small></label>`).join('')}<button name="decision" value="allow">允许所选权限</button><button name="decision" value="deny">取消</button></form>`);
   const headers=new Headers(response.headers);for(const [key,value]of consent.headers)headers.append(key,value);return new Response(response.body,{headers});
  }
  if(request.method!=='POST')return json({error:'Method not allowed'},405);
  const form=await requireForm(request,s),handle=form.get('handle');
  if(form.get('decision')!=='allow')return oauth.denyConsent(request,handle);
  const approved=await oauth.approveConsent(request,handle),auth=approved.request;
- const allowed=auth.scope.includes('mcp:read')?READ:auth.scope.length?auth.scope:['workspace.read'];
+ const allowed=requestedScopes(auth.scope);
  const scopes=[...new Set(form.getAll('scope'))];
  if(!scopes.length||scopes.some(x=>!allowed.includes(x)||!SCOPES.includes(x)))return json({error:'invalid_scope'},400);
  const workspace=form.get('workspace');
@@ -210,5 +211,6 @@ export async function policyFor(env,props,clientId,tokenScopes){
  if(!row)return null;
  const allowed=JSON.parse(row.scopes);return {...row,scopes:tokenScopes.filter(x=>allowed.includes(x))};
 }
+
 
 
