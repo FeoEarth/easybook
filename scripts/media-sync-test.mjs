@@ -49,7 +49,7 @@ w.XMLHttpRequest=class {
 };
 w.fetch=async(url,options={})=>{requests.push({method:options.method||'GET',url});let data;if(url.includes('/api/folders'))data={folders:[],next:null};else if(options.method==='PUT'){const n=JSON.parse(options.body),note={...n,version:(n.version||0)+1};remoteNotes.set(n.id,note);data={note};}else data={notes:[...remoteNotes.values()],cursor:1,hasMore:false};return {ok:true,status:200,json:async()=>data}};
 w.eval(readFileSync('app/src/main/assets/editor.js','utf8'));
-const originalInline=html.match(/<script>([\\s\\S]*?)<\\/script>/)[1];
+const originalInline=html.match(/<script>([\s\S]*?)<\/script>/)[1];
 const imageCatch="}catch{toast('附件读取失败，请联网后重试')}}";
 assert.ok(originalInline.includes(imageCatch),'media error handler instrumentation target exists');
 w.eval(originalInline.replace(imageCatch,"}catch(e){window.__mediaError=e?.stack||String(e);toast('附件读取失败，请联网后重试')}}"));await sleep(100);const $=id=>w.document.getElementById(id),r=w.easybookRich;assert.ok(r,'app boots');$('newTop').click();r.editor.commands.insertContent('前文');r.editor.commands.setTextSelection(2);
