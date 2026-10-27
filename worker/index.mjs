@@ -60,7 +60,7 @@ export default {
    return new Response(response.body,{status:response.status,headers:resourceHeaders});
   }
   if(url.pathname === '/editor.js' && request.method === 'GET')return new Response(editor,{headers:{'Content-Type':'application/javascript; charset=utf-8','X-Content-Type-Options':'nosniff','Cache-Control':'no-cache'}});
-  if(url.pathname === '/health'){try{await requireRestoreAccess(env);return json({ok:true,app:'Easybook',version:'0.8.2',commit:env.RELEASE_SHA||'',schemaVersion:identityV2?16:1,workspaceIdentityV2:identityV2,canonicalIdentity:identityEnabled(env),securityCheckpoint:env.SECURITY_CHECKPOINT_V2==='true'})}catch{return json({ok:false,error:'Security recovery in progress'},503)}}
+  if(url.pathname === '/health'){try{await requireRestoreAccess(env);return json({ok:true,app:'Easybook',version:'0.8.3',commit:env.RELEASE_SHA||'',schemaVersion:identityV2?16:1,workspaceIdentityV2:identityV2,canonicalIdentity:identityEnabled(env),securityCheckpoint:env.SECURITY_CHECKPOINT_V2==='true'})}catch{return json({ok:false,error:'Security recovery in progress'},503)}}
   if(url.pathname === '/' && request.method === 'GET') return new Response(identityV2?html.replace('name="easybook-identity" content="legacy"','name="easybook-identity" content="v2"'):html,{headers:{'Content-Type':'text/html; charset=utf-8','X-Content-Type-Options':'nosniff','Referrer-Policy':'no-referrer','Cache-Control':'no-cache'}});
   if(!url.pathname.startsWith('/api/')) return json({error:'Not found'},404);
   const token = (request.headers.get('Authorization')||'').replace(/^Bearer /,'');

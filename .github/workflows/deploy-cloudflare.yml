@@ -65,7 +65,7 @@ jobs:
       - name: Install browser for release smoke test
         run: npx --no-install playwright install chromium
       - name: Verify decoded video frames and player controls
-        run: node scripts/video-player-smoke.mjs
+        run: node scripts/video-player-smoke.mjs && node scripts/video-player-visual.mjs
       # Schema migration is applied via the authorized Cloudflare connection.
       # Candidate readiness below verifies D1 through its runtime binding before promotion.
       - name: Record custom-domain baseline without weakening zone security
@@ -110,6 +110,7 @@ jobs:
             rollback-probe-state.json
             custom-domain-baseline.json
             web-release-smoke.png
+            /tmp/photos-player-083/
             mcp-ui-*.png
             mcp-upload-live-evidence.json
           if-no-files-found: ignore
