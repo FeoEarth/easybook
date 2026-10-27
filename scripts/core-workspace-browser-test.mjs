@@ -28,22 +28,22 @@ try{
  // Create and rename have distinct, explicit editor states.
  await pa.locator('#workspaceCreate').click();await pa.locator('#workspaceNameEditor').waitFor({state:'visible'});
  assert.equal(await pa.locator('#workspaceEditorTitle').innerText(),'新工作区名称');
- await pa.locator('#workspaceName').fill('浏览器工作区');await pa.locator('#workspaceNameSave').click();
- await pa.waitForLoadState('domcontentloaded');await settings(pa);
+ await pa.locator('#workspaceName').fill('浏览器工作区');
+ await Promise.all([pa.waitForEvent('load'),pa.locator('#workspaceNameSave').click()]);await settings(pa);
  await pa.locator('#workspaceList [aria-current=true]').getByText('浏览器工作区',{exact:true}).waitFor();
  await pa.locator('#workspaceRename').click();assert.equal(await pa.locator('#workspaceName').inputValue(),'浏览器工作区');
  await pa.locator('#workspaceName').fill('我的主工作区');await pa.locator('#workspaceNameSave').click();
  await pa.locator('#workspaceList [aria-current=true]').getByText('我的主工作区',{exact:true}).waitFor();
- await pa.locator('#workspaceCreate').click();await pa.locator('#workspaceName').fill('其他工作区');await pa.locator('#workspaceNameSave').click();
- await pa.waitForLoadState('domcontentloaded');await settings(pa);
+ await pa.locator('#workspaceCreate').click();await pa.locator('#workspaceName').fill('其他工作区');
+ await Promise.all([pa.waitForEvent('load'),pa.locator('#workspaceNameSave').click()]);await settings(pa);
  await pa.locator('#workspaceList [aria-current=true]').getByText('其他工作区',{exact:true}).waitFor();
  // Quick switch on the home page, with no internal workspace ID shown to users.
  await pa.locator('#foldersButton').click();await pa.locator('[data-tab=all]').click();
  await pa.locator('#workspaceHome').waitFor({state:'visible'});await pa.locator('#workspaceHome').click();
  await pa.locator('#workspaceSwitchDialog').waitFor({state:'visible'});
  assert.equal(await pa.locator('#workspaceSwitchList [aria-current=true]').count(),1);
- await pa.locator('#workspaceSwitchList button').filter({hasText:'我的主工作区'}).click();
- await pa.waitForLoadState('domcontentloaded');await settings(pa);
+ await Promise.all([pa.waitForEvent('load'),pa.locator('#workspaceSwitchList button').filter({hasText:'我的主工作区'}).click()]);
+ await settings(pa);
  await pa.locator('#workspaceList [aria-current=true]').getByText('我的主工作区',{exact:true}).waitFor();
  const old=await readKey(pa);
  await pa.locator('#workspaceRotate').click();await pa.locator('#confirmAccept').click();await pa.waitForTimeout(1500);const fresh=await readKey(pa);assert.notEqual(fresh,old);
