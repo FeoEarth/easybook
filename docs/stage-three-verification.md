@@ -1,5 +1,39 @@
 # Stage three verification — 2026-10-27
 
+## Bounded approval maintenance deployment
+
+PR 93 merged as `1f281634fd3ba5cd1e4604881225b889a9c93a71`.
+Approval expiration and completed-payload scrubbing now each update at most
+500 rows per pass. Already-scrubbed payloads are skipped, and any remaining
+expiration/scrubbing backlog prevents the day from being marked complete.
+No schema migration or direct production data edit was needed.
+
+Real SQLite tests passed for 1001 expired plus 501 sensitive approvals,
+bounded updates, live lease exclusion, injected batch failure/retry,
+backlog draining, daily idempotency and restore-gate refusal. Unexpired
+frozen payloads, receipts, unfinished purge jobs, tombstones and independent
+revocations remained intact. Existing account-history and account-deletion
+tests also passed locally; this is not a GitHub Actions success claim.
+
+Main Worker version `b93ff08f-7149-4794-82d2-4e69104e8fff` was uploaded with
+`keep_assets:true` and existing secrets/bindings retained. Before promotion,
+candidate and previous production responses had identical SHA-256 hashes for
+the homepage, editor script, PDF module and PDF worker. Both rejected an
+unauthenticated workspace request with 401. Promotion created deployment
+`aa457ce9-7f70-407f-8a0c-e50f0a77400f`; production `/health` then returned
+the merged SHA, schema version 16 and all three identity/checkpoint flags true.
+Production PDF fetch remained 200 and unauthenticated workspace access 401.
+The previous version `f7ad48ac-28bf-4783-88ac-8105c1b2b292` remains the rollback
+target. No new D1 migration or checkpoint initialization was performed.
+
+Production schedule readback remains `17 * * * *`. The existing successful
+identity maintenance row had no error and no active lease. This proves prior
+scheduled execution, not execution of the new batch code on a production
+backlog; the new algorithm's execution evidence is the isolated SQLite test.
+Business backup status still reports `BACKUP_RETRY:attachment_missing` with
+no success timestamp. These changes do not resolve that completeness blocker,
+external delivery provisioning or physical Android acceptance.
+
 ## Applied infrastructure and code
 
 PR 87 adds verified API-based backups and a private 30-day R2 bucket. PR 89
