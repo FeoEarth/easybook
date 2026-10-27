@@ -709,7 +709,7 @@ async function refreshWorkspaces(){
    let session=null;try{session=await browserAccount()}catch{}
    signedIn=!!session?.signedIn;accountName=session?.name||'';
    // A signed-out client can switch every personal workspace whose real key
-   // is already sealed in this device's local vault, including while offline.
+   // is already sealed in this device's local vault; reload still needs an available app shell.
    const localAvailable=[];
    for(const w of local)if(w.mode==='personal'&&await webStore.personalWorkspaceCredential(w.id))localAvailable.push(w);
    entries=localAvailable;
