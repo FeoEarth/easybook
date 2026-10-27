@@ -36,6 +36,15 @@ export class WebStore {
    t.oncomplete=()=>resolve(result);t.onerror=t.onabort=()=>reject(error||t.error||Error('Workspace binding failed'));
   })
  }
+ async workspaceForCredential(key){
+  const digest=await this.fingerprint(key);
+  return new Promise((resolve,reject)=>{
+   const t=this.db.transaction(['bindings','workspaces'],'readonly'),binding=t.objectStore('bindings').get(digest);
+   let workspace=null;
+   binding.onsuccess=()=>{if(!binding.result)return;const row=t.objectStore('workspaces').get(binding.result.workspaceId);row.onsuccess=()=>{if(row.result){const {localNamespace,...publicRow}=row.result;workspace=publicRow}}};
+   t.oncomplete=()=>resolve(workspace);t.onerror=t.onabort=()=>reject(t.error);
+  });
+ }
  async listWorkspaces(){return new Promise((resolve,reject)=>{const r=this.db.transaction('workspaces','readonly').objectStore('workspaces').getAll();r.onsuccess=()=>resolve(r.result.map(({localNamespace,...workspace})=>workspace));r.onerror=()=>reject(r.error)})}
  flush(){return this.tail}
 }
