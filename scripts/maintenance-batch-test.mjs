@@ -1,0 +1,36 @@
+import assert from 'node:assert/strict';
+import {DatabaseSync} from 'node:sqlite';
+import {readFileSync} from 'node:fs';
+import {maintainIdentity} from '../worker/identity-maintenance.mjs';
+import {initializeCheckpoint,revokeExternally,beginSecurityRestore} from '../worker/security-checkpoint.mjs';
+import {createWorkspace} from '../worker/workspace-identity.mjs';
+const business=new DatabaseSync(':memory:'),security=new DatabaseSync(':memory:');
+for(const p of ['worker/schema.sql','mcp-oauth/migrations/0002_accounts.sql','mcp-oauth/migrations/0003_passkeys.sql','mcp-oauth/migrations/0004_native_identity.sql','worker/migrations/0008-mcp-capabilities.sql','worker/migrations/0009-mcp-uploads.sql','worker/migrations/0010-workspace-identity.sql','worker/migrations/0011-oauth-workspaces.sql','worker/migrations/0012-account-approvals.sql','worker/migrations/0013-permanent-operations.sql','worker/migrations/0014-notifications-audit.sql','worker/migrations/0015-restore-state.sql','worker/migrations/0016-account-deletion.sql'])business.exec(readFileSync(p,'utf8'));
+security.exec(readFileSync('worker/security-migrations/0001-checkpoint.sql','utf8'));
+let fail=false,batches=0;const changes=[];
+function adapter(db,track=false){return {prepare(text){const q=db.prepare(text);let p=[];return {text,bind(...args){p=args;return this},async first(){return q.get(...p)||null},async all(){const results=q.all(...p);if(track&&/^(UPDATE|DELETE)/.test(text))changes.push({text,count:db.prepare('SELECT changes() n').get().n});return {results}},async run(){return q.run(...p)}}},async batch(statements){if(track){batches++;if(fail){fail=false;throw Error('injected failure')}}db.exec('BEGIN');try{const result=[];for(const s of statements)result.push(await s.all());db.exec('COMMIT');return result}catch(e){db.exec('ROLLBACK');throw e}}};}
+const env={DB:adapter(business,true),SECURITY_DB:adapter(security),WORKSPACE_IDENTITY_V2:'true'},now=Date.now(),day=86400000,owner=crypto.randomUUID();
+business.prepare('INSERT INTO accounts VALUES(?,?,?,NULL)').run(owner,'Synthetic',now);
+const workspace=(await createWorkspace(env,'Maintenance fixture',{kind:'account',accountId:owner})).workspace.id,policy=crypto.randomUUID();
+business.prepare('INSERT INTO oauth_grants(id,account_id,client_id,workspace_id,scopes,created_at) VALUES(?,?,?,?,?,?)').run(policy,owner,'fixture',workspace,'[]',now);
+await initializeCheckpoint(env);env.SECURITY_CHECKPOINT_V2='true';await revokeExternally(env,[['session','permanent-fixture-revocation']]);
+const payload=JSON.stringify({document:{text:'private fixture body'},metadata:{title:'private title',icon:'private icon'},title:'private title',attachment_id:'a'.repeat(64),items:[{id:'receipt-target',version:1}]}),receipt=JSON.stringify({ok:true});
+const insert=business.prepare('INSERT INTO account_operation_approvals(id,account_id,policy_id,client_id,workspace_id,scope,tool,payload,payload_hash,created_at,expires_at,status,result,completed_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?)');
+function add(status,expires=now-1,completed=now){const id=crypto.randomUUID();insert.run(id,owner,policy,'fixture',workspace,'notes.write','notes_batch_update',payload,'frozen-hash',now,expires,status,status==='completed'?receipt:null,status==='pending'?null:completed);return id;}
+for(let i=0;i<1001;i++)add('pending');for(let i=0;i<501;i++)add('completed');const live=add('pending',now+day),protectedApproval=add('completed',now-20*day,now-20*day);
+business.prepare("INSERT INTO attachment_purge_jobs(id,approval_id,workspace,attachment,status,created_at,updated_at) VALUES(?,?,?,?,'failed',?,?)").run(crypto.randomUUID(),protectedApproval,workspace,'a'.repeat(64),now-365*day,now-365*day);
+business.prepare('INSERT INTO attachment_tombstones VALUES(?,?,?,?)').run(workspace,'a'.repeat(64),protectedApproval,now-365*day);
+const countExpired=()=>business.prepare("SELECT count(*) n FROM account_operation_approvals WHERE status='pending' AND expires_at<=?").get(now).n;
+fail=true;await maintainIdentity(env,now);assert.equal(countExpired(),1001);assert.equal(business.prepare("SELECT error FROM identity_maintenance_runs WHERE name='identity-daily'").get().error,'CLEANUP_RETRY');
+business.prepare("UPDATE identity_maintenance_runs SET lease='other-run',lease_until=? WHERE name='identity-daily'").run(now+120000);const oldBatches=batches;await maintainIdentity(env,now);assert.equal(batches,oldBatches,'live lease excludes another runner');business.prepare("UPDATE identity_maintenance_runs SET lease_until=0 WHERE name='identity-daily'").run();
+await maintainIdentity(env,now);assert.equal(countExpired(),501,'first batch cancels at most 500');assert.equal(business.prepare("SELECT completed_at FROM identity_maintenance_runs WHERE name='identity-daily'").get().completed_at,0,'backlog is not marked complete');
+for(let i=0;i<6;i++)await maintainIdentity(env,now);
+assert.equal(countExpired(),0);assert.equal(business.prepare("SELECT count(*) n FROM account_operation_approvals WHERE status<>'pending' AND json_type(payload,'$.document') IS NOT NULL").get().n,0);
+assert.ok(changes.filter(x=>x.text.startsWith('UPDATE account_operation_approvals')).every(x=>x.count<=500),'expiry and content scrubbing are individually bounded');
+assert.equal(business.prepare('SELECT payload FROM account_operation_approvals WHERE id=?').get(live).payload,payload,'unexpired frozen operations remain intact');
+const protectedRow=business.prepare('SELECT * FROM account_operation_approvals WHERE id=?').get(protectedApproval);assert.equal(protectedRow.result,receipt);assert.equal(JSON.parse(protectedRow.payload).attachment_id,'a'.repeat(64));assert.deepEqual(JSON.parse(protectedRow.payload).items,[{id:'receipt-target',version:1}]);
+assert.equal(business.prepare('SELECT count(*) n FROM attachment_tombstones').get().n,1);assert.equal(business.prepare("SELECT count(*) n FROM attachment_purge_jobs WHERE status='failed'").get().n,1);assert.equal(security.prepare('SELECT count(*) n FROM security_revocations').get().n,1);
+assert.equal(business.prepare("SELECT completed_at FROM identity_maintenance_runs WHERE name='identity-daily'").get().completed_at,now);
+const drainedBatches=batches;await maintainIdentity(env,now);assert.equal(batches,drainedBatches,'completed daily work does not repeat');
+await beginSecurityRestore(env);await assert.rejects(maintainIdentity(env,now+day),e=>e.code==='security_restore_locked');
+business.close();security.close();console.log('PASS maintenance batches: 1001 expired plus 501 sensitive approvals, <=500 updates per step, backlog drain, live-lease exclusion, failed-batch retry, frozen pending payloads, retained receipts/jobs/tombstones/revocations, daily idempotency and restore gate.');
