@@ -37,6 +37,11 @@ try{
  await pa.locator('#workspaceCreate').click();await pa.locator('#workspaceName').fill('其他工作区');
  await Promise.all([pa.waitForEvent('load'),pa.locator('#workspaceNameSave').click()]);await settings(pa);
  await pa.locator('#workspaceList [aria-current=true]').getByText('其他工作区',{exact:true}).waitFor();
+ // Rotate an anonymous/key-backed workspace before switching to account-only access.
+ const old=await readKey(pa);
+ await pa.locator('#workspaceRotate').click();await pa.locator('#confirmAccept').click();
+ await pa.waitForTimeout(1500);const fresh=await readKey(pa);assert.notEqual(fresh,old);
+ assert.equal((await req('/api/notes?cursor=0',{headers:{Authorization:'Bearer '+old}})).status,401);
  // Quick switch on the home page, with no internal workspace ID shown to users.
  await pa.locator('#foldersButton').click();await pa.locator('[data-tab=all]').click();
  await pa.locator('#workspaceHome').waitFor({state:'visible'});await pa.locator('#workspaceHome').click();
@@ -45,8 +50,6 @@ try{
  await Promise.all([pa.waitForEvent('load'),pa.locator('#workspaceSwitchList button').filter({hasText:'我的主工作区'}).click()]);
  await settings(pa);
  await pa.locator('#workspaceList [aria-current=true]').getByText('我的主工作区',{exact:true}).waitFor();
- const old=await readKey(pa);
- await pa.locator('#workspaceRotate').click();await pa.locator('#confirmAccept').click();await pa.waitForTimeout(1500);const fresh=await readKey(pa);assert.notEqual(fresh,old);
- assert.equal((await req('/api/notes?cursor=0',{headers:{Authorization:'Bearer '+old}})).status,401);
+ // Account-only selection deliberately does not expose a copyable sync key.
  assert.deepEqual(errors,[]);console.log('PASS browser: anonymous two-device sync; workspace create, rename, home quick-switch and isolation; key rotation and no runtime errors.');
 }finally{await browser.close()}
