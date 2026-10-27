@@ -32,6 +32,7 @@ jobs:
           node scripts/account-deletion-test.mjs
           node scripts/account-history-test.mjs
           node scripts/maintenance-batch-test.mjs
+          node scripts/purge-retry-test.mjs
           node scripts/native-management-test.mjs
           node scripts/workspace-delete-test.mjs
           node scripts/stage-two-audit-test.mjs
