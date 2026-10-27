@@ -9,12 +9,14 @@ on:
       - 'scripts/backup-core.mjs'
       - 'scripts/cloudflare-backup.mjs'
       - 'scripts/backup-test.mjs'
+      - 'scripts/backup-runner-test.mjs'
       - '.github/workflows/backup.yml'
   pull_request:
     paths:
       - 'scripts/backup-core.mjs'
       - 'scripts/cloudflare-backup.mjs'
       - 'scripts/backup-test.mjs'
+      - 'scripts/backup-runner-test.mjs'
       - '.github/workflows/backup.yml'
 permissions:
   contents: read
@@ -31,6 +33,7 @@ jobs:
         with:
           node-version: '24'
       - run: node scripts/backup-test.mjs
+      - run: node scripts/backup-runner-test.mjs
       - run: node scripts/security-restore-test.mjs
   backup:
     if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
