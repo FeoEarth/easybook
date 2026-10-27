@@ -1,7 +1,7 @@
 name: Core workspace release checks
 on:
   push:
-    branches: [feat/core-workspace-release]
+    branches: [main]
   pull_request:
     branches: [main]
 permissions:

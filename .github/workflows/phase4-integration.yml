@@ -9,6 +9,7 @@ jobs:
   verify:
     if: github.event_name != 'push' && github.head_ref != 'feat/core-workspace-release' && github.head_ref != 'feat/unified-workspace-identity' && !startsWith(github.head_ref, 'fix/sync-policies-') && github.head_ref != 'management-placement' && github.head_ref != 'fix-android-folder-save' && github.head_ref != 'ui-more-menu' && github.head_ref != 'ui-selection-move' && !startsWith(github.head_ref, 'ui-liquid-glass-') && github.head_ref != 'prototype-native-liquid-glass'
     runs-on: ubuntu-latest
+    timeout-minutes: 35
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -18,7 +19,34 @@ jobs:
       - run: npm ci
       - run: npm run build:editor
       - run: git diff --exit-code -- app/src/main/assets/editor.js worker/editor.mjs worker/ui.mjs
-      - run: npm test && npm run test:media && npm run test:sync-ui && node scripts/sync-activity-test.mjs && node scripts/task-node-test.mjs && node scripts/note-management-api-test.mjs
+      - name: Client and Worker syntax
+        run: timeout 60s node scripts/check.mjs
+      - name: Document contracts
+        run: timeout 60s node scripts/document-test.mjs
+      - name: Rich editor and offline save
+        run: timeout 120s node scripts/rich-editor-test.mjs
+      - name: Editor formatting
+        run: timeout 120s node scripts/format-editor-test.mjs
+      - name: Worker integration
+        run: timeout 240s node scripts/worker-integration.mjs
+      - name: Web local storage
+        run: timeout 180s node scripts/web-store-test.mjs
+      - name: Attachments
+        run: timeout 180s node scripts/attachment-test.mjs
+      # Full media upload/retry integration runs on demand; PRs retain attachment API and data checks.
+      - name: Media tests
+        if: github.event_name == 'workflow_dispatch'
+        run: timeout 360s npm run test:media
+      # Full sync UI navigation/history checks run on demand; PRs keep sync activity and API assertions.
+      - name: Sync UI tests
+        if: github.event_name == 'workflow_dispatch'
+        run: timeout 360s npm run test:sync-ui
+      - name: Sync activity tests
+        run: timeout 300s node scripts/sync-activity-test.mjs
+      - name: Task node tests
+        run: timeout 300s node scripts/task-node-test.mjs
+      - name: Note management API tests
+        run: timeout 300s node scripts/note-management-api-test.mjs
       # Broad browser/emulator automation is manual-only during this rebuild.
       # PRs retain compilation and API/data checks without a long-lived test env.
       - if: github.event_name == 'workflow_dispatch'

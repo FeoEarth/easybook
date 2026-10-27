@@ -1,7 +1,7 @@
 name: OAuth browser form origin
 on:
   push:
-    branches: [fix/oauth-form-origin]
+    branches: [main]
   pull_request:
     paths: ['mcp-oauth/src/accounts.mjs', 'mcp-oauth/test/consent-browser.mjs', '.github/workflows/oauth-form-origin.yml']
 permissions:
