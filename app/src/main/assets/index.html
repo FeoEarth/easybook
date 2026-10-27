@@ -704,7 +704,7 @@ async function refreshWorkspaces(){
    else{const w=await workspaceIdentity(key);current=w.id;entries=[w]}
    let session=null;try{session=await browserAccount()}catch{}
    signedIn=!!session?.signedIn;accountName=session?.name||'';
-   if(signedIn){try{entries=(await workspaceRequest()).workspaces.concat(entries)}catch{}}
+   if(signedIn){try{entries=entries.concat((await workspaceRequest()).workspaces)}catch{}}
    if(!entries.some(w=>w.id===current)){const cached=local.find(w=>w.id===current);if(cached)entries.unshift(cached)}
    $('workspaceAssociate').hidden=!signedIn||key.startsWith('account:');
   }
@@ -815,7 +815,19 @@ $('workspaceManagerTransfer').onclick=()=>confirmAction('转移管理权？','�
 $('workspaceDelete').onclick=()=>confirmAction('永久删除此工作区？','所有成员将失去访问权限，笔记和附件将由后台永久清理。请先导出所需备份。',()=>void changeCollaboration('delete',{version:memberWorkspace?.version}));
 $('workspaceLeave').onclick=()=>confirmAction('退出共享工作区？','退出后无法继续同步或通过 AI/MCP 访问此工作区。已缓存的本地内容不会被远程擦除。',()=>void changeCollaboration('leave',{}));
 $('workspaceMembersList').onclick=e=>{const b=e.target.closest('[data-member-remove]');if(b)confirmAction('移除该成员？','其账户与 AI/MCP 对此工作区的访问将立即撤销。',()=>void changeCollaboration('member',{accountId:b.dataset.memberRemove,role:null}))};
-$('pairButton').onclick=()=>{if(native){void flushNative().then(()=>native.call('security.pair')).catch(()=>toast('请先完成保存'));return}if(key.startsWith('account:'))return toast('账户访问无需密钥；如需连接匿名设备，请先轮换生成新密钥');$('pairKey').value=key;$('pairDialog').showModal()};$('copyKey').onclick=()=>void copy($('pairKey').value);
+$('pairButton').onclick=async()=>{
+ if(native){void flushNative().then(()=>native.call('security.pair')).catch(()=>toast('请先完成保存'));return}
+ try{
+  if(!identityV2){if(key.startsWith('account:'))throw Error('当前设备未保存同步密钥');$('pairKey').value=key;$('pairDialog').showModal();return}
+  const w=workspaceChoices.get(workspaceCurrent)||(key.startsWith('account:')?(await workspaceRequest('/'+key.slice(8))).workspace:await workspaceIdentity(key));
+  if(w.mode!=='personal')throw Error('多人共享工作区通过账户授权，不提供同步密钥');
+  const raw=key.startsWith('account:')?await webStore.personalWorkspaceCredential(w.id):key;
+  if(!raw)throw Error('此设备未保存该个人工作区的原同步密钥。可在工作区设置中主动轮换密钥，旧密钥将失效。');
+  const verified=await workspaceIdentity(raw);
+  if(verified.id!==w.id||verified.mode!=='personal')throw Error('本机同步密钥已失效，请在工作区设置中轮换密钥');
+  $('pairKey').value=raw;$('pairDialog').showModal();
+ }catch(error){toast(error?.message||'无法验证工作区同步密钥')}
+};$('copyKey').onclick=()=>void copy($('pairKey').value);
 $('join').onclick=async()=>{if(native)return;const next=$('pairKey').value.trim().toLowerCase();if(!/^[a-f0-9]{64}$/.test(next))return toast('请输入完整的 64 位同步密钥');if(busy)return toast('正在同步，请稍后连接');if(next===key){$('pairDialog').close();void sync(true);return}persistNow();await flushLocal();confirmAction('切换到另一个空间？','当前空间会保留在本机。请确认已保存原密钥，以便之后重新连接。',async()=>{if(busy){toast('正在同步，请稍后重试');return}clearTimeout(syncTimer);if(identityV2){try{await webStore.bindWorkspace(next,await workspaceIdentity(next))}catch(e){toast(e.message||'工作区验证失败');return}}key=next;await webStore.setActiveCredential(key);localStorage.removeItem('easybook-key');localSpace=await webStore.namespace(key);webData=await webStore.load(key);notes=webData.notes;for(const n of notes)RichNotes.validate(n.document);folders=webData.folders;management=FolderPlacement.clean(webData.management||{});inflight=webData.inflight;pullCursor=webData.cursor;lastSync=0;syncPolicy=loadSyncPolicy();syncOrigins={};lastCheck=0;selectedHistory.clear();activity.load();renderSyncPolicy();for(const f of mediaURLs.values())URL.revokeObjectURL(f.url);mediaURLs.clear();$('pairDialog').close();switchTab('all');void sync(true)})};
 $('backupButton').onclick=exportBackup;$('importButton').onclick=()=>{if(device)device.importNotes();else $('importFile').click()};$('importFile').onchange=async e=>{const f=e.target.files[0];if(f){if(f.size>10000000)toast('备份不能超过 10 MB');else importBackupText(await f.text())}e.target.value=''};
 for(const b of document.querySelectorAll('button[data-theme]'))b.onclick=()=>{haptic();setTheme(b.dataset.theme)};
