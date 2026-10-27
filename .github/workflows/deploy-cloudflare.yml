@@ -8,8 +8,11 @@ on:
       - 'editor/**'
       - 'shared/**'
       - 'app/src/main/assets/**'
-      # Only release tooling may trigger an otherwise unchanged production bundle.
-      # Unit tests, media mocks, docs and license/package metadata cannot deploy.
+      # Dependency or npm build-script changes can alter the production bundle.
+      # General test-only scripts and documentation should not deploy.
+      - 'package.json'
+      - 'package-lock.json'
+      # Keep the release/bundle generation tools in the allowlist.
       - 'scripts/cloudflare-release.mjs'
       - 'scripts/custom-domain-release-check.mjs'
       - 'scripts/rollback-probe.mjs'
