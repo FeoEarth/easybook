@@ -74,7 +74,32 @@ public final class SecurityManager {
             catch(Exception e){String message=e instanceof java.net.SocketTimeoutException?"连接超时，请检查网络并重试":e instanceof CredentialVault.KeyUnavailable?"本机凭据不可用，请先重新连接设备":e instanceof java.io.IOException?e.getMessage():"配对未完成，请检查设备连接或获取新配对码";activity.runOnUiThread(()->{if(!activity.isDestroyed()&&generation==mcpGeneration&&connectionSheet!=null)connectionSheet.error(message);});}
         }),()->{},()->{connectionSheet=null;mcpGeneration++;});connectionSheet.useMcp();connectionSheet.show();
     });}
-    private void showCredential(){io.execute(()->{try{if(!db.setting("account-workspace:"+db.activeSpace(),"").isEmpty()){activity.runOnUiThread(()->{if(connectionSheet!=null)connectionSheet.error("当前通过账户访问，无需同步密钥。如需连接匿名设备，请先在工作区设置中轮换密钥；也可在此输入其他工作区的密钥。");});return;}String k=db.credential(db.activeSpace());activity.runOnUiThread(()->{if(connectionSheet==null||activity.isDestroyed())return;connectionSheet.credential(k,()->{ClipData clip=ClipData.newPlainText("Easybook 同步密钥",k);if(Build.VERSION.SDK_INT>=24){PersistableBundle extras=new PersistableBundle();extras.putBoolean("android.content.extra.IS_SENSITIVE",true);clip.getDescription().setExtras(extras);}((ClipboardManager)activity.getSystemService(Context.CLIPBOARD_SERVICE)).setPrimaryClip(clip);});});}catch(Exception e){activity.runOnUiThread(()->{if(connectionSheet!=null)connectionSheet.error("本机凭据不可用。请输入原同步密钥重新配对；离线笔记仍可编辑和导出。");});}});}
+    private void showCredential(){io.execute(()->{
+        try{
+            String space=db.activeSpace();
+            // Account access is not the same as a shared workspace. An account-linked
+            // personal workspace may still have its original device-local key.
+            if(!db.setting("account-placeholder:"+space,"").isEmpty())throw new SecurityException("no_local_key");
+            String key=db.credential(space);
+            JSONObject verified=NativeSync.lookupWorkspace(key);
+            if(verified==null||!"personal".equals(verified.optString("mode")))throw new SecurityException("shared_or_revoked");
+            String linked=db.setting("account-workspace:"+space,"");
+            if(!linked.isEmpty()&&!linked.equals(verified.optString("id")))throw new SecurityException("workspace_key_mismatch");
+            activity.runOnUiThread(()->{
+                if(connectionSheet==null||activity.isDestroyed())return;
+                connectionSheet.credential(key,()->{
+                    ClipData clip=ClipData.newPlainText("Easybook 同步密钥",key);
+                    if(Build.VERSION.SDK_INT>=24){PersistableBundle extras=new PersistableBundle();extras.putBoolean("android.content.extra.IS_SENSITIVE",true);clip.getDescription().setExtras(extras);}
+                    ((ClipboardManager)activity.getSystemService(Context.CLIPBOARD_SERVICE)).setPrimaryClip(clip);
+                });
+            });
+        }catch(Exception e){
+            String hint=e instanceof SecurityException?
+                "多人共享工作区不提供同步密钥；个人工作区若本机没有原始密钥，可在工作区设置中主动轮换生成新密钥。":
+                "无法验证个人工作区同步密钥。请检查网络或重新连接设备；本机笔记保持不变。";
+            activity.runOnUiThread(()->{if(connectionSheet!=null&&!activity.isDestroyed())connectionSheet.error(hint);});
+        }
+    });}
     private void message(String value){activity.runOnUiThread(()->Toast.makeText(activity,value,Toast.LENGTH_LONG).show());}
 }
 
