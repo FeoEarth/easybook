@@ -12,3 +12,4 @@ worker/deploy.mjs
 # Reproducible PDF.js distribution copied by prepare-pdf.mjs before packaging.
 app/src/main/assets/pdf/vendor/
 app/src/main/assets/pdf/manifest.json
+app/src/main/assets/pdf/THIRD_PARTY_LICENSES.md

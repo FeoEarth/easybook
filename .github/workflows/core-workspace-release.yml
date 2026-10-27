@@ -30,6 +30,8 @@ jobs:
           node scripts/generate-android-license-manifest.mjs --check
       - name: Verify production third-party license inventory
         run: npm run licenses:check
+      - name: Verify end-user license notice delivery
+        run: npm run licenses:delivery:check
       - name: Focused account, migration, isolation, OAuth and restore checks
         run: |
           node scripts/core-workspace-release-test.mjs

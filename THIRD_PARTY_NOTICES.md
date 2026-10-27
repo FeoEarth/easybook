@@ -10,6 +10,12 @@ transitive libraries) with `npm run licenses:android`. Proprietary Google Play
 Services components are listed with official Android SDK terms links and are
 not mislabeled as open-source.
 
+In released Android/Web builds, the full inventory is available from
+**Settings → 法律与许可 → 第三方组件与许可证**. Android packages an offline copy;
+the Web Worker serves the same generated text through its static asset binding
+at `/pdf/THIRD_PARTY_LICENSES.md`. Run `npm run licenses:delivery:check`
+to verify that the distributed copy matches the repository inventory.
+
 The offline editor bundle is built from the exact versions in `package-lock.json`.
 
 - Tiptap open-source editor and extensions: MIT, https://github.com/ueberdosis/tiptap
