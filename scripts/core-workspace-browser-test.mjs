@@ -31,7 +31,7 @@ try{
  await p1.locator('#workspaceHome').click();
  await p1.locator('#workspaceSwitchList button').filter({hasText:'我的工作区'}).waitFor({state:'visible'});
  await Promise.all([p1.waitForEvent('load'),p1.locator('#workspaceSwitchList button').filter({hasText:'我的工作区'}).click()]);
- await p1.getByText('匿名跨设备验收',{exact:true}).waitFor();
+ await p1.locator('#cards').getByText('匿名跨设备验收',{exact:true}).waitFor();
 
  // Account cookie is seeded only in this isolated fixture; production login remains real OAuth/Passkey.
  const cookie='e'.repeat(64),sid=crypto.randomUUID(),now=Date.now();sql.prepare('INSERT INTO account_sessions VALUES(?,?,?,?,?,?,?,NULL)').run(sid,await hash(cookie),a.id,now,now+86400000,now,'Synthetic browser');
