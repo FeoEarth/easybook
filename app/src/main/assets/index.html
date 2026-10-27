@@ -358,6 +358,11 @@ body[data-page=mcp] .app{padding-bottom:max(32px,env(safe-area-inset-bottom))}
 <link rel="stylesheet" href="/pdf/vendor/pdf_viewer.css"><link rel="stylesheet" href="/pdf/reader.css">
 <script src="/editor.js"></script>
 <dialog id="syncChoiceDialog" class="ui-material" aria-label="选择同步设置"></dialog><dialog id="syncRecordActions" class="ui-material" aria-label="同步记录操作"></dialog>
+<dialog id="thirdPartyLicensesDialog" class="ui-material" aria-labelledby="thirdPartyLicensesTitle" style="width:min(900px,calc(100% - 24px));max-height:90dvh">
+<div class="dialog-title"><h2 id="thirdPartyLicensesTitle">第三方组件与许可证</h2><button id="thirdPartyLicensesClose" aria-label="关闭许可证说明">×</button></div>
+<p style="font-size:13px;color:var(--muted);line-height:1.5">保留原作者版权信息与各组件的独立授权条款。</p>
+<pre id="thirdPartyLicensesText" aria-live="polite" style="white-space:pre-wrap;overflow-wrap:anywhere;user-select:text;font-size:12px;line-height:1.6;overflow:auto;max-height:65dvh;margin:10px 0">正在载入许可证…</pre>
+</dialog>
 <dialog id="syncSurfaceDialog" class="ui-material" aria-labelledby="syncSurfaceTitle"><div class="sync-panel-grabber"></div><nav class="sync-panel-nav"><button id="syncSurfaceClose">关闭</button><h2 id="syncSurfaceTitle">同步范围</h2><button id="syncSurfaceDone">完成</button></nav><div class="sync-panel-content"><div id="syncScopeContent"><p class="sync-panel-note">父文件夹包含全部子文件夹。目录元数据共享；取消选择不会删除内容。</p><div class="sync-folder-list"><div class="sync-folder-row"><button id="syncAllToggle" class="sync-folder-pick" role="checkbox"><svg><use href="#i-folder"/></svg><span class="sync-folder-name">同步全部文件夹</span><span class="sync-selection-dot"></span></button></div></div><p id="syncScopeCurrent" class="sync-panel-note"></p><div id="syncScopeTree" class="sync-folder-list"></div></div><div id="syncTaskContent"></div></div></dialog>
 <script>
 'use strict';
@@ -938,6 +943,29 @@ for(const type of ['resize','scroll']){window.addEventListener(type,()=>{for(con
 let lastNetworkWake=0;window.easybookNetworkChanged=()=>{if(Date.now()-lastNetworkWake<3000)return;lastNetworkWake=Date.now();nextAutoSync=0;autoSyncFailures=0;void sync(false,'resume');scheduleRemote()};
 navigator.connection?.addEventListener('change',window.easybookNetworkChanged);
 renderSyncPolicy();
+
+// The same notice is bundled in Android's offline assets and deployed as a Web
+// static asset. Keep this entry visible without requiring an Easybook account.
+const legalFooter=$('settings').querySelector('.footer-note');
+const legalLabel=document.createElement('div');legalLabel.className='settings-label';legalLabel.textContent='法律与许可';
+const legalGroup=document.createElement('div');legalGroup.className='settings-group';
+legalGroup.innerHTML='<button class="settings-row" id="thirdPartyLicensesEntry"><svg aria-hidden="true"><use href="#i-list"/></svg><span class="row-text"><strong>第三方组件与许可证</strong><small>原作者、版本与开源授权声明</small></span><svg class="chevron" aria-hidden="true"><use href="#i-chevron"/></svg></button>';
+legalFooter.before(legalLabel,legalGroup);
+let noticeCache='';
+$('thirdPartyLicensesClose').onclick=()=>$('thirdPartyLicensesDialog').close();
+$('thirdPartyLicensesEntry').onclick=async()=>{
+ const dlg=$('thirdPartyLicensesDialog'),content=$('thirdPartyLicensesText');
+ dlg.showModal();
+ if(noticeCache){content.textContent=noticeCache;return}
+ content.textContent='正在载入许可证…';
+ try{
+  const response=await fetch('/pdf/THIRD_PARTY_LICENSES.md');
+  if(!response.ok)throw Error('HTTP '+response.status);
+  noticeCache=await response.text();
+  if(!noticeCache.startsWith('# THIRD_PARTY_LICENSES'))throw Error('许可证内容不完整');
+  content.textContent=noticeCache;
+ }catch(error){content.textContent='许可证暂时无法读取，请稍后重试。\n'+String(error.message||error)}
+};
 
 if(native){$('pairKey').remove();$('pairDialog').remove();$('join')?.remove();}switchTab('all');if(history.state?.easybookSync)showSyncPage(false);if(history.state?.easybookMcp&&!native)showMcpPage(false);if(history.state?.easybookAccount&&native)showAccountPage(false);if(window.NativeStore)void window.NativeStore.call('ui.ready');void sync(false,'resume');scheduleRemote();setInterval(()=>{if(tab==='sync'&&!document.hidden)void refreshNativeActivity()},2000);window.addEventListener('online',()=>{autoSyncPaused=false;autoSyncFailures=0;nextAutoSync=0;void sync(false,'resume');scheduleRemote()});window.addEventListener('offline',()=>{activity.pause();status('离线 · 已存本机','offline')});document.addEventListener('visibilitychange',()=>{rich.flushInput();persistNow();if(!document.hidden){void sync(false,'resume');scheduleRemote()}else clearTimeout(remoteTimer)});window.addEventListener('pagehide',()=>{rich.flushInput();persistNow()});
 })().catch(()=>{document.body.innerHTML='<main style="padding:70px 24px">页面未能加载，笔记保留在本机，请重新打开应用。</main>'});
