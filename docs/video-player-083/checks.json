@@ -1,0 +1,24 @@
+{
+  "bounds": {
+    "root": [
+      844,
+      390
+    ],
+    "video": [
+      844,
+      390
+    ],
+    "fit": "contain",
+    "maxHeight": "none"
+  },
+  "errors": [],
+  "checks": [
+    "single video node inline/preview/fullscreen",
+    "position and rate preserved",
+    "pause/play decoded frames",
+    "seek +/-10 clamped",
+    "volume/speed",
+    "auto-hide",
+    "return to editor"
+  ]
+}

@@ -1,4 +1,4 @@
-name: Publish authorized player 0.8.2 release
+name: Publish authorized player 0.8.3 release
 on:
   workflow_run:
     workflows: [Deploy Cloudflare Worker]
@@ -21,7 +21,7 @@ jobs:
           VERIFIED_SHA: ${{ github.event.workflow_run.head_sha }}
         run: |
           test "$(gh api repos/$GITHUB_REPOSITORY/commits/main --jq .sha)" = "$VERIFIED_SHA"
-          grep -q "versionCode 60; versionName '0.8.2'" app/build.gradle
-          EXISTING=$(gh api "repos/$GITHUB_REPOSITORY/releases?per_page=100" --jq '[.[] | select(.tag_name | startswith("v0.8.2-build"))] | length')
+          grep -q "versionCode 61; versionName '0.8.3'" app/build.gradle
+          EXISTING=$(gh api "repos/$GITHUB_REPOSITORY/releases?per_page=100" --jq '[.[] | select(.tag_name | startswith("v0.8.3-build"))] | length')
           if [ "$EXISTING" != 0 ]; then exit 0; fi
           gh workflow run android.yml --repo "$GITHUB_REPOSITORY" --ref main -f publish_release=true

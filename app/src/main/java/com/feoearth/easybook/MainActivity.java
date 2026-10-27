@@ -104,7 +104,7 @@ public class MainActivity extends Activity {
                 if(videoFullscreen!=null||!LOCAL.equals(web.getUrl())){callback.onCustomViewHidden();return;}
                 videoFullscreen=view;videoFullscreenCallback=callback;videoSystemUi=getWindow().getDecorView().getSystemUiVisibility();videoOrientation=getRequestedOrientation();
                 videoFullscreen.setBackgroundColor(android.graphics.Color.BLACK);
-                ((ViewGroup)getWindow().getDecorView()).addView(view,new ViewGroup.LayoutParams(-1,-1));
+                ((ViewGroup)getWindow().getDecorView()).addView(view,new android.widget.FrameLayout.LayoutParams(android.view.ViewGroup.LayoutParams.MATCH_PARENT,android.view.ViewGroup.LayoutParams.MATCH_PARENT));
                 getWindow().getDecorView().setSystemUiVisibility(View.SYSTEM_UI_FLAG_FULLSCREEN|View.SYSTEM_UI_FLAG_HIDE_NAVIGATION|View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY|View.SYSTEM_UI_FLAG_LAYOUT_STABLE|View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN|View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION);
                 setRequestedOrientation(android.content.pm.ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE);
             }

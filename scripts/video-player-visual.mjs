@@ -1,0 +1,35 @@
+import assert from 'node:assert/strict';
+import {createServer} from 'node:http';
+import {readFileSync,mkdirSync,writeFileSync} from 'node:fs';
+import {chromium} from 'playwright';
+const html=readFileSync('app/src/main/assets/index.html');
+const server=createServer((req,res)=>{const file=req.url==='/'?'app/src/main/assets/index.html':req.url==='/editor.js'?'app/src/main/assets/editor.js':req.url==='/sample.mp4'?'scripts/fixtures/playback.mp4':null;if(!file){res.writeHead(404).end();return}res.setHeader('Content-Type',req.url.endsWith('.mp4')?'video/mp4':req.url.endsWith('.js')?'text/javascript':'text/html');res.end(readFileSync(file))});
+await new Promise(r=>server.listen(0,'127.0.0.1',r));
+const out=process.env.VIDEO_EVIDENCE||'/tmp/photos-player-083';mkdirSync(out,{recursive:true});
+const browser=await chromium.launch({headless:true,executablePath:process.env.CHROME_PATH||undefined,args:['--no-sandbox','--disable-dev-shm-usage']});
+try{
+ const page=await browser.newPage({viewport:{width:390,height:844}}),errors=[];page.on('pageerror',e=>errors.push(e.message));await page.route('https://**',r=>r.abort());
+ await page.goto('http://127.0.0.1:'+server.address().port);await page.getByRole('button',{name:'新建笔记',exact:true}).click();await page.locator('#mediaFile').setInputFiles('scripts/fixtures/playback.mp4');await page.waitForFunction(()=>document.querySelector('.eb-video video')?.readyState>=2);
+ await page.evaluate(()=>{window.originalVideo=document.querySelector('.eb-video video');originalVideo.currentTime=1;originalVideo.playbackRate=1.25});await page.waitForFunction(()=>!originalVideo.seeking);
+ await page.screenshot({path:out+'/01-inline-paused.png'});
+ await page.getByRole('button',{name:'播放',exact:true}).click();await page.locator('.media-open').click();await page.waitForFunction(()=>document.querySelector('#attachmentDialog').open);
+ assert.equal(await page.evaluate(()=>document.querySelector('#previewStage video')===originalVideo),true,'preview reuses the video node');assert.ok(await page.evaluate(()=>originalVideo.currentTime>=1));await page.waitForFunction(()=>!originalVideo.paused);await page.getByRole('button',{name:'暂停',exact:true}).click();assert.equal(await page.evaluate(()=>originalVideo.playbackRate),1.25);assert.equal(await page.locator('video').count(),1);
+ await page.evaluate(async()=>{await Promise.all(document.querySelector('#attachmentDialog').getAnimations().map(a=>a.finished))});await page.screenshot({path:out+'/02-preview-paused.png'});
+ await page.setViewportSize({width:844,height:390});await page.getByRole('button',{name:'全屏',exact:true}).click();await page.waitForFunction(()=>document.fullscreenElement?.classList.contains('eb-video'));
+ const bounds=await page.evaluate(()=>{const root=document.fullscreenElement,v=root.querySelector('video'),r=root.getBoundingClientRect(),b=v.getBoundingClientRect();return {root:[r.width,r.height],video:[b.width,b.height],fit:getComputedStyle(v).objectFit,maxHeight:getComputedStyle(root).maxHeight}});
+ assert.deepEqual(bounds.root,[844,390]);assert.deepEqual(bounds.video,[844,390]);assert.equal(bounds.fit,'contain');assert.equal(bounds.maxHeight,'none');
+ await page.screenshot({path:out+'/03-fullscreen-paused.png'});
+ await page.evaluate(()=>{originalVideo.loop=true;originalVideo.playbackRate=.5});await page.getByRole('button',{name:'播放',exact:true}).click();await page.waitForFunction(()=>originalVideo.currentTime>1.2);await page.screenshot({path:out+'/04-fullscreen-playing.png'});
+ // Loop only the synthetic four-second fixture to observe the real auto-hide timer.
+ await page.evaluate(()=>originalVideo.loop=true);await page.mouse.move(1,1);await page.waitForFunction(()=>document.fullscreenElement.classList.contains('controls-hidden'),null,{timeout:5000});await page.waitForFunction(()=>getComputedStyle(document.fullscreenElement.querySelector('.eb-video-controls')).opacity==='0');await page.screenshot({path:out+'/05-fullscreen-hidden.png'});
+ await page.mouse.click(420,170);await page.getByRole('button',{name:'暂停',exact:true}).click();
+ await page.getByRole('button',{name:'后退 10 秒',exact:true}).click();assert.ok(await page.evaluate(()=>originalVideo.currentTime<.1));await page.getByRole('button',{name:'快进 10 秒',exact:true}).click();await page.waitForFunction(()=>originalVideo.currentTime>3.5);
+ await page.getByLabel('播放速度').selectOption('1.5');assert.equal(await page.evaluate(()=>originalVideo.playbackRate),1.5);await page.getByLabel('音量',{exact:true}).fill('0.5');assert.equal(await page.evaluate(()=>originalVideo.volume),.5);
+ await page.getByRole('button',{name:'退出全屏',exact:true}).click();await page.waitForFunction(()=>!document.fullscreenElement);await page.getByRole('button',{name:'关闭预览',exact:true}).click();await page.waitForFunction(()=>document.querySelector('.inline-media video')===originalVideo);assert.equal(await page.locator('video').count(),1);
+ await page.setViewportSize({width:390,height:844});await page.evaluate(()=>{originalVideo.currentTime=0;originalVideo.loop=true;originalVideo.playbackRate=1});await page.getByRole('button',{name:'播放',exact:true}).click();await page.mouse.move(1,1);await page.evaluate(()=>document.activeElement?.blur());await page.screenshot({path:out+'/06-inline-playing.png'});await page.waitForFunction(()=>document.querySelector('.eb-video').classList.contains('controls-hidden'),null,{timeout:5000});await page.screenshot({path:out+'/07-inline-hidden.png'});
+ await page.evaluate(()=>originalVideo.pause());
+ await page.reload();await page.getByRole('button',{name:'新建笔记',exact:true}).click();await page.locator('#mediaFile').setInputFiles('scripts/fixtures/portrait.mp4');await page.waitForFunction(()=>document.querySelector('.eb-video video')?.readyState>=2);
+ const portrait=page.locator('.eb-video');await portrait.scrollIntoViewIfNeeded();await page.screenshot({path:out+'/08-portrait-video.png'});await page.locator('.media-open').click();await page.waitForFunction(()=>document.querySelector('#attachmentDialog').open);await page.evaluate(async()=>{await Promise.all(document.querySelector('#attachmentDialog').getAnimations().map(a=>a.finished))});await page.screenshot({path:out+'/09-portrait-preview.png'});
+ await page.setViewportSize({width:844,height:390});await page.getByRole('button',{name:'全屏',exact:true}).click();await page.waitForFunction(()=>!!document.fullscreenElement);assert.equal(await page.evaluate(()=>getComputedStyle(document.fullscreenElement.querySelector('video')).objectFit),'contain');await page.screenshot({path:out+'/10-portrait-fullscreen.png'});
+ assert.deepEqual(errors,[]);writeFileSync(out+'/checks.json',JSON.stringify({bounds,errors,checks:['single video node inline/preview/fullscreen','position and rate preserved','pause/play decoded frames','seek +/-10 clamped','volume/speed','auto-hide','return to editor']},null,2));console.log('PASS visual and behavior checks',bounds);
+}finally{await browser.close();await new Promise(r=>server.close(r))}
