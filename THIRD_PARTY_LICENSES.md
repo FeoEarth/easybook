@@ -68,7 +68,7 @@ Entries: 145 (56 npm main, 27 npm OAuth, 9 embedded PDF resources, 52 resolved A
 | com.google.android.gms:play-services-tasks | 18.2.0 | Android release runtime | `LicenseRef-Android-SDK-License` | Google LLC | [Official proprietary terms](https://developer.android.com/studio/terms.html) |
 | com.google.android.libraries.identity.googleid:googleid | 1.1.0 | Android release runtime | `LicenseRef-Android-SDK-License` | Google LLC | [Official proprietary terms](https://developer.android.com/studio/terms.html) |
 | com.google.guava:listenablefuture | 1.0 | Android release runtime | `Apache-2.0` | Google LLC | [0d542e0c88](#license-text-0d542e0c8804e39a) |
-| org.jetbrains:annotations | 23.0.0 | Android release runtime | `Apache-2.0` | Upstream project contributors | [0d542e0c88](#license-text-0d542e0c8804e39a) |
+| org.jetbrains:annotations | 23.0.0 | Android release runtime | `Apache-2.0` | JetBrains s.r.o. | [0d542e0c88](#license-text-0d542e0c8804e39a) |
 | org.jetbrains.kotlin:kotlin-stdlib | 1.9.24 | Android release runtime | `Apache-2.0` | JetBrains s.r.o. | [0d542e0c88](#license-text-0d542e0c8804e39a) |
 | org.jetbrains.kotlin:kotlin-stdlib-jdk7 | 1.9.0 | Android release runtime | `Apache-2.0` | JetBrains s.r.o. | [0d542e0c88](#license-text-0d542e0c8804e39a) |
 | org.jetbrains.kotlin:kotlin-stdlib-jdk8 | 1.8.20 | Android release runtime | `Apache-2.0` | JetBrains s.r.o. | [0d542e0c88](#license-text-0d542e0c8804e39a) |
