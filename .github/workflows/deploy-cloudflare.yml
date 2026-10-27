@@ -64,6 +64,8 @@ jobs:
         run: npx --no-install wrangler deploy --config worker/wrangler.jsonc --dry-run --outdir .wrangler-preflight
       - name: Install browser for release smoke test
         run: npx --no-install playwright install chromium
+      - name: Verify decoded video frames and player controls
+        run: node scripts/video-player-smoke.mjs
       # Schema migration is applied via the authorized Cloudflare connection.
       # Candidate readiness below verifies D1 through its runtime binding before promotion.
       - name: Record custom-domain baseline without weakening zone security

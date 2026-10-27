@@ -1,0 +1,27 @@
+name: Publish authorized player 0.8.2 release
+on:
+  workflow_run:
+    workflows: [Deploy Cloudflare Worker]
+    types: [completed]
+    branches: [main]
+permissions:
+  contents: read
+  actions: write
+jobs:
+  dispatch:
+    if: github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.event == 'push'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.workflow_run.head_sha }}
+      - name: Dispatch existing release pipeline for this authorized version only
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERIFIED_SHA: ${{ github.event.workflow_run.head_sha }}
+        run: |
+          test "$(gh api repos/$GITHUB_REPOSITORY/commits/main --jq .sha)" = "$VERIFIED_SHA"
+          grep -q "versionCode 60; versionName '0.8.2'" app/build.gradle
+          EXISTING=$(gh api "repos/$GITHUB_REPOSITORY/releases?per_page=100" --jq '[.[] | select(.tag_name | startswith("v0.8.2-build"))] | length')
+          if [ "$EXISTING" != 0 ]; then exit 0; fi
+          gh workflow run android.yml --repo "$GITHUB_REPOSITORY" --ref main -f publish_release=true
