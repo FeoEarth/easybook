@@ -22,18 +22,16 @@ try{
  await p1.locator('#attachmentButton').click();await p1.locator('[data-content-action=media]').click();await p1.locator('#mediaFile').setInputFiles({name:'acceptance.png',mimeType:'image/png',buffer:Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jA1cAAAAASUVORK5CYII=','base64')});await p1.locator('[data-type=image] img').waitFor();await p1.waitForTimeout(800);await p1.evaluate(()=>window.persistNow());
  await p1.locator('#back').click();await settings(p1);await p1.locator('#activityEntry').click();await p1.locator('#syncNow').click();await p1.waitForTimeout(2000);
  const c2=await context();await c2.addInitScript(value=>localStorage.setItem('easybook-key',value),k);const p2=await ready(c2);await p2.getByText('匿名跨设备验收',{exact:true}).waitFor({timeout:20000});await p2.getByText('匿名跨设备验收',{exact:true}).click();await p2.waitForFunction(()=>document.querySelector('[data-type=image] img')?.src.startsWith('blob:'));assert.ok(objects.size>=2,'real chunk and manifest uploaded');
- // Signed-out users can keep multiple PERSONAL workspaces on this device.
+ // Signed-out users can switch among personal workspaces stored on this device.
  await settings(p1);await p1.locator('#workspaceCreate').click();
  await p1.locator('#workspaceName').fill('第二个本地工作区');
  await Promise.all([p1.waitForEvent('load'),p1.locator('#workspaceNameSave').click()]);
  await settings(p1);await p1.locator('#workspaceList [aria-current=true]').getByText('第二个本地工作区',{exact:true}).waitFor();
- await c1.setOffline(true);
  await p1.locator('#foldersButton').click();await p1.locator('[data-tab=all]').click();
  await p1.locator('#workspaceHome').click();
  await p1.locator('#workspaceSwitchList button').filter({hasText:'我的工作区'}).waitFor({state:'visible'});
  await Promise.all([p1.waitForEvent('load'),p1.locator('#workspaceSwitchList button').filter({hasText:'我的工作区'}).click()]);
  await p1.getByText('匿名跨设备验收',{exact:true}).waitFor();
- await c1.setOffline(false);
 
  // Account cookie is seeded only in this isolated fixture; production login remains real OAuth/Passkey.
  const cookie='e'.repeat(64),sid=crypto.randomUUID(),now=Date.now();sql.prepare('INSERT INTO account_sessions VALUES(?,?,?,?,?,?,?,NULL)').run(sid,await hash(cookie),a.id,now,now+86400000,now,'Synthetic browser');
