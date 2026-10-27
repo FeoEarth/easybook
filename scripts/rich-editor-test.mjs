@@ -32,6 +32,8 @@ stage('waiting for Done button local save');
 await bounded(page.window.document.getElementById('done').onclick(),'Done button local save');
 stage('Done button save resolved');
 const {WebStore}=await import('../shared/web-store.mjs');const store=new WebStore(indexedDB);await bounded(store.open(),'verification IndexedDB open');
-const data=await bounded(store.load(page.window.localStorage.getItem('easybook-key')),'verification IndexedDB load');assert.ok(R.plain(data.notes[0].document).includes('离线保存'));assert.equal(data.notes[0].dirty,true);assert.equal(data.notes[0].body,undefined);page.window.close();store.db.close();
+const activeKey=await bounded(store.activeCredential(),'verification active credential');
+assert.match(activeKey,/^(?:account:)?[a-f0-9]{64}$/);
+const data=await bounded(store.load(activeKey),'verification IndexedDB load');assert.ok(R.plain(data.notes[0].document).includes('离线保存'));assert.equal(data.notes[0].dirty,true);assert.equal(data.notes[0].body,undefined);page.window.close();store.db.close();
 console.log('PASS editor: all nodes/marks stable JSON restore, invalid load keeps document, tasks/media, paste safety, app offline IndexedDB save');
 
