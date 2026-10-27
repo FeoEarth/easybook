@@ -79,8 +79,11 @@ try {
  if(inspected.securityEpoch!==checkpoint.epoch)throw Error('backup_security_epoch');
  const dbEntry={storageKey:prefix+'database.sql',size:sql.length,sha256:digest(sql)};
  await put(dbEntry.storageKey,sql);
- const entries=[];
+ const entries=[];let temporaryUploadsExcluded=0;
  for(const object of await listObjects()) {
+  // In-progress upload chunks are ephemeral, not registered attachments. They
+  // cannot be resumed reliably across a restore and are deliberately excluded.
+  if(object.key.startsWith('_mcp_uploads/')) {temporaryUploadsExcluded++;continue;}
   // Fail on unexpected namespaces rather than silently omit recoverable data.
   if(!/^[a-f0-9]{64}\/[a-f0-9]{64}(?:\/(?:manifest-v2|[a-f0-9]{64}\/(?:[0-9]|1[0-2])))?$/.test(object.key))throw Error('backup_unknown_object');
   const bytes=await read(source,object.key);
@@ -90,7 +93,7 @@ try {
   if(entry.customMetadata.hash && digest(bytes)!==entry.customMetadata.hash)throw Error('backup_source_hash');
   await put(entry.storageKey,bytes);entries.push(entry);
  }
- const manifest={...status,format:1,status:'complete',completedAt:new Date().toISOString(),source:{database,bucket:source},database:dbEntry,objects:entries,consistency:'D1 export snapshot; copied R2 closure verified against snapshot references; no cross-service atomic snapshot',securityDatabaseIncluded:false};
+ const manifest={...status,format:1,status:'complete',completedAt:new Date().toISOString(),source:{database,bucket:source},database:dbEntry,objects:entries,temporaryUploadsExcluded,consistency:'D1 export snapshot; copied R2 closure verified against snapshot references; no cross-service atomic snapshot',securityDatabaseIncluded:false};
  // Restore verification reads every object back from the destination. Completion
  // is committed only after SQLite integrity and all attachment hashes succeed.
  const result=await verifyBackup(manifest,e=>read(destination,e.storageKey));

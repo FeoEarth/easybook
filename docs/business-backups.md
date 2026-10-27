@@ -27,6 +27,8 @@ run fail. Concurrent deletion may therefore make a backup fail safely; a later
 run retries with a new snapshot. Unattached committed objects are also retained.
 Local-only attachments retain metadata only and are counted explicitly; their
 device-local bytes are never claimed to be backed up.
+Temporary `_mcp_uploads/` chunks are excluded and counted: unfinished uploads
+must be restarted after recovery, rather than promised as resumable attachments.
 
 The completion manifest is written only after verification. A running/failed
 status or orphaned objects are not a recovery point. An interruption after the
