@@ -8,11 +8,51 @@ async function until(check,label='condition'){for(let i=0;i<100;i++){if(check())
 const storage=new Map(),journal=new SyncActivity({getItem:k=>storage.get(k),setItem:(k,v)=>storage.set(k,v)},()=> 'test');
 journal.set('x','文件','image','up','queued');journal.set('x','文件','image','up','running');journal.progress('x',12,24);assert.equal(journal.tasks[0].loaded,12);journal.fail('x');assert.equal(journal.tasks[0].state,'failed');journal.set('x','文件','image','up','running');journal.finish('x');assert.equal(journal.tasks.length,1);assert.equal(journal.tasks[0].state,'done');for(let i=0;i<65;i++){journal.set('h'+i,'历史','note','down','done')}assert.equal(journal.tasks.length,66,'recent history is retained by age, not truncated to a fixed 60 entries');
 const html=readFileSync('app/src/main/assets/index.html','utf8'),page=new JSDOM(html,{url:'https://easybook.test',runScripts:'outside-only',pretendToBeVisual:true}),w=page.window;
-w.TextEncoder=TextEncoder;w.TextDecoder=TextDecoder;w.indexedDB=new IDBFactory();w.scrollTo=w.scrollBy=()=>{};let urlSerial=0;w.URL.createObjectURL=()=> 'blob:test/'+(++urlSerial);w.URL.revokeObjectURL=()=>{};w.HTMLDialogElement.prototype.showModal=function(){this.open=true};w.HTMLDialogElement.prototype.close=function(){this.open=false;this.dispatchEvent(new w.Event('close'))};Object.defineProperty(w,'crypto',{value:crypto});let savedFile=null,sharedFile=null;w.HTMLAnchorElement.prototype.click=function(){savedFile={name:this.download,url:this.href}};w.navigator.canShare=()=>true;w.navigator.share=async data=>{sharedFile=data.files[0]};let online=false;Object.defineProperty(w.navigator,'onLine',{get:()=>online});
-const remoteFiles=new Map(),remoteNotes=new Map(),requests=[],progress=[];let failUpload=true;
-w.XMLHttpRequest=class {constructor(){this.upload={}}open(method,url){this.method=method;this.url=url}setRequestHeader(){}send(body){requests.push({method:this.method,url:this.url});const id=this.url.split('/').pop();setTimeout(()=>{if(this.method==='PUT'&&failUpload){this.status=503;this.responseText='{}';this.onload();return}let data;if(this.method==='PUT'){const f=JSON.parse(body);this.upload.onprogress?.({loaded:20,total:40,lengthComputable:true});progress.push(w.easybookActivity.tasks.find(t=>t.id==='asset:'+id+':up')?.state);remoteFiles.set(id,f);data={id,size:f.size}}else{data=remoteFiles.get(id);this.onprogress?.({loaded:10,total:20,lengthComputable:true})}this.status=data?200:404;this.responseText=JSON.stringify(data||{});this.onload()},10)}};
+w.TextEncoder=TextEncoder;w.TextDecoder=TextDecoder;
+// jsdom Blob has no stream(); browsers do, so use Node's standards-based Blob.
+w.Blob=Blob;assert.equal(typeof new w.Blob().stream,'function');
+w.indexedDB=new IDBFactory();w.scrollTo=w.scrollBy=()=>{};let urlSerial=0;w.URL.createObjectURL=()=> 'blob:test/'+(++urlSerial);w.URL.revokeObjectURL=()=>{};w.HTMLDialogElement.prototype.showModal=function(){this.open=true};w.HTMLDialogElement.prototype.close=function(){this.open=false;this.dispatchEvent(new w.Event('close'))};Object.defineProperty(w,'crypto',{value:crypto});let savedFile=null,sharedFile=null;w.HTMLAnchorElement.prototype.click=function(){savedFile={name:this.download,url:this.href}};w.navigator.canShare=()=>true;w.navigator.share=async data=>{sharedFile=data.files[0]};let online=false;Object.defineProperty(w.navigator,'onLine',{get:()=>online});
+const remoteFiles=new Map(),remoteParts=new Map(),remoteNotes=new Map(),requests=[],progress=[];let failUpload=true;
+w.XMLHttpRequest=class {
+ constructor(){this.upload={}}
+ open(method,url){this.method=method;this.url=url}
+ setRequestHeader(){}
+ send(body){
+  requests.push({method:this.method,url:this.url});
+  const address=new URL(this.url),id=address.pathname.split('/').pop();
+  setTimeout(()=>{
+   if(this.method==='PUT'&&failUpload){this.status=503;this.responseText='{}';this.onload();return}
+   let data,status=200;
+   if(this.method==='PUT'){
+    const value=JSON.parse(body);
+    this.upload.onprogress?.({loaded:20,total:40,lengthComputable:true});
+    progress.push(w.easybookActivity.tasks.find(t=>t.id==='asset:'+id+':up')?.state);
+    // Both v2 PUT operations use the same URL; the JSON 'op' selects the action.
+    if(value.op==='part'){
+     const bytes=Buffer.from(value.data,'base64');
+     remoteParts.set(id+':'+value.index,{data:value.data,hash:value.hash,size:bytes.length});
+     data={hash:value.hash,size:bytes.length};
+    }else if(value.op==='commit'&&value.manifest?.id===id){
+     const manifest=value.manifest;
+     const valid=manifest.localOnly||manifest.parts.every((part,index)=>{
+      const stored=remoteParts.get(id+':'+index);
+      return stored?.hash===part.hash&&stored?.size===part.size;
+     });
+     if(valid){remoteFiles.set(id,manifest);data={id,size:manifest.size,localOnly:manifest.localOnly}}
+     else status=409;
+    }else status=400;
+   }else{
+    data=address.searchParams.has('part')?remoteParts.get(id+':'+address.searchParams.get('part')):remoteFiles.get(id);
+    if(!data)status=404;
+    this.onprogress?.({loaded:10,total:20,lengthComputable:true});
+   }
+   this.status=status;this.responseText=JSON.stringify(data||{});this.onload();
+  },10);
+ }
+};
 w.fetch=async(url,options={})=>{requests.push({method:options.method||'GET',url});let data;if(url.includes('/api/folders'))data={folders:[],next:null};else if(options.method==='PUT'){const n=JSON.parse(options.body),note={...n,version:(n.version||0)+1};remoteNotes.set(n.id,note);data={note};}else data={notes:[...remoteNotes.values()],cursor:1,hasMore:false};return {ok:true,status:200,json:async()=>data}};
-w.eval(readFileSync('app/src/main/assets/editor.js','utf8'));w.eval(html.match(/<script>([\s\S]*?)<\/script>/)[1]);await sleep(100);const $=id=>w.document.getElementById(id),r=w.easybookRich;assert.ok(r,'app boots');$('newTop').click();r.editor.commands.insertContent('前文');r.editor.commands.setTextSelection(2);
+w.eval(readFileSync('app/src/main/assets/editor.js','utf8'));
+w.eval(html.match(/<script>([\s\S]*?)<\/script>/)[1]);await sleep(100);const $=id=>w.document.getElementById(id),r=w.easybookRich;assert.ok(r,'app boots');$('newTop').click();r.editor.commands.insertContent('前文');r.editor.commands.setTextSelection(2);
 async function pick(file){const media=file.type.startsWith('image/')||file.type.startsWith('video/'),input=$(media?'mediaFile':'attachmentFile');let opened;const pickerOpened=new Promise(resolve=>opened=resolve),originalClick=input.click.bind(input);input.click=()=>opened();try{$('attachmentButton').click();w.document.querySelector('[data-content-action="'+(media?'media':'files')+'"]').click();await Promise.race([pickerOpened,new Promise((_,reject)=>setTimeout(()=>reject(Error('attachment picker was not opened')),3000))]);Object.defineProperty(input,'files',{configurable:true,value:[file]});await input.onchange()}finally{input.click=originalClick}await sleep(70)}
 // jsdom File lacks Blob.stream(), which the real browser and upload hash path require.
 const png=Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jA1cAAAAASUVORK5CYII=','base64');await pick(new File([png],'图片.png',{type:'image/png'}));assert.equal(r.value().doc.content[1]?.type,'image','image inserted at saved caret: '+JSON.stringify(r.value().doc.content));await until(()=>w.document.querySelector('[data-type=image] img')?.src.startsWith('blob:'),'inline image');assert.ok(w.document.querySelector('[data-type=image] img').src.startsWith('blob:'));assert.equal(w.document.querySelector('[data-type=image] img').hidden,false);
@@ -33,7 +73,7 @@ await until(()=>w.document.querySelector('[data-type=image] .media-detail').text
 const pointer=(type,id,x,y=100)=>{const event=new w.Event(type,{bubbles:true});Object.assign(event,{pointerId:id,clientX:x,clientY:y});$('previewStage').dispatchEvent(event)};
 pointer('pointerdown',1,100);pointer('pointerdown',2,200);pointer('pointermove',2,300);assert.ok($('attachmentPreview').style.transform.includes('scale(2)'));pointer('pointerup',2,300);pointer('pointerup',1,100);$('attachmentDialog').close();
 await pick(new File(['%PDF-1.4\n'],'预览.pdf',{type:'application/pdf'}));await until(()=>[...w.document.querySelectorAll('[data-type=attachment] .media-name')].some(e=>e.textContent==='预览.pdf'));
-const pdfCard=[...w.document.querySelectorAll('[data-type=attachment]')].find(e=>e.querySelector('.media-name').textContent==='预览.pdf');await until(()=>pdfCard.querySelector('.media-detail').textContent.includes('KB'));pdfCard.querySelector('button').click();await until(()=>$('previewStage').querySelector('iframe'));assert.ok($('previewStage').querySelector('iframe').src.startsWith('blob:'));$('attachmentDialog').close();
+const pdfCard=[...w.document.querySelectorAll('[data-type=attachment]')].find(e=>e.querySelector('.media-name').textContent==='预览.pdf');await until(()=>pdfCard.querySelector('.media-detail').textContent.includes('KB'));pdfCard.querySelector('button').click();await until(()=>$('attachmentDialog').open&&$('attachmentDialog').classList.contains('pdf-mode'),'PDF reader dialog');await until(()=>$('previewStage').textContent.includes('PDF 阅读器加载失败'),'unavailable PDF reader fallback');assert.ok($('previewStage').querySelector('button'),'PDF error shows retry option');$('attachmentDialog').close();
 const legacy={schemaVersion:1,doc:{type:'doc',content:[{type:'attachment',attrs:{assetId:'sha256:'+r.value().doc.content.find(n=>n.type==='image').attrs.assetId.slice(7),name:'旧图片.png',mime:'image/png',size:png.length}}]}};r.load(legacy);await until(()=>w.document.querySelector('[data-type=attachment] img')?.hidden===false,'legacy attachment image inline');assert.equal(r.value().doc.content[0].type,'attachment');
 const manifest=readFileSync('app/src/main/AndroidManifest.xml','utf8'),permissions=readFileSync('app/src/main/java/com/feoearth/easybook/SecurityManager.java','utf8');assert.match(manifest,/FileProvider[\s\S]*android:exported="false"/);assert.match(permissions,/case "attachment.open":case "attachment.share"/);
 console.log('PASS media/activity: caret image+file insertion, inline image/card DOM, JSON reload, preview/double-tap/close, safe TXT, real queued/running/failed/acknowledged states, wire progress, retry dedup, offline→online, mocked cross-client download and bounded history');
