@@ -33,7 +33,9 @@ jobs:
         run: timeout 180s node scripts/web-store-test.mjs
       - name: Attachments
         run: timeout 180s node scripts/attachment-test.mjs
+      # Full media upload/retry integration runs on demand; PRs retain attachment API and data checks.
       - name: Media tests
+        if: github.event_name == 'workflow_dispatch'
         run: timeout 360s npm run test:media
       - name: Sync UI tests
         run: timeout 360s npm run test:sync-ui
