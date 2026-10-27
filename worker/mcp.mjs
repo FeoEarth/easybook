@@ -21,7 +21,7 @@ export async function mcp(request,env,workspaceId=null,access={}){
  const id=msg.id,params=msg.params||{};
  if(!object(params))return error(id,-32602,'Invalid params');
  try{
-  if(msg.method==='initialize')return result(id,{protocolVersion:'2025-03-26',capabilities:{tools:{listChanged:false},resources:{subscribe:false,listChanged:false},prompts:{listChanged:false}},serverInfo:{name:'easybook-mcp',version:'0.8.0'}});
+  if(msg.method==='initialize')return result(id,{protocolVersion:'2025-03-26',capabilities:{tools:{listChanged:false},resources:{subscribe:false,listChanged:false},prompts:{listChanged:false}},serverInfo:{name:'easybook-mcp',version:'0.8.1'}});
   if(msg.method==='ping')return result(id,{});
   if(params.cursor!==undefined&&['tools/list','resources/list','resources/templates/list','prompts/list'].includes(msg.method))fail('INVALID_ARGUMENT','Catalog is a single page; cursor is invalid');
   if(msg.method==='tools/list')return result(id,{tools:[...registry.filter(t=>!t.modernOnly||env.WORKSPACE_IDENTITY_V2==='true').map(publicTool),...Object.entries(aliases).map(([name,target])=>({...publicTool(registry.find(t=>t.name===target)),name,description:'Legacy compatible alias: '+target}))]});
