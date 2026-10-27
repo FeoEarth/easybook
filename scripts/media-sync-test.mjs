@@ -68,7 +68,10 @@ $('attachmentDialog').close();
 // Exercise gallery switching and the actual two-pointer gesture handlers.
 await pick(new File([Buffer.concat([png,Buffer.from([0])])],'第二张.png',{type:'image/png'}));
 await until(()=>w.document.querySelectorAll('[data-type=image] .media-open').length>=2,'second image');
-await until(()=>w.document.querySelector('[data-type=image] .media-detail').textContent.includes('KB'));w.document.querySelector('[data-type=image] .media-open').click();await until(()=>$('attachmentDialog').open);assert.equal($('nextImage').hidden,false);const firstTitle=$('attachmentTitle').textContent;$('nextImage').click();await until(()=>$('attachmentTitle').textContent!==firstTitle,'gallery next');
+await until(()=>w.document.querySelector('[data-type=image] .media-detail').textContent.includes('KB'));w.document.querySelector('[data-type=image] .media-open').click();await until(()=>$('attachmentDialog').open);assert.equal($('nextImage').hidden,false);const firstTitle=$('attachmentTitle').textContent;$('nextImage').click();try{await until(()=>$('attachmentTitle').textContent!==firstTitle,'gallery next')}catch(e){
+ const evidence={firstTitle,title:$('attachmentTitle').textContent,previewHidden:$('attachmentPreview').hidden,images:r.value().doc.content.filter(n=>n.type==='image').map(n=>n.attrs?.assetId),assetTasks:w.easybookActivity.tasks.filter(t=>t.id.startsWith('asset:')).map(t=>({id:t.id,state:t.state,error:t.error})),lastRequests:requests.slice(-10)};
+ throw Error(e.message+'; evidence='+JSON.stringify(evidence));
+}
 const pointer=(type,id,x,y=100)=>{const event=new w.Event(type,{bubbles:true});Object.assign(event,{pointerId:id,clientX:x,clientY:y});$('previewStage').dispatchEvent(event)};
 pointer('pointerdown',1,100);pointer('pointerdown',2,200);pointer('pointermove',2,300);assert.ok($('attachmentPreview').style.transform.includes('scale(2)'));pointer('pointerup',2,300);pointer('pointerup',1,100);$('attachmentDialog').close();
 await pick(new File(['%PDF-1.4\n'],'预览.pdf',{type:'application/pdf'}));await until(()=>[...w.document.querySelectorAll('[data-type=attachment] .media-name')].some(e=>e.textContent==='预览.pdf'));
