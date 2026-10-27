@@ -1,0 +1,66 @@
+name: Easybook 0.8.1 user-approved one-time publication
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/easybook-081-approved-release-once.yml'
+permissions:
+  actions: read
+  contents: write
+jobs:
+  release:
+    if: github.ref == 'refs/heads/main' && github.event.head_commit.message == 'release: user-approved Easybook 0.8.1 publication'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      GH_TOKEN: ${{ github.token }}
+      BUILD_RUN: '40517578046'
+      SOURCE_SHA: 'd65daa3c80b42ccf57f9f34a7acb2bd21e56190f'
+      TAG: 'v0.8.1'
+    steps:
+      - name: Require validated successful Android main build
+        shell: bash
+        run: |
+          set -euo pipefail
+          for attempt in $(seq 1 60); do
+            metadata=$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$BUILD_RUN")
+            head=$(jq -r '.head_sha' <<< "$metadata")
+            branch=$(jq -r '.head_branch' <<< "$metadata")
+            status=$(jq -r '.status' <<< "$metadata")
+            result=$(jq -r '.conclusion // ""' <<< "$metadata")
+            if [[ "$head" != "$SOURCE_SHA" || "$branch" != "main" ]]; then
+              echo 'The APK job source does not match the approved release SHA'; exit 1
+            fi
+            if [[ "$status" == 'completed' ]]; then
+              [[ "$result" == 'success' ]] || { echo "Android build failed: $result"; exit 1; }
+              echo "Validated successful Android run $BUILD_RUN at $SOURCE_SHA"
+              exit 0
+            fi
+            sleep 12
+          done
+          echo 'Timed out checking approved Android build'; exit 1
+      - name: Download signed release artifact
+        shell: bash
+        run: |
+          set -euo pipefail
+          gh run download "$BUILD_RUN" --repo "$GITHUB_REPOSITORY" --name Easybook-APK --dir .
+          test -s Easybook-0.8.1.apk
+          test -s SHA256SUMS.txt
+          sha256sum -c SHA256SUMS.txt
+      - name: Publish approved Easybook 0.8.1
+        shell: bash
+        run: |
+          set -euo pipefail
+          if gh release view "$TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            echo 'Release tag already exists; refusing overwrite'; exit 1
+          fi
+          gh release create "$TAG" Easybook-0.8.1.apk SHA256SUMS.txt \
+            --repo "$GITHUB_REPOSITORY" \
+            --target "$SOURCE_SHA" \
+            --title 'Easybook 0.8.1' \
+            --notes '工作区首页快速切换、独立创建和重命名、个人工作区同步密钥可复制、多人工​​作区不暴露密钥。Android 版本号 57。生产备份已通过 SHA-256 清单校验。沿用现有签名以支持直接升级。'
+      - name: Verify published tag and attached APK
+        shell: bash
+        run: |
+          set -euo pipefail
+          gh release view "$TAG" --repo "$GITHUB_REPOSITORY" --json tagName,assets --jq 'select(.tagName == "v0.8.1" and ([.assets[].name] | index("Easybook-0.8.1.apk") != null) and ([.assets[].name] | index("SHA256SUMS.txt") != null))' | grep -q .
