@@ -9,7 +9,9 @@ permissions:
   contents: write
 jobs:
   release:
-    if: github.ref == 'refs/heads/main' && github.event.head_commit.message == 'release: user-approved Easybook 0.8.1 publication'
+    if: >-
+      github.ref == 'refs/heads/main' &&
+      github.event.head_commit.message == 'release: user-approved Easybook 0.8.1 publication'
     runs-on: ubuntu-latest
     timeout-minutes: 20
     env:
