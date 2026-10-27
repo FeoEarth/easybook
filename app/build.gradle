@@ -4,7 +4,7 @@ android {
     compileSdk 35
     buildFeatures { buildConfig true }
     defaultConfig { buildConfigField 'String', 'SOURCE_SHA', '"' + (System.getenv('GITHUB_SHA') ?: 'local') + '"' }
-    defaultConfig { applicationId 'com.feoearth.easybook.notes'; minSdk 26; targetSdk 35; versionCode 56; versionName '0.8.0'; testInstrumentationRunner (project.hasProperty('nativeGlassProbe') ? 'com.feoearth.easybook.NativeGlassInstrumentation' : 'com.feoearth.easybook.PhaseTwoInstrumentation') }
+    defaultConfig { applicationId 'com.feoearth.easybook.notes'; minSdk 26; targetSdk 35; versionCode 57; versionName '0.8.1'; testInstrumentationRunner (project.hasProperty('nativeGlassProbe') ? 'com.feoearth.easybook.NativeGlassInstrumentation' : 'com.feoearth.easybook.PhaseTwoInstrumentation') }
     signingConfigs {
         debug {
             storeFile file(System.getenv('EASYBOOK_DEBUG_STORE') ?: "${System.properties['user.home']}/.easybook-signing/development.keystore")
