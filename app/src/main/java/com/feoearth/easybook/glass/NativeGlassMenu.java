@@ -72,7 +72,6 @@ public final class NativeGlassMenu {
     }
     private int ink(){return state.optBoolean("dark")?0xfff4f4f7:0xff1c1c1e;}
     private void populate(){
-        navigationRevision++;
         rows.removeAllViews();
         if(panel()){populatePanel();return;}
         if(sort){
@@ -99,10 +98,6 @@ public final class NativeGlassMenu {
         row.setOnTouchListener((v,event)->{if(event.getActionMasked()==MotionEvent.ACTION_DOWN)v.animate().scaleX(.98f).scaleY(.98f).setDuration(ValueAnimator.areAnimatorsEnabled()?90:0).start();else if(event.getActionMasked()==MotionEvent.ACTION_UP||event.getActionMasked()==MotionEvent.ACTION_CANCEL)v.animate().scaleX(1).scaleY(1).setDuration(ValueAnimator.areAnimatorsEnabled()?120:0).start();return false;});
         rows.addView(row,new LinearLayout.LayoutParams(-1,-2));
     }
-    private long navigationRevision;
-    public boolean hasBackTarget(){return isShowing()||syncFrame.surface()!=null;}
-    public View backView(){return closing?null:isShowing()?surface:syncFrame.surface();}
-    public long backRevision(){return navigationRevision;}
     public boolean back(){if(!isShowing()){if(syncFrame.surface()!=null){web.evaluateJavascript("window.easybookSyncSurfaceClose&&window.easybookSyncSurfaceClose()",null);return true;}return false;}if(sort){sort=false;populate();}else dismiss(false);return true;}
     public void refreshBackdrop(){
         if(syncFrame.surface()!=null){web.invalidate();backdrop.invalidate();syncFrame.surface().invalidate();}
@@ -224,7 +219,7 @@ public final class NativeGlassMenu {
         }
     }
     public void dismiss(boolean immediate){
-        if(shield==null||closing)return;closing=true;navigationRevision++;
+        if(shield==null||closing)return;closing=true;
         FrameLayout previous=shield;GlassSurface glass=surface;
         String command=pendingCommand,value=pendingValue;
         Runnable done=()->{

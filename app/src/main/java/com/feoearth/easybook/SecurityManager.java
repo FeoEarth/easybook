@@ -56,8 +56,6 @@ public final class SecurityManager {
     private ConnectionSheet connectionSheet;
     private boolean dark; private long mcpGeneration;
     void setDark(boolean value){dark=value;}
-    android.view.View backView(){return connectionSheet==null?null:connectionSheet.backView();}
-    long backRevision(){return connectionSheet==null?0:connectionSheet.backRevision();}
     boolean back(){return connectionSheet!=null&&connectionSheet.back();}
     void dismissConnection(){if(connectionSheet!=null)connectionSheet.close();}
     void pairing(Runnable changed){activity.runOnUiThread(()->{

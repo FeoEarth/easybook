@@ -20,8 +20,6 @@ import java.util.concurrent.ExecutorService;
 
 public class MainActivity extends Activity {
     private WebView web;
-    private PredictiveBack predictiveBack;
-    private final BackNavigationState backState=new BackNavigationState();
     public com.feoearth.easybook.glass.NativeGlassMenu nativeGlass;
     private long glassGeneration=-1;
     private android.widget.FrameLayout safeArea;
@@ -100,12 +98,6 @@ public class MainActivity extends Activity {
         });
         setContentView(safeArea);
         safeArea.requestApplyInsets();
-        predictiveBack=new PredictiveBack(this,safeArea,new PredictiveBack.Host(){
-            public int target(){return backTarget();}
-            public long revision(int target){return backRevision(target);}
-            public View view(int target){return target==1?security.backView():target==2?nativeGlass.backView():target==3&&ready&&backState.pending==0&&backState.revision>=0?safeArea:null;}
-            public void commit(int target,long revision){commitBack(target,revision);}
-        });
         WebSettings s = web.getSettings();
         if(BuildConfig.DEBUG && BuildConfig.NATIVE_GLASS_PROTOTYPE)web.setWebChromeClient(new WebChromeClient(){
             @Override public boolean onConsoleMessage(ConsoleMessage message){
@@ -130,18 +122,6 @@ public class MainActivity extends Activity {
             if(text==null||text.length()>16*1024*1024)return;
             try{JSONObject envelope=new JSONObject(text);String requestId=envelope.getString("id"),method=envelope.getString("method");JSONObject args=envelope.optJSONObject("args");if(args==null)args=new JSONObject();final JSONObject input=args;final long generation=documentGeneration;
                 if(!requestId.matches("[a-zA-Z0-9-]{1,80}"))return;
-                // Navigation is UI metadata, not an IO operation or a new privileged bridge.
-                // It shares the exact origin/main-frame/document checks above.
-                if(method.equals("navigation.state")||method.equals("navigation.finish")){
-                    if(method.equals("navigation.state")){
-                        if(input.length()!=2||!(input.opt("revision") instanceof Number)||!(input.opt("canGoBack") instanceof Boolean))return;
-                        backState.update(input.getLong("revision"),input.getBoolean("canGoBack"));
-                    }else{
-                        if(input.length()!=1||!(input.opt("token") instanceof Number))return;
-                        backState.finish(input.getLong("token"));
-                    }
-                    predictiveBack.refresh();respond(reply,generation,new JSONObject().put("id",requestId).put("ok",true).put("result",new JSONObject()));return;
-                }
                 Runnable operation=()->{try{if(destroyed||generation!=documentGeneration)throw new SecurityException();security.authorize(method,input,generation);JSONObject output=dispatch(method,input,generation);respond(reply,generation,new JSONObject().put("id",requestId).put("ok",true).put("result",output));}catch(Exception e){try{respond(reply,generation,new JSONObject().put("id",requestId).put("ok",false).put("error",operationErrorMessage(e)).put("code",operationErrorCode(e)));}catch(Exception ignored){}}};
                 if(method.equals("sync")||method.equals("attachment.get")||method.equals("attachment.open")||method.equals("attachment.share")||method.equals("attachment.export"))syncIo.execute(operation);else io.execute(operation);
             }catch(Exception ignored){}
@@ -160,10 +140,7 @@ public class MainActivity extends Activity {
                 if (LOCAL.equals(u.toString())) {
                     try {
                         boolean legacy=false;
-                        String html=readAsset("index.html");
-                        {String marker="if(native){$('pairKey').remove();";if(html.indexOf(marker)<0)throw new IOException("Navigation adapter anchor missing");
-                            try(InputStream back=getResources().openRawResource(R.raw.predictive_back)){html=html.replace(marker,readUtf8(back)+"\n"+marker);}}
-                        html=html.replace("</head>","<script>localStorage.setItem(\"easybook-fast-mode\",\""+getPreferences(MODE_PRIVATE).getBoolean("fastMode",false)+"\");</script></head>");if(!legacy)html=html.replace("connect-src 'self' https://easybook-sync.1902521952.workers.dev","connect-src 'self'");
+                        String html=readAsset("index.html");html=html.replace("</head>","<script>localStorage.setItem(\"easybook-fast-mode\",\""+getPreferences(MODE_PRIVATE).getBoolean("fastMode",false)+"\");</script></head>");if(!legacy)html=html.replace("connect-src 'self' https://easybook-sync.1902521952.workers.dev","connect-src 'self'");
                         html=html.replace("<script>","<script>"+(legacy?"window.EasybookRollbackMode=true;":"")+readAsset("native-api.js")+"</script><script>");
                         if(BuildConfig.NATIVE_GLASS_PROTOTYPE && android.os.Build.VERSION.SDK_INT>=33&&!getPreferences(MODE_PRIVATE).getBoolean("fastMode",false))html=html.replace("</body>","<script>"+readAsset("native-glass/dock-surface.js")+";"+readAsset("native-glass/toolbar-surface.js")+";"+readAsset("native-glass/format-surface.js")+";"+readAsset("native-glass/move-surface.js")+";"+readAsset("native-glass/sync-surface.js")+";"+readAsset("native-glass/menu.js")+"</script></body>");
                         html=html.replace("</body>","<script>"+readAsset("native-glass/highlight-palette.js")+";"+readAsset("native-glass/adaptive-toolbar.js")+"</script></body>");
@@ -176,11 +153,10 @@ public class MainActivity extends Activity {
                 return new WebResourceResponse("text/plain", "UTF-8", new ByteArrayInputStream(new byte[0]));
             }
             @Override public boolean shouldOverrideUrlLoading(WebView v, WebResourceRequest r) { return !r.isForMainFrame() || !LOCAL.equals(r.getUrl().toString()); }
-            @Override public void onPageStarted(WebView v,String url,android.graphics.Bitmap icon){ready=false;documentGeneration++;backState.reset();if(predictiveBack!=null){predictiveBack.cancel();predictiveBack.refresh();}if(nativeGlass!=null){nativeGlass.clearFormatFrame();nativeGlass.dismiss(true);}}
+            @Override public void onPageStarted(WebView v,String url,android.graphics.Bitmap icon){ready=false;documentGeneration++;if(nativeGlass!=null){nativeGlass.clearFormatFrame();nativeGlass.dismiss(true);}}
         });
         web.loadUrl(LOCAL);
     }
-    private static String readUtf8(InputStream input)throws IOException{ByteArrayOutputStream out=new ByteArrayOutputStream();byte[] buffer=new byte[8192];int count;while((count=input.read(buffer))!=-1)out.write(buffer,0,count);return out.toString("UTF-8");}
     private String readAsset(String name)throws IOException {try(InputStream in=getAssets().open(name);ByteArrayOutputStream out=new ByteArrayOutputStream()){byte[] b=new byte[8192];int n;while((n=in.read(b))!=-1)out.write(b,0,n);return out.toString("UTF-8");}}
     private void respond(JavaScriptReplyProxy reply,long generation,JSONObject value){runOnUiThread(()->{if(!destroyed&&generation==documentGeneration&&LOCAL.equals(web.getUrl()))try{reply.postMessage(value.toString());}catch(IllegalStateException ignored){}});}
     private String bounded(JSONObject args,String name,int max)throws Exception{if(!(args.get(name) instanceof String))throw new IllegalArgumentException();String s=args.getString(name);if(s.length()>max)throw new IllegalArgumentException("Value too large");return s;}
@@ -312,7 +288,7 @@ public class MainActivity extends Activity {
                 runOnUiThread(()->{if(!destroyed && ready && generation==documentGeneration){glassGeneration=generation;if(!nativeGlass.show(args))web.evaluateJavascript("window.easybookNativeGlassFallback && window.easybookNativeGlassFallback()",null);}});
                 return new JSONObject().put("accepted",true);
             }
-            case "ui.ready":runOnUiThread(()->{if(!destroyed&&generation==documentGeneration){ready=true;web.evaluateJavascript("window.easybookPublishBackState&&window.easybookPublishBackState()",null);receiveShare(getIntent());}});return new JSONObject();
+            case "ui.ready":runOnUiThread(()->{if(!destroyed&&generation==documentGeneration){ready=true;receiveShare(getIntent());}});return new JSONObject();
             case "device.theme":{String mode=bounded(args,"value",10);if(!mode.matches("auto|light|dark"))throw new IllegalArgumentException();new DeviceActions().theme(mode);break;}
             case "device.haptic":runOnUiThread(()->web.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP));break;
             case "device.copy":new DeviceActions().copy(bounded(args,"value",100000));break;
@@ -393,33 +369,15 @@ public class MainActivity extends Activity {
         }
     }
     @Override protected void onNewIntent(Intent i) { super.onNewIntent(i); setIntent(i); if(nativeAccount==null||!nativeAccount.handle(i))receiveShare(i); }
-    private int backTarget(){
-        if(security!=null&&security.backView()!=null)return 1;
-        if(nativeGlass!=null&&nativeGlass.hasBackTarget())return 2;
-        return backState.intercept()?3:0;
-    }
-    private long backRevision(int target){return target==1?security.backRevision():target==2?nativeGlass.backRevision():backState.revision;}
-    private void commitBack(int target,long revision){
-        if(target!=backTarget()||revision!=backRevision(target))return;
-        if(target==1){security.back();return;}
-        if(target==2){nativeGlass.back();return;}
-        if(!ready||!LOCAL.equals(web.getUrl()))return;
-        long token=backState.begin(revision);if(token==0)return;
-        web.evaluateJavascript("window.easybookCommitBack&&window.easybookCommitBack("+revision+","+token+")",null);
-        final long generation=documentGeneration;
-        // Recover a lost renderer acknowledgment without falling through to Activity exit.
-        web.postDelayed(()->{if(!destroyed&&generation==documentGeneration&&backState.finish(token)){
-            backState.reset();web.evaluateJavascript("window.easybookCancelBack&&window.easybookCancelBack("+token+");window.easybookPublishBackState&&window.easybookPublishBackState()",null);predictiveBack.refresh();
-        }},15000);
-    }
     @Override public void onBackPressed() {
-        if(android.os.Build.VERSION.SDK_INT>=33){if(predictiveBack!=null)predictiveBack.invoke();return;}
-        int target=backTarget();if(target!=0){commitBack(target,backRevision(target));return;}
-        super.onBackPressed();
+        if(security!=null && security.back())return;
+        if(nativeGlass!=null && nativeGlass.back())return;
+        if (!ready) {super.onBackPressed(); return;}
+        web.evaluateJavascript("window.handleBack()", handled -> {if (!"true".equals(handled)) MainActivity.super.onBackPressed();});
     }
-    @Override protected void onResume(){super.onResume();if(predictiveBack!=null)predictiveBack.resume();if(nativeAccount!=null)nativeAccount.resume();}
-    @Override protected void onPause() { if(predictiveBack!=null)predictiveBack.pause(); if(security!=null)security.dismissConnection(); if(nativeGlass!=null)nativeGlass.dismiss(true);web.evaluateJavascript("window.persistNow && window.persistNow()", null); super.onPause(); }
-    @Override protected void onDestroy() { if(predictiveBack!=null)predictiveBack.destroy(); if(nativeAccount!=null)nativeAccount.cancel(); if(security!=null)security.dismissConnection(); if(connectivity!=null&&networkCallback!=null)connectivity.unregisterNetworkCallback(networkCallback); if(nativeGlass!=null){nativeGlass.clearFormatFrame();nativeGlass.dismiss(true);}ready=false; destroyed=true;if(WebViewFeature.isFeatureSupported(WebViewFeature.WEB_MESSAGE_LISTENER))WebViewCompat.removeWebMessageListener(web,"EasybookNative");web.destroy();io.shutdown();super.onDestroy(); }
+    @Override protected void onResume(){super.onResume();if(nativeAccount!=null)nativeAccount.resume();}
+    @Override protected void onPause() { if(security!=null)security.dismissConnection(); if(nativeGlass!=null)nativeGlass.dismiss(true);web.evaluateJavascript("window.persistNow && window.persistNow()", null); super.onPause(); }
+    @Override protected void onDestroy() { if(nativeAccount!=null)nativeAccount.cancel(); if(security!=null)security.dismissConnection(); if(connectivity!=null&&networkCallback!=null)connectivity.unregisterNetworkCallback(networkCallback); if(nativeGlass!=null){nativeGlass.clearFormatFrame();nativeGlass.dismiss(true);}ready=false; destroyed=true;if(WebViewFeature.isFeatureSupported(WebViewFeature.WEB_MESSAGE_LISTENER))WebViewCompat.removeWebMessageListener(web,"EasybookNative");web.destroy();io.shutdown();super.onDestroy(); }
 }
 
 

@@ -68,8 +68,6 @@ jobs:
           node-version: '24'
           cache: npm
       - run: npm ci
-      - name: Predictive back navigation contract
-        run: node scripts/predictive-back-test.mjs
       - name: Focused folder navigation regression
         run: node scripts/folder-navigation-test.mjs
       - name: Attachment protocol static checks
@@ -77,7 +75,7 @@ jobs:
       - name: Build editor and focused table integrity
         run: npm run build:editor && node scripts/table-integrity.mjs && node scripts/picker-static-check.mjs
       - name: Android and Web table contract consistency
-        run: gradle :app:testReleaseUnitTest --tests com.feoearth.easybook.BackNavigationStateTest --tests com.feoearth.easybook.TableContractTest --tests com.feoearth.easybook.NativeMcpPairingTest --tests com.feoearth.easybook.NativeAccountErrorsTest --tests com.feoearth.easybook.AccountBridgePermissionTest --tests com.feoearth.easybook.NativeTransportTest --no-daemon
+        run: gradle :app:testReleaseUnitTest --tests com.feoearth.easybook.TableContractTest --tests com.feoearth.easybook.NativeMcpPairingTest --tests com.feoearth.easybook.NativeAccountErrorsTest --tests com.feoearth.easybook.AccountBridgePermissionTest --tests com.feoearth.easybook.NativeTransportTest --no-daemon
       - name: Build release APK
         run: gradle :app:assembleRelease --no-daemon
       - name: Verify APK signing
