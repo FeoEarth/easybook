@@ -49,6 +49,7 @@ final class ConnectionSheet {
         inputPage();page.requestFocus();
     }
     private void begin(String title,Runnable back){
+        navigationRevision++;
         hideKeyboard();if(input!=null)input.setText("");body.removeAllViews();navigation.removeAllViews();backAction=back;editing=false;
         backButton=new View(activity){private final android.graphics.Paint paint=new android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG);@Override protected void onDraw(android.graphics.Canvas canvas){super.onDraw(canvas);paint.setColor(ink());paint.setStyle(android.graphics.Paint.Style.STROKE);paint.setStrokeWidth(dp(2.3f));paint.setStrokeCap(android.graphics.Paint.Cap.ROUND);paint.setStrokeJoin(android.graphics.Paint.Join.ROUND);android.graphics.Path path=new android.graphics.Path();float x=getWidth()/2f,y=getHeight()/2f;path.moveTo(x+dp(3),y-dp(8));path.lineTo(x-dp(5),y);path.lineTo(x+dp(3),y+dp(8));canvas.drawPath(path,paint);}};
         backButton.setBackground(new android.graphics.drawable.RippleDrawable(android.content.res.ColorStateList.valueOf(dark?0x22ffffff:0x16000000),fill(paper(),22),null));backButton.setContentDescription("返回");backButton.setFocusable(true);backButton.setOnClickListener(v->{if(!busy)backAction.run();});
@@ -75,6 +76,9 @@ final class ConnectionSheet {
     void credential(String key,Runnable copy){if(page==null)return;begin("本机同步密钥",this::inputPage);label("同步密钥");TextView value=text(key,17,ink());value.setTypeface(Typeface.MONOSPACE);value.setPadding(dp(16),dp(16),dp(16),dp(16));value.setBackground(fill(paper(),20));value.setTextIsSelectable(false);add(value);note("仅向自己的设备提供，不要发送给 AI 或其他人。");primary("复制密钥",()->{copy.run();inputPage();feedback.setText("密钥已复制，请仅提供给自己的设备");});}
     void error(String message){if(page==null)return;busy=false;pending="";if(!editing)inputPage();feedback.setTextColor(0xffff3b30);feedback.setText(message);}
     void mcpSuccess(){if(page==null)return;busy=false;pending="";begin("授权成功",this::close);label("工作区授权");row("本次配对已完成","当前客户端已获得工作区只读授权");note("请返回 AI 客户端继续使用。");primary("完成",this::close);}
+    private long navigationRevision;
+    View backView(){return page;}
+    long backRevision(){return navigationRevision;}
     boolean back(){if(page==null)return false;if(!busy){if(Build.VERSION.SDK_INT>=30&&page.getRootWindowInsets()!=null&&page.getRootWindowInsets().isVisible(WindowInsets.Type.ime())){hideKeyboard();if(input!=null)input.clearFocus();}else backAction.run();}return true;}
     private void hideKeyboard(){if(page!=null)((InputMethodManager)activity.getSystemService(Context.INPUT_METHOD_SERVICE)).hideSoftInputFromWindow(page.getWindowToken(),0);}
     void close(){if(page==null)return;hideKeyboard();pending="";if(input!=null)input.setText("");body.removeAllViews();navigation.removeAllViews();if(backdrop!=null)backdrop.captureFor(null);root.removeView(page);page=null;if(!secureBefore)activity.getWindow().clearFlags(WindowManager.LayoutParams.FLAG_SECURE);closed.run();}
