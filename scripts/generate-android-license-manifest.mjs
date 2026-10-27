@@ -104,7 +104,7 @@ for(const artifact of resolved.values()){
   const author=organization||
     (group.startsWith('androidx.')?'The Android Open Source Project':
       group.startsWith('com.google.')?'Google LLC':
-      group.startsWith('org.jetbrains.')?'JetBrains s.r.o.':'Upstream project contributors');
+      (group==='org.jetbrains'||group.startsWith('org.jetbrains.'))?'JetBrains s.r.o.':'Upstream project contributors');
   const termsUrl=sdk?licenses[0].url:
     guavaPlaceholder?'https://www.apache.org/licenses/LICENSE-2.0':licenses[0].url;
   if(!termsUrl?.startsWith('https://')&&!termsUrl?.startsWith('http://'))throw Error('Missing upstream license URL for '+id);
