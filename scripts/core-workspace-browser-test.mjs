@@ -50,6 +50,12 @@ try{
  await Promise.all([pa.waitForEvent('load'),pa.locator('#workspaceSwitchList button').filter({hasText:'我的主工作区'}).click()]);
  await settings(pa);
  await pa.locator('#workspaceList [aria-current=true]').getByText('我的主工作区',{exact:true}).waitFor();
- // Account-only selection deliberately does not expose a copyable sync key.
+ // An account-linked PERSONAL workspace still exposes a key that is present on this device.
+ const firstPersonalKey=await readKey(pa);
+ assert.match(firstPersonalKey,/^[a-f0-9]{64}$/);
+ assert.notEqual(firstPersonalKey,fresh,'switching must not mix workspace credentials');
+ const firstIdentity=await req('/api/workspaces',{headers:{Authorization:'Bearer '+firstPersonalKey}});
+ assert.equal(firstIdentity.status,200,'existing personal key remains usable after account switch');
+ assert.equal((await firstIdentity.json()).workspaces[0].name,'我的主工作区');
  assert.deepEqual(errors,[]);console.log('PASS browser: anonymous two-device sync; workspace create, rename, home quick-switch and isolation; key rotation and no runtime errors.');
 }finally{await browser.close()}
