@@ -99,7 +99,16 @@ public class MainActivity extends Activity {
         setContentView(safeArea);
         safeArea.requestApplyInsets();
         WebSettings s = web.getSettings();
-        if(BuildConfig.DEBUG && BuildConfig.NATIVE_GLASS_PROTOTYPE)web.setWebChromeClient(new WebChromeClient(){
+        web.setWebChromeClient(new WebChromeClient(){
+            @Override public void onShowCustomView(View view,CustomViewCallback callback){
+                if(videoFullscreen!=null||!LOCAL.equals(web.getUrl())){callback.onCustomViewHidden();return;}
+                videoFullscreen=view;videoFullscreenCallback=callback;videoSystemUi=getWindow().getDecorView().getSystemUiVisibility();videoOrientation=getRequestedOrientation();
+                videoFullscreen.setBackgroundColor(android.graphics.Color.BLACK);
+                ((ViewGroup)getWindow().getDecorView()).addView(view,new ViewGroup.LayoutParams(-1,-1));
+                getWindow().getDecorView().setSystemUiVisibility(View.SYSTEM_UI_FLAG_FULLSCREEN|View.SYSTEM_UI_FLAG_HIDE_NAVIGATION|View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY|View.SYSTEM_UI_FLAG_LAYOUT_STABLE|View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN|View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION);
+                setRequestedOrientation(android.content.pm.ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE);
+            }
+            @Override public void onHideCustomView(){hideVideoFullscreen();}
             @Override public boolean onConsoleMessage(ConsoleMessage message){
                 if(message.messageLevel()==ConsoleMessage.MessageLevel.ERROR)android.util.Log.e("NativeGlassProbe",message.message()+" at "+message.lineNumber());
                 return false;
@@ -131,7 +140,25 @@ public class MainActivity extends Activity {
                 Uri u = r.getUrl();
                 if ("https://appassets.androidplatform.net/editor.js".equals(u.toString())) {try{return new WebResourceResponse("application/javascript","UTF-8",new ByteArrayInputStream(readAsset("editor.js").getBytes(StandardCharsets.UTF_8)));}catch(IOException e){return new WebResourceResponse("text/plain","UTF-8",new ByteArrayInputStream(new byte[0]));}}
                 if("https".equals(u.getScheme())&&"appassets.androidplatform.net".equals(u.getHost())&&u.getPath()!=null&&u.getPath().matches("/attachment/[a-f0-9]{64}")){
-                    try{String id=u.getLastPathSegment(),space=repository.activeSpace();requireAttachmentReference(space,id);JSONObject meta=repository.row(space,"attachment",id);String mime=meta.optString("mime","application/octet-stream");if(!mime.matches("image/(png|jpeg|gif|webp)|application/pdf|text/plain|(audio|video)/[a-zA-Z0-9.+-]+"))mime="application/octet-stream";File original=repository.attachments.file(space,id);long length=original.length(),start=0,end=length-1;String range=r.getRequestHeaders().get("Range");if(range==null)range=r.getRequestHeaders().get("range");boolean partial=range!=null;if(partial){java.util.regex.Matcher match=java.util.regex.Pattern.compile("bytes=([0-9]*)-([0-9]*)").matcher(range);if(!match.matches()||match.group(1).isEmpty()&&match.group(2).isEmpty())throw new IOException("Invalid range");if(match.group(1).isEmpty())start=Math.max(0,length-Long.parseLong(match.group(2)));else{start=Long.parseLong(match.group(1));if(!match.group(2).isEmpty())end=Math.min(end,Long.parseLong(match.group(2)));}if(start>end||start>=length)throw new IOException("Invalid range");}FileInputStream input=new FileInputStream(original);input.getChannel().position(start);final long count=Math.max(0,end-start+1);InputStream stream=new FilterInputStream(input){long remaining=count;@Override public int read()throws IOException{if(remaining==0)return -1;int v=super.read();if(v>=0)remaining--;return v;}@Override public int read(byte[] b,int off,int len)throws IOException{if(remaining==0)return -1;int n=in.read(b,off,(int)Math.min(len,remaining));if(n>0)remaining-=n;return n;}};Map<String,String> headers=new HashMap<>();headers.put("Cache-Control","no-store");headers.put("Accept-Ranges","bytes");headers.put("Content-Length",Long.toString(count));if(partial)headers.put("Content-Range","bytes "+start+"-"+end+"/"+length);return new WebResourceResponse(mime,null,partial?206:200,partial?"Partial Content":"OK",headers,stream);}catch(Exception e){return new WebResourceResponse("text/plain","UTF-8",404,"Not Found",Collections.emptyMap(),new ByteArrayInputStream(new byte[0]));}
+                    try{
+                        String id=u.getLastPathSegment(),space=repository.activeSpace();requireAttachmentReference(space,id);
+                        JSONObject meta=repository.row(space,"attachment",id);if(meta==null)throw new IOException();
+                        String mime=meta.optString("mime","application/octet-stream");
+                        if(mime.equals("application/octet-stream")){String name=meta.optString("name","").toLowerCase(java.util.Locale.ROOT);if(name.endsWith(".mp4")||name.endsWith(".m4v"))mime="video/mp4";else if(name.endsWith(".mov"))mime="video/quicktime";else if(name.endsWith(".webm"))mime="video/webm";}
+                        if(!mime.matches("image/(png|jpeg|gif|webp)|application/pdf|text/plain|(audio|video)/[a-zA-Z0-9.+-]+"))mime="application/octet-stream";
+                        File original=repository.attachments.file(space,id);if(!original.isFile())throw new IOException();long length=original.length();
+                        String range=null;for(Map.Entry<String,String> header:r.getRequestHeaders().entrySet())if(header.getKey().equalsIgnoreCase("Range"))range=header.getValue();
+                        AttachmentRange bytes;try{bytes=AttachmentRange.parse(range,length);}catch(IOException invalid){Map<String,String> headers=new HashMap<>();headers.put("Content-Range","bytes */"+length);headers.put("Content-Length","0");headers.put("Cache-Control","no-store");return new WebResourceResponse("text/plain","UTF-8",416,"Range Not Satisfiable",headers,new ByteArrayInputStream(new byte[0]));}
+                        FileInputStream input=new FileInputStream(original);try{input.getChannel().position(bytes.start);}catch(IOException error){input.close();throw error;}
+                        InputStream stream=new FilterInputStream(input){long remaining=bytes.count;
+                            @Override public int read()throws IOException{if(remaining==0)return -1;int v=in.read();if(v>=0)remaining--;return v;}
+                            @Override public int read(byte[] b,int off,int len)throws IOException{if(len==0)return 0;if(remaining==0)return -1;int n=in.read(b,off,(int)Math.min(len,remaining));if(n>0)remaining-=n;return n;}
+                            @Override public long skip(long n)throws IOException{long skipped=in.skip(Math.min(Math.max(0,n),remaining));remaining-=skipped;return skipped;}
+                            @Override public int available()throws IOException{return (int)Math.min(remaining,in.available());}
+                        };
+                        Map<String,String> headers=new HashMap<>();headers.put("Cache-Control","no-store");headers.put("Accept-Ranges","bytes");headers.put("Content-Length",Long.toString(bytes.count));headers.put("X-Content-Type-Options","nosniff");if(bytes.partial)headers.put("Content-Range","bytes "+bytes.start+"-"+bytes.end+"/"+length);
+                        return new WebResourceResponse(mime,null,bytes.partial?206:200,bytes.partial?"Partial Content":"OK",headers,stream);
+                    }catch(Exception e){return new WebResourceResponse("text/plain","UTF-8",404,"Not Found",Collections.emptyMap(),new ByteArrayInputStream(new byte[0]));}
                 }
                 if("https".equals(u.getScheme())&&"appassets.androidplatform.net".equals(u.getHost())&&u.getPath()!=null&&u.getPath().startsWith("/pdf/")&&!u.getPath().contains("..")&&u.getPath().matches("/pdf/[A-Za-z0-9_./-]+")){
                     String asset=u.getPath().substring(1),mime=asset.endsWith(".mjs")||asset.endsWith(".js")?"application/javascript":asset.endsWith(".css")?"text/css":asset.endsWith(".md")?"text/plain":asset.endsWith(".wasm")?"application/wasm":asset.endsWith(".json")?"application/json":asset.endsWith(".svg")?"image/svg+xml":asset.endsWith(".ttf")?"font/ttf":"application/octet-stream";
@@ -369,15 +396,18 @@ public class MainActivity extends Activity {
         }
     }
     @Override protected void onNewIntent(Intent i) { super.onNewIntent(i); setIntent(i); if(nativeAccount==null||!nativeAccount.handle(i))receiveShare(i); }
+    private View videoFullscreen;private WebChromeClient.CustomViewCallback videoFullscreenCallback;private int videoSystemUi,videoOrientation;
+    private void hideVideoFullscreen(){if(videoFullscreen==null)return;View view=videoFullscreen;WebChromeClient.CustomViewCallback callback=videoFullscreenCallback;videoFullscreen=null;videoFullscreenCallback=null;((ViewGroup)view.getParent()).removeView(view);getWindow().getDecorView().setSystemUiVisibility(videoSystemUi);setRequestedOrientation(videoOrientation);callback.onCustomViewHidden();safeArea.requestApplyInsets();}
     @Override public void onBackPressed() {
+        if(videoFullscreen!=null){hideVideoFullscreen();return;}
         if(security!=null && security.back())return;
         if(nativeGlass!=null && nativeGlass.back())return;
         if (!ready) {super.onBackPressed(); return;}
         web.evaluateJavascript("window.handleBack()", handled -> {if (!"true".equals(handled)) MainActivity.super.onBackPressed();});
     }
     @Override protected void onResume(){super.onResume();if(nativeAccount!=null)nativeAccount.resume();}
-    @Override protected void onPause() { if(security!=null)security.dismissConnection(); if(nativeGlass!=null)nativeGlass.dismiss(true);web.evaluateJavascript("window.persistNow && window.persistNow()", null); super.onPause(); }
-    @Override protected void onDestroy() { if(nativeAccount!=null)nativeAccount.cancel(); if(security!=null)security.dismissConnection(); if(connectivity!=null&&networkCallback!=null)connectivity.unregisterNetworkCallback(networkCallback); if(nativeGlass!=null){nativeGlass.clearFormatFrame();nativeGlass.dismiss(true);}ready=false; destroyed=true;if(WebViewFeature.isFeatureSupported(WebViewFeature.WEB_MESSAGE_LISTENER))WebViewCompat.removeWebMessageListener(web,"EasybookNative");web.destroy();io.shutdown();super.onDestroy(); }
+    @Override protected void onPause() { if(security!=null)security.dismissConnection(); if(nativeGlass!=null)nativeGlass.dismiss(true);web.evaluateJavascript("window.EasybookVideo?.pauseAll();window.persistNow && window.persistNow()", null); super.onPause(); }
+    @Override protected void onDestroy() { hideVideoFullscreen(); if(nativeAccount!=null)nativeAccount.cancel(); if(security!=null)security.dismissConnection(); if(connectivity!=null&&networkCallback!=null)connectivity.unregisterNetworkCallback(networkCallback); if(nativeGlass!=null){nativeGlass.clearFormatFrame();nativeGlass.dismiss(true);}ready=false; destroyed=true;if(WebViewFeature.isFeatureSupported(WebViewFeature.WEB_MESSAGE_LISTENER))WebViewCompat.removeWebMessageListener(web,"EasybookNative");web.destroy();io.shutdown();super.onDestroy(); }
 }
 
 

@@ -5,3 +5,6 @@ window.EasybookSyncPolicy=policy;
 
 import * as attachments from '../shared/attachments.mjs';
 window.EasybookAttachments=attachments;
+
+import {createVideoPlayer,mediaMime} from './video-player.js';
+window.EasybookVideo={create:createVideoPlayer,mime:mediaMime,pauseAll:()=>document.querySelectorAll('video').forEach(v=>v.pause())};
