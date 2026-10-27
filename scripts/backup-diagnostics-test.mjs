@@ -1,0 +1,43 @@
+import assert from 'node:assert/strict';
+import {DatabaseSync} from 'node:sqlite';
+import {readFileSync} from 'node:fs';
+import {backupDiagnostics} from '../worker/backup-diagnostics.mjs';
+import {backupDiagnosticsRoute} from '../mcp-oauth/src/backup-diagnostics.mjs';
+import {createWorkspace,convertToShared} from '../worker/workspace-identity.mjs';
+import {createSession,ACCOUNT_COOKIE} from '../mcp-oauth/src/accounts.mjs';
+
+const sql=new DatabaseSync(':memory:');
+for(const file of ['worker/schema.sql','mcp-oauth/migrations/0002_accounts.sql','mcp-oauth/migrations/0003_passkeys.sql','mcp-oauth/migrations/0004_native_identity.sql','worker/migrations/0008-mcp-capabilities.sql','worker/migrations/0009-mcp-uploads.sql','worker/migrations/0010-workspace-identity.sql','worker/migrations/0011-oauth-workspaces.sql','worker/migrations/0012-account-approvals.sql','worker/migrations/0013-permanent-operations.sql','worker/migrations/0014-notifications-audit.sql'])sql.exec(readFileSync(file,'utf8'));
+const DB={prepare(text){const q=sql.prepare(text);let p=[];return {bind(...args){p=args;return this},async first(){return q.get(...p)||null},async all(){return {results:q.all(...p)}},async run(){return q.run(...p)}}},async batch(statements){sql.exec('BEGIN');try{const r=[];for(const s of statements)r.push(await s.all());sql.exec('COMMIT');return r}catch(e){sql.exec('ROLLBACK');throw e}}};
+const env={DB,WORKSPACE_IDENTITY_V2:'true'},alice={kind:'account',accountId:crypto.randomUUID()},bob={kind:'account',accountId:crypto.randomUUID()},carol={kind:'account',accountId:crypto.randomUUID()};
+for(const actor of [alice,bob,carol])sql.prepare('INSERT INTO accounts VALUES(?,?,?,NULL)').run(actor.accountId,'Synthetic',Date.now());
+const own=(await createWorkspace(env,'Managed',alice)).workspace.id,shared=(await createWorkspace(env,'Editor only',bob)).workspace.id,foreign=(await createWorkspace(env,'Other account',carol)).workspace.id;
+await convertToShared(env,shared,bob,{confirm:true,firstAccountId:alice.accountId,role:'editor'});
+function note(workspace,asset,title='Fixture',id=crypto.randomUUID()){
+ sql.prepare('INSERT INTO notes_json(workspace,id,title,document,icon,favorite,deleted,version,mutation,updated) VALUES(?,?,?,?,?,0,0,1,?,?)').run(workspace,id,title,JSON.stringify({schemaVersion:1,doc:{type:'doc',content:[{type:'attachment',attrs:{assetId:'sha256:'+asset,name:'<img onerror=bad>'}}]}}),'📄',crypto.randomUUID(),Date.now());
+}
+note(own,'a'.repeat(64),'<script>bad</script>','00000000-0000-4000-8000-000000000001');
+for(let i=0;i<12;i++)note(own,(i%10).toString().repeat(64));
+note(own,'b'.repeat(64),'Legacy present');note(own,'c'.repeat(64),'Manifest present');note(own,'d'.repeat(64),'Permanently removed');
+note(shared,'e'.repeat(64),'Editor-private fixture');note(foreign,'a'.repeat(64),'Foreign-private fixture');
+sql.prepare('INSERT INTO attachment_tombstones(workspace,attachment,approval_id,created_at) VALUES(?,?,?,?)').run(own,'d'.repeat(64),'fixture',Date.now());
+const present=new Set([own+'/'+'b'.repeat(64),own+'/'+'c'.repeat(64)+'/manifest-v2',foreign+'/'+'a'.repeat(64)]),heads=[];
+env.ATTACHMENTS={async head(key){heads.push(key);return present.has(key)?{size:1}:null}};
+sql.prepare("INSERT INTO identity_maintenance_runs(name,error) VALUES('business-backup','BACKUP_RETRY:attachment_missing')").run();
+const before=sql.prepare('SELECT workspace,id,title,document,version FROM notes_json ORDER BY workspace,id').all();
+let cursor=null,checked=0,missing=[];do{const page=await backupDiagnostics(env,alice.accountId,{cursor});assert.equal(page.backup.state,'failed');assert.equal(page.backup.last_success,null);assert.equal(page.read_only,true);checked+=page.checked;missing.push(...page.missing);cursor=page.next_cursor;}while(cursor);
+assert.equal(checked,15);assert.equal(missing.length,13);assert.ok(missing.every(x=>x.workspace===own));assert.ok(heads.every(key=>key.startsWith(own+'/')),'never reads editor or foreign R2 namespaces');
+await assert.rejects(backupDiagnostics(env,alice.accountId,{workspaceId:shared}),e=>e.status===403);
+await assert.rejects(backupDiagnostics(env,alice.accountId,{workspaceId:foreign}),e=>e.status===403);
+await assert.rejects(backupDiagnostics(env,alice.accountId,{cursor:'invalid'}),e=>e.status===400);
+const login=await createSession(new Request('https://easybook.loonxy.com'),env,alice.accountId),headers={Cookie:ACCOUNT_COOKIE+'='+login.token};
+const htmlResponse=await backupDiagnosticsRoute(new Request('https://easybook.loonxy.com/account/backup-status',{headers}),env),html=await htmlResponse.text();
+assert.equal(htmlResponse.status,200);assert.ok(html.includes('&lt;script&gt;bad&lt;/script&gt;'));assert.ok(!html.includes('<script>bad</script>'));assert.ok(html.includes('尚无成功记录'));assert.ok(html.includes('继续检查更多引用'));
+assert.equal((await backupDiagnosticsRoute(new Request('https://easybook.loonxy.com/account/backup-status',{method:'POST',headers}),env)).status,405);
+assert.equal((await backupDiagnosticsRoute(new Request('https://easybook.loonxy.com/account/backup-status'),env)).status,303);
+const jsonResponse=await backupDiagnosticsRoute(new Request('https://easybook.loonxy.com/account/backup-status?format=json',{headers}),env);assert.equal(jsonResponse.status,200);assert.ok(!(await jsonResponse.text()).includes('Foreign-private'));
+assert.deepEqual(sql.prepare('SELECT workspace,id,title,document,version FROM notes_json ORDER BY workspace,id').all(),before,'all note bodies/versions remain unchanged');
+const storage=env.ATTACHMENTS;env.ATTACHMENTS=null;const unavailable=await backupDiagnosticsRoute(new Request('https://easybook.loonxy.com/account/backup-status',{headers}),env);assert.equal(unavailable.status,503);assert.ok((await unavailable.text()).includes('暂时无法完成检查'));env.ATTACHMENTS=storage;
+const normalHead=env.ATTACHMENTS.head;env.ATTACHMENTS.head=async()=>{sql.prepare('UPDATE workspaces SET manager_account_id=? WHERE id=?').run(bob.accountId,own);return null};
+await assert.rejects(backupDiagnostics(env,alice.accountId),e=>e.status===403,'manager role revoked during storage reads fails closed');env.ATTACHMENTS.head=normalHead;
+sql.close();console.log('PASS backup diagnostics: manager-only tenant isolation, bounded pagination, missing/legacy/manifest/tombstone handling, safe HTML, read-only notes, anonymous/mutation denial, failed backup state and concurrent role revocation.');
