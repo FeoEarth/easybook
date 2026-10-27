@@ -1,5 +1,15 @@
 # Editor dependencies
 
+The machine-generated inventory of pinned production components, original authors,
+SPDX identifiers and full upstream license texts is in
+[`THIRD_PARTY_LICENSES.md`](THIRD_PARTY_LICENSES.md). Refresh it with
+`npm run licenses:generate`; `npm run licenses:check` fails on missing/stale
+license material. The separately licensed PDF.js font, CMap and decoder assets
+are listed there as well. Resolve the exact Android runtime graph (including
+transitive libraries) with `npm run licenses:android`. Proprietary Google Play
+Services components are listed with official Android SDK terms links and are
+not mislabeled as open-source.
+
 The offline editor bundle is built from the exact versions in `package-lock.json`.
 
 - Tiptap open-source editor and extensions: MIT, https://github.com/ueberdosis/tiptap
@@ -7,7 +17,11 @@ The offline editor bundle is built from the exact versions in `package-lock.json
 - ProseMirror packages: MIT, https://github.com/ProseMirror
 - DOMPurify: Apache-2.0 OR MPL-2.0, https://github.com/cure53/DOMPurify
 
-Bundled notices are retained in `app/src/main/assets/editor.js.LEGAL.txt`. Build dependencies and their licenses remain recorded in the lockfile and upstream packages. No licensed Apple fonts or proprietary Liquid Glass renderer are included.
+The minifier's extracted comments remain in `app/src/main/assets/editor.js.LEGAL.txt`;
+that short file alone is **not** the full third-party license inventory. Build
+dependencies and their licenses also remain recorded in the lockfile and
+upstream packages. No licensed Apple fonts or proprietary Liquid Glass renderer
+are included.
 
 
 Native glass production lens: QWEA0/Liquid-Glass-Android (MIT), pinned at 16afe4d8b5d08a370d3f8c50b08d7f5c6eb5da4d. See third_party/qwea0-liquid-glass/NOTICE.md and LICENSE. Historical initial adapter attribution: third_party/liquidglass (Apache-2.0); its shader is no longer shipped.

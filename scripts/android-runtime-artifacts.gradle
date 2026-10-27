@@ -1,0 +1,26 @@
+// Invoked with: gradle -I scripts/android-runtime-artifacts.gradle :app:exportLicenseRuntimeArtifacts
+// Resolves only the release runtime classpath. It does not compile or package an APK.
+gradle.projectsEvaluated {
+    def androidProject = gradle.rootProject.project(':app')
+    androidProject.tasks.register('exportLicenseRuntimeArtifacts') {
+        group = 'verification'
+        description = 'Export the exact Android release runtime artifact coordinates for license auditing.'
+        doLast {
+            def artifacts = androidProject.configurations.getByName('releaseRuntimeClasspath')
+                .resolvedConfiguration.resolvedArtifacts
+            def rows = artifacts.collect { a ->
+                [
+                    group: a.moduleVersion.id.group,
+                    name: a.name,
+                    version: a.moduleVersion.id.version,
+                    type: a.type,
+                    file: a.file.absolutePath
+                ]
+            }.sort { a,b -> "${a.group}:${a.name}:${a.version}" <=> "${b.group}:${b.name}:${b.version}" }
+            def report = new File(androidProject.buildDir, 'reports/license-runtime-artifacts.json')
+            report.parentFile.mkdirs()
+            report.text = groovy.json.JsonOutput.prettyPrint(groovy.json.JsonOutput.toJson(rows)) + '\n'
+            println "Exported ${rows.size()} Android release runtime artifacts to ${report}"
+        }
+    }
+}

@@ -17,6 +17,19 @@ jobs:
           node-version: '24'
       - run: npm ci --no-audit --no-fund
       - run: npm ci --prefix mcp-oauth --no-audit --no-fund
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.9'
+      - name: Resolve actual Android runtime licenses without building APK
+        run: |
+          gradle -I scripts/android-runtime-artifacts.gradle :app:exportLicenseRuntimeArtifacts --no-daemon
+          node scripts/generate-android-license-manifest.mjs --check
+      - name: Verify production third-party license inventory
+        run: npm run licenses:check
       - name: Focused account, migration, isolation, OAuth and restore checks
         run: |
           node scripts/core-workspace-release-test.mjs

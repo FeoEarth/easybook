@@ -29,3 +29,5 @@ Copyright © 2026 Easybook contributors.
 第三方组件
 
 本项目使用的第三方库、框架及其他资源，分别遵循其自身的许可证和版权声明。
+
+详见 [第三方许可证完整清单](THIRD_PARTY_LICENSES.md) 与 [第三方归属说明](THIRD_PARTY_NOTICES.md)。
