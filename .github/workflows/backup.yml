@@ -1,8 +1,6 @@
 name: Verified business backup
 on:
   workflow_dispatch:
-  schedule:
-    - cron: '43 19 * * *'
   push:
     branches: [main]
     paths:
@@ -10,6 +8,8 @@ on:
       - 'scripts/cloudflare-backup.mjs'
       - 'scripts/backup-test.mjs'
       - 'scripts/backup-runner-test.mjs'
+      - 'backup-worker/**'
+      - 'scripts/binding-backup-test.mjs'
       - '.github/workflows/backup.yml'
   pull_request:
     paths:
@@ -17,6 +17,8 @@ on:
       - 'scripts/cloudflare-backup.mjs'
       - 'scripts/backup-test.mjs'
       - 'scripts/backup-runner-test.mjs'
+      - 'backup-worker/**'
+      - 'scripts/binding-backup-test.mjs'
       - '.github/workflows/backup.yml'
 permissions:
   contents: read
@@ -34,9 +36,10 @@ jobs:
           node-version: '24'
       - run: node scripts/backup-test.mjs
       - run: node scripts/backup-runner-test.mjs
+      - run: node scripts/binding-backup-test.mjs
       - run: node scripts/security-restore-test.mjs
   backup:
-    if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
+    if: github.ref == 'refs/heads/main' && github.event_name == 'workflow_dispatch' && vars.ENABLE_LEGACY_GITHUB_BACKUP == 'true'
     needs: verify
     runs-on: ubuntu-latest
     timeout-minutes: 30
