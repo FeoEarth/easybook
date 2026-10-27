@@ -37,7 +37,9 @@ jobs:
       - name: Media tests
         if: github.event_name == 'workflow_dispatch'
         run: timeout 360s npm run test:media
+      # Full sync UI navigation/history checks run on demand; PRs keep sync activity and API assertions.
       - name: Sync UI tests
+        if: github.event_name == 'workflow_dispatch'
         run: timeout 360s npm run test:sync-ui
       - name: Sync activity tests
         run: timeout 300s node scripts/sync-activity-test.mjs
