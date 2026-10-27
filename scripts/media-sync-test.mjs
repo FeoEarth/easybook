@@ -14,8 +14,44 @@ journal.tasks.find(t=>t.id==='h0').updated=Date.now()-31*86400000;
 journal.save();assert.equal(journal.tasks.length,65,'completed history expires after retention period');
 const html=readFileSync('app/src/main/assets/index.html','utf8'),page=new JSDOM(html,{url:'https://easybook.test',runScripts:'outside-only',pretendToBeVisual:true}),w=page.window;
 w.TextEncoder=TextEncoder;w.TextDecoder=TextDecoder;w.indexedDB=new IDBFactory();w.scrollTo=w.scrollBy=()=>{};let urlSerial=0;w.URL.createObjectURL=()=> 'blob:test/'+(++urlSerial);w.URL.revokeObjectURL=()=>{};w.HTMLDialogElement.prototype.showModal=function(){this.open=true};w.HTMLDialogElement.prototype.close=function(){this.open=false;this.dispatchEvent(new w.Event('close'))};Object.defineProperty(w,'crypto',{value:crypto});let savedFile=null,sharedFile=null;w.HTMLAnchorElement.prototype.click=function(){savedFile={name:this.download,url:this.href}};w.navigator.canShare=()=>true;w.navigator.share=async data=>{sharedFile=data.files[0]};let online=false;Object.defineProperty(w.navigator,'onLine',{get:()=>online});
-const remoteFiles=new Map(),remoteNotes=new Map(),requests=[],progress=[];let failUpload=true;
-w.XMLHttpRequest=class {constructor(){this.upload={}}open(method,url){this.method=method;this.url=url}setRequestHeader(){}send(body){requests.push({method:this.method,url:this.url});const id=this.url.split('/').pop();setTimeout(()=>{if(this.method==='PUT'&&failUpload){this.status=503;this.responseText='{}';this.onload();return}let data;if(this.method==='PUT'){const f=JSON.parse(body);this.upload.onprogress?.({loaded:20,total:40,lengthComputable:true});progress.push(w.easybookActivity.tasks.find(t=>t.id==='asset:'+id+':up')?.state);remoteFiles.set(id,f);data={id,size:f.size}}else{data=remoteFiles.get(id);this.onprogress?.({loaded:10,total:20,lengthComputable:true})}this.status=data?200:404;this.responseText=JSON.stringify(data||{});this.onload()},10)}};
+// Emulate the active attachment v2 protocol, not the retired one-shot PUT.
+const remoteFiles=new Map(),remoteParts=new Map(),remoteNotes=new Map(),requests=[],progress=[];let failUpload=true;
+w.XMLHttpRequest=class {
+ constructor(){this.upload={}}
+ open(method,url){this.method=method;this.url=url}
+ setRequestHeader(){}
+ send(body){
+  requests.push({method:this.method,url:this.url});
+  const address=new URL(this.url),id=address.pathname.split('/').pop();
+  setTimeout(()=>{
+   if(this.method==='PUT'&&failUpload){this.status=503;this.responseText='{}';this.onload();return}
+   let data,status=200;
+   if(this.method==='PUT'){
+    const value=JSON.parse(body);
+    this.upload.onprogress?.({loaded:20,total:40,lengthComputable:true});
+    progress.push(w.easybookActivity.tasks.find(t=>t.id==='asset:'+id+':up')?.state);
+    if(value.op==='part'&&address.searchParams.has('part-upload')){
+     const bytes=Buffer.from(value.data,'base64');
+     remoteParts.set(id+':'+value.index,{data:value.data,hash:value.hash,size:bytes.length});
+     data={hash:value.hash,size:bytes.length};
+    }else if(value.op==='commit'&&value.manifest?.id===id){
+     const manifest=value.manifest;
+     const valid=manifest.localOnly||manifest.parts.every((part,index)=>{
+      const stored=remoteParts.get(id+':'+index);
+      return stored?.hash===part.hash&&stored?.size===part.size;
+     });
+     if(valid){remoteFiles.set(id,manifest);data={id,size:manifest.size,localOnly:manifest.localOnly}}
+     else status=409;
+    }else status=400;
+   }else{
+    data=address.searchParams.has('part')?remoteParts.get(id+':'+address.searchParams.get('part')):remoteFiles.get(id);
+    if(!data)status=404;
+    this.onprogress?.({loaded:10,total:20,lengthComputable:true});
+   }
+   this.status=status;this.responseText=JSON.stringify(data||{});this.onload();
+  },10);
+ }
+};
 w.fetch=async(url,options={})=>{requests.push({method:options.method||'GET',url});let data;if(url.includes('/api/folders'))data={folders:[],next:null};else if(options.method==='PUT'){const n=JSON.parse(options.body),note={...n,version:(n.version||0)+1};remoteNotes.set(n.id,note);data={note};}else data={notes:[...remoteNotes.values()],cursor:1,hasMore:false};return {ok:true,status:200,json:async()=>data}};
 w.eval(readFileSync('app/src/main/assets/editor.js','utf8'));w.eval(html.match(/<script>([\s\S]*?)<\/script>/)[1]);
 await until(()=>w.easybookRich&&typeof w.document.getElementById('newTop').onclick==='function','media app boot');
