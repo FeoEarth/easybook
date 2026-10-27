@@ -141,7 +141,8 @@ final class NativeAccount {
     private void browse(String url){activity.runOnUiThread(()->{if(activity.isDestroyed())return;try{activity.startActivity(new Intent(Intent.ACTION_VIEW,Uri.parse(url)).addCategory(Intent.CATEGORY_BROWSABLE));}catch(ActivityNotFoundException e){message("未找到可用的系统浏览器");}});}
     static String credentialMessage(String type,boolean register){
         if(type.contains("CANCELLATION")||type.contains("USER_CANCELED"))return "已取消通行密钥验证，可以重新选择登录方式";
-        if(type.contains("NO_CREDENTIAL"))return "没有可用的通行密钥，请先创建账户或使用 GitHub 登录";
+        if(type.contains("NO_CREDENTIAL"))return "没有可用的通行密钥，请确认已启用保存该密钥的密码管理器；旧域名密钥请使用浏览器登录并重新添加";
+        if(type.contains("SECURITY_ERROR"))return "应用与网站的通行密钥关联验证未通过，请更新 Easybook 后重试，或使用浏览器登录";
         if(type.contains("UNSUPPORTED")||type.contains("PROVIDER_CONFIGURATION"))return "当前设备未提供通行密钥服务，请更新凭据管理器或使用 GitHub 登录";
         if(type.contains("INTERRUPTED"))return "系统验证被中断，请重试";
         if(type.contains("INVALID_STATE"))return "此通行密钥已存在，请使用登录或选择其他凭据";
@@ -169,5 +170,6 @@ final class NativeAccount {
     }
     private void message(String text){feedback=text;activity.runOnUiThread(()->{if(!activity.isDestroyed()){Toast.makeText(activity,text,Toast.LENGTH_LONG).show();if(activity instanceof MainActivity)((MainActivity)activity).accountChanged();}});}
 }
+
 
 
