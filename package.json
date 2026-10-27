@@ -9,6 +9,7 @@
     "build:editor": "node scripts/build-editor.mjs && node scripts/generate-ui.mjs && npm run build:pdf",
     "licenses:generate": "node scripts/generate-third-party-licenses.mjs",
     "licenses:check": "node scripts/generate-third-party-licenses.mjs --check",
+    "licenses:android": "gradle -I scripts/android-runtime-artifacts.gradle :app:exportLicenseRuntimeArtifacts --no-daemon && node scripts/generate-android-license-manifest.mjs && npm run licenses:generate",
     "test": "node scripts/check.mjs && node scripts/document-test.mjs && node scripts/rich-editor-test.mjs && node scripts/format-editor-test.mjs && node scripts/worker-integration.mjs && node scripts/web-store-test.mjs && node scripts/attachment-test.mjs",
     "test:editor": "node scripts/format-editor-test.mjs && node scripts/rich-editor-test.mjs",
     "test:management": "node scripts/note-management-api-test.mjs && node scripts/note-management-ui-test.cjs",

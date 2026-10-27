@@ -14,8 +14,8 @@ const escape=s=>String(s).replaceAll('|','\\|').replaceAll('\n',' ').trim();
 const records=[];
 const licenseTexts=new Map();
 
-function add({name,version,scope,spdx,holder,source,files,note=''}){
-  if(!name||!version||!spdx||!files?.length)throw Error('Incomplete third-party record: '+name);
+function add({name,version,scope,spdx,holder,source,files=[],termsUrl='',note=''}){
+  if(!name||!version||!spdx||(!files.length&&!termsUrl))throw Error('Incomplete third-party record: '+name);
   const licenses=[];
   for(const file of files){
     const contents=read(file);
@@ -25,7 +25,7 @@ function add({name,version,scope,spdx,holder,source,files,note=''}){
     licenseTexts.get(id).sources.push(file);
     licenses.push(id);
   }
-  records.push({name,version,scope,spdx,holder:holder||'未在发布包元数据中明确列出',source,licenses,note});
+  records.push({name,version,scope,spdx,holder:holder||'未在发布包元数据中明确列出',source,licenses,termsUrl,note});
 }
 
 function person(value){
@@ -75,6 +75,18 @@ function collectNpm(directory,scope){
 collectNpm('','Web editor / PDF build');
 collectNpm('mcp-oauth','OAuth Worker');
 
+const androidManifest=JSON.parse(read('third_party/android/runtime-dependencies.json'));
+if(androidManifest.generated_from!=='Gradle :app:releaseRuntimeClasspath'||!androidManifest.modules?.length)
+  throw Error('Missing resolved Android runtime license manifest.');
+const android=androidManifest.modules;
+for(const item of android){
+  const proprietary=item.spdx==='LicenseRef-Android-SDK-License';
+  add({name:item.name,version:item.version,scope:'Android release runtime',spdx:item.spdx,
+    holder:item.author,source:item.source_pom,
+    files:proprietary?[]:[item.license_file],termsUrl:proprietary?item.license_url:'',
+    note:item.note});
+}
+
 // The native shader is a modified, separately licensed MIT work, included in APK assets.
 add({name:'QWEA0/Liquid-Glass-Android (ported shader)',version:'16afe4d8b5d08a370d3f8c50b08d7f5c6eb5da4d',
   scope:'Android APK',spdx:'MIT',holder:'Copyright (c) 2025-2026 pandadog',
@@ -110,17 +122,6 @@ for(const [suffix,spdx,holder] of pdfExtras){
     note:suffix.includes('LIBERATION')?'Custom GPL-2.0-based font agreement with additional exceptions; see original text.':''});
 }
 
-// AndroidX coordinates are declared directly in app/build.gradle. The Gradle
-// runtime classpath is resolved separately; don't misrepresent it as complete.
-const gradle=read('app/build.gradle');
-const android=Array.from(gradle.matchAll(/\bimplementation\s+['"](androidx\.[^:'"]+):([^:'"]+):([^'"]+)['"]/g));
-if(android.length!==3)throw Error('AndroidX direct dependencies changed; update license inventory and resolve runtime graph.');
-for(const [,group,artifact,version] of android){
-  add({name:`${group}:${artifact}`,version,scope:'Android direct dependency',spdx:'Apache-2.0',
-    holder:'Android Open Source Project contributors',source:`app/build.gradle (${group}:${artifact}:${version})`,
-    files:['third_party/pdfjs/LICENSE'],note:'Standard Apache-2.0 text; verify the resolved AAR/POM and transitive dependencies before release.'});
-}
-
 records.sort((a,b)=>a.scope.localeCompare(b.scope)||a.name.localeCompare(b.name)||a.version.localeCompare(b.version));
 
 const sections=[];
@@ -128,18 +129,19 @@ sections.push('# THIRD_PARTY_LICENSES — Third-party production license invento
 sections.push('');
 sections.push('> **Generated file.** Run `npm ci --omit=dev --ignore-scripts` in the repository root and `mcp-oauth/`, then `node scripts/generate-third-party-licenses.mjs`. Do not hand-edit this file.');
 sections.push('');
-sections.push('This inventory retains the original license text bundled with the locked npm package versions, the QWEA0 port, PDF.js embedded font/CMap/decoder licenses, and directly declared AndroidX dependencies. SPDX entries describe the **component**, not a relicensing to Easybook AGPL-3.0-only. Identical full license texts are printed once and referenced by SHA-256.');
+sections.push('This inventory retains the original license text bundled with the locked npm package versions, the QWEA0 port, PDF.js embedded font/CMap/decoder licenses, and the **resolved Android release runtime dependency graph** (including transitive AAR/JAR artifacts). SPDX entries describe the **component**, not a relicensing to Easybook AGPL-3.0-only. Identical full open-source license texts are printed once and referenced by SHA-256.');
 sections.push('');
-sections.push('**Coverage boundary:** development/test and platform-specific optional npm packages are excluded; esbuild is listed but marked build-only. The complete Android `releaseRuntimeClasspath` (including transitive AAR/JAR artifacts and Google Play Services) has **not yet been resolved**. This file is therefore not a final APK-wide legal sign-off. The Liberation font uses its own GPL-2.0-based agreement with exceptions, so it is identified with a local `LicenseRef` rather than inaccurately described as Apache-2.0.');
+sections.push('**Coverage boundary:** development/test and platform-specific optional npm packages are excluded; esbuild is listed but marked build-only. The Android `releaseRuntimeClasspath` is resolved by Gradle, but final APK byte-for-byte contents are not yet audited. Proprietary Google Play Services modules are **not open-source**: their Maven POMs point to the Android SDK License terms, which are linked rather than reproduced as an open-source license text. The Liberation font uses its own GPL-2.0-based agreement with exceptions, identified with a local `LicenseRef` rather than inaccurately described as Apache-2.0.');
 sections.push('');
-sections.push(`Entries: ${records.length} (${records.filter(x=>x.scope==='Web editor / PDF build').length} npm main, ${records.filter(x=>x.scope==='OAuth Worker').length} npm OAuth, ${records.filter(x=>x.scope==='Android APK / Web PDF assets').length} embedded PDF resources, ${android.length} directly declared Android libraries, one native glass port).`);
+sections.push(`Entries: ${records.length} (${records.filter(x=>x.scope==='Web editor / PDF build').length} npm main, ${records.filter(x=>x.scope==='OAuth Worker').length} npm OAuth, ${records.filter(x=>x.scope==='Android APK / Web PDF assets').length} embedded PDF resources, ${android.length} resolved Android runtime modules, one native glass port).`);
 sections.push('');
 sections.push('## Component inventory');
 sections.push('');
-sections.push('| Component | Version | Distributed in / scope | SPDX | Original author / copyright | Full text |');
+sections.push('| Component | Version | Distributed in / scope | SPDX | Original author / copyright | Full text / terms |');
 sections.push('| --- | --- | --- | --- | --- | --- |');
 for(const r of records){
-  const refs=r.licenses.map(h=>`[${h.slice(0,10)}](#license-text-${h.slice(0,16)})`).join(', ');
+  const refs=r.termsUrl?`[Official proprietary terms](${r.termsUrl})`:
+    r.licenses.map(h=>`[${h.slice(0,10)}](#license-text-${h.slice(0,16)})`).join(', ');
   sections.push(`| ${escape(r.name)} | ${escape(r.version)} | ${escape(r.scope)} | \`${escape(r.spdx)}\` | ${escape(r.holder)} | ${refs} |`);
 }
 sections.push('');
@@ -149,7 +151,7 @@ for(const r of records){
   if(r.note)sections.push(`- **${r.name}@${r.version}**: ${r.note}`);
 }
 sections.push('');
-sections.push('Source coordinates for each package are pinned by `package-lock.json` and `mcp-oauth/package-lock.json`; PDF.js embedded resource names correspond exactly to the directories copied by `scripts/prepare-pdf.mjs`. The upstream license in each section below is reproduced verbatim apart from normalizing line endings and a final newline.');
+sections.push('Source coordinates for each npm package are pinned by `package-lock.json` and `mcp-oauth/package-lock.json`; Android coordinates and license statements come from the exact Gradle release runtime graph and each artifact’s published Maven POM. PDF.js embedded resource names correspond exactly to the directories copied by `scripts/prepare-pdf.mjs`. The upstream open-source license in each section below is reproduced verbatim apart from normalizing line endings and a final newline.');
 sections.push('');
 sections.push('## Complete license texts');
 sections.push('');

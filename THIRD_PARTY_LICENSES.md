@@ -2,15 +2,15 @@
 
 > **Generated file.** Run `npm ci --omit=dev --ignore-scripts` in the repository root and `mcp-oauth/`, then `node scripts/generate-third-party-licenses.mjs`. Do not hand-edit this file.
 
-This inventory retains the original license text bundled with the locked npm package versions, the QWEA0 port, PDF.js embedded font/CMap/decoder licenses, and directly declared AndroidX dependencies. SPDX entries describe the **component**, not a relicensing to Easybook AGPL-3.0-only. Identical full license texts are printed once and referenced by SHA-256.
+This inventory retains the original license text bundled with the locked npm package versions, the QWEA0 port, PDF.js embedded font/CMap/decoder licenses, and the **resolved Android release runtime dependency graph** (including transitive AAR/JAR artifacts). SPDX entries describe the **component**, not a relicensing to Easybook AGPL-3.0-only. Identical full open-source license texts are printed once and referenced by SHA-256.
 
-**Coverage boundary:** development/test and platform-specific optional npm packages are excluded; esbuild is listed but marked build-only. The complete Android `releaseRuntimeClasspath` (including transitive AAR/JAR artifacts and Google Play Services) has **not yet been resolved**. This file is therefore not a final APK-wide legal sign-off. The Liberation font uses its own GPL-2.0-based agreement with exceptions, so it is identified with a local `LicenseRef` rather than inaccurately described as Apache-2.0.
+**Coverage boundary:** development/test and platform-specific optional npm packages are excluded; esbuild is listed but marked build-only. The Android `releaseRuntimeClasspath` is resolved by Gradle, but final APK byte-for-byte contents are not yet audited. Proprietary Google Play Services modules are **not open-source**: their Maven POMs point to the Android SDK License terms, which are linked rather than reproduced as an open-source license text. The Liberation font uses its own GPL-2.0-based agreement with exceptions, identified with a local `LicenseRef` rather than inaccurately described as Apache-2.0.
 
-Entries: 96 (56 npm main, 27 npm OAuth, 9 embedded PDF resources, 3 directly declared Android libraries, one native glass port).
+Entries: 145 (56 npm main, 27 npm OAuth, 9 embedded PDF resources, 52 resolved Android runtime modules, one native glass port).
 
 ## Component inventory
 
-| Component | Version | Distributed in / scope | SPDX | Original author / copyright | Full text |
+| Component | Version | Distributed in / scope | SPDX | Original author / copyright | Full text / terms |
 | --- | --- | --- | --- | --- | --- |
 | QWEA0/Liquid-Glass-Android (ported shader) | 16afe4d8b5d08a370d3f8c50b08d7f5c6eb5da4d | Android APK | `MIT` | Copyright (c) 2025-2026 pandadog | [b7b41578ce](#license-text-b7b41578ce6b8d42) |
 | pdfjs-dist/cmaps/LICENSE | 6.4.299 | Android APK / Web PDF assets | `BSD-3-Clause` | Adobe Systems Incorporated | [aa92ab5a47](#license-text-aa92ab5a47297486) |
@@ -22,9 +22,58 @@ Entries: 96 (56 npm main, 27 npm OAuth, 9 embedded PDF resources, 3 directly dec
 | pdfjs-dist/wasm/LICENSE_PDFJS_OPENJPEG | 6.4.299 | Android APK / Web PDF assets | `BSD-2-Clause` | Mozilla Foundation | [717fc62da0](#license-text-717fc62da03292db) |
 | pdfjs-dist/wasm/LICENSE_PDFJS_QCMS | 6.4.299 | Android APK / Web PDF assets | `MIT` | Mozilla Foundation | [508a77d2e7](#license-text-508a77d2e7b51d98) |
 | pdfjs-dist/wasm/LICENSE_QCMS | 6.4.299 | Android APK / Web PDF assets | `MIT` | Mozilla Corporation and Marti Maria | [36d847ae88](#license-text-36d847ae882f6574) |
-| androidx.credentials:credentials | 1.5.0 | Android direct dependency | `Apache-2.0` | Android Open Source Project contributors | [0d542e0c88](#license-text-0d542e0c8804e39a) |
-| androidx.credentials:credentials-play-services-auth | 1.5.0 | Android direct dependency | `Apache-2.0` | Android Open Source Project contributors | [0d542e0c88](#license-text-0d542e0c8804e39a) |
-| androidx.webkit:webkit | 1.12.1 | Android direct dependency | `Apache-2.0` | Android Open Source Project contributors | [0d542e0c88](#license-text-0d542e0c8804e39a) |
+| androidx.activity:activity | 1.5.1 | Android release runtime | `Apache-2.0` | The Android Open Source Project | [0d542e0c88](#license-text-0d542e0c8804e39a) |
+| androidx.annotation:annotation-experimental | 1.4.1 | Android release runtime | `Apache-2.0` | The Android Open Source Project | [0d542e0c88](#license-text-0d542e0c8804e39a) |
+| androidx.annotation:annotation-jvm | 1.8.1 | Android release runtime | `Apache-2.0` | The Android Open Source Project | [0d542e0c88](#license-text-0d542e0c8804e39a) |
+| androidx.appcompat:appcompat | 1.2.0 | Android release runtime | `Apache-2.0` | The Android Open Source Project | [0d542e0c88](#license-text-0d542e0c8804e39a) |
+| androidx.appcompat:appcompat-resources | 1.2.0 | Android release runtime | `Apache-2.0` | The Android Open Source Project | [0d542e0c88](#license-text-0d542e0c8804e39a) |
+| androidx.arch.core:core-common | 2.2.0 | Android release runtime | `Apache-2.0` | The Android Open Source Project | [0d542e0c88](#license-text-0d542e0c8804e39a) |
+| androidx.arch.core:core-runtime | 2.2.0 | Android release runtime | `Apache-2.0` | The Android Open Source Project | [0d542e0c88](#license-text-0d542e0c8804e39a) |
+| androidx.biometric:biometric | 1.1.0 | Android release runtime | `Apache-2.0` | The Android Open Source Project | [0d542e0c88](#license-text-0d542e0c8804e39a) |
+| androidx.collection:collection-jvm | 1.4.2 | Android release runtime | `Apache-2.0` | The Android Open Source Project | [0d542e0c88](#license-text-0d542e0c8804e39a) |
+| androidx.concurrent:concurrent-futures | 1.1.0 | Android release runtime | `Apache-2.0` | The Android Open Source Project | [0d542e0c88](#license-text-0d542e0c8804e39a) |
+| androidx.core:core | 1.15.0 | Android release runtime | `Apache-2.0` | The Android Open Source Project | [0d542e0c88](#license-text-0d542e0c8804e39a) |
+| androidx.core:core-ktx | 1.15.0 | Android release runtime | `Apache-2.0` | The Android Open Source Project | [0d542e0c88](#license-text-0d542e0c8804e39a) |
+| androidx.credentials:credentials | 1.5.0 | Android release runtime | `Apache-2.0` | The Android Open Source Project | [0d542e0c88](#license-text-0d542e0c8804e39a) |
+| androidx.credentials:credentials-play-services-auth | 1.5.0 | Android release runtime | `Apache-2.0` | The Android Open Source Project | [0d542e0c88](#license-text-0d542e0c8804e39a) |
+| androidx.cursoradapter:cursoradapter | 1.0.0 | Android release runtime | `Apache-2.0` | The Android Open Source Project | [0d542e0c88](#license-text-0d542e0c8804e39a) |
+| androidx.customview:customview | 1.0.0 | Android release runtime | `Apache-2.0` | The Android Open Source Project | [0d542e0c88](#license-text-0d542e0c8804e39a) |
+| androidx.drawerlayout:drawerlayout | 1.0.0 | Android release runtime | `Apache-2.0` | The Android Open Source Project | [0d542e0c88](#license-text-0d542e0c8804e39a) |
+| androidx.fragment:fragment | 1.5.7 | Android release runtime | `Apache-2.0` | The Android Open Source Project | [0d542e0c88](#license-text-0d542e0c8804e39a) |
+| androidx.interpolator:interpolator | 1.0.0 | Android release runtime | `Apache-2.0` | The Android Open Source Project | [0d542e0c88](#license-text-0d542e0c8804e39a) |
+| androidx.lifecycle:lifecycle-common | 2.6.2 | Android release runtime | `Apache-2.0` | The Android Open Source Project | [0d542e0c88](#license-text-0d542e0c8804e39a) |
+| androidx.lifecycle:lifecycle-livedata | 2.6.2 | Android release runtime | `Apache-2.0` | The Android Open Source Project | [0d542e0c88](#license-text-0d542e0c8804e39a) |
+| androidx.lifecycle:lifecycle-livedata-core | 2.6.2 | Android release runtime | `Apache-2.0` | The Android Open Source Project | [0d542e0c88](#license-text-0d542e0c8804e39a) |
+| androidx.lifecycle:lifecycle-runtime | 2.6.2 | Android release runtime | `Apache-2.0` | The Android Open Source Project | [0d542e0c88](#license-text-0d542e0c8804e39a) |
+| androidx.lifecycle:lifecycle-viewmodel | 2.6.2 | Android release runtime | `Apache-2.0` | The Android Open Source Project | [0d542e0c88](#license-text-0d542e0c8804e39a) |
+| androidx.lifecycle:lifecycle-viewmodel-savedstate | 2.6.2 | Android release runtime | `Apache-2.0` | The Android Open Source Project | [0d542e0c88](#license-text-0d542e0c8804e39a) |
+| androidx.loader:loader | 1.0.0 | Android release runtime | `Apache-2.0` | The Android Open Source Project | [0d542e0c88](#license-text-0d542e0c8804e39a) |
+| androidx.profileinstaller:profileinstaller | 1.3.0 | Android release runtime | `Apache-2.0` | The Android Open Source Project | [0d542e0c88](#license-text-0d542e0c8804e39a) |
+| androidx.savedstate:savedstate | 1.2.1 | Android release runtime | `Apache-2.0` | The Android Open Source Project | [0d542e0c88](#license-text-0d542e0c8804e39a) |
+| androidx.startup:startup-runtime | 1.1.1 | Android release runtime | `Apache-2.0` | The Android Open Source Project | [0d542e0c88](#license-text-0d542e0c8804e39a) |
+| androidx.tracing:tracing | 1.2.0 | Android release runtime | `Apache-2.0` | The Android Open Source Project | [0d542e0c88](#license-text-0d542e0c8804e39a) |
+| androidx.vectordrawable:vectordrawable | 1.1.0 | Android release runtime | `Apache-2.0` | The Android Open Source Project | [0d542e0c88](#license-text-0d542e0c8804e39a) |
+| androidx.vectordrawable:vectordrawable-animated | 1.1.0 | Android release runtime | `Apache-2.0` | The Android Open Source Project | [0d542e0c88](#license-text-0d542e0c8804e39a) |
+| androidx.versionedparcelable:versionedparcelable | 1.1.1 | Android release runtime | `Apache-2.0` | The Android Open Source Project | [0d542e0c88](#license-text-0d542e0c8804e39a) |
+| androidx.viewpager:viewpager | 1.0.0 | Android release runtime | `Apache-2.0` | The Android Open Source Project | [0d542e0c88](#license-text-0d542e0c8804e39a) |
+| androidx.webkit:webkit | 1.12.1 | Android release runtime | `Apache-2.0` | The Android Open Source Project | [0d542e0c88](#license-text-0d542e0c8804e39a) |
+| com.google.android.gms:play-services-auth | 21.1.1 | Android release runtime | `LicenseRef-Android-SDK-License` | Google LLC | [Official proprietary terms](https://developer.android.com/studio/terms.html) |
+| com.google.android.gms:play-services-auth-api-phone | 18.0.2 | Android release runtime | `LicenseRef-Android-SDK-License` | Google LLC | [Official proprietary terms](https://developer.android.com/studio/terms.html) |
+| com.google.android.gms:play-services-auth-base | 18.0.10 | Android release runtime | `LicenseRef-Android-SDK-License` | Google LLC | [Official proprietary terms](https://developer.android.com/studio/terms.html) |
+| com.google.android.gms:play-services-auth-blockstore | 16.4.0 | Android release runtime | `LicenseRef-Android-SDK-License` | Google LLC | [Official proprietary terms](https://developer.android.com/studio/terms.html) |
+| com.google.android.gms:play-services-base | 18.5.0 | Android release runtime | `LicenseRef-Android-SDK-License` | Google LLC | [Official proprietary terms](https://developer.android.com/studio/terms.html) |
+| com.google.android.gms:play-services-basement | 18.4.0 | Android release runtime | `LicenseRef-Android-SDK-License` | Google LLC | [Official proprietary terms](https://developer.android.com/studio/terms.html) |
+| com.google.android.gms:play-services-fido | 21.0.0 | Android release runtime | `LicenseRef-Android-SDK-License` | Google LLC | [Official proprietary terms](https://developer.android.com/studio/terms.html) |
+| com.google.android.gms:play-services-identity-credentials | 16.0.0-alpha02 | Android release runtime | `LicenseRef-Android-SDK-License` | Google LLC | [Official proprietary terms](https://developer.android.com/studio/terms.html) |
+| com.google.android.gms:play-services-tasks | 18.2.0 | Android release runtime | `LicenseRef-Android-SDK-License` | Google LLC | [Official proprietary terms](https://developer.android.com/studio/terms.html) |
+| com.google.android.libraries.identity.googleid:googleid | 1.1.0 | Android release runtime | `LicenseRef-Android-SDK-License` | Google LLC | [Official proprietary terms](https://developer.android.com/studio/terms.html) |
+| com.google.guava:listenablefuture | 1.0 | Android release runtime | `Apache-2.0` | Google LLC | [0d542e0c88](#license-text-0d542e0c8804e39a) |
+| org.jetbrains:annotations | 23.0.0 | Android release runtime | `Apache-2.0` | Upstream project contributors | [0d542e0c88](#license-text-0d542e0c8804e39a) |
+| org.jetbrains.kotlin:kotlin-stdlib | 1.9.24 | Android release runtime | `Apache-2.0` | JetBrains s.r.o. | [0d542e0c88](#license-text-0d542e0c8804e39a) |
+| org.jetbrains.kotlin:kotlin-stdlib-jdk7 | 1.9.0 | Android release runtime | `Apache-2.0` | JetBrains s.r.o. | [0d542e0c88](#license-text-0d542e0c8804e39a) |
+| org.jetbrains.kotlin:kotlin-stdlib-jdk8 | 1.8.20 | Android release runtime | `Apache-2.0` | JetBrains s.r.o. | [0d542e0c88](#license-text-0d542e0c8804e39a) |
+| org.jetbrains.kotlinx:kotlinx-coroutines-android | 1.7.3 | Android release runtime | `Apache-2.0` | JetBrains s.r.o. | [0d542e0c88](#license-text-0d542e0c8804e39a) |
+| org.jetbrains.kotlinx:kotlinx-coroutines-core-jvm | 1.7.3 | Android release runtime | `Apache-2.0` | JetBrains s.r.o. | [0d542e0c88](#license-text-0d542e0c8804e39a) |
 | @cloudflare/workers-oauth-provider | 1.2.4 | OAuth Worker | `MIT` | Copyright (c) 2025 Cloudflare, Inc. | [5514f48637](#license-text-5514f48637fa1d8f) |
 | @hexagon/base64 | 1.1.28 | OAuth Worker | `MIT` | Copyright (c) 2021-2022 Hexagon <github.com/Hexagon> | [a66f704bd1](#license-text-a66f704bd1383227) |
 | @levischuck/tiny-cbor | 0.2.11 | OAuth Worker | `MIT` | Copyright (c) 2025 Levi | [5871de5277](#license-text-5871de52772b5b8e) |
@@ -113,12 +162,20 @@ Entries: 96 (56 npm main, 27 npm OAuth, 9 embedded PDF resources, 3 directly dec
 
 - **QWEA0/Liquid-Glass-Android (ported shader)@16afe4d8b5d08a370d3f8c50b08d7f5c6eb5da4d**: Java/AGSL port; the separate MIT license is also packaged at native-glass/LICENSE.txt.
 - **pdfjs-dist/standard_fonts/LICENSE_LIBERATION@6.4.299**: Custom GPL-2.0-based font agreement with additional exceptions; see original text.
-- **androidx.credentials:credentials@1.5.0**: Standard Apache-2.0 text; verify the resolved AAR/POM and transitive dependencies before release.
-- **androidx.credentials:credentials-play-services-auth@1.5.0**: Standard Apache-2.0 text; verify the resolved AAR/POM and transitive dependencies before release.
-- **androidx.webkit:webkit@1.12.1**: Standard Apache-2.0 text; verify the resolved AAR/POM and transitive dependencies before release.
+- **com.google.android.gms:play-services-auth@21.1.1**: Proprietary Google Android SDK terms (not an OSI-approved open-source license).
+- **com.google.android.gms:play-services-auth-api-phone@18.0.2**: Proprietary Google Android SDK terms (not an OSI-approved open-source license).
+- **com.google.android.gms:play-services-auth-base@18.0.10**: Proprietary Google Android SDK terms (not an OSI-approved open-source license).
+- **com.google.android.gms:play-services-auth-blockstore@16.4.0**: Proprietary Google Android SDK terms (not an OSI-approved open-source license).
+- **com.google.android.gms:play-services-base@18.5.0**: Proprietary Google Android SDK terms (not an OSI-approved open-source license).
+- **com.google.android.gms:play-services-basement@18.4.0**: Proprietary Google Android SDK terms (not an OSI-approved open-source license).
+- **com.google.android.gms:play-services-fido@21.0.0**: Proprietary Google Android SDK terms (not an OSI-approved open-source license).
+- **com.google.android.gms:play-services-identity-credentials@16.0.0-alpha02**: Proprietary Google Android SDK terms (not an OSI-approved open-source license).
+- **com.google.android.gms:play-services-tasks@18.2.0**: Proprietary Google Android SDK terms (not an OSI-approved open-source license).
+- **com.google.android.libraries.identity.googleid:googleid@1.1.0**: Proprietary Google Android SDK terms (not an OSI-approved open-source license).
+- **com.google.guava:listenablefuture@1.0**: Google Guava listenablefuture 1.0 empty compatibility artifact; POM omits license metadata. Apache-2.0 per upstream Guava.
 - **esbuild@0.28.2**: Build tool; not embedded in the application runtime.
 
-Source coordinates for each package are pinned by `package-lock.json` and `mcp-oauth/package-lock.json`; PDF.js embedded resource names correspond exactly to the directories copied by `scripts/prepare-pdf.mjs`. The upstream license in each section below is reproduced verbatim apart from normalizing line endings and a final newline.
+Source coordinates for each npm package are pinned by `package-lock.json` and `mcp-oauth/package-lock.json`; Android coordinates and license statements come from the exact Gradle release runtime graph and each artifact’s published Maven POM. PDF.js embedded resource names correspond exactly to the directories copied by `scripts/prepare-pdf.mjs`. The upstream open-source license in each section below is reproduced verbatim apart from normalizing line endings and a final newline.
 
 ## Complete license texts
 

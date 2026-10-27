@@ -5,7 +5,10 @@ SPDX identifiers and full upstream license texts is in
 [`THIRD_PARTY_LICENSES.md`](THIRD_PARTY_LICENSES.md). Refresh it with
 `npm run licenses:generate`; `npm run licenses:check` fails on missing/stale
 license material. The separately licensed PDF.js font, CMap and decoder assets
-are listed there as well.
+are listed there as well. Resolve the exact Android runtime graph (including
+transitive libraries) with `npm run licenses:android`. Proprietary Google Play
+Services components are listed with official Android SDK terms links and are
+not mislabeled as open-source.
 
 The offline editor bundle is built from the exact versions in `package-lock.json`.
 
