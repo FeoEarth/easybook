@@ -10,7 +10,7 @@ try{
  for(const ext of ['mp4','webm']){
   await page.evaluate(async ext=>{const blob=await(await fetch('/playback.'+ext)).blob();window.p.setFile({name:'sample.'+ext,mime:blob.type,url:URL.createObjectURL(blob)})},ext);
   await page.waitForFunction(()=>p.video.readyState>=2);await page.getByRole('button',{name:'播放',exact:true}).click();await page.waitForFunction(()=>p.video.currentTime>.25&&p.video.getVideoPlaybackQuality().totalVideoFrames>0);
-  await page.waitForFunction(()=>p.root.classList.contains('controls-hidden'),{},{timeout:5000});await page.mouse.move(15,15);await page.getByRole('button',{name:'暂停',exact:true}).click();const time=await page.evaluate(()=>p.video.currentTime);assert.ok(time>.25);
+  await page.waitForFunction(()=>p.root.classList.contains('controls-hidden'),{},{timeout:5000});await page.mouse.move(15,15);await page.getByRole('button',{name:'暂停',exact:true}).click();const time=await page.evaluate(()=>p.video.currentTime);assert.ok(time>.25);await page.evaluate(()=>p.video.dispatchEvent(new Event('stalled')));assert.equal(await page.locator('.eb-video-message').isVisible(),false,'paused decoded video must not show a buffer timeout');
   await page.locator('input[aria-label="视频进度"]').fill('2');await page.waitForFunction(()=>Math.abs(p.video.currentTime-2)<.2);
   await page.getByRole('button',{name:'全屏',exact:true}).click();await page.waitForFunction(()=>document.fullscreenElement===p.root);assert.equal(await page.evaluate(()=>p.video.currentTime),2);assert.equal(await page.evaluate(()=>p.video.paused),true);
   await page.getByRole('button',{name:'退出全屏',exact:true}).click();await page.waitForFunction(()=>!document.fullscreenElement);assert.equal(await page.evaluate(()=>p.video.currentTime),2);
