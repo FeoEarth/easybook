@@ -22,7 +22,7 @@ try{
  await page.evaluate(()=>{originalVideo.loop=true;originalVideo.playbackRate=.5});await page.getByRole('button',{name:'播放',exact:true}).click();await page.waitForFunction(()=>originalVideo.currentTime>1.2);await page.screenshot({path:out+'/04-fullscreen-playing.png'});
  // Loop only the synthetic four-second fixture to observe the real auto-hide timer.
  await page.evaluate(()=>originalVideo.loop=true);await page.mouse.move(1,1);await page.waitForFunction(()=>document.fullscreenElement.classList.contains('controls-hidden'),null,{timeout:5000});await page.waitForFunction(()=>getComputedStyle(document.fullscreenElement.querySelector('.eb-video-controls')).opacity==='0');await page.screenshot({path:out+'/05-fullscreen-hidden.png'});
- await page.mouse.click(420,170);await page.getByRole('button',{name:'暂停',exact:true}).click();
+ await page.mouse.move(10,10);await page.getByRole('button',{name:'暂停',exact:true}).click();
  await page.getByRole('button',{name:'后退 10 秒',exact:true}).click();assert.ok(await page.evaluate(()=>originalVideo.currentTime<.1));await page.getByRole('button',{name:'快进 10 秒',exact:true}).click();await page.waitForFunction(()=>originalVideo.currentTime>3.5);
  await page.getByLabel('播放速度').selectOption('1.5');assert.equal(await page.evaluate(()=>originalVideo.playbackRate),1.5);await page.getByLabel('音量',{exact:true}).fill('0.5');assert.equal(await page.evaluate(()=>originalVideo.volume),.5);
  await page.getByRole('button',{name:'退出全屏',exact:true}).click();await page.waitForFunction(()=>!document.fullscreenElement);await page.getByRole('button',{name:'关闭预览',exact:true}).click();await page.waitForFunction(()=>document.querySelector('.inline-media video')===originalVideo);assert.equal(await page.locator('video').count(),1);
