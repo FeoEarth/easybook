@@ -40,7 +40,7 @@ public final class VideoPlayerInstrumentation extends Instrumentation {
   until("!!window.easybookRich && document.documentElement.dataset.platform==='android'",45000);
   report.put("api",Build.VERSION.SDK_INT).put("webView",android.webkit.WebView.getCurrentWebViewPackage().versionName).put("physicalDevice",false);
   fixture("video-probe.mp4","横屏视频.mp4");screenshot("01-inline-paused");tap(".eb-video-play");until("!probeVideo.paused && probeVideo.getVideoPlaybackQuality().totalVideoFrames>0",10000);screenshot("02-inline-playing");
-  until("getComputedStyle(document.querySelector('.eb-video-controls')).opacity==='0'",6000);screenshot("03-inline-hidden");tap(".eb-video video");tap(".eb-video-play");until("probeVideo.paused",5000);
+  until("getComputedStyle(document.querySelector('.eb-video-controls')).opacity==='0'",6000);screenshot("03-inline-hidden");tap(".eb-video video");until("getComputedStyle(document.querySelector('.eb-video-controls')).opacity==='1'",2000);tap(".eb-video-play");until("probeVideo.paused",5000);
   tap(".media-open");until("document.getElementById('attachmentDialog').open && document.querySelector('#previewStage video')===probeVideo",5000);Thread.sleep(400);screenshot("04-preview-paused");
   double before=Double.parseDouble(js("probeVideo.currentTime"));tap(".eb-video-top>button");until("!!document.fullscreenElement && innerWidth>innerHeight",10000);Thread.sleep(600);
   check(Math.abs(Double.parseDouble(js("probeVideo.currentTime"))-before)<.1,"Fullscreen reset position");

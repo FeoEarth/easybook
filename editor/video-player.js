@@ -56,7 +56,12 @@ export function createVideoPlayer({open=()=>{},retry}={}){
  const sizing=typeof ResizeObserver==='function'?new ResizeObserver(measure):null;sizing?.observe(root);window.addEventListener('resize',measure);
  function visibility(){if(document.hidden)video.pause()}
  root.onkeydown=e=>{if(e.target.matches('input,select,button'))return;if(e.code==='Space'){e.preventDefault();void toggle()}else if(e.key==='ArrowLeft')seek(-10);else if(e.key==='ArrowRight')seek(10)};
- video.onclick=()=>{if(root.classList.contains('controls-hidden'))show();else if(!video.paused)root.classList.add('controls-hidden');else void toggle()};
+ // Touch focuses the region before click. Preserve pre-focus visibility so focusin
+ // cannot reveal controls and have the same tap immediately hide them again.
+ let tapWasHidden=null;
+ video.addEventListener('pointerdown',()=>{tapWasHidden=root.classList.contains('controls-hidden')});
+ video.addEventListener('pointercancel',()=>{tapWasHidden=null});
+ video.onclick=()=>{const reveal=tapWasHidden??root.classList.contains('controls-hidden');tapWasHidden=null;if(reveal)show();else if(!video.paused)root.classList.add('controls-hidden');else void toggle()};
  root.addEventListener('pointermove',e=>{if(e.pointerType==='mouse')show()});root.addEventListener('focusin',show);
  for(const type of ['loadedmetadata','durationchange','canplay','seeked'])video.addEventListener(type,ready);
  video.addEventListener('timeupdate',update);video.addEventListener('playing',()=>{ready();show()});video.addEventListener('pause',()=>{update();show()});video.addEventListener('ended',()=>{update();show()});
