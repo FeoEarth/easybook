@@ -1,7 +1,17 @@
 // One media element owns playback for both inline and fullscreen presentations.
 const players=new Set();
 const paths={play:'M8 5v14l11-7z',pause:'M6 5h4v14H6zM14 5h4v14h-4z',expand:'M8 3H3v5M16 3h5v5M3 16v5h5M21 16v5h-5',close:'M6 6l12 12M18 6L6 18',volume:'M11 5L6 9H3v6h3l5 4zM15 8a6 6 0 010 8M18 5a10 10 0 010 14',back:'M4 8V3m0 5h5M4 8a9 9 0 11-1 8',forward:'M20 8V3m0 5h-5M20 8a9 9 0 101 8'};
-function icon(name){return '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="'+paths[name]+'"/>'+(['back','forward'].includes(name)?'<text x="12" y="16" text-anchor="middle">10</text>':'')+'</svg>'}
+function icon(name){
+ const optical={
+  pause:'<rect x="5.5" y="3" width="5" height="18" rx="1.5"/><rect x="13.5" y="3" width="5" height="18" rx="1.5"/>',
+  play:'<path d="M8 4.5Q7 4 7 5.5v13Q7 20 8.5 19l10-6Q20 12 18.5 11z"/>',
+  volume:'<path fill="currentColor" stroke="none" d="M11 4.8 6 9H3v6h3l5 4.2z"/><path d="M14.5 8.5a5.5 5.5 0 0 1 0 7M17.5 5.5a9.6 9.6 0 0 1 0 13M20 3a13 13 0 0 1 0 18"/>',
+  back:'<path d="M10 3.7a8.4 8.4 0 1 1-5.3 3.5M10 3.7 7 1m3 2.7L7 7"/>',
+  forward:'<path d="M14 3.7a8.4 8.4 0 1 0 5.3 3.5M14 3.7 17 1m-3 2.7L17 7"/>'
+ };
+ const ten='<path class="eb-video-ten" d="M7.2 9.5 9.8 8v9m6-9a2.7 4.5 0 1 1 0 9a2.7 4.5 0 1 1 0-9"/>';
+ return '<svg viewBox="0 0 24 24" aria-hidden="true">'+(optical[name]||'<path d="'+paths[name]+'"/>')+(['back','forward'].includes(name)?ten:'')+'</svg>';
+}
 export function mediaMime(file){const mime=(file.mime||'').toLowerCase();if(mime&&mime!=='application/octet-stream')return mime;return ({mp4:'video/mp4',m4v:'video/mp4',mov:'video/quicktime',webm:'video/webm',mkv:'video/x-matroska',avi:'video/x-msvideo'})[(file.name||'').split('.').pop().toLowerCase()]||mime||'application/octet-stream'}
 export function createVideoPlayer({open=()=>{},retry}={}){
  const root=document.createElement('div');root.className='eb-video';root.tabIndex=0;root.setAttribute('role','region');root.setAttribute('aria-label','视频播放器');
@@ -40,6 +50,10 @@ export function createVideoPlayer({open=()=>{},retry}={}){
  // Compact Photos controls sit on the picture; fullscreen keeps the same video node.
  function layout(){const expanded=root.classList.contains('is-fullscreen');expanded?center.insertBefore(play,forward):bottom.prepend(play)}
  layout();
+ // Calibrated against the 874×402 effective display in the supplied reference.
+ // Pixels scale from the player, never from the surrounding editor/card.
+ const measure=()=>root.style.setProperty('--ios-player-unit',(root.clientWidth/(root.classList.contains('is-fullscreen')?874:402))+'px');
+ const sizing=typeof ResizeObserver==='function'?new ResizeObserver(measure):null;sizing?.observe(root);window.addEventListener('resize',measure);
  function visibility(){if(document.hidden)video.pause()}
  root.onkeydown=e=>{if(e.target.matches('input,select,button'))return;if(e.code==='Space'){e.preventDefault();void toggle()}else if(e.key==='ArrowLeft')seek(-10);else if(e.key==='ArrowRight')seek(10)};
  video.onclick=()=>{if(root.classList.contains('controls-hidden'))show();else if(!video.paused)root.classList.add('controls-hidden');else void toggle()};
@@ -51,5 +65,5 @@ export function createVideoPlayer({open=()=>{},retry}={}){
  document.addEventListener('fullscreenchange',fullChanged);document.addEventListener('visibilitychange',visibility);
  function setFile(next){if(disposed)return;file=next;root.setAttribute('aria-label',next.name||'视频');if(source===next.url&&!failed)return;failed=false;source=next.url;video.src=source;waiting();video.load()}
  async function reload(){const version=++revision,pos=video.currentTime||0,rate=video.playbackRate;again.disabled=true;try{const next=retry?await retry():file;if(disposed||version!==revision)return;source='';setFile(next);video.playbackRate=rate;video.addEventListener('loadedmetadata',()=>{if(!disposed&&version===revision)video.currentTime=Math.min(pos,video.duration||0)},{once:true})}catch{if(!disposed)fail('附件读取失败，请联网后重试')}finally{again.disabled=false}}
- const api={root,video,get disposed(){return disposed},setFile,pause:()=>video.pause(),destroy(){disposed=true;revision++;clearTimeout(hideTimer);clearTimeout(loadTimer);document.removeEventListener('fullscreenchange',fullChanged);document.removeEventListener('visibilitychange',visibility);if(document.fullscreenElement===root)void document.exitFullscreen();video.pause();video.removeAttribute('src');video.load();players.delete(api)}};players.add(api);update();return api;
+ const api={root,video,get disposed(){return disposed},setFile,pause:()=>video.pause(),destroy(){disposed=true;sizing?.disconnect();window.removeEventListener('resize',measure);revision++;clearTimeout(hideTimer);clearTimeout(loadTimer);document.removeEventListener('fullscreenchange',fullChanged);document.removeEventListener('visibilitychange',visibility);if(document.fullscreenElement===root)void document.exitFullscreen();video.pause();video.removeAttribute('src');video.load();players.delete(api)}};players.add(api);update();return api;
 }

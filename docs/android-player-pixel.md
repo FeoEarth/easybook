@@ -1,0 +1,35 @@
+# Android player reference calibration — work in progress
+
+Baseline: a483cfbd78f33b3f7248952612372cf67fa575fa (0.8.3/code 62). This branch has not passed pixel-equivalence acceptance and must not be described as a completed pixel-perfect reproduction.
+
+## Reference and scope
+
+The supplied landscape reference is a photograph/composite with phone bezel and unsupported TV app actions. Its effective display is approximately 1475×680 pixels, normalized to 874×402 logical units. Those bounds are measured from the supplied raster, not Apple's original design file. Portrait uses the supplied Photos transport and floating navigation reference. Original reference files and the user's attachment content are not committed to the repository.
+
+The scoped Android UI uses the existing HTML5/WebView video element and native fullscreen host. It adds no Media3 migration, native video proxy, attachment permission route or playback ownership change. Android-only CSS is selected by the existing trusted native bridge. Shared SVG transport icons and bounded player sizing cleanup also apply to Web.
+
+## Geometry model
+
+| Item | 0.8.3 at 874×402 | Calibrated model |
+| --- | --- | --- |
+| Main play/pause circle | 68 logical px due short-height rule | 88 logical px |
+| Skip circle | 52 logical px | 64 logical px |
+| Skip-to-play center offset | About 113 logical px | 138 logical px |
+| Close button left inset | 24 logical px | 62 logical px |
+| Close button diameter | 44 logical px | 44 logical px |
+| Volume capsule | Variable, 140px slider | 188×44 logical px |
+| Timeline side insets | 32 logical px | 62 logical px |
+| Timeline center from bottom | Near lower edge | 85 logical px |
+| Timeline track | 4 logical px | 8 logical px |
+
+Dimensions scale from the actual player width divided by 874 in fullscreen, so different Android viewports retain proportions. There is no height-based button shrink. Cutout safe insets take precedence. The video remains a separate absolute contain plane. Portrait gets a floating compact glass transport; Android attachment preview has floating back/title chrome and existing save/share/external-open controls rendered as optical icon buttons. Original controls and labels are restored for image/PDF previews.
+
+The SVG pause bars use rounded corners, ten-second labels use vector strokes (no Android font substitution), and volume uses a filled speaker plus three wave strokes. Glass uses bounded 7px backdrop blur, restrained saturation, shared edge highlights and no full-frame blur. This remains Chromium's material, not Apple's proprietary refractive renderer.
+
+## Verification and release gate
+
+`node scripts/android-player-geometry.mjs` preflights the calibrated geometry at 874×402, 844×390 and 731×411, with a maximum one-physical-pixel deviation from the **model tokens** at DPR 3. This does not establish pixel equivalence to the raster reference, nor does desktop Chromium establish Android rendering.
+
+The existing Native Glass Android workflow has a scoped video-player job for this branch. It builds the actual app and a test-only instrumentation APK on a fresh API35 emulator, imports test fixtures through the real private AttachmentStore, opens the real editor/preview/native fullscreen, captures actual Android PNGs, verifies decoded video frames, fullscreen continuity and native Back restoration, and records WebView version and geometry. The display is set to 1206×2622 at 480dpi (402×874 logical portrait). It creates no production account/workspace and does not publish or change the signing identity used by production.
+
+The test records real geometry separately from screenshot evidence. It must fail on missing screenshots/playback/layout errors; no `environment_blocked` success bypass is accepted. Actual Android screenshots must be inspected before any acceptance claim or release. Physical-device behavior and exact Apple optical shading still require further evidence. No new production version or automatic release is enabled by this branch.
