@@ -126,6 +126,7 @@ jobs:
             mkdir -p video-player-evidence
             adb pull /sdcard/Android/data/com.feoearth.easybook.notes/files/video-player-evidence video-player-evidence/ || true
             adb logcat -d -s AndroidRuntime chromium NativeGlassProbe > video-player-evidence/logcat.txt
+            for report in video-player-evidence/*/result.json; do if test -f "$report"; then cat "$report"; fi; done
             grep -q 'passed=true' /tmp/video-player-check.txt
       - uses: actions/upload-artifact@v4
         if: always()
@@ -133,3 +134,42 @@ jobs:
           name: android-photos-pixel-api35
           path: video-player-evidence/
           if-no-files-found: ignore
+
+  previous-player-evidence:
+    if: github.head_ref == 'release/android-photos-pixel'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      actions: read
+      contents: read
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          github-token: ${{ github.token }}
+          repository: ${{ github.repository }}
+          run-id: 40667284871
+          name: android-photos-pixel-api35
+          path: previous-player-evidence
+      - name: Inspect previous failed Android report
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          for path in Path('previous-player-evidence').rglob('result.json'):
+              print('ANDROID_REPORT_BEGIN')
+              print(path.read_text())
+              print('ANDROID_REPORT_END')
+          PY
+      - name: Preview previous Android captures for inspection
+        run: |
+          python3 -m pip install --quiet pillow
+          python3 - <<'PY'
+          from pathlib import Path
+          from PIL import Image
+          import base64,io
+          for path in Path('previous-player-evidence').rglob('*.png'):
+              image=Image.open(path).convert('RGB')
+              image.thumbnail((1000,1000))
+              out=io.BytesIO()
+              image.save(out,format='JPEG',quality=87)
+              print('ANDROID_SCREENSHOT:'+path.name+':'+base64.b64encode(out.getvalue()).decode())
+          PY
