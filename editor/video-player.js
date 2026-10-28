@@ -34,7 +34,6 @@ export function createVideoPlayer({open=()=>{},retry}={}){
  const message=document.createElement('div');message.className='eb-video-message';message.setAttribute('role','status');
  const text=document.createElement('span');const again=document.createElement('button');again.type='button';again.textContent='重试';again.onclick=()=>void reload();const external=document.createElement('button');external.type='button';external.textContent='保存或外部打开';external.onclick=()=>{video.pause();open()};message.append(text,again,external);message.hidden=true;
  bottom.append(timeline,times,options);controls.append(top,center,bottom);root.append(video,controls,message);
- let progressTimer,fullscreenEpoch=0,recoveredEpoch=-1;
  let hideTimer,loadTimer,disposed=false,failed=false,source='',file=null,revision=0;
  const format=n=>{n=Number.isFinite(n)?Math.max(0,n):0;return Math.floor(n/60)+':'+String(Math.floor(n%60)).padStart(2,'0')};
  function update(){const duration=Number.isFinite(video.duration)?video.duration:0;timeline.max=String(duration);timeline.disabled=!duration;timeline.value=String(video.currentTime||0);timeline.style.setProperty('--progress',(duration?100*video.currentTime/duration:0)+'%');timeline.setAttribute('aria-valuetext',format(video.currentTime)+' / '+format(duration));elapsed.textContent=format(video.currentTime);remaining.textContent=root.classList.contains('is-fullscreen')?'-'+format(duration-video.currentTime):format(duration);play.innerHTML=icon(video.paused?'play':'pause');play.setAttribute('aria-label',video.paused?'播放':'暂停');}
@@ -44,23 +43,10 @@ export function createVideoPlayer({open=()=>{},retry}={}){
  function ready(){if(failed)return;if(video.videoWidth&&video.videoHeight){root.style.setProperty('--video-ratio',video.videoWidth+'/'+video.videoHeight);root.style.setProperty('--video-aspect',String(video.videoWidth/video.videoHeight));root.dataset.orientation=video.videoHeight>video.videoWidth?'portrait':'landscape'}clearTimeout(loadTimer);message.hidden=true;root.dataset.state=video.paused?'paused':'playing';update();}
  async function toggle(){if(failed){await reload();return}if(!video.paused){video.pause();return}for(const p of players)if(p!==api)p.pause();try{await video.play()}catch(e){if(e.name==='NotAllowedError'){show();text.textContent='请轻触播放';message.hidden=false;again.hidden=true;external.hidden=true}else fail('此设备无法播放该视频编码，请保存后使用外部播放器')}show()}
  function seek(delta){if(Number.isFinite(video.duration))video.currentTime=Math.max(0,Math.min(video.duration,video.currentTime+delta));show()}
- // A WebView surface handoff can leave Android at HAVE_CURRENT_DATA forever.
- // Re-seek the same point once only after measured lack of progress; no load,
- // new source, second player, permission change or ordinary-playback seek.
- function watchFullscreenProgress(){
-  clearTimeout(progressTimer);
-  if(document.documentElement.dataset.platform!=='android'||document.fullscreenElement!==root||video.paused||failed||recoveredEpoch===fullscreenEpoch)return;
-  const position=video.currentTime,expected=source,epoch=fullscreenEpoch;
-  progressTimer=setTimeout(()=>{
-   if(disposed||failed||video.error||source!==expected||document.fullscreenElement!==root||video.paused||fullscreenEpoch!==epoch||Math.abs(video.currentTime-position)>.1||video.readyState>=3)return;
-   recoveredEpoch=epoch;
-   try{root.dataset.fullscreenRecovery='same-position-seek';video.currentTime=position}catch{}
-  },1500);
- }
  timeline.oninput=()=>{if(Number.isFinite(video.duration))video.currentTime=Number(timeline.value);update();show()};
  async function fullscreen(){show();try{if(document.fullscreenElement===root){await document.exitFullscreen();return}if(!root.requestFullscreen){text.textContent='当前浏览器不支持全屏';message.hidden=false;return}await root.requestFullscreen();try{await screen.orientation?.lock?.('landscape')}catch{}}catch{show();text.textContent='无法进入全屏，请重试';message.hidden=false;again.hidden=true;external.hidden=true}}
  let ownedFullscreen=false;
- function fullChanged(){const isFull=document.fullscreenElement===root;if(isFull&&!ownedFullscreen)fullscreenEpoch++;if(!isFull)clearTimeout(progressTimer);root.classList.toggle('is-fullscreen',isFull);full.innerHTML=icon(isFull?'close':'expand');full.setAttribute('aria-label',isFull?'退出全屏':'全屏');if(ownedFullscreen&&!isFull)screen.orientation?.unlock?.();ownedFullscreen=isFull;layout();update();show();if(isFull)watchFullscreenProgress()}
+ function fullChanged(){const isFull=document.fullscreenElement===root;root.classList.toggle('is-fullscreen',isFull);full.innerHTML=icon(isFull?'close':'expand');full.setAttribute('aria-label',isFull?'退出全屏':'全屏');if(ownedFullscreen&&!isFull)screen.orientation?.unlock?.();ownedFullscreen=isFull;layout();update();show()}
  // Compact Photos controls sit on the picture; fullscreen keeps the same video node.
  function layout(){const expanded=root.classList.contains('is-fullscreen');expanded?center.insertBefore(play,forward):bottom.prepend(play)}
  layout();
@@ -78,12 +64,11 @@ export function createVideoPlayer({open=()=>{},retry}={}){
  video.onclick=()=>{const reveal=tapWasHidden??root.classList.contains('controls-hidden');tapWasHidden=null;if(reveal)show();else if(!video.paused)root.classList.add('controls-hidden');else void toggle()};
  root.addEventListener('pointermove',e=>{if(e.pointerType==='mouse')show()});root.addEventListener('focusin',show);
  for(const type of ['loadedmetadata','durationchange','canplay','seeked'])video.addEventListener(type,ready);
- video.addEventListener('play',watchFullscreenProgress);video.addEventListener('waiting',watchFullscreenProgress);video.addEventListener('pause',()=>clearTimeout(progressTimer));
  video.addEventListener('timeupdate',update);video.addEventListener('playing',()=>{ready();show()});video.addEventListener('pause',()=>{if(!failed&&video.readyState>=1)ready();else update();show()});video.addEventListener('ended',()=>{update();show()});
  for(const type of ['waiting','stalled'])video.addEventListener(type,waiting);
  video.addEventListener('error',()=>fail(video.error?.code===2?'视频读取失败，请重试':'此设备不支持该视频编码或文件已损坏，请保存后打开'));
  document.addEventListener('fullscreenchange',fullChanged);document.addEventListener('visibilitychange',visibility);
  function setFile(next){if(disposed)return;file=next;root.setAttribute('aria-label',next.name||'视频');if(source===next.url&&!failed)return;failed=false;source=next.url;video.removeAttribute('poster');if(document.documentElement.dataset.platform==='android'){try{const poster=new URL(source,location.href);if(poster.origin==='https://appassets.androidplatform.net'&&/^\/attachment\/[a-f0-9]{64}$/.test(poster.pathname)){poster.searchParams.set('poster','1');video.poster=poster.href}}catch{}}video.src=source;waiting(true);video.load()}
  async function reload(){const version=++revision,pos=video.currentTime||0,rate=video.playbackRate;again.disabled=true;try{const next=retry?await retry():file;if(disposed||version!==revision)return;source='';setFile(next);video.playbackRate=rate;video.addEventListener('loadedmetadata',()=>{if(!disposed&&version===revision)video.currentTime=Math.min(pos,video.duration||0)},{once:true})}catch{if(!disposed)fail('附件读取失败，请联网后重试')}finally{again.disabled=false}}
- const api={root,video,get disposed(){return disposed},setFile,pause:()=>video.pause(),destroy(){disposed=true;clearTimeout(progressTimer);sizing?.disconnect();window.removeEventListener('resize',measure);revision++;clearTimeout(hideTimer);clearTimeout(loadTimer);document.removeEventListener('fullscreenchange',fullChanged);document.removeEventListener('visibilitychange',visibility);if(document.fullscreenElement===root)void document.exitFullscreen();video.pause();video.removeAttribute('src');video.removeAttribute('poster');video.load();players.delete(api)}};players.add(api);update();return api;
+ const api={root,video,get disposed(){return disposed},setFile,pause:()=>video.pause(),destroy(){disposed=true;sizing?.disconnect();window.removeEventListener('resize',measure);revision++;clearTimeout(hideTimer);clearTimeout(loadTimer);document.removeEventListener('fullscreenchange',fullChanged);document.removeEventListener('visibilitychange',visibility);if(document.fullscreenElement===root)void document.exitFullscreen();video.pause();video.removeAttribute('src');video.removeAttribute('poster');video.load();players.delete(api)}};players.add(api);update();return api;
 }
