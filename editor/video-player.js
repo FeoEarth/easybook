@@ -79,7 +79,7 @@ export function createVideoPlayer({open=()=>{},retry}={}){
  root.addEventListener('pointermove',e=>{if(e.pointerType==='mouse')show()});root.addEventListener('focusin',show);
  for(const type of ['loadedmetadata','durationchange','canplay','seeked'])video.addEventListener(type,ready);
  video.addEventListener('play',watchFullscreenProgress);video.addEventListener('waiting',watchFullscreenProgress);video.addEventListener('pause',()=>clearTimeout(progressTimer));
- video.addEventListener('timeupdate',update);video.addEventListener('playing',()=>{video.removeAttribute('poster');ready();show()});video.addEventListener('pause',()=>{if(!failed&&video.readyState>=1)ready();else update();show()});video.addEventListener('ended',()=>{update();show()});
+ video.addEventListener('timeupdate',update);video.addEventListener('playing',()=>{ready();show()});video.addEventListener('pause',()=>{if(!failed&&video.readyState>=1)ready();else update();show()});video.addEventListener('ended',()=>{update();show()});
  for(const type of ['waiting','stalled'])video.addEventListener(type,waiting);
  video.addEventListener('error',()=>fail(video.error?.code===2?'视频读取失败，请重试':'此设备不支持该视频编码或文件已损坏，请保存后打开'));
  document.addEventListener('fullscreenchange',fullChanged);document.addEventListener('visibilitychange',visibility);
