@@ -6,7 +6,7 @@ Baseline: a483cfbd78f33b3f7248952612372cf67fa575fa (0.8.3/code 62). This branch 
 
 The supplied landscape reference is a photograph/composite with phone bezel and unsupported TV app actions. Its effective display is approximately 1475×680 pixels, normalized to 874×402 logical units. Those bounds are measured from the supplied raster, not Apple's original design file. Portrait uses the supplied Photos transport and floating navigation reference. Original reference files and the user's attachment content are not committed to the repository.
 
-The scoped Android UI uses the existing HTML5/WebView video element and native fullscreen host. It adds no Media3 migration, native video proxy, attachment permission route or playback ownership change. Android-only CSS is selected by the existing trusted native bridge. Shared SVG transport icons and bounded player sizing cleanup also apply to Web.
+The scoped Android UI uses the existing HTML5/WebView video element and native fullscreen host. It adds no Media3 migration, native video proxy or playback ownership change. Android first-frame posters use the existing private attachment URL with a poster query, after the same active-workspace reference authorization and original-file check; a scoped app-private JPEG cache never bypasses those checks. Android-only CSS is selected by the existing trusted native bridge. Shared SVG transport icons and bounded player sizing cleanup also apply to Web.
 
 ## Geometry model
 
@@ -37,3 +37,15 @@ The test records real geometry separately from screenshot evidence. It must fail
 ## Android findings during verification
 
 API35/WebView 124 actual captures exposed the focusin-before-click visibility race after auto-hide; visibility is now sampled at pointerdown and the touch regression passes locally. A second Android run reached native fullscreen and recorded an exact 874×402 video/root, 88px main transport, 64px skips, close x=62px and 188×44px volume capsule. Its remaining input step was blocked by Android SystemUI's first-use immersive education dialog, so that run is not a pass. The fresh-emulator setup acknowledges only that system tutorial before the next run. Production behavior is unchanged. Captures also caught attachment icon markup being overwritten by a later label assignment and the chrome SVG rule overriding video icon fills; both are corrected. A decoded paused video no longer enters a false stalled/buffer-timeout error during native fullscreen surface changes. Actual Android final captures remain the acceptance gate.
+
+## Follow-up verification on 2026-10-28
+
+Run 40672828292 (f23ad7b) reached real fullscreen playback, decoded 83 frames, hid controls, and restored portrait through native Back. The measured root and video were both 874×402 with contain fitting; the recovery guard did not trigger. This run still failed to open the portrait attachment preview and is not a full pass. Its portrait capture exposed Android WebView's oversized generic video poster.
+
+The follow-up replaces that poster with a bounded local first frame (longest decoded edge 1280px, JPEG quality 88), retaining the same video element. Unsupported thumbnail extraction falls back transparently to the custom controls without changing original bytes or playback. HTTP responses are no-store; authorization runs before cache access. The first-frame attribute is removed after playback starts. The current native probe requires a decoded nontrivial poster and checks unreferenced poster requests return 404.
+
+Run 40674979709 (07c5f2e) compiled and passed the signed APK identity, core workspace and media/security jobs, but the emulator stopped at attachment metadata resolution before any player was created. This does not validate the poster change. The next probe preconfigures paused automatic sync through the existing native policy API before launching the isolated test workspace and records worker stacks and pending bridge methods on failure. The UI-based attempt was rejected as busy during startup, with workers already idle; no conclusion about a network worker blockage is supported. No production sync behavior is modified.
+
+The Android video preview no longer animates the entire dialog/video surface. Control fade/press animations remain; the viewer background is opaque black from its first frame. Browser screenshot/behavior regression passes after updating the reveal step to account for mouse-hover control revelation. Android capture remains pending.
+
+The landscape fixture now contains H.264 video and AAC audio, both 32 seconds. Native reports include decoded audio bytes when exposed by WebView. The emulator uses no audio output device: sound quality and perceptual AV synchronization still require physical-device listening.
