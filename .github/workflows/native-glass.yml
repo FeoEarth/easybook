@@ -112,6 +112,7 @@ jobs:
           profile: pixel_2
           disk-size: 2048M
           emulator-boot-timeout: 180
+          emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim -memory 4096
           disable-animations: false
           script: |
             adb shell wm size 1206x2622
