@@ -100,6 +100,7 @@ public class MainActivity extends Activity {
         safeArea.requestApplyInsets();
         WebSettings s = web.getSettings();
         web.setWebChromeClient(new WebChromeClient(){
+            @Override public android.graphics.Bitmap getDefaultVideoPoster(){return android.graphics.Bitmap.createBitmap(1,1,android.graphics.Bitmap.Config.ARGB_8888);}
             @Override public void onShowCustomView(View view,CustomViewCallback callback){
                 if(videoFullscreen!=null||!LOCAL.equals(web.getUrl())){callback.onCustomViewHidden();return;}
                 videoFullscreen=view;videoFullscreenCallback=callback;videoSystemUi=getWindow().getDecorView().getSystemUiVisibility();videoOrientation=getRequestedOrientation();
@@ -146,11 +147,12 @@ public class MainActivity extends Activity {
                         String mime=meta.optString("mime","application/octet-stream");
                         if(mime.equals("application/octet-stream")){String name=meta.optString("name","").toLowerCase(java.util.Locale.ROOT);if(name.endsWith(".mp4")||name.endsWith(".m4v"))mime="video/mp4";else if(name.endsWith(".mov"))mime="video/quicktime";else if(name.endsWith(".webm"))mime="video/webm";}
                         if(!mime.matches("image/(png|jpeg|gif|webp)|application/pdf|text/plain|(audio|video)/[a-zA-Z0-9.+-]+"))mime="application/octet-stream";
-                        File original=repository.attachments.file(space,id);if(!original.isFile())throw new IOException();long length=original.length();
+                        File original=repository.attachments.file(space,id);if(!original.isFile())throw new IOException();if("1".equals(u.getQueryParameter("poster"))){if(!mime.startsWith("video/"))throw new IOException();return VideoPoster.response(MainActivity.this,original,space,id);}long length=original.length();
                         String range=null;for(Map.Entry<String,String> header:r.getRequestHeaders().entrySet())if(header.getKey().equalsIgnoreCase("Range"))range=header.getValue();
                         AttachmentRange bytes;try{bytes=AttachmentRange.parse(range,length);}catch(IOException invalid){Map<String,String> headers=new HashMap<>();headers.put("Content-Range","bytes */"+length);headers.put("Content-Length","0");headers.put("Cache-Control","no-store");return new WebResourceResponse("text/plain","UTF-8",416,"Range Not Satisfiable",headers,new ByteArrayInputStream(new byte[0]));}
-                        FileInputStream input=new FileInputStream(original);try{input.getChannel().position(bytes.start);}catch(IOException error){input.close();throw error;}
-                        InputStream stream=new FilterInputStream(input){long remaining=bytes.count;
+                        // WebView seeks from byte zero itself. Keep the prefix available for
+                        // that seek, then stop at the absolute requested end (not count).
+                        InputStream stream=new FilterInputStream(new FileInputStream(original)){long remaining=bytes.end+1;
                             @Override public int read()throws IOException{if(remaining==0)return -1;int v=in.read();if(v>=0)remaining--;return v;}
                             @Override public int read(byte[] b,int off,int len)throws IOException{if(len==0)return 0;if(remaining==0)return -1;int n=in.read(b,off,(int)Math.min(len,remaining));if(n>0)remaining-=n;return n;}
                             @Override public long skip(long n)throws IOException{long skipped=in.skip(Math.min(Math.max(0,n),remaining));remaining-=skipped;return skipped;}
