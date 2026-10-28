@@ -112,7 +112,7 @@ jobs:
           profile: pixel_2
           disk-size: 2048M
           emulator-boot-timeout: 180
-          emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim -memory 4096
+          emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -no-boot-anim -memory 4096
           disable-animations: false
           script: |
             adb shell wm size 1206x2622
@@ -125,7 +125,7 @@ jobs:
             adb shell am instrument -w com.feoearth.easybook.notes.test/com.feoearth.easybook.VideoPlayerInstrumentation | tee /tmp/video-player-check.txt
             mkdir -p video-player-evidence
             adb pull /sdcard/Android/data/com.feoearth.easybook.notes/files/video-player-evidence video-player-evidence/ || true
-            adb logcat -d -s AndroidRuntime chromium NativeGlassProbe > video-player-evidence/logcat.txt
+            adb logcat -d -s AndroidRuntime chromium NativeGlassProbe MediaCodec ACodec CCodec AudioTrack AudioFlinger cr_MediaCodecBridge cr_MediaCodecUtil > video-player-evidence/logcat.txt
             for report in video-player-evidence/*/result.json; do if test -f "$report"; then cat "$report"; fi; done
             grep -q 'passed=true' /tmp/video-player-check.txt
       - uses: actions/upload-artifact@v4
