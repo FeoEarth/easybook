@@ -68,7 +68,10 @@ jobs:
           path: native-glass-evidence/
           if-no-files-found: ignore
   video-player:
-    if: github.head_ref == 'release/android-photos-pixel'
+    if: github.head_ref == 'release/android-photos-pixel' && github.event.pull_request.head.repo.full_name == github.repository
+    permissions:
+      contents: write
+      actions: read
     runs-on: ubuntu-latest
     timeout-minutes: 25
     steps:
@@ -93,6 +96,15 @@ jobs:
           node-version: '24'
           cache: npm
       - run: npm ci --no-audit --no-fund && npm run build:editor
+      - name: Export exact generated Git blob identities for remote development
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          for artifact in app/src/main/assets/editor.js worker/editor.mjs worker/ui.mjs; do
+            ARTIFACT_PATH="$artifact" node -e 'const fs=require("fs");fs.writeFileSync("/tmp/player-generated-blob.json",JSON.stringify({encoding:"base64",content:fs.readFileSync(process.env.ARTIFACT_PATH).toString("base64")}))'
+            BLOB_SHA=$(gh api "repos/$GITHUB_REPOSITORY/git/blobs" --input /tmp/player-generated-blob.json --jq .sha)
+            echo "GENERATED_PLAYER_BLOB $artifact $BLOB_SHA"
+          done
       - name: Ephemeral instrumentation signing only
         run: |
           mkdir -p "$HOME/.easybook-signing"
@@ -135,41 +147,3 @@ jobs:
           path: video-player-evidence/
           if-no-files-found: ignore
 
-  previous-player-evidence:
-    if: github.head_ref == 'release/android-photos-pixel'
-    runs-on: ubuntu-latest
-    timeout-minutes: 5
-    permissions:
-      actions: read
-      contents: read
-    steps:
-      - uses: actions/download-artifact@v4
-        with:
-          github-token: ${{ github.token }}
-          repository: ${{ github.repository }}
-          run-id: 40667284871
-          name: android-photos-pixel-api35
-          path: previous-player-evidence
-      - name: Inspect previous failed Android report
-        run: |
-          python3 - <<'PY'
-          from pathlib import Path
-          for path in Path('previous-player-evidence').rglob('result.json'):
-              print('ANDROID_REPORT_BEGIN')
-              print(path.read_text())
-              print('ANDROID_REPORT_END')
-          PY
-      - name: Preview previous Android captures for inspection
-        run: |
-          python3 -m pip install --quiet pillow
-          python3 - <<'PY'
-          from pathlib import Path
-          from PIL import Image
-          import base64,io
-          for path in Path('previous-player-evidence').rglob('*.png'):
-              image=Image.open(path).convert('RGB')
-              image.thumbnail((1000,1000))
-              out=io.BytesIO()
-              image.save(out,format='JPEG',quality=87)
-              print('ANDROID_SCREENSHOT:'+path.name+':'+base64.b64encode(out.getvalue()).decode())
-          PY
