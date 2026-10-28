@@ -69,9 +69,6 @@ jobs:
           if-no-files-found: ignore
   video-player:
     if: github.head_ref == 'release/android-photos-pixel' && github.event.pull_request.head.repo.full_name == github.repository
-    permissions:
-      contents: write
-      actions: read
     runs-on: ubuntu-latest
     timeout-minutes: 25
     steps:
@@ -96,15 +93,6 @@ jobs:
           node-version: '24'
           cache: npm
       - run: npm ci --no-audit --no-fund && npm run build:editor
-      - name: Export exact generated Git blob identities for remote development
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          for artifact in app/src/main/assets/editor.js worker/editor.mjs worker/ui.mjs; do
-            ARTIFACT_PATH="$artifact" node -e 'const fs=require("fs");fs.writeFileSync("/tmp/player-generated-blob.json",JSON.stringify({encoding:"base64",content:fs.readFileSync(process.env.ARTIFACT_PATH).toString("base64")}))'
-            BLOB_SHA=$(gh api "repos/$GITHUB_REPOSITORY/git/blobs" --input /tmp/player-generated-blob.json --jq .sha)
-            echo "GENERATED_PLAYER_BLOB $artifact $BLOB_SHA"
-          done
       - name: Ephemeral instrumentation signing only
         run: |
           mkdir -p "$HOME/.easybook-signing"
@@ -131,7 +119,7 @@ jobs:
             adb shell wm density 480
             adb shell settings put secure immersive_mode_confirmations confirmed
             adb shell svc wifi disable
-            adb shell svc data disable
+            adb shell svc data disable || echo 'Emulator has no mobile-data service; Wi-Fi is disabled'
             adb install -r app/build/outputs/apk/debug/app-debug.apk
             adb install -r app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk
             adb shell am instrument -w com.feoearth.easybook.notes.test/com.feoearth.easybook.VideoPlayerInstrumentation | tee /tmp/video-player-check.txt
