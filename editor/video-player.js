@@ -3,13 +3,13 @@ const players=new Set();
 const paths={play:'M8 5v14l11-7z',pause:'M6 5h4v14H6zM14 5h4v14h-4z',expand:'M8 3H3v5M16 3h5v5M3 16v5h5M21 16v5h-5',close:'M6 6l12 12M18 6L6 18',volume:'M11 5L6 9H3v6h3l5 4zM15 8a6 6 0 010 8M18 5a10 10 0 010 14',back:'M4 8V3m0 5h5M4 8a9 9 0 11-1 8',forward:'M20 8V3m0 5h-5M20 8a9 9 0 101 8'};
 function icon(name){
  const optical={
-  pause:'<rect x="5.5" y="3" width="5" height="18" rx="1.5"/><rect x="13.5" y="3" width="5" height="18" rx="1.5"/>',
+  pause:'<rect x="5.4" y="3" width="5.6" height="18" rx="1.5"/><rect x="13" y="3" width="5.6" height="18" rx="1.5"/>',
   play:'<path d="M8 4.5Q7 4 7 5.5v13Q7 20 8.5 19l10-6Q20 12 18.5 11z"/>',
   volume:'<path fill="currentColor" stroke="none" d="M11 4.8 6 9H3v6h3l5 4.2z"/><path d="M14.5 8.5a5.5 5.5 0 0 1 0 7M17.5 5.5a9.6 9.6 0 0 1 0 13M20 3a13 13 0 0 1 0 18"/>',
   back:'<path d="M10 3.7a8.4 8.4 0 1 1-5.3 3.5M10 3.7 7 1m3 2.7L7 7"/>',
   forward:'<path d="M14 3.7a8.4 8.4 0 1 0 5.3 3.5M14 3.7 17 1m-3 2.7L17 7"/>'
  };
- const ten='<path class="eb-video-ten" d="M7.2 9.5 9.8 8v9m6-9a2.7 4.5 0 1 1 0 9a2.7 4.5 0 1 1 0-9"/>';
+ const ten='<path class="eb-video-ten" transform="translate(.435 0) scale(.9 1)" d="M7.2 9.5 9.8 8v9m6-9a2.7 4.5 0 1 1 0 9a2.7 4.5 0 1 1 0-9"/>';
  return '<svg viewBox="0 0 24 24" aria-hidden="true">'+(optical[name]||'<path d="'+paths[name]+'"/>')+(['back','forward'].includes(name)?ten:'')+'</svg>';
 }
 export function mediaMime(file){const mime=(file.mime||'').toLowerCase();if(mime&&mime!=='application/octet-stream')return mime;return ({mp4:'video/mp4',m4v:'video/mp4',mov:'video/quicktime',webm:'video/webm',mkv:'video/x-matroska',avi:'video/x-msvideo'})[(file.name||'').split('.').pop().toLowerCase()]||mime||'application/octet-stream'}
@@ -41,7 +41,7 @@ export function createVideoPlayer({open=()=>{},retry}={}){
  function show(){root.classList.remove('controls-hidden');clearTimeout(hideTimer);if(!video.paused&&!failed)hideTimer=setTimeout(()=>{if(!root.matches(':focus-visible')&&!root.querySelector(':focus-visible'))root.classList.add('controls-hidden')},2800)}
  function fail(reason){failed=true;clearTimeout(loadTimer);video.pause();root.classList.remove('controls-hidden');text.textContent=reason;message.hidden=false;again.hidden=false;external.hidden=false;root.dataset.state='error'}
  function waiting(force=false){if(failed)return;if(force!==true&&video.paused&&video.readyState>=1){clearTimeout(loadTimer);message.hidden=true;root.dataset.state='paused';return}root.dataset.state='waiting';message.hidden=false;text.textContent='正在缓冲…';again.hidden=true;external.hidden=true;clearTimeout(loadTimer);loadTimer=setTimeout(()=>fail('视频加载超时，请重试或保存后打开'),20000)}
- function ready(){if(failed)return;if(video.videoWidth&&video.videoHeight){root.style.setProperty('--video-ratio',video.videoWidth+'/'+video.videoHeight);root.dataset.orientation=video.videoHeight>video.videoWidth?'portrait':'landscape'}clearTimeout(loadTimer);message.hidden=true;root.dataset.state=video.paused?'paused':'playing';update();}
+ function ready(){if(failed)return;if(video.videoWidth&&video.videoHeight){root.style.setProperty('--video-ratio',video.videoWidth+'/'+video.videoHeight);root.style.setProperty('--video-aspect',String(video.videoWidth/video.videoHeight));root.dataset.orientation=video.videoHeight>video.videoWidth?'portrait':'landscape'}clearTimeout(loadTimer);message.hidden=true;root.dataset.state=video.paused?'paused':'playing';update();}
  async function toggle(){if(failed){await reload();return}if(!video.paused){video.pause();return}for(const p of players)if(p!==api)p.pause();try{await video.play()}catch(e){if(e.name==='NotAllowedError'){show();text.textContent='请轻触播放';message.hidden=false;again.hidden=true;external.hidden=true}else fail('此设备无法播放该视频编码，请保存后使用外部播放器')}show()}
  function seek(delta){if(Number.isFinite(video.duration))video.currentTime=Math.max(0,Math.min(video.duration,video.currentTime+delta));show()}
  // A WebView surface handoff can leave Android at HAVE_CURRENT_DATA forever.

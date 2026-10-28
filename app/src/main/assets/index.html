@@ -336,15 +336,16 @@ body[data-page=mcp] .app{padding-bottom:max(32px,env(safe-area-inset-bottom))}
 :root[data-platform=android] .eb-video button{box-shadow:inset 0 1px 1px #ffffff35,inset 0 -1px 1px #0002,0 3px 12px #0002;backdrop-filter:blur(7px) saturate(1.12);-webkit-backdrop-filter:blur(7px) saturate(1.12)}
 :root[data-platform=android] .eb-video button:after{content:'';position:absolute;inset:50% auto auto 50%;min-width:44px;min-height:44px;width:100%;height:100%;transform:translate(-50%,-50%)}
 :root[data-platform=android] .eb-video button{position:relative}
-.eb-video button .eb-video-ten{stroke-width:1.55;fill:none}
+.eb-video button .eb-video-ten{stroke-width:1.2;fill:none}
+:root[data-platform=android] .inline-media>.eb-video:not(:fullscreen)[data-orientation=portrait]{--portrait-cap:max(220px,calc(100dvh - 240px));width:min(100%,calc(var(--portrait-cap)*var(--video-aspect,.5625)));margin-inline:auto}
 :root[data-platform=android] .eb-video:not(:fullscreen) .eb-video-bottom{left:calc(14 * var(--ios-player-unit));right:calc(14 * var(--ios-player-unit));bottom:calc(18 * var(--ios-player-unit));padding:5px 12px 5px 4px;grid-template-columns:40px minmax(0,1fr);column-gap:4px;border:1px solid var(--player-edge);border-radius:28px;background:linear-gradient(145deg,#ffffff16,#00000048);box-shadow:inset 0 1px 1px #ffffff20,0 4px 16px #0002;backdrop-filter:blur(7px);-webkit-backdrop-filter:blur(7px)}
 :root[data-platform=android] .eb-video:not(:fullscreen) .eb-video-bottom>.eb-video-play{width:40px;min-width:40px;height:44px;background:none;border:0;box-shadow:none;backdrop-filter:none;-webkit-backdrop-filter:none}
 :root[data-platform=android] .eb-video:not(:fullscreen) .eb-video-bottom>.eb-video-play svg{width:21px;height:21px}
 :root[data-platform=android] .eb-video:not(:fullscreen) .eb-video-times{font-size:10px;line-height:12px;opacity:.85}
 :root[data-platform=android] .eb-video input[type=range]::-webkit-slider-thumb{width:3px;height:8px;margin-top:-2px}
 :root[data-platform=android] .eb-video:fullscreen .eb-video-top{top:max(env(safe-area-inset-top),calc(24 * var(--ios-player-unit)));left:max(env(safe-area-inset-left),calc(62 * var(--ios-player-unit)));right:max(env(safe-area-inset-right),calc(62 * var(--ios-player-unit)))}
-:root[data-platform=android] .eb-video:fullscreen .eb-video-top>button{width:calc(44 * var(--ios-player-unit));height:calc(44 * var(--ios-player-unit));min-width:0;min-height:0;padding:calc(12 * var(--ios-player-unit))}
-:root[data-platform=android] .eb-video:fullscreen .eb-video-top>button svg{width:100%;height:100%;stroke-width:2.5}
+:root[data-platform=android] .eb-video:fullscreen .eb-video-top>button{width:calc(44 * var(--ios-player-unit));height:calc(44 * var(--ios-player-unit));min-width:0;min-height:0;padding:calc(8.5 * var(--ios-player-unit))}
+:root[data-platform=android] .eb-video:fullscreen .eb-video-top>button svg{width:100%;height:100%;stroke-width:2.2}
 :root[data-platform=android] .eb-video:fullscreen .eb-video-center{gap:calc(62 * var(--ios-player-unit))}
 :root[data-platform=android] .eb-video:fullscreen .eb-video-center>.eb-video-play{width:calc(88 * var(--ios-player-unit));height:calc(88 * var(--ios-player-unit));min-width:0;min-height:0;padding:calc(16 * var(--ios-player-unit))}
 :root[data-platform=android] .eb-video:fullscreen .eb-video-center>.eb-video-play svg{width:100%;height:100%}
