@@ -68,7 +68,7 @@ jobs:
           path: native-glass-evidence/
           if-no-files-found: ignore
   video-player:
-    if: github.head_ref == 'release/android-photos-pixel' && github.event.pull_request.head.repo.full_name == github.repository
+    if: (github.head_ref == 'release/android-photos-pixel' || github.head_ref == 'release/android-video-retry-race') && github.event.pull_request.head.repo.full_name == github.repository
     runs-on: ubuntu-latest
     timeout-minutes: 25
     steps:
