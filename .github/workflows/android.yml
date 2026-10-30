@@ -118,7 +118,22 @@ jobs:
           VERSION='${{ needs.apk.outputs.version }}'
           [[ "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || { echo 'Invalid release version'; exit 1; }
           TAG="v${VERSION}-build${GITHUB_RUN_NUMBER}"
-          gh release create "$TAG" "Easybook-${VERSION}.apk" SHA256SUMS.txt --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" --title "Easybook ${VERSION} · build ${GITHUB_RUN_NUMBER}" --notes "用户手动批准发布的 Android APK。沿用现有签名，保留 QWEA0；编译、签名和自动化检查通过不等同于 Android 通行密钥实机登录及生产备份恢复验收。"
+          NOTES=$(printf '%s\n' \
+            '## 安装包' \
+            '' \
+            "- Android 8.0 及以上：\`Easybook-${VERSION}.apk\`" \
+            '- `SHA256SUMS.txt`：安装包完整性校验值' \
+            '' \
+            '## 发布信息' \
+            '' \
+            "- 应用版本：${VERSION}" \
+            "- 发布构建号：${GITHUB_RUN_NUMBER}" \
+            '- 发布方式：从 `main` 手动批准发布' \
+            '' \
+            '## 验证说明' \
+            '' \
+            '已完成编译、签名和自动化检查。自动化检查不等同于 Android 通行密钥实机登录及生产备份恢复验收。')
+          gh release create "$TAG" "Easybook-${VERSION}.apk" SHA256SUMS.txt --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" --title "Easybook ${VERSION} · build ${GITHUB_RUN_NUMBER}" --notes "$NOTES"
 
 
 
