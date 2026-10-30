@@ -4,7 +4,7 @@ const {chromium}=require('playwright'),fs=require('node:fs'),assert=require('nod
  try{
  const page=await browser.newPage({viewport:{width:320,height:640}}),errors=[];
  page.on('pageerror',e=>errors.push(e.message));
- await page.addInitScript(()=>{Object.defineProperty(navigator,'onLine',{value:false});localStorage.setItem('easybook-glass','reduced');Object.defineProperty(navigator,'deviceMemory',{value:8})});
+ await page.addInitScript(()=>{Object.defineProperty(navigator,'onLine',{value:false});Object.defineProperty(Navigator.prototype,'deviceMemory',{configurable:true,get:()=>8})});
  await page.route('https://easybook.test/**',r=>r.fulfill({contentType:r.request().url().endsWith('/editor.js')?'text/javascript':'text/html',body:fs.readFileSync(r.request().url().endsWith('/editor.js')?'app/src/main/assets/editor.js':'app/src/main/assets/index.html')}));
  await page.goto('https://easybook.test');await page.waitForFunction(()=>window.easybookRich);
  assert.equal(await page.locator('#glassToggle,#glassValue').count(),0);assert.equal(await page.evaluate(()=>localStorage.getItem('easybook-glass')),null);assert.equal(await page.evaluate(()=>document.documentElement.dataset.glass),'normal');
@@ -46,7 +46,7 @@ const {chromium}=require('playwright'),fs=require('node:fs'),assert=require('nod
  await page.locator('#createFolder').click();await page.locator('#folderName').fill('归档');await page.locator('#createFolderSubmit').click();
  assert.equal(await page.locator('.folder-entry .folder-row').first().evaluate(e=>getComputedStyle(e,'::after').content),'""');
  await page.locator('#folderSettings').click();await page.waitForTimeout(280);await bounds('.topbar');
- await page.locator('#activityEntry').click();await page.waitForTimeout(280);await bounds('.sync-nav');
+ await page.locator('#activityEntry').click();await page.waitForTimeout(280);await bounds('#syncActivity .sync-nav');
  await page.locator('#syncBack').click();await page.waitForTimeout(280);assert.equal(await page.locator('#settings').isVisible(),true);
  // System-level transparency reduction must also win over dark theme tokens.
  const cdp=await page.context().newCDPSession(page);
