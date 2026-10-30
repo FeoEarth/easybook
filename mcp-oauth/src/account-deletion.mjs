@@ -1,5 +1,5 @@
 import {checkpointEnabled} from '../../worker/security-checkpoint.mjs';
-import {session,csrf,requireForm,page,json,redirect,cookie,ACCOUNT_COOKIE} from './accounts.mjs';
+import {session,csrf,requireForm,page,reauthenticationPage,json,redirect,cookie,ACCOUNT_COOKIE} from './accounts.mjs';
 import {escape} from './appearance.mjs';
 import {deletionPreview,deleteAccount} from '../../worker/account-deletion.mjs';
 import {runWorkspacePurges} from '../../worker/workspace-purge.mjs';
@@ -7,6 +7,7 @@ export async function accountDeletionRoutes(request,env){
  const path=new URL(request.url).pathname;if(path!=='/account/delete')return null;
  if(!checkpointEnabled(env))return json({error:'account_deletion_requires_independent_checkpoint'},409);
  const s=await session(request,env);if(!s)return redirect('/account/passkeys');
+ if(Date.now()-s.authenticated_at>300000)return reauthenticationPage('删除账户前需要最近五分钟内重新验证身份。','/account/delete');
  const preview=await deletionPreview(env,s.account_id);
  if(request.method==='POST'){
   const form=await requireForm(request,s,65536);

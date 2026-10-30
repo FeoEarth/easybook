@@ -18,7 +18,12 @@ export const json=(data,status=200)=>Response.json(data,{status,headers:noStore}
 // Native browser forms need a non-null same-origin Origin. Keep redirects/JSON
 // on no-referrer so OAuth response URLs still do not leak to other sites.
 export function page(title,content,headers={}){
- return new Response(`<!doctype html><html lang="zh-CN"><meta charset="utf-8"><title>${escape(title)} · Easybook</title>${oauthAppearance}<style>.group{background:var(--paper);border-radius:20px;padding:4px 16px;margin:20px 0}.row{padding:14px 0;border-bottom:1px solid var(--line)}.row:last-child{border:0}h2{font-size:13px;line-height:1.5;color:var(--muted);font-weight:500;margin:28px 16px 8px}.group{margin:0 0 20px}label{display:block;padding:12px 0;line-height:1.5}input,select{font:inherit;max-width:100%;accent-color:var(--accent)}input:not([type=checkbox]),select{display:block;width:100%;min-height:44px;margin-top:8px;padding:10px 12px;border:0;border-radius:10px;background:var(--bg);color:var(--ink);outline-offset:3px}input[type=checkbox]{width:18px;height:18px;vertical-align:middle;margin-right:8px}select{appearance:none;background-image:none}form{display:block;margin:18px 0;padding:16px;gap:0}.row form{margin:10px 0 0;padding:0;background:none;border-radius:0}form button{margin:8px 4px;min-height:44px}.row form button{margin:0;padding-left:0;background:none;color:var(--danger)}a.link{background:none;color:var(--accent);padding-left:0}small{display:block;color:var(--muted);font-size:13px}code{font-size:13px;word-break:break-all}.danger{color:var(--danger)}</style><body><a class="link" href="/account">‹ Easybook 账户</a><h1>${escape(title)}</h1>${content}</body></html>`,{headers:{...htmlHeaders,...noStore,'Referrer-Policy':'same-origin',...headers}});
+ const root=['账户与安全','登录 Easybook'].includes(title),backHref=root?'https://easybook.loonxy.com/':'/account',backLabel=root?'Easybook':'Easybook 账户';
+ return new Response(`<!doctype html><html lang="zh-CN"><meta charset="utf-8"><title>${escape(title)} · Easybook</title>${oauthAppearance}<style>.group{background:var(--paper);border-radius:20px;padding:4px 16px;margin:20px 0}.row{padding:14px 0;border-bottom:1px solid var(--line)}.row:last-child{border:0}h2{font-size:13px;line-height:1.5;color:var(--muted);font-weight:500;margin:28px 16px 8px}.group{margin:0 0 20px}label{display:block;padding:12px 0;line-height:1.5}input,select{font:inherit;max-width:100%;accent-color:var(--accent)}input:not([type=checkbox]),select{display:block;width:100%;min-height:44px;margin-top:8px;padding:10px 12px;border:0;border-radius:10px;background:var(--bg);color:var(--ink);outline-offset:3px}input[type=checkbox]{width:18px;height:18px;vertical-align:middle;margin-right:8px}select{appearance:none;background-image:none}form{display:block;margin:18px 0;padding:16px;gap:0}.row form{margin:10px 0 0;padding:0;background:none;border-radius:0}form button{margin:8px 4px;min-height:44px}.row form button{margin:0;padding-left:0;background:none;color:var(--danger)}a.link{background:none;color:var(--accent);padding-left:0}small{display:block;color:var(--muted);font-size:13px}code{font-size:13px;word-break:break-all}.danger{color:var(--danger)}</style><body><a class="link" href="${backHref}">‹ ${backLabel}</a><h1>${escape(title)}</h1>${content}</body></html>`,{headers:{...htmlHeaders,...noStore,'Referrer-Policy':'same-origin',...headers}});
+}
+export function reauthenticationPage(message='此操作需要最近五分钟内重新验证身份。',returnPath='/account'){
+ const target=encodeURIComponent(safeReturn(returnPath));
+ return page('请重新验证身份',`<p>${escape(message)}</p><div class="group"><a class="link" href="/account/passkeys?return=${target}">使用通行密钥验证 ›</a><a class="link" href="/account/login?return=${target}">使用 GitHub 验证 ›</a></div><p>验证完成后会返回账户与安全页面。</p>`);
 }
 export function redirect(path,cookies=[]){const headers=new Headers({...noStore,Location:path});for(const c of cookies)headers.append('Set-Cookie',c);return new Response(null,{status:303,headers});}
 export async function sessionToken(token,env){
@@ -45,7 +50,7 @@ export async function rateLimit(request,env,kind,limit=30){
  const row=await env.DB.prepare('INSERT INTO account_rate_limits(bucket,count,expires_at) VALUES(?,1,?) ON CONFLICT(bucket) DO UPDATE SET count=count+1 RETURNING count').bind(bucket,Date.now()+120000).first();
  if(row.count>limit)throw new Response('Too many requests',{status:429,headers:{...noStore,'Retry-After':'60'}});
 }
-export function safeReturn(value){return typeof value==='string'&&value.length<=6000&&(value==='/account'||value==='/account?connect=1'||/^\/account\/handoff\?flow=[a-f0-9]{64}&state=[a-f0-9]{64}$/.test(value)||/^\/account\/operations\/[a-f0-9-]{36}$/.test(value)||value.startsWith('/oauth/authorize?'))?value:'/account';}
+export function safeReturn(value){return typeof value==='string'&&value.length<=6000&&(value==='/account'||value==='/account?connect=1'||value==='/account/delete'||/^\/account\/handoff\?flow=[a-f0-9]{64}&state=[a-f0-9]{64}$/.test(value)||/^\/account\/operations\/[a-f0-9-]{36}$/.test(value)||value.startsWith('/oauth/authorize?'))?value:'/account';}
 export async function startLogin(request,env,linkSession=null){
  await rateLimit(request,env,'login',10);
  const state='account_'+random(),browser=random();
@@ -115,7 +120,7 @@ export async function accountRoutes(request,env){
    const revocation=await reserveRevocations(env,[['session',s.id]]);await env.DB.prepare('UPDATE account_sessions SET revoked_at=? WHERE id=? AND account_id=?').bind(Date.now(),s.id,s.account_id).run();await finishRevocations(env,revocation,'committed');return redirect('/account',[cookie(ACCOUNT_COOKIE,'',0)]);
   }
   if(path==='/account/sessions/revoke'){
-   if(f.get('id')!==s.id&&Date.now()-s.authenticated_at>300000)return json({error:'reauthentication_required'},403);
+   if(f.get('id')!==s.id&&Date.now()-s.authenticated_at>300000)return reauthenticationPage('管理其他设备前，请先重新验证身份。');
    if(!await env.DB.prepare('SELECT 1 FROM account_sessions WHERE id=? AND account_id=?').bind(f.get('id'),s.account_id).first())return json({error:'not_found'},404);
    const revocation=await reserveRevocations(env,[['session',f.get('id')]]);await env.DB.prepare('UPDATE account_sessions SET revoked_at=? WHERE id=? AND account_id=?').bind(Date.now(),f.get('id'),s.account_id).run();await finishRevocations(env,revocation,'committed');return redirect('/account');
   }
@@ -127,7 +132,7 @@ export async function accountRoutes(request,env){
   if(path==='/account/workspaces/claim'&&modernWorkspaces(env))return json({error:'use_verified_workspace_association'},410);
   if(path==='/account/delete'){
    if(f.get('confirm')!=='DELETE')return page('删除账户',`<p>删除账户会撤销账户会话与新 OAuth 授权。笔记、附件和原有同步密钥保留，仍可通过原有设备访问。第三方旧 GitHub 授权需在原有授权界面单独撤销。</p><form method="post">${hidden}<label>输入 DELETE 确认 <input name="confirm" required></label><button class="danger">确认删除账户</button></form>`);
-   if(Date.now()-s.authenticated_at>300000)return page('请重新验证身份',`<p>删除账户前需要最近五分钟内验证身份。</p><a href="/account/login">重新登录</a>`);
+   if(Date.now()-s.authenticated_at>300000)return reauthenticationPage('删除账户前需要最近五分钟内验证身份。','/account/delete');
    await env.DB.batch([
     env.DB.prepare('UPDATE accounts SET deleted_at=? WHERE id=?').bind(Date.now(),s.account_id),
     env.DB.prepare('UPDATE account_sessions SET revoked_at=? WHERE account_id=?').bind(Date.now(),s.account_id),

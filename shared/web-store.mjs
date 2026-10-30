@@ -32,7 +32,7 @@ export class WebStore {
   if(isPersonalKey){const vault=await this.vaultKey(),iv=crypto.getRandomValues(new Uint8Array(12));sealed={iv,data:await crypto.subtle.encrypt({name:'AES-GCM',iv,additionalData:new TextEncoder().encode('easybook-personal-key-v1:'+workspace.id)},vault,new TextEncoder().encode(key))}}
   return new Promise((resolve,reject)=>{const t=this.db.transaction(['spaces','bindings','workspaces','vault'],'readwrite'),spaces=t.objectStore('spaces'),bindings=t.objectStore('bindings'),registry=t.objectStore('workspaces'),vault=t.objectStore('vault');let result,error;
    const abort=message=>{error=Error(message);t.abort()};
-   const b=bindings.get(digest);b.onsuccess=()=>{if(b.result&&b.result.workspaceId!==workspace.id){abort('Credential workspace identity changed');return}const source=b.result?.localNamespace||fallback,w=registry.get(workspace.id);w.onsuccess=()=>{const target=w.result?.localNamespace||source;if(target!==source){const pending=spaces.get(source);pending.onsuccess=()=>{const value=pending.result;if(value&&(value.notes?.length||value.folders?.length||Object.keys(value.inflight||{}).length||value.cursor||value.management?.pending?.length)){abort('This key has separate offline data; export it before reconnecting');return}finish(target)}}else finish(target)};function finish(localNamespace){result={id:workspace.id,name:workspace.name,mode:workspace.mode,role:workspace.role||'manager',localNamespace};registry.put(result);bindings.put({workspaceId:workspace.id,localNamespace},digest);if(sealed)vault.put(sealed,'personal-key:'+workspace.id);else if(workspace.mode==='shared')vault.delete('personal-key:'+workspace.id)}};
+   const b=bindings.get(digest);b.onsuccess=()=>{if(b.result&&b.result.workspaceId!==workspace.id){abort('Credential workspace identity changed');return}const source=b.result?.localNamespace||fallback,w=registry.get(workspace.id);w.onsuccess=()=>{const target=w.result&&!w.result.catalogOnly?w.result.localNamespace:source;if(target!==source){const pending=spaces.get(source);pending.onsuccess=()=>{const value=pending.result;if(value&&(value.notes?.length||value.folders?.length||Object.keys(value.inflight||{}).length||value.cursor||value.management?.pending?.length)){abort('This key has separate offline data; export it before reconnecting');return}finish(target)}}else finish(target)};function finish(localNamespace){result={id:workspace.id,name:workspace.name,mode:workspace.mode,role:workspace.role||'manager',localNamespace};registry.put(result);bindings.put({workspaceId:workspace.id,localNamespace},digest);if(sealed)vault.put(sealed,'personal-key:'+workspace.id);else if(workspace.mode==='shared')vault.delete('personal-key:'+workspace.id)}};
    t.oncomplete=()=>resolve(result);t.onerror=t.onabort=()=>reject(error||t.error||Error('Workspace binding failed'));
   })
  }
@@ -45,7 +45,12 @@ export class WebStore {
    t.oncomplete=()=>resolve(workspace);t.onerror=t.onabort=()=>reject(t.error);
   });
  }
- async listWorkspaces(){return new Promise((resolve,reject)=>{const r=this.db.transaction('workspaces','readonly').objectStore('workspaces').getAll();r.onsuccess=()=>resolve(r.result.map(({localNamespace,...workspace})=>workspace));r.onerror=()=>reject(r.error)})}
+ async listWorkspaces(){return new Promise((resolve,reject)=>{const r=this.db.transaction('workspaces','readonly').objectStore('workspaces').getAll();r.onsuccess=()=>resolve(r.result.map(({localNamespace,catalogOnly,...workspace})=>workspace));r.onerror=()=>reject(r.error)})}
+ async cacheWorkspaces(workspaces){
+  if(!Array.isArray(workspaces))throw Error('Invalid workspace catalog');
+  const valid=workspaces.map(workspace=>{if(!workspace||!/^[a-f0-9]{64}$/.test(workspace.id)||!['personal','shared'].includes(workspace.mode)||typeof workspace.name!=='string'||!workspace.name.trim()||workspace.name.length>60||!['reader','editor','manager'].includes(workspace.role||'manager'))throw Error('Invalid workspace catalog');return {...workspace,role:workspace.role||'manager'}});
+  return new Promise((resolve,reject)=>{const t=this.db.transaction('workspaces','readwrite'),store=t.objectStore('workspaces');for(const workspace of valid){const r=store.get(workspace.id);r.onsuccess=()=>store.put({...workspace,localNamespace:r.result?.localNamespace||'catalog:'+workspace.id,catalogOnly:r.result?.catalogOnly??!r.result})}t.oncomplete=()=>resolve();t.onerror=t.onabort=()=>reject(t.error||Error('Workspace catalog cache failed'))})
+ }
  flush(){return this.tail}
 }
 
