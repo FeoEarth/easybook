@@ -17,11 +17,12 @@ final class WorkspaceClient {
    try(InputStream in=c.getInputStream();ByteArrayOutputStream out=new ByteArrayOutputStream()){byte[] b=new byte[4096];int n;while((n=in.read(b))!=-1){if(out.size()+n>262144)throw new IOException("Workspace response too large");out.write(b,0,n);}return new JSONObject(out.toString("UTF-8"));}
   }finally{c.disconnect();}
  }
- static JSONObject ensure(NoteRepository db)throws Exception{
+ static JSONObject ensure(NoteRepository db)throws Exception{return ensure(db,null);}
+ static JSONObject ensure(NoteRepository db,String turnstileToken)throws Exception{
   String local=db.activeSpace();if(!db.setting("account-workspace:"+local,"").isEmpty())return new JSONObject().put("id",db.setting("account-workspace:"+local,""));
   String credential=db.credential(local);JSONObject identity;
   try{identity=request("/api/workspaces",null,credential,false).getJSONArray("workspaces").getJSONObject(0);}
-  catch(NativeSync.HttpsTransport.HttpFailure error){if(error.status==404)return null;if(error.status!=401)throw error;try{identity=request("/api/workspaces",new JSONObject().put("name","我的工作区").put("bootstrapKey",credential),null,false).getJSONObject("workspace");}catch(Exception failure){throw error;}}
+  catch(NativeSync.HttpsTransport.HttpFailure error){if(error.status==404)return null;if(error.status!=401)throw error;if(turnstileToken==null)throw error;try{identity=request("/api/workspaces",new JSONObject().put("name","我的工作区").put("bootstrapKey",credential).put("turnstileToken",turnstileToken),null,false).getJSONObject("workspace");}catch(Exception failure){throw error;}}
   db.bindWorkspaceIdentity(local,identity);return identity;
  }
  static JSONObject perform(NoteRepository db,String action,JSONObject args)throws Exception{
