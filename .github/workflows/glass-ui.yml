@@ -2,11 +2,22 @@ name: Liquid Glass scoped UI
 on:
   pull_request:
     branches: [main]
+    paths:
+      - 'app/src/main/assets/index.html'
+      - 'worker/ui.mjs'
+      - 'scripts/check.mjs'
+      - 'scripts/build-worker.mjs'
+      - 'scripts/glass-ui-smoke.cjs'
+      - 'package.json'
+      - 'package-lock.json'
+      - '.github/workflows/glass-ui.yml'
+concurrency:
+  group: glass-ui-${{ github.ref }}
+  cancel-in-progress: true
 permissions:
   contents: read
 jobs:
   ui:
-    if: startsWith(github.head_ref, 'ui-liquid-glass-')
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
