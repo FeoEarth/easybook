@@ -125,15 +125,23 @@ for(const [suffix,spdx,holder] of pdfExtras){
 records.sort((a,b)=>a.scope.localeCompare(b.scope)||a.name.localeCompare(b.name)||a.version.localeCompare(b.version));
 
 const sections=[];
-sections.push('# THIRD_PARTY_LICENSES — Third-party production license inventory');
+sections.push('# THIRD_PARTY_LICENSES — 第三方生产组件与许可证清单');
 sections.push('');
-sections.push('> **Generated file.** Run `npm ci --omit=dev --ignore-scripts` in the repository root and `mcp-oauth/`, then `node scripts/generate-third-party-licenses.mjs`. Do not hand-edit this file.');
+sections.push('> **Generated file / 自动生成文件。** Run `npm ci --omit=dev --ignore-scripts` in both the repository root and `mcp-oauth/`, then run `node scripts/generate-third-party-licenses.mjs`. Do not hand-edit this file.');
 sections.push('');
-sections.push('This inventory retains the original license text bundled with the locked npm package versions, the QWEA0 port, PDF.js embedded font/CMap/decoder licenses, and the **resolved Android release runtime dependency graph** (including transitive AAR/JAR artifacts). SPDX entries describe the **component**, not a relicensing to Easybook AGPL-3.0-only. Identical full open-source license texts are printed once and referenced by SHA-256.');
+sections.push('This inventory covers the locked production npm graphs for the Web editor/PDF build and OAuth Worker, the QWEA0 port, PDF.js embedded font/CMap/decoder assets, and the **resolved Android release runtime dependency graph** (including transitive AAR/JAR artifacts). SPDX entries describe each **third-party component**; Easybook itself remains AGPL-3.0-only. Identical full open-source license texts are printed once and referenced by SHA-256.');
 sections.push('');
 sections.push('**Coverage boundary:** development/test and platform-specific optional npm packages are excluded; esbuild is listed but marked build-only. The Android `releaseRuntimeClasspath` is resolved by Gradle, but final APK byte-for-byte contents are not yet audited. Proprietary Google Play Services modules are **not open-source**: their Maven POMs point to the Android SDK License terms, which are linked rather than reproduced as an open-source license text. The Liberation font uses its own GPL-2.0-based agreement with exceptions, identified with a local `LicenseRef` rather than inaccurately described as Apache-2.0.');
 sections.push('');
 sections.push(`Entries: ${records.length} (${records.filter(x=>x.scope==='Web editor / PDF build').length} npm main, ${records.filter(x=>x.scope==='OAuth Worker').length} npm OAuth, ${records.filter(x=>x.scope==='Android APK / Web PDF assets').length} embedded PDF resources, ${android.length} resolved Android runtime modules, one native glass port).`);
+sections.push('');
+sections.push('## Audit inputs / 审计输入');
+sections.push('');
+sections.push('- `package-lock.json`: Web editor, Worker-shared code and PDF build production dependency graph.');
+sections.push('- `mcp-oauth/package-lock.json`: OAuth Worker production dependency graph.');
+sections.push('- `third_party/android/runtime-dependencies.json`: exact Gradle `releaseRuntimeClasspath` snapshot.');
+sections.push('- `node_modules/pdfjs-dist/{cmaps,standard_fonts,wasm}`: embedded PDF resource license set, checked against an explicit allowlist.');
+sections.push('- `third_party/qwea0-liquid-glass/`: pinned native shader attribution and MIT text.');
 sections.push('');
 sections.push('## Component inventory');
 sections.push('');
