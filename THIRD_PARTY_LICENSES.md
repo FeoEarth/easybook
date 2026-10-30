@@ -144,7 +144,7 @@ Entries: 145 (56 npm main, 27 npm OAuth, 9 embedded PDF resources, 52 resolved A
 | esbuild | 0.28.2 | Web editor / PDF build | `MIT` | Copyright (c) 2020 Evan Wallace | [b40ec5baec](#license-text-b40ec5baec7bb34f) |
 | linkify-it | 5.0.2 | Web editor / PDF build | `MIT` | Copyright (c) 2015 Vitaly Puzrin. | [95e3f7f0e8](#license-text-95e3f7f0e81e9b49) |
 | linkifyjs | 4.4.0 | Web editor / PDF build | `MIT` | Copyright (c) 2024 Nick Frasser | [58e6f36774](#license-text-58e6f3677452cca0) |
-| markdown-it | 14.1.0 | Web editor / PDF build | `MIT` | Copyright (c) 2014 Vitaly Puzrin, Alex Kocharin. | [792c48c5a8](#license-text-792c48c5a849a15f) |
+| markdown-it | 14.3.3 | Web editor / PDF build | `MIT` | Copyright (c) 2014 Vitaly Puzrin, Alex Kocharin. | [792c48c5a8](#license-text-792c48c5a849a15f) |
 | mdurl | 2.1.0 | Web editor / PDF build | `MIT` | Copyright (c) 2015 Vitaly Puzrin, Alex Kocharin. | [6b6a356c43](#license-text-6b6a356c4337e244) |
 | orderedmap | 2.1.1 | Web editor / PDF build | `MIT` | Copyright (C) 2016 by Marijn Haverbeke <marijn@haverbeke.berlin> and others | [869c30f368](#license-text-869c30f368eb0873) |
 | pdfjs-dist | 6.4.299 | Web editor / PDF build | `Apache-2.0` | copyright notice that is included in or attached to the work | [0d542e0c88](#license-text-0d542e0c8804e39a) |

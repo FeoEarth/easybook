@@ -61,7 +61,8 @@ export async function download(request,env){
   const iterator=parts();body=new ReadableStream({async pull(c){try{const x=await iterator.next();x.done?c.close():c.enqueue(x.value)}catch(e){c.error(e)}},cancel(){return iterator.return()}});
   if(m.encoding==='gzip')body=body.pipeThrough(new DecompressionStream('gzip'));
  }
- let size=0;body=body.pipeThrough(new TransformStream({transform(chunk,c){size+=chunk.byteLength;if(size>m.size||size>1073741824)throw Error('Attachment size exceeded');c.enqueue(chunk)}}));
+ let size=0;const digest=new crypto.DigestStream('SHA-256'),writer=digest.getWriter();
+ body=body.pipeThrough(new TransformStream({async transform(chunk,c){size+=chunk.byteLength;if(size>m.size||size>1073741824)throw Error('Attachment size exceeded');await writer.write(chunk);c.enqueue(chunk)},async flush(){await writer.close();const actual=Array.from(new Uint8Array(await digest.digest),b=>b.toString(16).padStart(2,'0')).join('');if(size!==m.size||actual!==m.id)throw Error('Attachment integrity check failed')}}));
  return new Response(body,{headers:{'Content-Type':'application/octet-stream','Content-Disposition':"attachment; filename*=UTF-8''"+encodeURIComponent(m.name),'Cache-Control':'private, no-store','Referrer-Policy':'no-referrer','X-Content-Type-Options':'nosniff'}});
 }
 

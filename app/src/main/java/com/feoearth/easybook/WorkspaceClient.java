@@ -20,20 +20,22 @@ final class WorkspaceClient {
  static void merge(JSONArray target,JSONArray source)throws Exception{
   for(int i=0;i<source.length();i++){JSONObject candidate=source.getJSONObject(i);boolean found=false;for(int j=0;j<target.length();j++)if(target.getJSONObject(j).getString("id").equals(candidate.getString("id"))){target.put(j,candidate);found=true;break;}if(!found)target.put(candidate);}
  }
- static JSONObject ensure(NoteRepository db)throws Exception{
+ static JSONObject ensure(NoteRepository db)throws Exception{return ensure(db,null);}
+ static JSONObject ensure(NoteRepository db,String turnstileToken)throws Exception{
   String local=db.activeSpace();if(!db.setting("account-workspace:"+local,"").isEmpty())return new JSONObject().put("id",db.setting("account-workspace:"+local,""));
   String credential=db.credential(local);JSONObject identity;
   try{identity=request("/api/workspaces",null,credential,false).getJSONArray("workspaces").getJSONObject(0);}
-  catch(NativeSync.HttpsTransport.HttpFailure error){if(error.status==404)return null;if(error.status!=401)throw error;try{identity=request("/api/workspaces",new JSONObject().put("name","我的工作区").put("bootstrapKey",credential),null,false).getJSONObject("workspace");}catch(Exception failure){throw error;}}
+  catch(NativeSync.HttpsTransport.HttpFailure error){if(error.status==404)return null;if(error.status!=401)throw error;if(turnstileToken==null)throw error;try{identity=request("/api/workspaces",new JSONObject().put("name","我的工作区").put("bootstrapKey",credential).put("turnstileToken",turnstileToken),null,false).getJSONObject("workspace");}catch(Exception failure){throw error;}}
   db.bindWorkspaceIdentity(local,identity);return identity;
  }
  static JSONObject perform(NoteRepository db,String action,JSONObject args)throws Exception{
+  if(action.equals("bootstrap")){try{ensure(db,args.optString("turnstileToken",null));return new JSONObject().put("ready",true);}catch(NativeSync.HttpsTransport.HttpFailure error){if(error.status==401&&!args.has("turnstileToken"))return new JSONObject().put("turnstileRequired",true);throw error;}}
   if(action.equals("list")){JSONObject current=db.cachedActiveWorkspace();JSONArray list=db.cachedWorkspaces();boolean cached=false;
    try{JSONObject refreshed=ensure(db);if(refreshed!=null&&refreshed.has("name"))current=refreshed;}catch(Exception unavailable){if(current==null)throw unavailable;cached=true;}
    try{JSONArray remote=request("/api/workspaces",null,NativeAccount.token(db),true).getJSONArray("workspaces");db.cacheWorkspaces(remote);merge(list,remote);}catch(CredentialVault.KeyUnavailable ignored){}catch(Exception unavailable){cached=true;}
    if(current==null)throw new IOException("Workspace unavailable");merge(list,new JSONArray().put(current));return new JSONObject().put("workspaces",list).put("current",current.getString("id")).put("cached",cached).put("accountAccess",!db.setting("account-workspace:"+db.activeSpace(),"").isEmpty());}
   if(action.equals("select")){String id=args.getString("id");if(db.activateCachedWorkspace(id))return new JSONObject().put("selected",true).put("cached",true);JSONObject w=request("/api/workspaces/"+id,null,NativeAccount.token(db),true).getJSONObject("workspace");db.activateAccountWorkspace(w);return new JSONObject().put("selected",true).put("cached",false);}
-  if(action.equals("create")){boolean account=args.optBoolean("account");JSONObject result=request("/api/workspaces",new JSONObject().put("name",args.getString("name")),account?NativeAccount.token(db):null,account);db.pairWorkspace(result.getString("key"),result.getJSONObject("workspace"),false);return new JSONObject().put("created",true);}
+  if(action.equals("create")){boolean account=args.optBoolean("account");JSONObject body=new JSONObject().put("name",args.getString("name"));if(!account)body.put("turnstileToken",args.getString("turnstileToken"));JSONObject result=request("/api/workspaces",body,account?NativeAccount.token(db):null,account);db.pairWorkspace(result.getString("key"),result.getJSONObject("workspace"),false);return new JSONObject().put("created",true);}
   if(java.util.Arrays.asList("members","member","mode","manager","leave","delete").contains(action)){
    String id=ensure(db).getString("id"),token=NativeAccount.token(db);
    if(action.equals("members"))return request("/api/workspaces/"+id+"/members",null,token,true);

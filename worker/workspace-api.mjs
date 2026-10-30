@@ -2,6 +2,7 @@ import {deleteWorkspace} from './workspace-delete.mjs';
 import {nativeSession} from '../mcp-oauth/src/native-sessions.mjs';
 import {session,csrf,rateLimit,readCookie,ACCOUNT_COOKIE} from '../mcp-oauth/src/accounts.mjs';
 import {boundedJSON,object} from './mcp-common.mjs';
+import {verifyWorkspaceCreation} from './turnstile.mjs';
 import {
  WorkspaceError,workspaceAccess,createWorkspace,resolveWorkspaceKey,listWorkspaces,
  rotateWorkspaceKey,associateWorkspace,renameWorkspace,convertToShared,
@@ -58,6 +59,7 @@ export async function workspaceAPI(request,env){
     const input=await inputBody(request);
     if(principal?.kind==='key')problem('use_account_or_anonymous_creation',400);
     if(input.bootstrapKey!==undefined&&(!/^[a-f0-9]{64}$/.test(input.bootstrapKey)||principal))problem('invalid_bootstrap',400);
+    if(!principal)await verifyWorkspaceCreation(request,env,input.turnstileToken);
     return reply(await createWorkspace(env,input.name,principal,input.bootstrapKey),201);
    }
    problem('method_not_allowed',405);
