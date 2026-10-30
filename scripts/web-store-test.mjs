@@ -26,11 +26,17 @@ const otherKey='c'.repeat(64);await migrated.load(otherKey);await migrated.save(
 await assert.rejects(()=>migrated.bindWorkspace(otherKey,workspace),/separate offline data/);
 assert.equal((await migrated.load(otherKey)).notes[0].id,'separate','conflicting local data is retained');
 assert.equal((await migrated.load(rotatedKey)).notes[0].id,'note');
+const cachedShared={id:'3'.repeat(64),name:'共享目录',mode:'shared',role:'editor'},cachedPersonal={id:'4'.repeat(64),name:'个人目录',mode:'personal',role:'manager'};
+await migrated.cacheWorkspaces([cachedShared,cachedPersonal]);
+assert.deepEqual((await migrated.listWorkspaces()).filter(w=>[cachedShared.id,cachedPersonal.id].includes(w.id)),[cachedShared,cachedPersonal],'cached catalog retains both personal and shared workspaces');
+const cachedKey='d'.repeat(64);await migrated.load(cachedKey);await migrated.save(cachedKey,{notes:[{id:'catalog-note'}],folders:[],inflight:{},cursor:0});
+await migrated.bindWorkspace(cachedKey,cachedPersonal);
+assert.equal((await migrated.load(cachedKey)).notes[0].id,'catalog-note','catalog metadata never redirects existing offline data');
 const stale=new WebStore(factory);await stale.open();await stale.load(rotatedKey);
 await migrated.save(rotatedKey,{notes:[{id:'newer'}],folders:[],inflight:{},cursor:28});
 await assert.rejects(()=>stale.save(rotatedKey,{notes:[],folders:[],inflight:{},cursor:0}));
 for(const store of [migrated,stale])store.db.close();
-console.log('PASS workspace storage: v1 upgrade, stable namespace through rotation, queue/cursor/cache preservation, retryable binding, no cross-workspace rebind or silent offline overwrite, stale-tab CAS');
+console.log('PASS workspace storage: v1 upgrade, personal/shared catalog cache, stable namespace through rotation, queue/cursor/cache preservation, retryable binding, no cross-workspace rebind or silent offline overwrite, stale-tab CAS');
 
 
 const vault=new WebStore(new IDBFactory());await vault.open();const secret=await vault.activeCredential();assert.match(secret,/^[a-f0-9]{64}$/);assert.equal(await vault.activeCredential(),secret);assert.equal((await vault.vaultKey()).extractable,false);assert.ok(!JSON.stringify(await vault.vaultGet('active')).includes(secret));assert.equal(await vault.namespace(secret),'local:'+await vault.fingerprint(secret));await vault.setActiveCredential('account:'+'2'.repeat(64));assert.equal(await vault.activeCredential(),'account:'+'2'.repeat(64));vault.db.close();console.log('PASS Web credential vault: nonextractable AES-GCM key, encrypted active credential, stable recovery, public account selector and no raw-key namespace for new data');
