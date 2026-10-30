@@ -13,3 +13,5 @@ worker/deploy.mjs
 app/src/main/assets/pdf/vendor/
 app/src/main/assets/pdf/manifest.json
 app/src/main/assets/pdf/THIRD_PARTY_LICENSES.md
+app/src/main/assets/pdf/THIRD_PARTY_NOTICES.md
+app/src/main/assets/pdf/EASYBOOK_LICENSE.txt
