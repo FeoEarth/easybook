@@ -1,6 +1,6 @@
 {
   "name": "easybook",
-  "version": "0.8.1-test",
+  "version": "0.8.4",
   "description": "参考 iOS 备忘录布局的轻量 Android 文本笔记应用，使用 Cloudflare Workers + D1 跨设备同步。",
   "directories": {
     "doc": "docs"
