@@ -56,6 +56,13 @@ new Function('document','$','fetch',html.slice(snippetStart,snippetEnd))(
   document,id=>document.getElementById(id),fakeFetch);
 for(const id of ['aboutEntry','projectLicenseEntry','thirdPartyNoticesEntry','thirdPartyLicensesEntry'])
   assert.ok(document.getElementById(id)&&document.getElementById('settings').contains(document.getElementById(id)));
+const aboutGroup=document.getElementById('aboutSettingsGroup');
+const accountLabel=[...document.querySelectorAll('#settings .settings-label')].find(node=>node.textContent==='账户');
+assert.equal(aboutGroup.hidden,false,'About settings must be visible without expanding workspace members');
+assert.ok(aboutGroup.compareDocumentPosition(accountLabel)&dom.window.Node.DOCUMENT_POSITION_FOLLOWING,
+  'About settings must appear before account and workspace controls');
+assert.equal(document.getElementById('workspacePanel').hidden,true,
+  'The About module must not depend on expanding the workspace panel');
 for(const id of ['aboutDialog','legalDocumentDialog','thirdPartyLicensesDialog']){
   const dialog=document.getElementById(id);dialog.showModal=()=>{dialog.open=true};dialog.close=()=>{dialog.open=false};
 }
