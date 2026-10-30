@@ -23,4 +23,4 @@ Passed locally in Chromium: synthetic MP4/H.264 and WebM/VP9 decoded video frame
 
 Android unit/build/signature results and production checks must be read from the release workflows. Real Android hardware playback, manufacturer WebView variations, HEVC/HDR/MOV decoding, device rotation/system bars, and physical-device install/upgrade are not verified by desktop Chromium or compilation. Existing file streaming supports the 1 GB local cap; real-device 1 GB seek and memory behavior remain unverified.
 
-The one-time `publish-player-082.yml` dispatches the existing Android workflow on main with `publish_release=true` only after the matching main production deployment succeeds, and only for 0.8.2/code 60 with no existing matching Release. This implements the user's explicit release authorization; it grants no general automatic release policy for later versions.
+The one-time release publisher was retired after the authorized release completed. Current releases are created only through an explicit manual dispatch of the Android release workflow.

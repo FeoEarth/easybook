@@ -32,7 +32,7 @@ The SVG pause bars use rounded corners, ten-second labels use vector strokes (no
 
 The existing Native Glass Android workflow has a scoped video-player job for this branch. It builds the actual app and a test-only instrumentation APK on a fresh API35 emulator, imports test fixtures through the real private AttachmentStore, opens the real editor/preview/native fullscreen, captures actual Android PNGs, verifies decoded video frames, fullscreen continuity and native Back restoration, and records WebView version and geometry. The display is set to 1206×2622 at 480dpi (402×874 logical portrait). It creates no production account/workspace and does not publish or change the signing identity used by production.
 
-The test records real geometry separately from screenshot evidence. It must fail on missing screenshots/playback/layout errors; no `environment_blocked` success bypass is accepted. Actual Android screenshots must be inspected before any acceptance claim or release. Physical-device behavior and exact Apple optical shading still require further evidence. Candidate 0.8.4/code 63 is prepared for the user-authorized release. The existing post-deploy listener is gated to that version; merge/publication remain blocked until the actual Android playback/capture sequence passes.
+The test recorded real geometry separately from screenshot evidence and failed on missing screenshots, playback errors, or layout errors; no `environment_blocked` success bypass was accepted. Physical-device behavior and exact Apple optical shading still require further evidence. The completed 0.8.4/code 63 release no longer has a post-deploy publication listener; later releases require an explicit manual dispatch.
 
 ## Android findings during verification
 
