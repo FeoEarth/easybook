@@ -16,8 +16,9 @@ let contextSerial=0;async function context(){const ip='203.0.113.'+(++contextSer
 async function ready(c){const p=await c.newPage();p.on('pageerror',e=>errors.push(e.message));await p.goto(origin);await p.getByRole('heading',{name:'全部备忘录',exact:true}).waitFor();return p}
 async function settings(p,category='workspace'){if(await p.locator('#syncActivity').isVisible())await p.locator('#syncBack').click();if(!await p.locator('#settings').isVisible()){await p.locator('#foldersButton').click();await p.locator('#folderSettings').click()}const panel=p.locator('#settingsCategory-'+category);if(!await panel.isVisible()){if(!await p.locator('#settingsHome').isVisible())await p.locator('.settings-category-back').click();await p.locator('[data-settings-category="'+category+'"]').click()}await panel.waitFor({state:'visible'});if(category==='workspace')await p.locator('#workspacePanel').waitFor({state:'visible'})}
 async function readKey(p){await settings(p,'sync');await p.locator('#pairButton').click();await p.locator('#pairDialog').waitFor({state:'visible'});const key=await p.locator('#pairKey').inputValue();await p.locator('[data-close=pairDialog]').click();return key}
+async function leaveSettings(p){if(!await p.locator('#settingsHome').isVisible())await p.locator('.settings-category-back').click();await p.locator('#foldersButton').click();await p.locator('#folders').waitFor({state:'visible'})}
 try{
- const c1=await context(),p1=await ready(c1);const k=await readKey(p1);assert.equal(await p1.evaluate(()=>localStorage.getItem('easybook-key')),null,'no plaintext active credential');await p1.locator('#foldersButton').click();await p1.locator('[data-tab=all]').click();await p1.waitForTimeout(800);
+ const c1=await context(),p1=await ready(c1);const k=await readKey(p1);assert.equal(await p1.evaluate(()=>localStorage.getItem('easybook-key')),null,'no plaintext active credential');await leaveSettings(p1);await p1.locator('[data-tab=all]').click();await p1.waitForTimeout(800);
  await p1.getByRole('button',{name:'新建笔记',exact:true}).click();await p1.locator('#title').fill('匿名跨设备验收');await p1.locator('#title').dispatchEvent('input');
  await p1.locator('#attachmentButton').click();await p1.locator('[data-content-action=media]').click();await p1.locator('#mediaFile').setInputFiles({name:'acceptance.png',mimeType:'image/png',buffer:Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jA1cAAAAASUVORK5CYII=','base64')});await p1.locator('[data-type=image] img').waitFor();await p1.waitForTimeout(800);await p1.evaluate(()=>window.persistNow());
  await p1.locator('#back').click();await settings(p1,'sync');await p1.locator('#activityEntry').click();await p1.locator('#syncNow').click();await p1.waitForTimeout(2000);
@@ -27,7 +28,7 @@ try{
  await p1.locator('#workspaceName').fill('第二个本地工作区');
  await Promise.all([p1.waitForEvent('load'),p1.locator('#workspaceNameSave').click()]);
  await settings(p1);await p1.locator('#workspaceList [aria-current=true]').getByText('第二个本地工作区',{exact:true}).waitFor();
- await p1.locator('#foldersButton').click();await p1.locator('[data-tab=all]').click();
+ await leaveSettings(p1);await p1.locator('[data-tab=all]').click();
  await p1.locator('#workspaceHome').click();
  await p1.locator('#workspaceSwitchList button').filter({hasText:'我的工作区'}).waitFor({state:'visible'});
  await Promise.all([p1.waitForEvent('load'),p1.locator('#workspaceSwitchList button').filter({hasText:'我的工作区'}).click()]);
@@ -50,11 +51,12 @@ try{
  await pa.locator('#workspaceList [aria-current=true]').getByText('其他工作区',{exact:true}).waitFor();
  // Rotate an anonymous/key-backed workspace before switching to account-only access.
  const old=await readKey(pa);
+ await settings(pa);
  await pa.locator('#workspaceRotate').click();await pa.locator('#confirmAccept').click();
  await pa.waitForTimeout(1500);const fresh=await readKey(pa);assert.notEqual(fresh,old);
  assert.equal((await req('/api/notes?cursor=0',{headers:{Authorization:'Bearer '+old}})).status,401);
  // Quick switch on the home page, with no internal workspace ID shown to users.
- await pa.locator('#foldersButton').click();await pa.locator('[data-tab=all]').click();
+ await leaveSettings(pa);await pa.locator('[data-tab=all]').click();
  await pa.locator('#workspaceHome').waitFor({state:'visible'});await pa.locator('#workspaceHome').click();
  await pa.locator('#workspaceSwitchDialog').waitFor({state:'visible'});
  assert.equal(await pa.locator('#workspaceSwitchList [aria-current=true]').count(),1);
