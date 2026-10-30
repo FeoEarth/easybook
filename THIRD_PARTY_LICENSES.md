@@ -1,12 +1,20 @@
-# THIRD_PARTY_LICENSES — Third-party production license inventory
+# THIRD_PARTY_LICENSES — 第三方生产组件与许可证清单
 
-> **Generated file.** Run `npm ci --omit=dev --ignore-scripts` in the repository root and `mcp-oauth/`, then `node scripts/generate-third-party-licenses.mjs`. Do not hand-edit this file.
+> **Generated file / 自动生成文件。** Run `npm ci --omit=dev --ignore-scripts` in both the repository root and `mcp-oauth/`, then run `node scripts/generate-third-party-licenses.mjs`. Do not hand-edit this file.
 
-This inventory retains the original license text bundled with the locked npm package versions, the QWEA0 port, PDF.js embedded font/CMap/decoder licenses, and the **resolved Android release runtime dependency graph** (including transitive AAR/JAR artifacts). SPDX entries describe the **component**, not a relicensing to Easybook AGPL-3.0-only. Identical full open-source license texts are printed once and referenced by SHA-256.
+This inventory covers the locked production npm graphs for the Web editor/PDF build and OAuth Worker, the QWEA0 port, PDF.js embedded font/CMap/decoder assets, and the **resolved Android release runtime dependency graph** (including transitive AAR/JAR artifacts). SPDX entries describe each **third-party component**; Easybook itself remains AGPL-3.0-only. Identical full open-source license texts are printed once and referenced by SHA-256.
 
 **Coverage boundary:** development/test and platform-specific optional npm packages are excluded; esbuild is listed but marked build-only. The Android `releaseRuntimeClasspath` is resolved by Gradle, but final APK byte-for-byte contents are not yet audited. Proprietary Google Play Services modules are **not open-source**: their Maven POMs point to the Android SDK License terms, which are linked rather than reproduced as an open-source license text. The Liberation font uses its own GPL-2.0-based agreement with exceptions, identified with a local `LicenseRef` rather than inaccurately described as Apache-2.0.
 
 Entries: 145 (56 npm main, 27 npm OAuth, 9 embedded PDF resources, 52 resolved Android runtime modules, one native glass port).
+
+## Audit inputs / 审计输入
+
+- `package-lock.json`: Web editor, Worker-shared code and PDF build production dependency graph.
+- `mcp-oauth/package-lock.json`: OAuth Worker production dependency graph.
+- `third_party/android/runtime-dependencies.json`: exact Gradle `releaseRuntimeClasspath` snapshot.
+- `node_modules/pdfjs-dist/{cmaps,standard_fonts,wasm}`: embedded PDF resource license set, checked against an explicit allowlist.
+- `third_party/qwea0-liquid-glass/`: pinned native shader attribution and MIT text.
 
 ## Component inventory
 

@@ -10,7 +10,16 @@ const notice=read('THIRD_PARTY_LICENSES.md');
 const bundled=read('app/src/main/assets/pdf/THIRD_PARTY_LICENSES.md');
 assert.equal(bundled,notice,'Android/Web bundled license notices must match the generated inventory');
 assert.match(notice,/Entries: \d+ \(/);
+assert.match(notice,/## Audit inputs \/ 审计输入/);
 assert.match(notice,/## Complete license texts/);
+
+const rootPackage=JSON.parse(read('package.json'));
+const oauthPackage=JSON.parse(read('mcp-oauth/package.json'));
+assert.equal(rootPackage.license,'AGPL-3.0-only');
+assert.equal(oauthPackage.license,rootPackage.license,
+  'The OAuth subproject must declare the repository license explicitly');
+assert.equal(read('app/src/main/assets/native-glass/LICENSE.txt'),read('third_party/qwea0-liquid-glass/LICENSE'),
+  'The APK must ship the exact pinned QWEA0 license text');
 
 const manifest=JSON.parse(read('app/src/main/assets/pdf/manifest.json'));
 assert.ok(manifest.assets.includes('/pdf/THIRD_PARTY_LICENSES.md'),

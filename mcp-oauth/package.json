@@ -1,6 +1,7 @@
 {
   "name": "easybook-mcp-oauth",
   "private": true,
+  "license": "AGPL-3.0-only",
   "type": "module",
   "scripts": {
     "deploy": "wrangler deploy",
