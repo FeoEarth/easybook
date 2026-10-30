@@ -12,6 +12,8 @@ for(const name of ['quickjs-eval.js','quickjs-eval.wasm'])await rm(target+'/wasm
 // Shared notice delivered by the PDF static-assets binding on Web and bundled
 // with Android app assets for offline viewing. Keep a single source of truth.
 await copyFile('THIRD_PARTY_LICENSES.md','app/src/main/assets/pdf/THIRD_PARTY_LICENSES.md');
+await copyFile('THIRD_PARTY_NOTICES.md','app/src/main/assets/pdf/THIRD_PARTY_NOTICES.md');
+await copyFile('LICENSE','app/src/main/assets/pdf/EASYBOOK_LICENSE.txt');
 async function files(dir){const out=[];for(const entry of await readdir(dir,{withFileTypes:true})){const p=path.posix.join(dir,entry.name);out.push(...entry.isDirectory()?await files(p):[p])}return out}
 const assets=(await files('app/src/main/assets/pdf')).filter(p=>!p.endsWith('/manifest.json')).map(p=>'/'+p.slice('app/src/main/assets/'.length));
 await writeFile('app/src/main/assets/pdf/manifest.json',JSON.stringify({version:meta.version,assets}));

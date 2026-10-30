@@ -24,35 +24,56 @@ assert.equal(read('app/src/main/assets/native-glass/LICENSE.txt'),read('third_pa
 const manifest=JSON.parse(read('app/src/main/assets/pdf/manifest.json'));
 assert.ok(manifest.assets.includes('/pdf/THIRD_PARTY_LICENSES.md'),
   'PDF assets manifest must make the notice available on Web');
+assert.ok(manifest.assets.includes('/pdf/THIRD_PARTY_NOTICES.md'),
+  'The attribution summary must be available offline');
+assert.ok(manifest.assets.includes('/pdf/EASYBOOK_LICENSE.txt'),
+  'The Easybook license must be available offline');
 
 const html=read('app/src/main/assets/index.html');
 assert.match(html,/id="thirdPartyLicensesDialog"/);
 assert.match(html,/id="thirdPartyLicensesEntry"/);
+assert.match(html,/id="projectLicenseEntry"/);
+assert.match(html,/id="thirdPartyNoticesEntry"/);
 assert.match(html,/fetch\('\/pdf\/THIRD_PARTY_LICENSES\.md'\)/);
 const android=read('app/src/main/java/com/feoearth/easybook/MainActivity.java');
-assert.match(android,/asset\.endsWith\("\.md"\)\?"text\/plain"/);
+assert.match(android,/asset\.endsWith\("\.md"\)\|\|asset\.endsWith\("\.txt"\)\?"text\/plain"/);
 
 const dom=new JSDOM(html);
 const document=dom.window.document;
-const snippetStart=html.indexOf('// The same notice is bundled in Android');
+const snippetStart=html.indexOf('// About and legal documents are bundled in Android');
 const snippetEnd=html.indexOf('\nif(native){',snippetStart);
 assert.ok(snippetStart>0&&snippetEnd>snippetStart);
-const dialog=document.getElementById('thirdPartyLicensesDialog');
-dialog.showModal=()=>{dialog.open=true};
-dialog.close=()=>{dialog.open=false};
+const legalFiles=new Map([
+  ['/pdf/THIRD_PARTY_LICENSES.md',notice],
+  ['/pdf/THIRD_PARTY_NOTICES.md',read('THIRD_PARTY_NOTICES.md')],
+  ['/pdf/EASYBOOK_LICENSE.txt',read('LICENSE')],
+]);
 const fakeFetch=async url=>{
-  assert.equal(url,'/pdf/THIRD_PARTY_LICENSES.md');
-  return new Response(notice,{status:200});
+  assert.ok(legalFiles.has(url),'Unexpected legal document request: '+url);
+  return new Response(legalFiles.get(url),{status:200});
 };
 new Function('document','$','fetch',html.slice(snippetStart,snippetEnd))(
   document,id=>document.getElementById(id),fakeFetch);
-const entry=document.getElementById('thirdPartyLicensesEntry');
-assert.ok(entry&&document.getElementById('settings').contains(entry));
-await entry.onclick();
+for(const id of ['aboutEntry','projectLicenseEntry','thirdPartyNoticesEntry','thirdPartyLicensesEntry'])
+  assert.ok(document.getElementById(id)&&document.getElementById('settings').contains(document.getElementById(id)));
+for(const id of ['aboutDialog','legalDocumentDialog','thirdPartyLicensesDialog']){
+  const dialog=document.getElementById(id);dialog.showModal=()=>{dialog.open=true};dialog.close=()=>{dialog.open=false};
+}
+document.getElementById('aboutEntry').onclick();
+assert.equal(document.getElementById('aboutDialog').open,true);
+assert.match(document.getElementById('aboutDialog').textContent,/AGPL-3\.0-only/);
+document.getElementById('aboutClose').onclick();
+await document.getElementById('projectLicenseEntry').onclick();
+assert.match(document.getElementById('legalDocumentText').textContent,/GNU AFFERO GENERAL PUBLIC LICENSE/);
+document.getElementById('legalDocumentClose').onclick();
+await document.getElementById('thirdPartyNoticesEntry').onclick();
+assert.equal(document.getElementById('legalDocumentText').textContent,read('THIRD_PARTY_NOTICES.md'));
+document.getElementById('legalDocumentClose').onclick();
+await document.getElementById('thirdPartyLicensesEntry').onclick();
 assert.equal(document.getElementById('thirdPartyLicensesText').textContent,notice);
-assert.equal(dialog.open,true);
+assert.equal(document.getElementById('thirdPartyLicensesDialog').open,true);
 document.getElementById('thirdPartyLicensesClose').onclick();
-assert.equal(dialog.open,false);
+assert.equal(document.getElementById('thirdPartyLicensesDialog').open,false);
 
 // Exercise the existing static Web route without contacting production or R2.
 const {default:worker}=await import('../worker/index.mjs');

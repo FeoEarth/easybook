@@ -163,7 +163,7 @@ public class MainActivity extends Activity {
                     }catch(Exception e){return new WebResourceResponse("text/plain","UTF-8",404,"Not Found",Collections.emptyMap(),new ByteArrayInputStream(new byte[0]));}
                 }
                 if("https".equals(u.getScheme())&&"appassets.androidplatform.net".equals(u.getHost())&&u.getPath()!=null&&u.getPath().startsWith("/pdf/")&&!u.getPath().contains("..")&&u.getPath().matches("/pdf/[A-Za-z0-9_./-]+")){
-                    String asset=u.getPath().substring(1),mime=asset.endsWith(".mjs")||asset.endsWith(".js")?"application/javascript":asset.endsWith(".css")?"text/css":asset.endsWith(".md")?"text/plain":asset.endsWith(".wasm")?"application/wasm":asset.endsWith(".json")?"application/json":asset.endsWith(".svg")?"image/svg+xml":asset.endsWith(".ttf")?"font/ttf":"application/octet-stream";
+                    String asset=u.getPath().substring(1),mime=asset.endsWith(".mjs")||asset.endsWith(".js")?"application/javascript":asset.endsWith(".css")?"text/css":asset.endsWith(".md")||asset.endsWith(".txt")?"text/plain":asset.endsWith(".wasm")?"application/wasm":asset.endsWith(".json")?"application/json":asset.endsWith(".svg")?"image/svg+xml":asset.endsWith(".ttf")?"font/ttf":"application/octet-stream";
                     try{return new WebResourceResponse(mime,null,200,"OK",Collections.singletonMap("X-Content-Type-Options","nosniff"),getAssets().open(asset));}catch(IOException error){return new WebResourceResponse("text/plain","UTF-8",404,"Not Found",Collections.emptyMap(),new ByteArrayInputStream(new byte[0]));}
                 }
                 if (LOCAL.equals(u.toString())) {

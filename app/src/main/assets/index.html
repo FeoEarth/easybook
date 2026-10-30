@@ -1218,13 +1218,29 @@ let lastNetworkWake=0;window.easybookNetworkChanged=()=>{if(Date.now()-lastNetwo
 navigator.connection?.addEventListener('change',window.easybookNetworkChanged);
 renderSyncPolicy();
 
-// The same notice is bundled in Android's offline assets and deployed as a Web
-// static asset. Keep this entry visible without requiring an Easybook account.
+// About and legal documents are bundled in Android's offline assets and deployed
+// as Web static assets. Keep them visible without requiring an Easybook account.
 const legalFooter=$('settings').querySelector('.footer-note');
-const legalLabel=document.createElement('div');legalLabel.className='settings-label';legalLabel.textContent='法律与许可';
+const legalLabel=document.createElement('div');legalLabel.className='settings-label';legalLabel.textContent='关于';
 const legalGroup=document.createElement('div');legalGroup.className='settings-group';
-legalGroup.innerHTML='<button class="settings-row" id="thirdPartyLicensesEntry"><svg aria-hidden="true"><use href="#i-list"/></svg><span class="row-text"><strong>第三方组件与许可证</strong><small>原作者、版本与开源授权声明</small></span><svg class="chevron" aria-hidden="true"><use href="#i-chevron"/></svg></button>';
+legalGroup.id='aboutSettingsGroup';
+legalGroup.innerHTML='<button class="settings-row" id="aboutEntry"><svg aria-hidden="true"><use href="#i-note"/></svg><span class="row-text"><strong>关于 Easybook</strong><small>版本、项目说明与开源信息</small></span><svg class="chevron" aria-hidden="true"><use href="#i-chevron"/></svg></button><button class="settings-row" id="projectLicenseEntry"><svg aria-hidden="true"><use href="#i-check"/></svg><span class="row-text"><strong>Easybook 开源许可证</strong><small>AGPL-3.0-only 许可说明与完整原文</small></span><svg class="chevron" aria-hidden="true"><use href="#i-chevron"/></svg></button><button class="settings-row" id="thirdPartyNoticesEntry"><svg aria-hidden="true"><use href="#i-account-person"/></svg><span class="row-text"><strong>第三方归属说明</strong><small>组件范围、作者归属与交付方式</small></span><svg class="chevron" aria-hidden="true"><use href="#i-chevron"/></svg></button><button class="settings-row" id="thirdPartyLicensesEntry"><svg aria-hidden="true"><use href="#i-list"/></svg><span class="row-text"><strong>第三方组件与许可证</strong><small>版本、SPDX 标识与完整许可证正文</small></span><svg class="chevron" aria-hidden="true"><use href="#i-chevron"/></svg></button>';
 legalFooter.before(legalLabel,legalGroup);
+document.body.insertAdjacentHTML('beforeend','<dialog id="aboutDialog" class="ui-material" aria-labelledby="aboutTitle" style="width:min(560px,calc(100% - 24px))"><div class="dialog-title"><h2 id="aboutTitle">关于 Easybook</h2><button id="aboutClose" aria-label="关闭关于 Easybook">×</button></div><p><strong>Easybook 0.8.4</strong></p><p>参考系统备忘录体验的轻量笔记应用，支持本机离线保存、Android 与 Web 使用，以及 Cloudflare 工作区同步。</p><p>Easybook 源代码以 <strong>AGPL-3.0-only</strong> 许可。第三方组件继续适用各自许可证；第三方 SPDX 标识不会改变 Easybook 自身许可。</p></dialog><dialog id="legalDocumentDialog" class="ui-material" aria-labelledby="legalDocumentTitle" style="width:min(900px,calc(100% - 24px));max-height:90dvh"><div class="dialog-title"><h2 id="legalDocumentTitle">法律说明</h2><button id="legalDocumentClose" aria-label="关闭法律说明">×</button></div><pre id="legalDocumentText" aria-live="polite" style="white-space:pre-wrap;overflow-wrap:anywhere;user-select:text;font-size:12px;line-height:1.6;overflow:auto;max-height:70dvh;margin:10px 0">正在载入…</pre></dialog>');
+$('aboutDialog').querySelector('strong').textContent=$('appVersion').textContent;
+$('aboutClose').onclick=()=>$('aboutDialog').close();
+$('aboutEntry').onclick=()=>$('aboutDialog').showModal();
+$('legalDocumentClose').onclick=()=>$('legalDocumentDialog').close();
+const legalCache=new Map();
+async function openLegalDocument(title,url,validate){
+ const dlg=$('legalDocumentDialog'),content=$('legalDocumentText');$('legalDocumentTitle').textContent=title;dlg.showModal();
+ if(legalCache.has(url)){content.textContent=legalCache.get(url);return}
+ content.textContent='正在载入…';
+ try{const response=await fetch(url);if(!response.ok)throw Error('HTTP '+response.status);const text=await response.text();if(!validate(text))throw Error('内容不完整');legalCache.set(url,text);content.textContent=text}
+ catch(error){content.textContent='内容暂时无法读取，请稍后重试。\n'+String(error.message||error)}
+}
+$('projectLicenseEntry').onclick=()=>openLegalDocument('Easybook 开源许可证','/pdf/EASYBOOK_LICENSE.txt',text=>text.includes('GNU AFFERO GENERAL PUBLIC LICENSE'));
+$('thirdPartyNoticesEntry').onclick=()=>openLegalDocument('第三方归属说明','/pdf/THIRD_PARTY_NOTICES.md',text=>text.startsWith('# Third-party components'));
 let noticeCache='';
 $('thirdPartyLicensesClose').onclick=()=>$('thirdPartyLicensesDialog').close();
 $('thirdPartyLicensesEntry').onclick=async()=>{
