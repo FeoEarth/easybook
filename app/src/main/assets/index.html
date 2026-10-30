@@ -906,11 +906,11 @@ async function workspaceAction(action){
    if(action==='associate')toast('工作区已关联到账户');
    await refreshWorkspaces();return;
   }
-  const session=await browserAccount(),w=key.startsWith('account:')?{id:key.slice(8)}:await workspaceIdentity(key);
+  const session=await browserAccount();
   if(action==='create'){
    const result=await workspaceRequest('',{name},session.signedIn);
    await webStore.bindWorkspace(result.key,result.workspace);await selectWebWorkspace(result.key,result.workspace);
-  }else if(action==='rename'){
+  }else{const w=key.startsWith('account:')?{id:key.slice(8)}:await workspaceIdentity(key);if(action==='rename'){
    await workspaceRequest('/'+w.id,{name},key.startsWith('account:'));
    $('workspaceNameEditor').hidden=true;workspaceEditorMode='';await refreshWorkspaces();toast('工作区名称已更新');
   }else if(action==='associate'){
@@ -918,7 +918,7 @@ async function workspaceAction(action){
   }else if(action==='rotate'){
    const result=await workspaceRequest('/'+w.id+'/key',{confirm:true},key.startsWith('account:'));
    await webStore.bindWorkspace(result.key,result.workspace);await selectWebWorkspace(result.key,result.workspace);
-  }
+  }}
  }catch(e){const message=e?.message||'工作区操作失败';$('workspaceStatus').textContent=message;toast(message)}
  finally{workspacePending=false;renderWorkspaceChoices()}
 }
