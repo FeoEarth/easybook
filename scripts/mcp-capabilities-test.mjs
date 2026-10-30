@@ -11,6 +11,8 @@ import {approvalAPI,permissions} from '../worker/mcp-access.mjs';
 import {get} from '../worker/mcp-notes.mjs';
 import {download} from '../worker/mcp-attachments.mjs';
 import {validateDocument} from '../shared/document.mjs';
+import {createHash} from 'node:crypto';
+if(!crypto.DigestStream)Object.defineProperty(crypto,'DigestStream',{value:class extends WritableStream{constructor(algorithm){const hash=createHash(algorithm.replace('-','').toLowerCase());let resolve;const digest=new Promise(done=>resolve=done);super({write(chunk){hash.update(chunk)},close(){resolve(hash.digest())}});this.digest=digest}},configurable:true});
 const sqlite=new DatabaseSync(':memory:');
 for(const p of ['worker/schema.sql','mcp-oauth/migrations/0001_workspace_grants.sql','mcp-oauth/migrations/0002_accounts.sql','worker/migrations/0008-mcp-capabilities.sql','worker/migrations/0009-mcp-uploads.sql'])sqlite.exec(readFileSync(p,'utf8'));
 const DB={prepare(sql){const statement=sqlite.prepare(sql);let params=[];return {bind(...p){params=p;return this},async first(){return statement.get(...params)||null},async all(){return {results:statement.all(...params)}},async run(){const r=statement.run(...params);return {meta:{changes:Number(r.changes)}}}}},async batch(statements){sqlite.exec('BEGIN');try{const out=[];for(const s of statements){const results=await s.all();out.push({...results,meta:{changes:sqlite.prepare('SELECT changes() n').get().n}})}sqlite.exec('COMMIT');return out}catch(e){sqlite.exec('ROLLBACK');throw e}}};
@@ -68,11 +70,12 @@ batch=await call('notes_batch_update',await approve('notes_batch_update',{items:
 const confirm=await approve('notes_batch_delete',{items:[{id:duplicate.id,version:duplicate.version}]});batch=await call('notes_batch_delete',confirm);assert.equal(batch.results[0].ok,true);await rejects('notes_batch_delete',confirm,'CONFIRMATION_REQUIRED');duplicate=batch.results[0].note;
 duplicate=await call('notes_restore',{id:duplicate.id,version:duplicate.version});duplicate=await call('notes_delete',{id:duplicate.id,version:duplicate.version});
 // Media nodes and table survive unrelated local edits.
-const media='c'.repeat(64),base=workspace+'/'+media;
+const media='ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad',base=workspace+'/'+media;
 storage.set(base+'/manifest-v2',JSON.stringify({id:media,v:2,name:'Synthetic.txt',mime:'text/plain',size:3,wireId:media,encoding:'identity',parts:[{hash:media,size:3}],localOnly:false}));storage.set(base+'/'+media+'/0','abc');
 await call('attachments_list');await call('notes_get_attachments',{id});await call('attachments_search',{query:'Synthetic',mime:'text/'});await call('attachments_get_metadata',{attachment_id:media});
 await rejects('attachments_get_metadata',{attachment_id:media},'NOT_FOUND',{...ctx,workspace:'b'.repeat(64)});
 const url=await call('attachments_get_download_url',{attachment_id:media});assert.equal(await (await download(new Request(url.url),env)).text(),'abc');
+storage.set(base+'/'+media+'/0','abd');await assert.rejects(async()=>{const response=await download(new Request(url.url),env);await response.arrayBuffer()},/integrity/);storage.set(base+'/'+media+'/0','abc');
 n=await call('attachments_attach_to_note',{id,version:n.version,attachment_id:media});
 await rejects('attachments_delete',await approve('attachments_delete',{attachment_id:media}),'ATTACHMENT_IN_USE');
 const stored=await get(ctx,id);const ap=stored.document.doc.content.findIndex(n=>n.type==='attachment');

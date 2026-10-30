@@ -7,6 +7,7 @@ import {androidAssetLinks} from './android-identity.mjs';
 import {IDENTITY_ORIGIN,identityEnabled,identityPath} from './identity-origin.mjs';
 import {accountConnect} from './account-connect.mjs';
 import {workspaceAPI,workspacePrincipal} from './workspace-api.mjs';
+import {turnstileConfig} from './turnstile.mjs';
 import {workspaceAccess,WorkspaceError} from './workspace-identity.mjs';
 import {cleanupUploads} from './mcp-uploads.mjs';
 import {mcp} from './mcp.mjs';
@@ -31,6 +32,7 @@ export default {
   // Deliberately unset on production until the coordinated identity cutover.
   const identityV2=env.WORKSPACE_IDENTITY_V2==='true';
   if(identityEnabled(env)&&url.origin===IDENTITY_ORIGIN&&identityPath(url.pathname)){if(!env.IDENTITY_SERVICE)return json({error:'Identity service unavailable'},503);return env.IDENTITY_SERVICE.fetch(request);}
+  if(url.pathname==='/api/turnstile'&&request.method==='GET')return turnstileConfig(env);
   if(identityV2&&url.pathname.startsWith('/api/workspaces'))return workspaceAPI(request,env);
   if(identityV2&&(url.pathname==='/mcp'||url.pathname==='/api/mcp/attest'||url.pathname==='/api/mcp/approval'))return json({error:'Use account OAuth authorization'},410);
   if(url.pathname==='/account/connect'&&request.method==='GET')return new Response(accountConnect,{headers:{'Content-Type':'text/html; charset=utf-8','Cache-Control':'no-store','Referrer-Policy':'no-referrer','X-Frame-Options':'DENY','Content-Security-Policy':"default-src 'none'; style-src 'unsafe-inline'; script-src 'unsafe-inline'; connect-src 'self'; form-action 'none'; frame-ancestors 'none'; base-uri 'none'"}});
@@ -61,7 +63,7 @@ export default {
   }
   if(url.pathname === '/editor.js' && request.method === 'GET')return new Response(editor,{headers:{'Content-Type':'application/javascript; charset=utf-8','X-Content-Type-Options':'nosniff','Cache-Control':'no-cache'}});
   if(url.pathname === '/health'){try{await requireRestoreAccess(env);return json({ok:true,app:'Easybook',version:'0.8.4',commit:env.RELEASE_SHA||'',schemaVersion:identityV2?16:1,workspaceIdentityV2:identityV2,canonicalIdentity:identityEnabled(env),securityCheckpoint:env.SECURITY_CHECKPOINT_V2==='true'})}catch{return json({ok:false,error:'Security recovery in progress'},503)}}
-  if(url.pathname === '/' && request.method === 'GET') return new Response(identityV2?html.replace('name="easybook-identity" content="legacy"','name="easybook-identity" content="v2"'):html,{headers:{'Content-Type':'text/html; charset=utf-8','X-Content-Type-Options':'nosniff','Referrer-Policy':'no-referrer','Cache-Control':'no-cache'}});
+  if(url.pathname === '/' && request.method === 'GET') return new Response(identityV2?html.replace('name="easybook-identity" content="legacy"','name="easybook-identity" content="v2"'):html,{headers:{'Content-Type':'text/html; charset=utf-8','X-Content-Type-Options':'nosniff','Referrer-Policy':'no-referrer','Cache-Control':'no-cache','X-Frame-Options':'DENY','Content-Security-Policy':"default-src 'none'; script-src 'self' 'unsafe-inline' 'wasm-unsafe-eval' https://challenges.cloudflare.com; worker-src 'self'; style-src 'self' 'unsafe-inline'; font-src 'self' data: blob:; connect-src 'self' https://easybook.loonxy.com https://easybook-sync.1902521952.workers.dev https://easybook-mcp-oauth.1902521952.workers.dev https://challenges.cloudflare.com; img-src 'self' data: blob:; media-src blob: https://appassets.androidplatform.net/attachment/; frame-src blob: https://challenges.cloudflare.com; object-src blob:; base-uri 'none'; form-action 'none'; frame-ancestors 'none'"}});
   if(!url.pathname.startsWith('/api/')) return json({error:'Not found'},404);
   const token = (request.headers.get('Authorization')||'').replace(/^Bearer /,'');
   if(!identityV2&&!/^[a-f0-9]{64}$/.test(token)) {

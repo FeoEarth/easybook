@@ -39,7 +39,7 @@ public final class SecurityManager {
             case "device.theme":fields=fields("value");break;
             case "device.copy":fields=fields("value");break;
             case "device.share":fields=fields("title","text");break;
-            case "workspace.action":fields=fields("action","name","account","id","accountId","role","mode","confirm","firstAccountId","version");break;
+            case "workspace.action":fields=fields("action","name","account","id","accountId","role","mode","confirm","firstAccountId","version","turnstileToken");break;
             case "account.manage":fields=fields("action","id","workspace","cursor","category","choices","confirm");break;
             case "account.device.revoke":fields=fields("id");break;
             case "account.passkey":fields=fields("register","name");break;

@@ -1,6 +1,6 @@
 <!doctype html>
 <html lang="zh-CN"><head><meta name="easybook-identity" content="legacy"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><meta name="color-scheme" content="light dark">
-<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self' 'unsafe-inline' 'wasm-unsafe-eval'; worker-src 'self'; style-src 'self' 'unsafe-inline'; font-src 'self' data: blob:; connect-src 'self' https://easybook.loonxy.com https://easybook-sync.1902521952.workers.dev https://easybook-mcp-oauth.1902521952.workers.dev; img-src 'self' data: blob:; media-src blob: https://appassets.androidplatform.net/attachment/; frame-src blob:; object-src blob:; base-uri 'none'; form-action 'none'">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self' 'unsafe-inline' 'wasm-unsafe-eval' https://challenges.cloudflare.com; worker-src 'self'; style-src 'self' 'unsafe-inline'; font-src 'self' data: blob:; connect-src 'self' https://easybook.loonxy.com https://easybook-sync.1902521952.workers.dev https://easybook-mcp-oauth.1902521952.workers.dev https://challenges.cloudflare.com; img-src 'self' data: blob:; media-src blob: https://appassets.androidplatform.net/attachment/; frame-src blob: https://challenges.cloudflare.com; object-src blob:; base-uri 'none'; form-action 'none'">
 <title>Easybook</title>
 <style>
 :root{--ink:#1c1c1e;--muted:#8e8e93;--accent:#b88a00;--bg:#f2f2f7;--paper:#fff;--glass:rgba(249,249,251,.88);--border:rgba(0,0,0,.05);--line:#e5e5ea;--selected:#e9e9ee;--danger:#ff3b30;--green:#42835a;--blur:blur(20px) saturate(1.3)}
@@ -474,6 +474,14 @@ body[data-page=mcp] .app{padding-bottom:max(32px,env(safe-area-inset-bottom))}
 'use strict';
 (async()=>{
 const API=location.protocol==='https:'&&location.hostname!=='appassets.androidplatform.net'?location.origin:'https://easybook-sync.1902521952.workers.dev';
+const baseFetch=window.fetch?.bind(window);let turnstileApi;
+async function workspaceTurnstile(){
+ const config=await baseFetch(API+'/api/turnstile',{credentials:'omit',cache:'no-store'}).then(r=>{if(!r.ok)throw Error('人机验证暂不可用');return r.json()});
+ if(!turnstileApi)turnstileApi=new Promise((resolve,reject)=>{if(window.turnstile)return resolve(window.turnstile);const script=document.createElement('script');script.src='https://challenges.cloudflare.com/turnstile/v0/api.js?render=explicit';script.async=true;script.defer=true;script.onload=()=>resolve(window.turnstile);script.onerror=()=>reject(Error('人机验证载入失败'));document.head.append(script)});
+ const api=await turnstileApi,container=document.createElement('div');container.setAttribute('role','status');container.setAttribute('aria-label','正在进行人机验证');container.style.cssText='position:fixed;z-index:1000;left:50%;top:50%;transform:translate(-50%,-50%);padding:12px;border-radius:14px;background:var(--paper);box-shadow:0 12px 48px rgba(0,0,0,.22)';document.body.append(container);
+ return new Promise((resolve,reject)=>{let widget;const finish=(error,token)=>{clearTimeout(timer);if(widget!==undefined)api.remove(widget);container.remove();error?reject(error):resolve(token)},timer=setTimeout(()=>finish(Error('人机验证超时')),120000);widget=api.render(container,{sitekey:config.sitekey,action:config.action,execution:'execute',appearance:'interaction-only',callback:token=>finish(null,token),'error-callback':()=>finish(Error('人机验证失败')),'expired-callback':()=>finish(Error('人机验证已过期'))});api.execute(widget)});
+}
+if(baseFetch)window.fetch=async(input,init={})=>{const request=typeof Request!=='undefined'&&input instanceof Request,url=new URL(request?input.url:String(input),location.href),headers=new Headers(request?input.headers:init.headers);if(url.pathname==='/api/workspaces'&&(init.method||(request?input.method:'GET')).toUpperCase()==='POST'&&!headers.has('Authorization')&&!headers.has('X-Easybook-CSRF')){const body=JSON.parse(String(init.body||'{}'));body.turnstileToken=await workspaceTurnstile();init={...init,body:JSON.stringify(body)}}return baseFetch(input,init)};
 const identityV2=!!window.NativeStore||document.querySelector('meta[name=easybook-identity]')?.content==='v2';
 async function workspaceIdentity(credential){const controller=new AbortController(),timeout=setTimeout(()=>controller.abort(),12000);try{const response=await fetch(API+'/api/workspaces',{headers:{Authorization:'Bearer '+credential},signal:controller.signal,cache:'no-store'});if(!response.ok)throw Error('工作区连接验证失败（'+response.status+'）');const value=await response.json();if(!Array.isArray(value.workspaces)||value.workspaces.length!==1)throw Error('工作区身份无效');return value.workspaces[0]}finally{clearTimeout(timeout)}}
 const $=id=>document.getElementById(id), device=window.EasybookDevice, uuid=()=>crypto.randomUUID();
@@ -483,6 +491,7 @@ const native=window.NativeStore&&!window.EasybookRollbackMode?window.NativeStore
 let boot=null;if(native){boot=await native.call('bootstrap',{legacy:{active:'',storage:{}}});localStorage.removeItem('easybook-key');await native.call('migration.cleaned')}
 const webStore=native?null:new EasybookWebStore(indexedDB);if(webStore)await webStore.open();
 let key=native?boot.key:await webStore.activeCredential(localStorage.getItem('easybook-key'));if(!native)localStorage.removeItem('easybook-key');
+if(native&&identityV2&&navigator.onLine){try{const state=await native.call('workspace.action',{action:'bootstrap'});if(state.turnstileRequired)await native.call('workspace.action',{action:'bootstrap',turnstileToken:await workspaceTurnstile()})}catch{/* Keep local records available; verification retries on the next launch. */}}
 if(!native&&identityV2&&navigator.onLine&&!key.startsWith('account:')){try{let w;try{w=await workspaceIdentity(key)}catch(e){const r=await fetch(API+'/api/workspaces',{method:'POST',credentials:'omit',headers:{'Content-Type':'application/json'},body:JSON.stringify({name:'我的工作区',bootstrapKey:key})});if(!r.ok)throw e;w=(await r.json()).workspace}await webStore.bindWorkspace(key,w)}catch{/* Keep offline records; revoked credentials cannot register again. */}}
 let localSpace=native?key:await webStore.namespace(key);
 let webData=native?null:await webStore.load(key),inflight=webData?.inflight||{},pullCursor=webData?.cursor||0;
@@ -892,7 +901,7 @@ async function workspaceAction(action){
   rich.flushInput();persistNow();await flushLocal();
   if(native){
    const session=await native.call('account.status');
-   await native.call('workspace.action',{action,name,account:session.signedIn});
+   await native.call('workspace.action',{action,name,account:session.signedIn,...(!session.signedIn&&action==='create'?{turnstileToken:await workspaceTurnstile()}:{})});
    if(action==='rename'){$('workspaceNameEditor').hidden=true;workspaceEditorMode='';toast('工作区名称已更新')}
    if(action==='associate')toast('工作区已关联到账户');
    await refreshWorkspaces();return;

@@ -18,7 +18,7 @@ const DB={prepare(sql){const q=sqlite.prepare(sql);let params=[];return {
  sqlite.exec('BEGIN');try{const results=[];for(const s of statements)results.push(await s.all());sqlite.exec('COMMIT');return results}
  catch(e){sqlite.exec('ROLLBACK');throw e}
 }};
-const env={DB};
+const env={DB,TURNSTILE_SECRET:'test-secret',TURNSTILE_HOSTNAMES:'easybook.loonxy.com',TURNSTILE_VERIFY:{fetch:async()=>Response.json({success:true,action:'create_workspace',hostname:'easybook.loonxy.com'})}};
 const account=id=>({kind:'account',accountId:id});
 for(const id of ['alice','bob','carol'])sqlite.prepare('INSERT INTO accounts VALUES(?,?,?,NULL)').run(id,id,Date.now());
 const alice=account('alice'),bob=account('bob'),carol=account('carol');
@@ -84,7 +84,8 @@ sqlite.prepare('INSERT INTO account_sessions VALUES(?,?,?,?,?,?,?,NULL)').run(se
 const cookies='__Host-easybook-session='+token;
 const csrfToken=await hash(token+'|'+sessionId);
 async function api(path,body,headers={}){return workspaceAPI(new Request(origin+path,{method:body===undefined?'GET':'POST',headers:{...(body===undefined?{}:{Origin:origin,'Content-Type':'application/json'}),...headers},...(body===undefined?{}:{body:JSON.stringify(body)})}),env);}
-const anonymous=await api('/api/workspaces',{name:'匿名'});assert.equal(anonymous.status,201);
+assert.equal((await api('/api/workspaces',{name:'匿名'})).status,403,'anonymous creation requires Turnstile');
+const anonymous=await api('/api/workspaces',{name:'匿名',turnstileToken:'verified'});assert.equal(anonymous.status,201);
 const fresh=await anonymous.json(),wid=fresh.workspace.id,base='/api/workspaces/'+wid;
 assert.equal((await api(base,undefined,{Authorization:'Bearer '+fresh.key})).status,200);
 assert.equal((await api(base+'/associate',{key:fresh.key},{Cookie:cookies,'X-Easybook-CSRF':csrfToken})).status,200);
