@@ -71,9 +71,8 @@ assert.equal(document.getElementById('settingsTitle').hidden,true);
 assert.equal(document.getElementById('settingsCategory-about').hidden,false,
   'About must open directly from the Settings home without expanding workspace members');
 assert.equal(aboutGroup.closest('.settings-category-panel').id,'settingsCategory-about');
-document.querySelector('#settingsCategory-about .settings-category-back').click();
-assert.equal(settingsHome.hidden,false);
-assert.equal(document.getElementById('settingsTitle').hidden,false);
+assert.equal(document.querySelectorAll('.settings-category-back').length,0,
+  'Secondary Settings pages must rely on the single top navigation back button');
 for(const id of ['aboutDialog','legalDocumentDialog','thirdPartyLicensesDialog']){
   const dialog=document.getElementById(id);dialog.showModal=()=>{dialog.open=true};dialog.close=()=>{dialog.open=false};
 }
