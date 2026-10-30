@@ -46,7 +46,7 @@ const {chromium}=require('playwright'),fs=require('node:fs'),assert=require('nod
  await page.locator('#createFolder').click();await page.locator('#folderName').fill('归档');await page.locator('#createFolderSubmit').click();
  assert.equal(await page.locator('.folder-entry .folder-row').first().evaluate(e=>getComputedStyle(e,'::after').content),'""');
  await page.locator('#folderSettings').click();await page.waitForTimeout(280);await bounds('.topbar');
- await page.locator('[data-settings-category="sync"]').click();await page.waitForTimeout(180);await bounds('.settings-category-header');
+ await page.locator('[data-settings-category="sync"]').click();await page.waitForTimeout(180);await bounds('#settingsCategory-sync .settings-category-header');
  await page.locator('#activityEntry').click();await page.waitForTimeout(280);await bounds('#syncActivity .sync-nav');
  await page.locator('#syncBack').click();await page.waitForTimeout(280);assert.equal(await page.locator('#settingsHome').isVisible(),true);
  // System-level transparency reduction must also win over dark theme tokens.
