@@ -17,6 +17,9 @@ final class WorkspaceClient {
    try(InputStream in=c.getInputStream();ByteArrayOutputStream out=new ByteArrayOutputStream()){byte[] b=new byte[4096];int n;while((n=in.read(b))!=-1){if(out.size()+n>262144)throw new IOException("Workspace response too large");out.write(b,0,n);}return new JSONObject(out.toString("UTF-8"));}
   }finally{c.disconnect();}
  }
+ static void merge(JSONArray target,JSONArray source)throws Exception{
+  for(int i=0;i<source.length();i++){JSONObject candidate=source.getJSONObject(i);boolean found=false;for(int j=0;j<target.length();j++)if(target.getJSONObject(j).getString("id").equals(candidate.getString("id"))){target.put(j,candidate);found=true;break;}if(!found)target.put(candidate);}
+ }
  static JSONObject ensure(NoteRepository db)throws Exception{
   String local=db.activeSpace();if(!db.setting("account-workspace:"+local,"").isEmpty())return new JSONObject().put("id",db.setting("account-workspace:"+local,""));
   String credential=db.credential(local);JSONObject identity;
@@ -25,9 +28,11 @@ final class WorkspaceClient {
   db.bindWorkspaceIdentity(local,identity);return identity;
  }
  static JSONObject perform(NoteRepository db,String action,JSONObject args)throws Exception{
-  if(action.equals("list")){JSONObject current=ensure(db);JSONArray list=new JSONArray();try{list=request("/api/workspaces",null,NativeAccount.token(db),true).getJSONArray("workspaces");}catch(CredentialVault.KeyUnavailable ignored){}
-   boolean found=false;for(int i=0;i<list.length();i++)if(list.getJSONObject(i).getString("id").equals(current.getString("id")))found=true;if(!found&&db.setting("account-workspace:"+db.activeSpace(),"").isEmpty())list.put(current);return new JSONObject().put("workspaces",list).put("current",current.getString("id")).put("accountAccess",!db.setting("account-workspace:"+db.activeSpace(),"").isEmpty());}
-  if(action.equals("select")){String id=args.getString("id");JSONObject w=request("/api/workspaces/"+id,null,NativeAccount.token(db),true).getJSONObject("workspace");db.activateAccountWorkspace(w);return new JSONObject().put("selected",true);}
+  if(action.equals("list")){JSONObject current=db.cachedActiveWorkspace();JSONArray list=db.cachedWorkspaces();boolean cached=false;
+   try{JSONObject refreshed=ensure(db);if(refreshed!=null&&refreshed.has("name"))current=refreshed;}catch(Exception unavailable){if(current==null)throw unavailable;cached=true;}
+   try{JSONArray remote=request("/api/workspaces",null,NativeAccount.token(db),true).getJSONArray("workspaces");db.cacheWorkspaces(remote);merge(list,remote);}catch(CredentialVault.KeyUnavailable ignored){}catch(Exception unavailable){cached=true;}
+   if(current==null)throw new IOException("Workspace unavailable");merge(list,new JSONArray().put(current));return new JSONObject().put("workspaces",list).put("current",current.getString("id")).put("cached",cached).put("accountAccess",!db.setting("account-workspace:"+db.activeSpace(),"").isEmpty());}
+  if(action.equals("select")){String id=args.getString("id");if(db.activateCachedWorkspace(id))return new JSONObject().put("selected",true).put("cached",true);JSONObject w=request("/api/workspaces/"+id,null,NativeAccount.token(db),true).getJSONObject("workspace");db.activateAccountWorkspace(w);return new JSONObject().put("selected",true).put("cached",false);}
   if(action.equals("create")){boolean account=args.optBoolean("account");JSONObject result=request("/api/workspaces",new JSONObject().put("name",args.getString("name")),account?NativeAccount.token(db):null,account);db.pairWorkspace(result.getString("key"),result.getJSONObject("workspace"),false);return new JSONObject().put("created",true);}
   if(java.util.Arrays.asList("members","member","mode","manager","leave","delete").contains(action)){
    String id=ensure(db).getString("id"),token=NativeAccount.token(db);
