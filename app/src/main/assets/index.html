@@ -1220,12 +1220,12 @@ renderSyncPolicy();
 
 // About and legal documents are bundled in Android's offline assets and deployed
 // as Web static assets. Keep them visible without requiring an Easybook account.
-const legalFooter=$('settings').querySelector('.footer-note');
+const legalAnchor=$('settings').querySelector('.workspace-card');
 const legalLabel=document.createElement('div');legalLabel.className='settings-label';legalLabel.textContent='关于';
 const legalGroup=document.createElement('div');legalGroup.className='settings-group';
 legalGroup.id='aboutSettingsGroup';
 legalGroup.innerHTML='<button class="settings-row" id="aboutEntry"><svg aria-hidden="true"><use href="#i-note"/></svg><span class="row-text"><strong>关于 Easybook</strong><small>版本、项目说明与开源信息</small></span><svg class="chevron" aria-hidden="true"><use href="#i-chevron"/></svg></button><button class="settings-row" id="projectLicenseEntry"><svg aria-hidden="true"><use href="#i-check"/></svg><span class="row-text"><strong>Easybook 开源许可证</strong><small>AGPL-3.0-only 许可说明与完整原文</small></span><svg class="chevron" aria-hidden="true"><use href="#i-chevron"/></svg></button><button class="settings-row" id="thirdPartyNoticesEntry"><svg aria-hidden="true"><use href="#i-account-person"/></svg><span class="row-text"><strong>第三方归属说明</strong><small>组件范围、作者归属与交付方式</small></span><svg class="chevron" aria-hidden="true"><use href="#i-chevron"/></svg></button><button class="settings-row" id="thirdPartyLicensesEntry"><svg aria-hidden="true"><use href="#i-list"/></svg><span class="row-text"><strong>第三方组件与许可证</strong><small>版本、SPDX 标识与完整许可证正文</small></span><svg class="chevron" aria-hidden="true"><use href="#i-chevron"/></svg></button>';
-legalFooter.before(legalLabel,legalGroup);
+legalAnchor.after(legalLabel,legalGroup);
 document.body.insertAdjacentHTML('beforeend','<dialog id="aboutDialog" class="ui-material" aria-labelledby="aboutTitle" style="width:min(560px,calc(100% - 24px))"><div class="dialog-title"><h2 id="aboutTitle">关于 Easybook</h2><button id="aboutClose" aria-label="关闭关于 Easybook">×</button></div><p><strong>Easybook 0.8.4</strong></p><p>参考系统备忘录体验的轻量笔记应用，支持本机离线保存、Android 与 Web 使用，以及 Cloudflare 工作区同步。</p><p>Easybook 源代码以 <strong>AGPL-3.0-only</strong> 许可。第三方组件继续适用各自许可证；第三方 SPDX 标识不会改变 Easybook 自身许可。</p></dialog><dialog id="legalDocumentDialog" class="ui-material" aria-labelledby="legalDocumentTitle" style="width:min(900px,calc(100% - 24px));max-height:90dvh"><div class="dialog-title"><h2 id="legalDocumentTitle">法律说明</h2><button id="legalDocumentClose" aria-label="关闭法律说明">×</button></div><pre id="legalDocumentText" aria-live="polite" style="white-space:pre-wrap;overflow-wrap:anywhere;user-select:text;font-size:12px;line-height:1.6;overflow:auto;max-height:70dvh;margin:10px 0">正在载入…</pre></dialog>');
 $('aboutDialog').querySelector('strong').textContent=$('appVersion').textContent;
 $('aboutClose').onclick=()=>$('aboutDialog').close();
