@@ -29,6 +29,12 @@
 
   function render(data) {
     if (data) state = data;
+    if (state?.current) {
+      const version = id('appVersion');
+      if (version) version.textContent = 'Easybook ' + state.current;
+      const aboutVersion = id('aboutDialog')?.querySelector('p strong');
+      if (aboutVersion) aboutVersion.textContent = 'Easybook ' + state.current;
+    }
     if (!sheet) return;
     const status = id('appUpdateStatus');
     const available = !!state?.updateAvailable;
