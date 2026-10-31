@@ -60,7 +60,7 @@ const aboutGroup=document.getElementById('aboutSettingsGroup');
 const settingsHome=document.getElementById('settingsHome');
 assert.equal(settingsHome.hidden,false,'The concise Settings category list must be visible initially');
 assert.deepEqual([...settingsHome.querySelectorAll('[data-settings-category]')].map(node=>node.dataset.settingsCategory),
-  ['account','workspace','sync','appearance','about']);
+  ['account','workspace','ai','sync','appearance','about']);
 assert.equal(document.getElementById('settingsCategory-about').hidden,true,
   'About details stay in their secondary page until requested');
 assert.equal(document.getElementById('workspacePanel').hidden,true,
