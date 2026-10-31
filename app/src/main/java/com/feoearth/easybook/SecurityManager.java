@@ -42,7 +42,7 @@ public final class SecurityManager {
             case "workspace.action":fields=fields("action","name","account","id","accountId","role","mode","confirm","firstAccountId","version","turnstileToken");break;
             case "account.manage":fields=fields("action","id","workspace","cursor","category","choices","confirm");break;
             case "ai.config":fields=fields("method");break;
-            case "ai.credential":fields=fields("method","provider","model","apiKey");break;
+            case "ai.credential":fields=fields("method","provider","providerName","baseUrl","model","apiKey");break;
             case "ai.chat":fields=fields("method","messages","workspace");break;
             case "account.device.revoke":fields=fields("id");break;
             case "account.passkey":fields=fields("register","name");break;

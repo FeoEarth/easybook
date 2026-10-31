@@ -26,7 +26,7 @@ const oauthHandler = {
    let input;try{input=await boundedJSON(request,65536)}catch{return Response.json({error:'invalid_request'},{status:400})}if(!object(input))return Response.json({error:'invalid_request'},{status:400});
    const principal={kind:'account',accountId:current.account_id,sessionId:current.id,authenticatedAt:current.authenticated_at};let target,method='GET',body;
    if(input.action==='config')target='/api/ai/config';
-   else if(input.action==='credential'&&['PUT','DELETE'].includes(input.method)){target='/api/ai/config';method=input.method;if(method==='PUT')body=JSON.stringify({provider:input.provider,model:input.model,apiKey:input.apiKey})}
+   else if(input.action==='credential'&&['PUT','DELETE'].includes(input.method)){target='/api/ai/config';method=input.method;if(method==='PUT')body=JSON.stringify({provider:input.provider,providerName:input.providerName,baseUrl:input.baseUrl,model:input.model,apiKey:input.apiKey})}
    else if(input.action==='chat'){target='/api/ai/chat';method='POST';body=JSON.stringify({messages:input.messages})}
    else return Response.json({error:'invalid_request'},{status:400});
    const headers={'Content-Type':'application/json'};return aiAPI(new Request(new URL(target,request.url),{method,headers,body}),env,principal,{workspaceId:input.workspace||''});

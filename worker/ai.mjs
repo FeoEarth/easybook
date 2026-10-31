@@ -10,7 +10,11 @@ const unb64=value=>Uint8Array.from(atob(value),c=>c.charCodeAt(0));
 const modelPattern=/^[A-Za-z0-9][A-Za-z0-9._:-]{0,119}$/;
 const allowedRoles=new Set(['manager','editor','reader']);
 async function ensureCredentialSchema(env){
- await env.DB.prepare("CREATE TABLE IF NOT EXISTS account_ai_credentials(account_id TEXT PRIMARY KEY REFERENCES accounts(id) ON DELETE CASCADE,provider TEXT NOT NULL CHECK(provider='openai'),model TEXT NOT NULL CHECK(length(model) BETWEEN 1 AND 120),key_ciphertext TEXT NOT NULL,key_iv TEXT NOT NULL,created_at INTEGER NOT NULL,updated_at INTEGER NOT NULL)").run();
+ await env.DB.prepare("CREATE TABLE IF NOT EXISTS account_ai_credentials(account_id TEXT PRIMARY KEY REFERENCES accounts(id) ON DELETE CASCADE,provider TEXT NOT NULL CHECK(provider='openai'),provider_name TEXT NOT NULL DEFAULT 'OpenAI',base_url TEXT NOT NULL DEFAULT 'https://api.openai.com/v1',model TEXT NOT NULL CHECK(length(model) BETWEEN 1 AND 120),key_ciphertext TEXT NOT NULL,key_iv TEXT NOT NULL,created_at INTEGER NOT NULL,updated_at INTEGER NOT NULL)").run();
+ const columns=new Set((await env.DB.prepare('PRAGMA table_info(account_ai_credentials)').all()).results.map(column=>column.name));
+ const add=async sql=>{try{await env.DB.prepare(sql).run()}catch(error){if(!String(error?.message).toLowerCase().includes('duplicate column'))throw error}};
+ if(!columns.has('provider_name'))await add("ALTER TABLE account_ai_credentials ADD COLUMN provider_name TEXT NOT NULL DEFAULT 'OpenAI'");
+ if(!columns.has('base_url'))await add("ALTER TABLE account_ai_credentials ADD COLUMN base_url TEXT NOT NULL DEFAULT 'https://api.openai.com/v1'");
 }
 
 async function encryptionKey(env){
@@ -33,8 +37,17 @@ async function open(env,row){
  try{return decoder.decode(await crypto.subtle.decrypt({name:'AES-GCM',iv:unb64(row.key_iv),additionalData:aad(row.account_id)},await encryptionKey(env),unb64(row.key_ciphertext)))}
  catch{throw Object.assign(Error('AI credential cannot be decrypted'),{status:503,code:'credential_unavailable'})}
 }
-async function credential(env,accountId){return env.DB.prepare('SELECT account_id,provider,model,key_ciphertext,key_iv,updated_at FROM account_ai_credentials WHERE account_id=?').bind(accountId).first()}
+async function credential(env,accountId){return env.DB.prepare('SELECT account_id,provider,provider_name,base_url,model,key_ciphertext,key_iv,updated_at FROM account_ai_credentials WHERE account_id=?').bind(accountId).first()}
 function validateKey(value){return typeof value==='string'&&value.length>=20&&value.length<=500&&!/[\s\u0000-\u001f]/.test(value)}
+function providerConfig(input){
+ if(input.provider==='openai')return {providerName:'OpenAI',baseUrl:'https://api.openai.com/v1'};
+ if(input.provider!=='custom'||typeof input.providerName!=='string'||!input.providerName.trim()||input.providerName.trim().length>80||typeof input.baseUrl!=='string'||input.baseUrl.length>2048)throw Object.assign(Error('Invalid provider'),{status:400,code:'invalid_provider'});
+ let url;try{url=new URL(input.baseUrl)}catch{throw Object.assign(Error('Invalid provider URL'),{status:400,code:'invalid_provider_url'})}
+ const host=url.hostname.toLowerCase();
+ if(url.protocol!=='https:'||url.username||url.password||url.search||url.hash||url.port&&url.port!=='443'||!host.includes('.')||!/^[a-z0-9.-]+$/.test(host)||host.startsWith('.')||host.endsWith('.')||host.includes('..')||/^\d+(?:\.\d+){3}$/.test(host)||host.includes(':')||['localhost','local','internal','lan','home','test','invalid'].some(name=>host===name||host.endsWith('.'+name)))throw Object.assign(Error('Provider URL must be public HTTPS'),{status:400,code:'invalid_provider_url'});
+ let path=url.pathname.replace(/\/+$/,'');if(path.endsWith('/chat/completions'))path=path.slice(0,-17);url.pathname=path||'/';
+ return {providerName:input.providerName.trim(),baseUrl:url.href.replace(/\/$/,'')};
+}
 function toolsFor(role){
  const scopes=role==='reader'?READ:[...READ,...WRITE];
  return registry.filter(t=>!t.risk&&scopes.includes(t.scope)&&!['access_request_permissions','operations_request_confirmation'].includes(t.name)).map(t=>({type:'function',function:{name:t.name,description:t.description,parameters:t.inputSchema}}));
@@ -43,8 +56,8 @@ function safeMessages(input){
  if(!Array.isArray(input)||input.length<1||input.length>40)throw Object.assign(Error('Invalid messages'),{status:400,code:'invalid_messages'});
  let size=0;return input.map(message=>{if(!object(message)||!['user','assistant'].includes(message.role)||typeof message.content!=='string')throw Object.assign(Error('Invalid messages'),{status:400,code:'invalid_messages'});size+=message.content.length;if(size>60000)throw Object.assign(Error('Messages too large'),{status:413,code:'messages_too_large'});return {role:message.role,content:message.content}});
 }
-async function completion(key,model,messages,tools,fetcher=fetch){
- const upstream=await fetcher('https://api.openai.com/v1/chat/completions',{method:'POST',headers:{Authorization:'Bearer '+key,'Content-Type':'application/json'},body:JSON.stringify({model,messages,tools,tool_choice:'auto',max_completion_tokens:2000}),signal:AbortSignal.timeout(45000)});
+async function completion(key,row,messages,tools,fetcher=fetch){
+ const upstream=await fetcher(row.base_url.replace(/\/$/,'')+'/chat/completions',{method:'POST',redirect:'manual',headers:{Authorization:'Bearer '+key,'Content-Type':'application/json'},body:JSON.stringify({model:row.model,messages,tools,tool_choice:'auto',max_completion_tokens:2000}),signal:AbortSignal.timeout(45000)});
  let data;try{data=await upstream.json()}catch{data=null}
  if(!upstream.ok)throw Object.assign(Error(data?.error?.message||'AI provider request failed'),{status:upstream.status===401?401:502,code:upstream.status===401?'provider_key_rejected':'provider_error'});
  const message=data?.choices?.[0]?.message;if(!message||typeof message!=='object')throw Object.assign(Error('Invalid AI provider response'),{status:502,code:'provider_error'});return message;
@@ -57,7 +70,7 @@ export async function aiAPI(request,env,principal,{workspaceId,fetcher=fetch}={}
   await ensureCredentialSchema(env);
   if(path==='/api/ai/config'){
    if(request.method==='GET'){
-    const row=await credential(env,principal.accountId);return response({configured:!!row,...(row?{provider:row.provider,model:row.model,updatedAt:row.updated_at}:{})});
+    const row=await credential(env,principal.accountId);return response({configured:!!row,...(row?{provider:row.base_url==='https://api.openai.com/v1'&&row.provider_name==='OpenAI'?'openai':'custom',providerName:row.provider_name,baseUrl:row.base_url,model:row.model,updatedAt:row.updated_at}:{})});
    }
    if(request.method==='DELETE'){
     if(Date.now()-principal.authenticatedAt>300000)return response({error:'reauthentication_required'},403);
@@ -65,10 +78,10 @@ export async function aiAPI(request,env,principal,{workspaceId,fetcher=fetch}={}
    }
    if(request.method!=='PUT')return response({error:'method_not_allowed'},405);
    if(Date.now()-principal.authenticatedAt>300000)return response({error:'reauthentication_required'},403);
-   const input=await boundedJSON(request,4096);if(!object(input)||input.provider!=='openai'||!modelPattern.test(input.model||'')||!validateKey(input.apiKey))return response({error:'invalid_credential'},400);
+   const input=await boundedJSON(request,4096);if(!object(input)||!modelPattern.test(input.model||'')||!validateKey(input.apiKey))return response({error:'invalid_credential'},400);const provider=providerConfig(input);
    const wrapped=await seal(env,principal.accountId,input.apiKey),now=Date.now();
-   await env.DB.prepare('INSERT INTO account_ai_credentials(account_id,provider,model,key_ciphertext,key_iv,created_at,updated_at) VALUES(?,?,?,?,?,?,?) ON CONFLICT(account_id) DO UPDATE SET provider=excluded.provider,model=excluded.model,key_ciphertext=excluded.key_ciphertext,key_iv=excluded.key_iv,updated_at=excluded.updated_at').bind(principal.accountId,'openai',input.model,wrapped.ciphertext,wrapped.iv,now,now).run();
-   return response({configured:true,provider:'openai',model:input.model,updatedAt:now});
+   await env.DB.prepare('INSERT INTO account_ai_credentials(account_id,provider,provider_name,base_url,model,key_ciphertext,key_iv,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?) ON CONFLICT(account_id) DO UPDATE SET provider=excluded.provider,provider_name=excluded.provider_name,base_url=excluded.base_url,model=excluded.model,key_ciphertext=excluded.key_ciphertext,key_iv=excluded.key_iv,updated_at=excluded.updated_at').bind(principal.accountId,'openai',provider.providerName,provider.baseUrl,input.model,wrapped.ciphertext,wrapped.iv,now,now).run();
+   return response({configured:true,provider:input.provider,providerName:provider.providerName,baseUrl:provider.baseUrl,model:input.model,updatedAt:now});
   }
   if(path!=='/api/ai/chat'||request.method!=='POST')return response({error:'not_found'},404);
   if(!/^[a-f0-9]{64}$/.test(workspaceId||''))return response({error:'workspace_required'},400);
@@ -78,9 +91,9 @@ export async function aiAPI(request,env,principal,{workspaceId,fetcher=fetch}={}
   const conversation=[{role:'system',content:'你是 Easybook 内置 AI 助手。优先使用提供的工具读取或整理当前工作区；不得猜测工具结果。执行写入前需明确遵循用户当前请求。高风险删除与永久操作不可用。'},...messages];
   const used=[];
   for(let turn=0;turn<6;turn++){
-   const message=await completion(key,row.model,conversation,tools,fetcher),calls=Array.isArray(message.tool_calls)?message.tool_calls:[];
+   const message=await completion(key,row,conversation,tools,fetcher),calls=Array.isArray(message.tool_calls)?message.tool_calls:[];
    conversation.push(message);
-   if(!calls.length)return response({message:{role:'assistant',content:typeof message.content==='string'?message.content:''},tools:used,model:row.model});
+   if(!calls.length)return response({message:{role:'assistant',content:typeof message.content==='string'?message.content:''},tools:used,model:row.model,providerName:row.provider_name});
    for(const call of calls.slice(0,6)){
     const name=call?.function?.name;let args,result;
     try{args=JSON.parse(call?.function?.arguments||'{}');result=await callTool({env,workspace:workspaceId,client:'easybook-agent:'+principal.accountId,scopes:access.role==='reader'?READ:[...READ,...WRITE]},name,args)}

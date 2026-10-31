@@ -3,6 +3,8 @@
 CREATE TABLE IF NOT EXISTS account_ai_credentials(
  account_id TEXT PRIMARY KEY REFERENCES accounts(id) ON DELETE CASCADE,
  provider TEXT NOT NULL CHECK(provider='openai'),
+ provider_name TEXT NOT NULL DEFAULT 'OpenAI',
+ base_url TEXT NOT NULL DEFAULT 'https://api.openai.com/v1',
  model TEXT NOT NULL CHECK(length(model) BETWEEN 1 AND 120),
  key_ciphertext TEXT NOT NULL,
  key_iv TEXT NOT NULL,
