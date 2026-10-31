@@ -228,7 +228,8 @@ body[data-page=ai] .topbar,body[data-page=ai] .dock-wrap{display:none}body[data-
 }
 @media(min-width:1100px){
  body.ai-panel-open .app{width:calc(100% - var(--ai-pane));margin-left:0;margin-right:var(--ai-pane)}
- .ai-assistant-sheet[open]{inset:0 0 0 auto;margin:0;width:var(--ai-pane,360px);height:var(--viewport-height,100dvh);max-height:none;border:0;border-left:1px solid var(--material-edge);border-radius:0;padding:10px 16px max(14px,env(safe-area-inset-bottom));box-shadow:-12px 0 36px #0002}
+ .ai-assistant-sheet[open]{inset:0 0 auto auto;margin:0;width:var(--ai-pane,360px);height:var(--viewport-height,100dvh);max-height:none;border:0;border-left:1px solid var(--material-edge);border-radius:0;padding:10px 16px max(14px,env(safe-area-inset-bottom));box-shadow:-12px 0 36px #0002;grid-template-rows:auto auto minmax(0,1fr) auto}
+ .ai-assistant-sheet .ai-compose{min-height:68px;height:auto;align-self:end}.ai-assistant-sheet .ai-compose textarea{height:auto;min-height:44px}
  .ai-assistant-sheet::backdrop{background:transparent}.ai-assistant-sheet .ai-sheet-grabber{position:absolute;inset:0 auto 0 -9px;width:18px;height:auto;margin:0;border-radius:0;background:transparent;cursor:col-resize;touch-action:none}.ai-assistant-sheet .ai-sheet-grabber::after{content:"";position:absolute;left:8px;top:0;bottom:0;width:2px;background:var(--border)}
 }
 @media(min-width:1180px){
