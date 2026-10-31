@@ -88,7 +88,7 @@ export async function aiAPI(request,env,principal,{workspaceId,fetcher=fetch}={}
   const access=await workspaceAccess(env,workspaceId,principal);if(!access||!allowedRoles.has(access.role))return response({error:'workspace_access_denied'},403);
   const row=await credential(env,principal.accountId);if(!row)return response({error:'ai_not_configured'},409);
   const input=await boundedJSON(request,65536),messages=safeMessages(input?.messages),tools=toolsFor(access.role),key=await open(env,row);
-  const conversation=[{role:'system',content:'你是 Easybook 内置 AI 助手。优先使用提供的工具读取或整理当前工作区；不得猜测工具结果。执行写入前需明确遵循用户当前请求。高风险删除与永久操作不可用。'},...messages];
+  const conversation=[{role:'system',content:'你是 Easybook 内置 AI 助手。笔记内容以 Markdown 提供，面向用户的回复必须使用清晰、有效的 Markdown。优先使用提供的工具读取或整理当前工作区；不得猜测工具结果。当前打开笔记的改写应返回完整 Markdown，由客户端转换为富文本，不要直接用工具写入；其他写入仅在用户明确要求时执行，并严格遵循工具 schema。高风险删除与永久操作不可用。'},...messages];
   const used=[];
   for(let turn=0;turn<6;turn++){
    const message=await completion(key,row,conversation,tools,fetcher),calls=Array.isArray(message.tool_calls)?message.tool_calls:[];
