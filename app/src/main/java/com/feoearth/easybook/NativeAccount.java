@@ -43,14 +43,14 @@ final class NativeAccount {
     private JSONObject status()throws Exception{try{JSONObject value=read(SESSION);if(value==null)return new JSONObject().put("signedIn",false);return new JSONObject().put("signedIn",value.getLong("expires")>System.currentTimeMillis()).put("sessionId",value.getString("sessionId")).put("expiresAt",value.getLong("expires"));}catch(Exception e){return new JSONObject().put("signedIn",false).put("reauthenticationRequired",true);}}
     private static String serverError(HttpsURLConnection connection){try(InputStream in=connection.getErrorStream();ByteArrayOutputStream out=new ByteArrayOutputStream()){if(in==null)return "";byte[] bytes=new byte[1024];int n;while((n=in.read(bytes))!=-1){if(out.size()+n>4096)return "";out.write(bytes,0,n);}String code=new JSONObject(out.toString("UTF-8")).optString("error");return code.matches("[A-Za-z_]{1,80}")?code:"";}catch(Exception ignored){return "";}}
     private static JSONObject request(String path,JSONObject body,String token)throws Exception{
-        if(!java.util.Arrays.asList("/account/native/ai","/account/native/manage","/account/native/poll","/account/native/start","/account/native/token","/account/native/session","/account/native/logout","/account/native/sessions","/account/native/sessions/revoke","/account/native/passkeys/login/options","/account/native/passkeys/login/verify","/account/native/passkeys/register/options","/account/native/passkeys/register/verify").contains(path))throw new SecurityException("Account path denied");
+        if(!java.util.Arrays.asList("/account/native/ai","/account/native/manage","/account/native/poll","/account/native/start","/account/native/token","/account/native/session","/account/native/logout","/account/native/sessions","/account/native/sessions/revoke","/account/native/qr/start","/account/native/qr/status","/account/native/qr/redeem","/account/native/qr/approve","/account/native/passkeys/login/options","/account/native/passkeys/login/verify","/account/native/passkeys/register/options","/account/native/passkeys/register/verify").contains(path))throw new SecurityException("Account path denied");
         String endpoint=NativeTransport.origin(true);HttpsURLConnection connection=(HttpsURLConnection)new URL(endpoint+path).openConnection();connection.setInstanceFollowRedirects(false);connection.setConnectTimeout(12000);connection.setReadTimeout(15000);connection.setRequestMethod(body==null?"GET":"POST");connection.setRequestProperty("X-Easybook-Native","1");connection.setRequestProperty("Content-Type","application/json");if(token!=null)connection.setRequestProperty("Authorization","Easybook-Session "+token);
         try{if(body!=null){byte[] bytes=body.toString().getBytes(StandardCharsets.UTF_8);connection.setDoOutput(true);connection.setFixedLengthStreamingMode(bytes.length);try(OutputStream out=connection.getOutputStream()){out.write(bytes);}}
             int status=connection.getResponseCode();if(status!=200&&!(path.equals("/account/native/poll")&&status==202))throw new HttpFailure(status,"challenge".equals(connection.getHeaderField("cf-mitigated")),serverError(connection));
             try(InputStream in=connection.getInputStream();ByteArrayOutputStream out=new ByteArrayOutputStream()){byte[] buffer=new byte[2048];int n;while((n=in.read(buffer))!=-1){if(out.size()+n>((path.equals("/account/native/manage")||path.equals("/account/native/ai"))?4194304:path.contains("/passkeys/")?65536:16384))throw new IOException("Account response too large");out.write(buffer,0,n);}return new JSONObject(out.toString("UTF-8"));}
         }catch(IOException error){if(!(error instanceof HttpFailure)||((HttpFailure)error).challenge)NativeTransport.reject(true,endpoint);throw error;}finally{connection.disconnect();}
     }
-    void open(){try{if(publicStatus().optBoolean("signedIn")){browse(ORIGIN+"/account");return;}}catch(Exception ignored){}begin();}
+    void open(){try{if(publicStatus().optBoolean("signedIn")){browse(ORIGIN+"/account");return;}}catch(Exception ignored){}activity.runOnUiThread(()->{if(activity.isDestroyed())return;new android.app.AlertDialog.Builder(activity).setTitle("登录 Easybook").setItems(new String[]{"使用通行密钥","使用 GitHub","展示登录二维码"},(d,choice)->{if(choice==0)passkey(false,"");else if(choice==1)begin();else beginQr();}).setNegativeButton("取消",null).show();});}
     void begin(){begin(true);}
     void beginBrowser(){begin(false);}
     private void begin(boolean github){if(!startOperation())return;io.execute(()->{try{
@@ -60,7 +60,7 @@ final class NativeAccount {
         Uri handoff=github?Uri.parse(uri.getQueryParameter("return")==null?"":uri.getQueryParameter("return")):Uri.parse(uri.getPath()+"?"+uri.getEncodedQuery());if(handoff.isAbsolute()||!"/account/handoff".equals(handoff.getPath())||!flow.equals(handoff.getQueryParameter("flow"))||!state.equals(handoff.getQueryParameter("state")))throw new SecurityException("Invalid login return path");
         if(activity.isDestroyed())return;write(PENDING,new JSONObject().put("kind","browser").put("flow",flow).put("state",state).put("verifier",verifier).put("expires",System.currentTimeMillis()+480000));feedback="请在系统浏览器中完成登录，再返回 Easybook";browse(destination);
     }catch(Exception e){report(e);}finally{finishOperation();}});}
-    boolean handle(Intent intent){if(intent==null||!Intent.ACTION_VIEW.equals(intent.getAction()))return false;Uri uri=intent.getData();if(uri==null||!"easybook".equals(uri.getScheme())||!"account".equals(uri.getHost())||!"/callback".equals(uri.getPath())||uri.getUserInfo()!=null||uri.getPort()!=-1||uri.getFragment()!=null)return false;
+    boolean handle(Intent intent){if(intent==null||!Intent.ACTION_VIEW.equals(intent.getAction()))return false;Uri uri=intent.getData();if(uri!=null&&"easybook".equals(uri.getScheme())&&"account".equals(uri.getHost())&&"/qr/approve".equals(uri.getPath()))return handleQrApproval(uri);if(uri==null||!"easybook".equals(uri.getScheme())||!"account".equals(uri.getHost())||!"/callback".equals(uri.getPath())||uri.getUserInfo()!=null||uri.getPort()!=-1||uri.getFragment()!=null)return false;
         final boolean denied="access_denied".equals(uri.getQueryParameter("error"));
         if(uri.getQueryParameterNames().size()!=3||!uri.getQueryParameterNames().containsAll(java.util.Arrays.asList("flow",denied?"error":"code","state")))return true;
         for(String name:new String[]{"flow","state"})if(uri.getQueryParameters(name).size()!=1||uri.getQueryParameter(name)==null||!uri.getQueryParameter(name).matches("[a-f0-9]{64}"))return true;
@@ -71,6 +71,86 @@ final class NativeAccount {
             stage("交换登录会话");JSONObject response=request("/account/native/token",new JSONObject().put("flow",flow).put("code",code).put("state",state).put("verifier",pending.getString("verifier")),null);
             synchronized(db){JSONObject active=read(PENDING);if(activity.isDestroyed()||active==null||!same(flow,active.getString("flow"))||!same(state,active.getString("state")))return;storeSession(response);db.setSetting(PENDING,"");}message("Easybook 账户已登录；工作区密钥保持独立");
         }catch(Exception e){report(e);}});return true;
+    }
+    /** Login QR contains only a short-lived approval URL; PKCE proof stays sealed locally. */
+    void beginQr(){
+        if(!startOperation())return;
+        io.execute(()->{try{
+            String verifier=NoteRepository.newKey(),state=NoteRepository.newKey();
+            String challenge=android.util.Base64.encodeToString(MessageDigest.getInstance("SHA-256").digest(verifier.getBytes(StandardCharsets.UTF_8)),android.util.Base64.URL_SAFE|android.util.Base64.NO_WRAP|android.util.Base64.NO_PADDING);
+            stage("生成安全登录二维码");
+            JSONObject response=request("/account/native/qr/start",new JSONObject().put("challenge",challenge).put("state",state),null);
+            String id=response.getString("id"),url=response.getString("confirm_url");
+            Uri link=Uri.parse(url);
+            if(!id.matches("[a-f0-9]{64}")||!"https".equals(link.getScheme())||!"easybook.loonxy.com".equals(link.getHost())||link.getPort()!=-1||!"/account/qr/approve".equals(link.getPath())||!id.equals(link.getQueryParameter("id"))||response.getInt("expires_in")!=120)throw new SecurityException("Invalid QR sign in response");
+            android.graphics.Bitmap image=qrBitmap(response.getJSONArray("qr_rows"));
+            write(PENDING,new JSONObject().put("kind","qr").put("id",id).put("verifier",verifier).put("state",state).put("expires",System.currentTimeMillis()+120000));
+            activity.runOnUiThread(()->showQrDialog(image,id));
+        }catch(Exception e){report(e);}finally{finishOperation();}});
+    }
+    private static android.graphics.Bitmap qrBitmap(JSONArray rows)throws Exception{
+        int n=rows.length();
+        if(n<21||n>177||(n-21)%4!=0)throw new SecurityException("Invalid QR dimensions");
+        int cell=Math.max(3,Math.min(8,512/(n+8))),side=(n+8)*cell;
+        android.graphics.Bitmap image=android.graphics.Bitmap.createBitmap(side,side,android.graphics.Bitmap.Config.ARGB_8888);
+        android.graphics.Canvas canvas=new android.graphics.Canvas(image);canvas.drawColor(android.graphics.Color.WHITE);
+        android.graphics.Paint black=new android.graphics.Paint();black.setColor(android.graphics.Color.BLACK);
+        for(int y=0;y<n;y++){
+            String line=rows.getString(y);
+            if(line.length()!=n||!line.matches("[01]+"))throw new SecurityException("Invalid QR bits");
+            for(int x=0;x<n;x++)if(line.charAt(x)=='1')canvas.drawRect((x+4)*cell,(y+4)*cell,(x+5)*cell,(y+5)*cell,black);
+        }
+        return image;
+    }
+    private void showQrDialog(android.graphics.Bitmap bitmap,String id){
+        if(activity.isDestroyed())return;
+        android.widget.LinearLayout layout=new android.widget.LinearLayout(activity);layout.setOrientation(android.widget.LinearLayout.VERTICAL);
+        int inset=(int)(20*activity.getResources().getDisplayMetrics().density);
+        layout.setPadding(inset,inset,inset,inset);
+        android.widget.ImageView picture=new android.widget.ImageView(activity);picture.setImageBitmap(bitmap);picture.setAdjustViewBounds(true);
+        layout.addView(picture,new android.widget.LinearLayout.LayoutParams(-1,-2));
+        android.widget.TextView note=new android.widget.TextView(activity);note.setText("用另一台已登录 Easybook 的设备扫码并确认。二维码两分钟后失效。");note.setPadding(0,inset,0,0);
+        layout.addView(note);
+        final android.app.AlertDialog dialog=new android.app.AlertDialog.Builder(activity).setTitle("扫码登录 Easybook").setView(layout).setNegativeButton("取消",null).create();
+        dialog.setOnDismissListener(d->{io.execute(()->{try{JSONObject p=read(PENDING);if(p!=null&&"qr".equals(p.optString("kind"))&&id.equals(p.optString("id")))db.setSetting(PENDING,"");}catch(Exception ignored){}});});
+        dialog.show();
+        final android.os.Handler handler=new android.os.Handler(android.os.Looper.getMainLooper());
+        final Runnable[] polling=new Runnable[1];
+        polling[0]=()->{
+            if(!dialog.isShowing()||activity.isDestroyed())return;
+            io.execute(()->{boolean again=true;try{
+                JSONObject pending=read(PENDING);
+                if(pending==null||!"qr".equals(pending.optString("kind"))||!id.equals(pending.optString("id")))return;
+                if(pending.getLong("expires")<=System.currentTimeMillis()){again=false;activity.runOnUiThread(()->{dialog.dismiss();message("二维码已过期，请重新生成");});return;}
+                JSONObject proof=new JSONObject().put("id",id).put("state",pending.getString("state")).put("verifier",pending.getString("verifier"));
+                JSONObject status=request("/account/native/qr/status",proof,null);
+                if("approved".equals(status.optString("status"))){
+                    JSONObject result=request("/account/native/qr/redeem",proof,null);
+                    synchronized(db){JSONObject current=read(PENDING);if(current==null||!id.equals(current.optString("id")))return;storeSession(result);db.setSetting(PENDING,"");}
+                    again=false;activity.runOnUiThread(()->{dialog.dismiss();message("扫码登录成功，工作区密钥保持独立");});return;
+                }
+                if(!"pending".equals(status.optString("status"))){again=false;activity.runOnUiThread(()->{dialog.dismiss();message("扫码请求已失效或被取消");});}
+            }catch(Exception e){report(e);}finally{if(again)activity.runOnUiThread(()->{if(dialog.isShowing())handler.postDelayed(polling[0],3000);});}});
+        };
+        handler.postDelayed(polling[0],1000);
+    }
+    private boolean handleQrApproval(Uri uri){
+        if(uri.getUserInfo()!=null||uri.getPort()!=-1||uri.getFragment()!=null||uri.getQueryParameterNames().size()!=1||uri.getQueryParameters("id").size()!=1)return true;
+        final String id=uri.getQueryParameter("id");
+        if(id==null||!id.matches("[a-f0-9]{64}"))return true;
+        activity.runOnUiThread(()->{if(activity.isDestroyed())return;
+            new android.app.AlertDialog.Builder(activity).setTitle("确认其他设备登录")
+                .setMessage("只允许你本人发起的扫码登录。批准后，另一台设备将拥有独立账户会话，但不会获得工作区同步密钥。")
+                .setNegativeButton("拒绝",(d,w)->submitQrApproval(id,"deny"))
+                .setPositiveButton("确认登录",(d,w)->submitQrApproval(id,"allow")).show();
+        });
+        return true;
+    }
+    private void submitQrApproval(String id,String choice){
+        io.execute(()->{try{String access=token(db);
+            JSONObject result=request("/account/native/qr/approve",new JSONObject().put("id",id).put("decision",choice),access);
+            message("allow".equals(choice)?"已确认其他设备登录":"已拒绝扫码登录");
+        }catch(Exception e){report(e);}});
     }
     private volatile long lastResumeCheck;
     void resume(){long now=android.os.SystemClock.elapsedRealtime();if(now-lastResumeCheck<1500||starting||io.isShutdown())return;lastResumeCheck=now;io.execute(()->{try{

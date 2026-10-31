@@ -3,7 +3,7 @@ on:
   push:
     branches: [main]
   pull_request:
-    paths: ['mcp-oauth/src/accounts.mjs', 'mcp-oauth/test/consent-browser.mjs', '.github/workflows/oauth-form-origin.yml']
+    paths: ['mcp-oauth/src/accounts.mjs', 'mcp-oauth/test/consent-browser.mjs', '.github/workflows/oauth-form-origin.yml', 'mcp-oauth/src/qr-login.mjs', 'mcp-oauth/test/qr-login-security.mjs']
 permissions:
   contents: read
 jobs:
@@ -18,6 +18,7 @@ jobs:
       - run: npm ci --no-audit --no-fund
       - run: npm ci --prefix mcp-oauth --no-audit --no-fund
       - run: node scripts/workspace-oauth-security-test.mjs
+      - run: node mcp-oauth/test/qr-login-security.mjs
       - run: node mcp-oauth/test/consent-browser.mjs
         env:
           CHROME_BIN: /usr/bin/google-chrome

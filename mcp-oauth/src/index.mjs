@@ -36,6 +36,7 @@ const oauthHandler = {
   if(url.pathname.startsWith('/account/native/passkeys/')){const {nativePasskeyRoutes}=await import('./native-passkeys.mjs');return nativePasskeyRoutes(request,env);}
   if(url.pathname==='/oauth/workspace-grants'){const {session,requireForm,redirect,json}=await import('./accounts.mjs');const s=await session(request,env);if(!s)return json({error:'unauthorized'},401);if(request.method!=='POST')return json({error:'method_not_allowed'},405);const form=await requireForm(request,s);const {revokeWorkspaceGrant}=await import('../../worker/grant-revocation.mjs');if(!await revokeWorkspaceGrant(env,s.account_id,form.get('id'),form.get('workspace')))return json({error:'not_found'},404);return redirect('/account');}
   if(url.pathname==='/account/native/manage'){const {nativeManagementRoutes}=await import('./native-management.mjs');return nativeManagementRoutes(request,env);}
+  if(url.pathname==='/account/qr'||url.pathname.startsWith('/account/qr/')||url.pathname.startsWith('/account/native/qr/')){const {qrLoginRoutes}=await import('./qr-login.mjs');return qrLoginRoutes(request,env);}
   const native=await nativeAccountRoutes(request,env);if(native)return native;
   if(url.pathname.startsWith('/account/passkeys')){const {passkeyRoutes}=await import('./passkeys.mjs');return passkeyRoutes(request,env);}
   if(modernWorkspaces(env)&&url.pathname.startsWith('/account/operations/')){const {operationApprovalRoutes}=await import('./operation-approvals.mjs');const approval=await operationApprovalRoutes(request,env);if(approval)return approval;}

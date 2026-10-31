@@ -44,6 +44,7 @@ jobs:
         run: |
           node scripts/account-oauth-security-test.mjs
           node mcp-oauth/test/passkeys-security.mjs
+          node mcp-oauth/test/qr-login-security.mjs
           node scripts/mcp-capabilities-test.mjs
           node scripts/mcp-upload-test.mjs
           node scripts/mcp-pairing-release-test.mjs
