@@ -9,6 +9,9 @@ const b64=bytes=>btoa(String.fromCharCode(...bytes));
 const unb64=value=>Uint8Array.from(atob(value),c=>c.charCodeAt(0));
 const modelPattern=/^[A-Za-z0-9][A-Za-z0-9._:-]{0,119}$/;
 const allowedRoles=new Set(['manager','editor','reader']);
+async function ensureCredentialSchema(env){
+ await env.DB.prepare("CREATE TABLE IF NOT EXISTS account_ai_credentials(account_id TEXT PRIMARY KEY REFERENCES accounts(id) ON DELETE CASCADE,provider TEXT NOT NULL CHECK(provider='openai'),model TEXT NOT NULL CHECK(length(model) BETWEEN 1 AND 120),key_ciphertext TEXT NOT NULL,key_iv TEXT NOT NULL,created_at INTEGER NOT NULL,updated_at INTEGER NOT NULL)").run();
+}
 
 async function encryptionKey(env){
  const raw=env.AI_CREDENTIAL_KEY;
@@ -51,6 +54,7 @@ export async function aiAPI(request,env,principal,{workspaceId,fetcher=fetch}={}
  if(!path.startsWith('/api/ai/'))return null;
  try{
   if(principal?.kind!=='account')return response({error:'account_required'},403);
+  await ensureCredentialSchema(env);
   if(path==='/api/ai/config'){
    if(request.method==='GET'){
     const row=await credential(env,principal.accountId);return response({configured:!!row,...(row?{provider:row.provider,model:row.model,updatedAt:row.updated_at}:{})});

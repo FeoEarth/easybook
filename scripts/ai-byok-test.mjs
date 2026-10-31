@@ -4,8 +4,7 @@ import {readFileSync} from 'node:fs';
 import {aiAPI} from '../worker/ai.mjs';
 
 const sqlite=new DatabaseSync(':memory:');sqlite.exec('PRAGMA foreign_keys=ON');
-for(const file of ['worker/schema.sql','mcp-oauth/migrations/0002_accounts.sql','worker/migrations/0010-workspace-identity.sql','worker/migrations/0018-ai-credentials.sql'])sqlite.exec(readFileSync(file,'utf8'));
-sqlite.exec(readFileSync('worker/migrations/0018-ai-credentials.sql','utf8'));
+for(const file of ['worker/schema.sql','mcp-oauth/migrations/0002_accounts.sql','worker/migrations/0010-workspace-identity.sql'])sqlite.exec(readFileSync(file,'utf8'));
 const DB={prepare(sql){const statement=sqlite.prepare(sql);let args=[];return {bind(...values){args=values;return this},async first(){return statement.get(...args)||null},async all(){return {results:statement.all(...args)}},async run(){return statement.run(...args)}}}};
 const account='11111111-1111-4111-8111-111111111111',workspace='a'.repeat(64),now=Date.now();
 sqlite.prepare('INSERT INTO accounts(id,display_name,created_at) VALUES(?,?,?)').run(account,'AI test',now);
@@ -16,6 +15,7 @@ const request=(path,method='GET',body)=>new Request('https://easybook.test'+path
 const secret='sk-test-this-value-must-never-be-returned';
 let result=await aiAPI(request('/api/ai/config','PUT',{provider:'openai',model:'gpt-4.1-mini',apiKey:secret}),env,principal);
 assert.equal(result.status,200);assert.equal((await result.json()).configured,true);
+sqlite.exec(readFileSync('worker/migrations/0018-ai-credentials.sql','utf8'));sqlite.exec(readFileSync('worker/migrations/0018-ai-credentials.sql','utf8'));
 const stored=sqlite.prepare('SELECT * FROM account_ai_credentials').get();assert.ok(!JSON.stringify(stored).includes(secret));assert.notEqual(stored.key_ciphertext,secret);
 result=await aiAPI(request('/api/ai/config'),env,principal);const config=await result.json();assert.deepEqual({...config,updatedAt:0},{configured:true,provider:'openai',model:'gpt-4.1-mini',updatedAt:0});assert.ok(!JSON.stringify(config).includes('sk-test'));
 

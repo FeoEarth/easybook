@@ -62,15 +62,12 @@ jobs:
         run: npm install --no-save --no-package-lock --no-audit --no-fund wrangler@4.152.0
       - name: Validate bundle without deployment
         run: npx --no-install wrangler deploy --config worker/wrangler.jsonc --dry-run --outdir .wrangler-preflight
-      - name: Apply additive AI credential migration
-        if: github.ref == 'refs/heads/main'
-        run: npx --no-install wrangler d1 execute easybook-data --remote --config worker/wrangler.jsonc --file worker/migrations/0018-ai-credentials.sql
       - name: Install browser for release smoke test
         run: npx --no-install playwright install chromium
       - name: Verify decoded video frames and player controls
         run: node scripts/video-player-smoke.mjs && node scripts/video-player-visual.mjs
-      # Schema migration is applied via the authorized Cloudflare connection.
-      # Candidate readiness below verifies D1 through its runtime binding before promotion.
+      # Additive AI schema initialization uses the authenticated Worker's D1 binding;
+      # the checked-in SQL remains available to the authorized migration process.
       - name: Record custom-domain baseline without weakening zone security
         run: node scripts/custom-domain-release-check.mjs record
       - name: Verify real rollback on binding-free probe Worker
