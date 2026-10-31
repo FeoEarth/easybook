@@ -52,8 +52,8 @@ const fakeFetch=async url=>{
   assert.ok(legalFiles.has(url),'Unexpected legal document request: '+url);
   return new Response(legalFiles.get(url),{status:200});
 };
-new Function('document','$','fetch',html.slice(snippetStart,snippetEnd))(
-  document,id=>document.getElementById(id),fakeFetch);
+new Function('document','$','fetch','native',html.slice(snippetStart,snippetEnd))(
+  document,id=>document.getElementById(id),fakeFetch,false);
 for(const id of ['aboutEntry','projectLicenseEntry','thirdPartyNoticesEntry','thirdPartyLicensesEntry'])
   assert.ok(document.getElementById(id)&&document.getElementById('settings').contains(document.getElementById(id)));
 const aboutGroup=document.getElementById('aboutSettingsGroup');
