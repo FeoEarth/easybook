@@ -16,7 +16,7 @@ sqlite.prepare('INSERT INTO account_sessions(id,token_hash,account_id,created_at
 const originHeaders={'Origin':base,'Content-Type':'application/json'};
 const nativeHeaders={'X-Easybook-Native':'1','Content-Type':'application/json'};
 const authCookie='__Host-easybook-session='+sourceToken;
-const query=(path,opts={})=>qrLoginRoutes(new Request(base+path,opts),env);
+const query=async(path,opts={})=>{try{return await qrLoginRoutes(new Request(base+path,opts),env)}catch(error){if(error instanceof Response)return error;throw error}};
 const post=(path,data,headers=originHeaders)=>query(path,{method:'POST',headers,body:JSON.stringify(data)});
 const result=async response=>({status:response.status,body:await response.json()});
 const verifier=random(),state=random(),challenge=await s256(verifier);
