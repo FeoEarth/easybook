@@ -51,6 +51,23 @@ final class NativeAccount {
         }catch(IOException error){if(!(error instanceof HttpFailure)||((HttpFailure)error).challenge)NativeTransport.reject(true,endpoint);throw error;}finally{connection.disconnect();}
     }
     void open(){try{if(publicStatus().optBoolean("signedIn")){browse(ORIGIN+"/account");return;}}catch(Exception ignored){}activity.runOnUiThread(()->{if(activity.isDestroyed())return;new android.app.AlertDialog.Builder(activity).setTitle("登录 Easybook").setItems(new String[]{"使用通行密钥","使用 GitHub","展示登录二维码"},(d,choice)->{if(choice==0)passkey(false,"");else if(choice==1)begin();else beginQr();}).setNegativeButton("取消",null).show();});}
+    /** Only the canonical, single-parameter Easybook approval URL may be scanned. */
+    static String qrChallengeId(String raw){
+        if(raw==null||raw.length()>512)return null;
+        try{
+            Uri link=Uri.parse(raw);
+            if(!"https".equals(link.getScheme())||!"easybook.loonxy.com".equals(link.getHost())||link.getPort()!=-1||link.getUserInfo()!=null||link.getFragment()!=null||!"/account/qr/approve".equals(link.getPath())||link.getQueryParameterNames().size()!=1||!link.getQueryParameterNames().contains("id")||link.getQueryParameters("id").size()!=1)return null;
+            String id=link.getQueryParameter("id");
+            return id!=null&&id.matches("[a-f0-9]{64}")?id:null;
+        }catch(Exception error){return null;}
+    }
+    void scanQr(){
+        try{token(db);}catch(Exception error){message("请先登录 Easybook，再扫描其他设备的登录二维码");return;}
+        activity.runOnUiThread(()->{if(!activity.isDestroyed())activity.startActivityForResult(new Intent(activity,QrScanActivity.class),85);});
+    }
+    void approveScannedQr(String id){
+        if(id!=null&&id.matches("[a-f0-9]{64}"))handleQrApproval(Uri.parse("easybook://account/qr/approve?id="+id));
+    }
     void begin(){begin(true);}
     void beginBrowser(){begin(false);}
     private void begin(boolean github){if(!startOperation())return;io.execute(()->{try{
@@ -82,7 +99,7 @@ final class NativeAccount {
             JSONObject response=request("/account/native/qr/start",new JSONObject().put("challenge",challenge).put("state",state),null);
             String id=response.getString("id"),url=response.getString("confirm_url");
             Uri link=Uri.parse(url);
-            if(!id.matches("[a-f0-9]{64}")||!"https".equals(link.getScheme())||!"easybook.loonxy.com".equals(link.getHost())||link.getPort()!=-1||!"/account/qr/approve".equals(link.getPath())||!id.equals(link.getQueryParameter("id"))||response.getInt("expires_in")!=120)throw new SecurityException("Invalid QR sign in response");
+            if(!id.equals(qrChallengeId(url))||response.getInt("expires_in")!=120)throw new SecurityException("Invalid QR sign in response");
             android.graphics.Bitmap image=qrBitmap(response.getJSONArray("qr_rows"));
             write(PENDING,new JSONObject().put("kind","qr").put("id",id).put("verifier",verifier).put("state",state).put("expires",System.currentTimeMillis()+120000));
             activity.runOnUiThread(()->showQrDialog(image,id));
