@@ -1370,7 +1370,7 @@ renderSyncPolicy();
 // About and legal documents are bundled in Android's offline assets and deployed
 // as Web static assets. Keep them visible without requiring an Easybook account.
 const legalAnchor=$('settings').querySelector('.workspace-card');
-$('appVersion').textContent='Easybook 0.8.5';
+$('appVersion').textContent='Easybook 0.8.6';
 const legalLabel=document.createElement('div');legalLabel.className='settings-label';legalLabel.textContent='关于';
 const legalGroup=document.createElement('div');legalGroup.className='settings-group';
 legalGroup.id='aboutSettingsGroup';
@@ -1378,7 +1378,94 @@ legalGroup.innerHTML='<button class="settings-row" id="aboutEntry"><svg aria-hid
 const appReleaseLabel=document.createElement('div');appReleaseLabel.className='settings-label';appReleaseLabel.textContent='应用';
 const appReleaseGroup=document.createElement('div');appReleaseGroup.className='settings-group';
 appReleaseGroup.innerHTML=native?'<button class="settings-row" id="appUpdateEntry"><svg aria-hidden="true"><use href="#i-sync"/></svg><span class="row-text"><strong>检查更新</strong><small id="appUpdateStatus">当前版本 '+esc($('appVersion').textContent.replace('Easybook ',''))+'</small></span><svg class="chevron" aria-hidden="true"><use href="#i-chevron"/></svg></button>':'<button class="settings-row" id="appDownloadEntry"><svg aria-hidden="true"><use href="#i-import"/></svg><span class="row-text"><strong>下载 Android App</strong><small>从 GitHub 获取最新签名 APK</small></span><svg class="chevron" aria-hidden="true"><use href="#i-chevron"/></svg></button>';
-if(native)appReleaseGroup.querySelector('button').onclick=async()=>{const button=$('appUpdateEntry'),status=$('appUpdateStatus');if(button.disabled)return;button.disabled=true;status.textContent='正在检查…';try{const result=await native.call('device.update',{action:'check'});status.textContent=result.updateAvailable?'发现新版本 '+result.latest:'当前已是最新版本';if(result.updateAvailable&&confirm('发现 '+result.latest+'，是否前往下载更新？'))await native.call('device.update',{action:'open'})}catch{status.textContent='检查失败，请确认网络后重试';toast('暂时无法检查更新')}finally{button.disabled=false}};else appReleaseGroup.querySelector('button').onclick=()=>window.open('https://github.com/FeoEarth/easybook/releases/latest/download/Easybook-0.8.5.apk','_blank','noopener');
+if(native){
+ const updateStyle=document.createElement('style');
+ updateStyle.textContent=`
+ #appUpdateDialog{width:min(520px,calc(100% - 28px));max-height:min(83dvh,720px);padding:22px;border:1px solid var(--border);border-radius:26px;background:var(--glass);color:var(--ink);box-shadow:0 24px 70px rgba(0,0,0,.22);backdrop-filter:blur(32px) saturate(1.5);-webkit-backdrop-filter:blur(32px) saturate(1.5);overflow:auto}
+ #appUpdateDialog::backdrop{background:rgba(0,0,0,.32);backdrop-filter:blur(6px)}
+ .update-sheet-head{display:flex;justify-content:space-between;gap:12px;align-items:center;margin-bottom:18px}
+ .update-sheet-head h2{font-size:22px;letter-spacing:-.4px;margin:0}
+ #appUpdateDialog .update-close{font-size:25px;border-radius:50%;width:38px;height:38px;min-width:38px;min-height:38px;padding:0;background:var(--selected);color:var(--muted)}
+ .update-version{font-size:17px;font-weight:700;margin:5px 0}
+ .update-subtitle{font-size:13px;color:var(--muted);line-height:1.5;margin:3px 0 14px}
+ .update-notes{font-size:13px;line-height:1.55;white-space:pre-wrap;overflow-wrap:anywhere;max-height:32dvh;overflow:auto;background:var(--paper);border-radius:15px;padding:14px;margin:12px 0}
+ .update-progress{height:6px;width:100%;border:0;border-radius:20px;overflow:hidden;background:var(--selected);display:block;margin:12px 0}
+ .update-progress::-webkit-progress-bar{background:var(--selected);border-radius:20px}
+ .update-progress::-webkit-progress-value{background:var(--accent);border-radius:20px}
+ .update-actions{display:flex;justify-content:flex-end;gap:10px;flex-wrap:wrap;margin-top:16px}
+ .update-actions button{border-radius:19px;background:var(--selected);font-weight:600}
+ .update-actions button.primary{background:var(--accent);color:#fff}
+ .update-message{font-size:13px;color:var(--muted);min-height:20px;line-height:1.5}
+ `;
+ document.head.append(updateStyle);
+ const updateDialog=document.createElement('dialog');
+ updateDialog.id='appUpdateDialog';updateDialog.setAttribute('aria-labelledby','appUpdateTitle');
+ updateDialog.innerHTML='<div class="update-sheet-head"><h2 id="appUpdateTitle">Easybook 更新</h2><button class="update-close" id="appUpdateClose" aria-label="关闭">×</button></div><div class="update-version" id="appUpdateVersion">正在检查更新…</div><div class="update-subtitle" id="appUpdateBuild"></div><div class="update-message" id="appUpdateMessage" aria-live="polite"></div><progress class="update-progress" id="appUpdateProgress" max="100" value="0" hidden></progress><div class="update-notes" id="appUpdateNotes" hidden></div><div class="update-actions"><button id="appUpdateCancel" hidden>取消下载</button><button id="appUpdateRetry" hidden>重新检查</button><button id="appUpdateDownload" class="primary" hidden>下载更新</button><button id="appUpdateInstall" class="primary" hidden>安装更新</button></div>';
+ document.body.append(updateDialog);
+ let updateData=null,updateChecking=false,updatePermissionHint='',updateClock=0,updateBytes=0,updateSpeed=0;
+ const updateSize=n=>((Number(n)||0)/1048576).toFixed(1)+' MB';
+ function renderAppUpdate(data){
+   updateData=data;
+   const available=!!data?.updateAvailable,stage=data?.stage||'idle',downloading=stage==='downloading';
+   const name=data?.latest||'',code=Number(data?.latestCode)||0;
+   $('appUpdateVersion').textContent=updateChecking?'正在检查更新…':name?(available?'发现新版本 '+name:'当前已是最新版本'):'检查更新';
+   $('appUpdateBuild').textContent=name?'当前 '+data.current+'（'+data.currentCode+'） · 最新 '+name+'（'+code+'）':'当前版本 '+($('appVersion').textContent||'');
+   $('appUpdateStatus').textContent=available?(stage==='ready'?'更新已下载，等待安装':downloading?'正在下载 '+Math.round((Number(data.downloaded)||0)/(Number(data.size)||1)*100)+'%':'发现新版本 '+name):(updateChecking?'正在检查…':'当前已是最新版本');
+   $('appUpdateNotes').hidden=!name;
+   $('appUpdateNotes').textContent=data?.notes||'本次更新未提供说明。';
+   $('appUpdateProgress').hidden=!downloading;
+   $('appUpdateProgress').value=Math.max(0,Math.min(100,Math.floor((Number(data.downloaded)||0)/(Number(data.size)||1)*100)));
+   let message='';
+   if(updateChecking)message='正在从 GitHub 检查正式发行版…';
+   else if(downloading)message='已下载 '+updateSize(data.downloaded)+' / '+updateSize(data.size)+(updateSpeed>0?' · '+updateSize(updateSpeed)+'/s':'');
+   else if(stage==='ready')message='下载完成并通过 SHA-256、包名、版本号和签名校验。';
+   else if(stage==='failed')message=data.error||'更新下载失败，请重试。';
+   else if(available)message='安装包 '+updateSize(data.size)+' · 下载后由 Android 系统确认安装。';
+   else message='无需更新。';
+   if(updatePermissionHint)message=updatePermissionHint;
+   $('appUpdateMessage').textContent=message;
+   $('appUpdateCancel').hidden=!downloading;
+   $('appUpdateRetry').hidden=updateChecking||available;
+   $('appUpdateDownload').hidden=updateChecking||!available||downloading||stage==='ready';
+   $('appUpdateDownload').textContent=stage==='failed'?'重新下载':'下载更新';
+   $('appUpdateInstall').hidden=!available||stage!=='ready';
+ }
+ window.easybookUpdateProgress=data=>{
+   const now=performance.now(),done=Number(data?.downloaded)||0;
+   if(data?.stage==='downloading'&&updateClock&&done>=updateBytes&&now>updateClock){
+     updateSpeed=Math.round((done-updateBytes)*1000/(now-updateClock));
+   }else if(data?.stage!=='downloading')updateSpeed=0;
+   updateClock=now;updateBytes=done;
+   renderAppUpdate(data);
+ };
+ const showUpdate=()=>{if(!updateDialog.open)updateDialog.showModal()};
+ $('appUpdateClose').onclick=()=>updateDialog.close();
+ $('appUpdateEntry').onclick=async()=>{
+   showUpdate();updateChecking=true;updatePermissionHint='';renderAppUpdate(updateData);
+   try{const data=await native.call('device.update',{action:'check'});updateChecking=false;renderAppUpdate(data)}
+   catch(e){updateChecking=false;renderAppUpdate(updateData||{});$('appUpdateMessage').textContent='无法检查更新：'+(e?.message||'请检查网络后重试');$('appUpdateRetry').hidden=false;$('appUpdateStatus').textContent='检查失败'}
+ };
+ $('appUpdateRetry').onclick=()=>$('appUpdateEntry').click();
+ $('appUpdateDownload').onclick=async()=>{
+   updatePermissionHint='';updateSpeed=0;updateClock=0;
+   $('appUpdateDownload').disabled=true;
+   try{renderAppUpdate(await native.call('device.update',{action:'download'}))}
+   catch(e){$('appUpdateMessage').textContent='无法开始下载：'+(e?.message||'请重试')}
+   finally{$('appUpdateDownload').disabled=false}
+ };
+ $('appUpdateCancel').onclick=async()=>{try{renderAppUpdate(await native.call('device.update',{action:'cancel'}));$('appUpdateMessage').textContent='正在取消下载…'}catch{}};
+ $('appUpdateInstall').onclick=async()=>{
+   $('appUpdateInstall').disabled=true;
+   try{
+     const result=await native.call('device.update',{action:'install'});
+     if(result.needsPermission)updatePermissionHint='请在系统设置中允许 Easybook 安装应用，返回后再次点击「安装更新」。';
+     else updatePermissionHint='已打开 Android 系统安装器，请确认安装。';
+     renderAppUpdate(updateData);
+   }catch(e){$('appUpdateMessage').textContent='安装准备失败：'+(e?.message||'请重试')}
+   finally{$('appUpdateInstall').disabled=false}
+ };
+ document.addEventListener('visibilitychange',()=>{if(!document.hidden&&updateDialog.open)void native.call('device.update',{action:'state'}).then(renderAppUpdate).catch(()=>{})});
+}else appReleaseGroup.querySelector('button').onclick=()=>window.open('https://github.com/FeoEarth/easybook/releases/latest/download/Easybook-0.8.6.apk','_blank','noopener');else appReleaseGroup.querySelector('button').onclick=()=>window.open('https://github.com/FeoEarth/easybook/releases/latest/download/Easybook-0.8.5.apk','_blank','noopener');
 legalAnchor.after(legalLabel,legalGroup);
 const settingsHome=document.createElement('div');settingsHome.id='settingsHome';settingsHome.className='settings-home';
 settingsHome.innerHTML='<div class="settings-group"><button class="settings-row" data-settings-category="account"><span class="settings-category-icon"><svg aria-hidden="true"><use href="#i-settings"/></svg></span><span class="row-text"><strong>账户与安全</strong><small>登录方式、设备和账户管理</small></span><svg class="chevron" aria-hidden="true"><use href="#i-chevron"/></svg></button><button class="settings-row" data-settings-category="workspace"><span class="settings-category-icon"><svg aria-hidden="true"><use href="#i-account-person"/></svg></span><span class="row-text"><strong>工作区与成员</strong><small>切换工作区、共享设置和成员权限</small></span><svg class="chevron" aria-hidden="true"><use href="#i-chevron"/></svg></button><button class="settings-row" data-settings-category="ai"><span class="settings-category-icon"><svg aria-hidden="true"><use href="#i-link"/></svg></span><span class="row-text"><strong>AI 与 MCP</strong><small>BYOK、Agent、应用授权和操作审批</small></span><svg class="chevron" aria-hidden="true"><use href="#i-chevron"/></svg></button><button class="settings-row" data-settings-category="sync"><span class="settings-category-icon"><svg aria-hidden="true"><use href="#i-sync"/></svg></span><span class="row-text"><strong>同步与数据</strong><small>设备连接、同步活动、备份和回收站</small></span><svg class="chevron" aria-hidden="true"><use href="#i-chevron"/></svg></button><button class="settings-row" data-settings-category="appearance"><span class="settings-category-icon"><svg aria-hidden="true"><use href="#i-list"/></svg></span><span class="row-text"><strong>外观与性能</strong><small>颜色模式和极速模式</small></span><svg class="chevron" aria-hidden="true"><use href="#i-chevron"/></svg></button><button class="settings-row" data-settings-category="about"><span class="settings-category-icon"><svg aria-hidden="true"><use href="#i-note"/></svg></span><span class="row-text"><strong>关于 Easybook</strong><small>版本、项目许可和第三方组件</small></span><svg class="chevron" aria-hidden="true"><use href="#i-chevron"/></svg></button></div></div>';
