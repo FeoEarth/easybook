@@ -179,6 +179,7 @@ public class MainActivity extends Activity {
                         boolean legacy=false;
                         String html=readAsset("index.html");html=html.replace("</head>","<script>localStorage.setItem(\"easybook-fast-mode\",\""+getPreferences(MODE_PRIVATE).getBoolean("fastMode",false)+"\");</script></head>");if(!legacy)html=html.replace("connect-src 'self' https://easybook-sync.1902521952.workers.dev","connect-src 'self'");
                         html=html.replace("<script>","<script>"+(legacy?"window.EasybookRollbackMode=true;":"")+readAsset("native-api.js")+"</script><script>");
+                         html=html.replace("</body>","<script>"+readNativeUpdateScript()+"</script></body>");
                         if(BuildConfig.NATIVE_GLASS_PROTOTYPE && android.os.Build.VERSION.SDK_INT>=33&&!getPreferences(MODE_PRIVATE).getBoolean("fastMode",false))html=html.replace("</body>","<script>"+readAsset("native-glass/dock-surface.js")+";"+readAsset("native-glass/toolbar-surface.js")+";"+readAsset("native-glass/format-surface.js")+";"+readAsset("native-glass/move-surface.js")+";"+readAsset("native-glass/sync-surface.js")+";"+readAsset("native-glass/menu.js")+"</script></body>");
                         return new WebResourceResponse("text/html","UTF-8",200,"OK",Collections.singletonMap("Cache-Control","no-store"),new ByteArrayInputStream(html.getBytes(StandardCharsets.UTF_8)));
                     }
@@ -194,6 +195,7 @@ public class MainActivity extends Activity {
         web.loadUrl(LOCAL);
     }
     private String readAsset(String name)throws IOException {try(InputStream in=getAssets().open(name);ByteArrayOutputStream out=new ByteArrayOutputStream()){byte[] b=new byte[8192];int n;while((n=in.read(b))!=-1)out.write(b,0,n);return out.toString("UTF-8");}}
+    private String readNativeUpdateScript()throws IOException {try(InputStream in=getResources().openRawResource(R.raw.native_update);ByteArrayOutputStream out=new ByteArrayOutputStream()){byte[] buffer=new byte[8192];int n;while((n=in.read(buffer))!=-1)out.write(buffer,0,n);return out.toString("UTF-8");}}
     private void respond(JavaScriptReplyProxy reply,long generation,JSONObject value){runOnUiThread(()->{if(!destroyed&&generation==documentGeneration&&LOCAL.equals(web.getUrl()))try{reply.postMessage(value.toString());}catch(IllegalStateException ignored){}});}
     private String bounded(JSONObject args,String name,int max)throws Exception{if(!(args.get(name) instanceof String))throw new IllegalArgumentException();String s=args.getString(name);if(s.length()>max)throw new IllegalArgumentException("Value too large");return s;}
     private void openAppRelease(){runOnUiThread(()->{try{startActivity(new Intent(Intent.ACTION_VIEW,Uri.parse("https://github.com/FeoEarth/easybook/releases/latest")));}catch(ActivityNotFoundException e){notifyJs("无法打开下载页面");}});}
