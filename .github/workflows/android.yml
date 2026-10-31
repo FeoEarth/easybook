@@ -57,6 +57,7 @@ jobs:
   apk:
     outputs:
       version: ${{ steps.apk_version.outputs.name }}
+      version_code: ${{ steps.apk_version.outputs.code }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -108,6 +109,10 @@ jobs:
           VERSION=$(sed -nE "s/.*versionName[[:space:]]+'([^']+)'.*/\1/p" app/build.gradle | head -n 1)
           [[ "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || { echo 'Invalid Android versionName'; exit 1; }
           echo "name=$VERSION" >> "$GITHUB_OUTPUT"
+          PACKAGE=$("$ANDROID_HOME/build-tools/35.0.0/aapt" dump badging app/build/outputs/apk/release/app-release.apk | grep -m 1 "^package:")
+          VERSION_CODE=$(printf '%s\n' "$PACKAGE" | sed -nE "s/.*versionCode='([0-9]+)'.*/\\1/p")
+          [[ "$VERSION_CODE" =~ ^[1-9][0-9]*$ ]] || { echo 'Invalid APK versionCode'; exit 1; }
+          echo "code=$VERSION_CODE" >> "$GITHUB_OUTPUT"
       - name: Prepare APK
         run: |
           cp app/build/outputs/apk/release/app-release.apk 'Easybook-${{ steps.apk_version.outputs.name }}.apk'
@@ -135,6 +140,10 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           VERSION='${{ needs.apk.outputs.version }}'
+          VERSION_CODE='${{ needs.apk.outputs.version_code }}'
+          [[ "$VERSION_CODE" =~ ^[1-9][0-9]*$ ]] || { echo 'Invalid Release APK versionCode'; exit 1; }
+          PREVIOUS=$(gh api "repos/$GITHUB_REPOSITORY/releases/latest" --jq .body 2>/dev/null | sed -nE 's/^- APK versionCode: ([0-9]+)$/\\1/p' | head -n 1 || true)
+          if [[ "$PREVIOUS" =~ ^[0-9]+$ ]] && (( VERSION_CODE <= PREVIOUS )); then echo "versionCode must increase: $VERSION_CODE <= $PREVIOUS"; exit 1; fi
           [[ "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || { echo 'Invalid release version'; exit 1; }
           TAG="v${VERSION}-build${GITHUB_RUN_NUMBER}"
           NOTES=$(printf '%s\n' \
@@ -146,13 +155,18 @@ jobs:
             '## 发布信息' \
             '' \
             "- 应用版本：${VERSION}" \
-            "- 发布构建号：${GITHUB_RUN_NUMBER}" \
+            "- 发布构建号：${GITHUB_RUN_NUMBER}"
+            "- APK versionCode: ${VERSION_CODE}" \
             '- 发布方式：从 `main` 手动批准发布' \
             '' \
+            '## 更新内容'
+            ''
+            '以下自动列出自上一正式发行版以来的合并变更。'
+            ''
             '## 验证说明' \
             '' \
             '已完成编译、签名和自动化检查。自动化检查不等同于 Android 通行密钥实机登录及生产备份恢复验收。')
-          gh release create "$TAG" "Easybook-${VERSION}.apk" SHA256SUMS.txt --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" --title "Easybook ${VERSION} · build ${GITHUB_RUN_NUMBER}" --notes "$NOTES"
+          gh release create "$TAG" "Easybook-${VERSION}.apk" SHA256SUMS.txt --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" --title "Easybook ${VERSION} · build ${GITHUB_RUN_NUMBER}" --notes "$NOTES" --generate-notes
 
 
 
