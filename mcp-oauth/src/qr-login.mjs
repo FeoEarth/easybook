@@ -30,6 +30,7 @@ async function approve(env,id,approver,decision){
   :env.DB.prepare('UPDATE account_qr_logins SET cancelled_at=? WHERE id_hash=? AND expires_at>? AND approved_at IS NULL AND consumed_at IS NULL AND cancelled_at IS NULL RETURNING id_hash').bind(now,digest,now);
  return await stmt.first()?json({status:decision==='allow'?'approved':'cancelled'}):fail('expired_or_used',409);
 }
+const qrRows=url=>{const image=qrcode(0,'M');image.addData(url);image.make();const n=image.getModuleCount();return Array.from({length:n},(_,y)=>Array.from({length:n},(_,x)=>image.isDark(y,x)?'1':'0').join(''));};
 const QR_COOKIE='__Host-easybook-qr-login';
 function qrPage(id,entry){
  const url=IDENTITY_ORIGIN+'/account/qr/approve?id='+id;
@@ -87,9 +88,10 @@ export async function qrLoginRoutes(request,env){
   const id=url.searchParams.get('id'),entry=await lookup(env,id);
   if(qrState(entry)!=='pending')return page('二维码已失效','<p>请在发起设备重新生成登录二维码。</p>');
   const current=await session(request,env);
-  if(!current)return redirect('/account/passkeys?return='+encodeURIComponent(path+'?id='+id));
+  if(!current)return page('确认其他设备登录','<p>请先登录本设备的 Easybook 账户，或使用已登录的 Android App 确认请求。</p><a class="link" href="easybook://account/qr/approve?id='+id+'">使用 Easybook App 确认</a><p><a class="link" href="/account/passkeys?return='+encodeURIComponent(path+'?id='+id)+'">使用通行密钥登录</a></p>');
+  const appLink='easybook://account/qr/approve?id='+id;
   const hidden='<input type="hidden" name="id" value="'+escape(id)+'"><input type="hidden" name="csrf" value="'+await csrf(request,current)+'">';
-  return page('确认扫码登录','<p>另一个 '+(entry.initiator_kind==='android'?'Android':'Web')+' 设备请求登录 Easybook。仅在你本人发起操作时确认；扫码不会传输工作区同步密钥。</p><p>当前账户：<strong>'+escape(current.display_name)+'</strong></p><form method="post" action="/account/qr/approve">'+hidden+'<button name="decision" value="allow">确认登录</button><button name="decision" value="deny">拒绝</button></form>');
+  return page('确认扫码登录','<p>另一个 '+(entry.initiator_kind==='android'?'Android':'Web')+' 设备请求登录 Easybook。仅在你本人发起操作时确认；扫码不会传输工作区同步密钥。</p><p>当前账户：<strong>'+escape(current.display_name)+'</strong></p><p><a class="link" href="'+escape(appLink)+'">在 Easybook Android App 中确认</a></p><form method="post" action="/account/qr/approve">'+hidden+'<button name="decision" value="allow">确认登录</button><button name="decision" value="deny">拒绝</button></form>');
  }
  if(!['start','status','redeem','approve'].includes(action)||request.method!=='POST')return fail('method_not_allowed',405);
  await rateLimit(request,env,'qr-'+action,action==='status'?120:15);
@@ -112,7 +114,8 @@ export async function qrLoginRoutes(request,env){
   if(!validateQrRequest(input))return fail('invalid_challenge');
   const id=random(),state_hash=await hash(input.state);
   await createQrChallenge(env.DB,await hash(id),{...input,state_hash},native?'android':'web');
-  return json({id,confirm_url:IDENTITY_ORIGIN+'/account/qr/approve?id='+id,expires_in:QR_TTL_MS/1000});
+  const confirm_url=IDENTITY_ORIGIN+'/account/qr/approve?id='+id;
+  return json(native?{id,confirm_url,qr_rows:qrRows(confirm_url),expires_in:QR_TTL_MS/1000}:{id,confirm_url,expires_in:QR_TTL_MS/1000});
  }
  const entry=await lookup(env,input?.id);
  if(!entry||entry.initiator_kind!==(native?'android':'web')||!QR_STATE.test(input?.state||'')||typeof input?.verifier!=='string'||!QR_CHALLENGE.test(entry.challenge)||await hash(input.state)!==entry.state_hash||await s256(input.verifier)!==entry.challenge)return fail('invalid_grant',400);
