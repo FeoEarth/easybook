@@ -6,7 +6,7 @@ This inventory covers the locked production npm graphs for the Web editor/PDF bu
 
 **Coverage boundary:** development/test and platform-specific optional npm packages are excluded; esbuild is listed but marked build-only. The Android `releaseRuntimeClasspath` is resolved by Gradle, but final APK byte-for-byte contents are not yet audited. Proprietary Google Play Services modules are **not open-source**: their Maven POMs point to the Android SDK License terms, which are linked rather than reproduced as an open-source license text. The Liberation font uses its own GPL-2.0-based agreement with exceptions, identified with a local `LicenseRef` rather than inaccurately described as Apache-2.0.
 
-Entries: 145 (56 npm main, 27 npm OAuth, 9 embedded PDF resources, 52 resolved Android runtime modules, one native glass port).
+Entries: 147 (56 npm main, 27 npm OAuth, 9 embedded PDF resources, 54 resolved Android runtime modules, one native glass port).
 
 ## Audit inputs / 审计输入
 
@@ -76,6 +76,8 @@ Entries: 145 (56 npm main, 27 npm OAuth, 9 embedded PDF resources, 52 resolved A
 | com.google.android.gms:play-services-tasks | 18.2.0 | Android release runtime | `LicenseRef-Android-SDK-License` | Google LLC | [Official proprietary terms](https://developer.android.com/studio/terms.html) |
 | com.google.android.libraries.identity.googleid:googleid | 1.1.0 | Android release runtime | `LicenseRef-Android-SDK-License` | Google LLC | [Official proprietary terms](https://developer.android.com/studio/terms.html) |
 | com.google.guava:listenablefuture | 1.0 | Android release runtime | `Apache-2.0` | Google LLC | [0d542e0c88](#license-text-0d542e0c8804e39a) |
+| com.google.zxing:core | 3.4.1 | Android release runtime | `Apache-2.0` | ZXing authors | [0d542e0c88](#license-text-0d542e0c8804e39a) |
+| com.journeyapps:zxing-android-embedded | 4.3.0 | Android release runtime | `Apache-2.0` | ZXing authors and Journey Mobile | [0d542e0c88](#license-text-0d542e0c8804e39a) |
 | org.jetbrains:annotations | 23.0.0 | Android release runtime | `Apache-2.0` | JetBrains s.r.o. | [0d542e0c88](#license-text-0d542e0c8804e39a) |
 | org.jetbrains.kotlin:kotlin-stdlib | 1.9.24 | Android release runtime | `Apache-2.0` | JetBrains s.r.o. | [0d542e0c88](#license-text-0d542e0c8804e39a) |
 | org.jetbrains.kotlin:kotlin-stdlib-jdk7 | 1.9.0 | Android release runtime | `Apache-2.0` | JetBrains s.r.o. | [0d542e0c88](#license-text-0d542e0c8804e39a) |

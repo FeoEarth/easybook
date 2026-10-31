@@ -5,7 +5,17 @@ const {chromium}=require('playwright'),fs=require('node:fs'),assert=require('nod
  const page=await browser.newPage({viewport:{width:320,height:640}}),errors=[];
  page.on('pageerror',e=>errors.push(e.message));
  await page.addInitScript(()=>{Object.defineProperty(navigator,'onLine',{value:false});Object.defineProperty(Navigator.prototype,'deviceMemory',{configurable:true,get:()=>8})});
- await page.route('https://easybook.test/**',r=>r.fulfill({contentType:r.request().url().endsWith('/editor.js')?'text/javascript':'text/html',body:fs.readFileSync(r.request().url().endsWith('/editor.js')?'app/src/main/assets/editor.js':'app/src/main/assets/index.html')}));
+ await page.route('https://easybook.test/**',r=>{
+  const pathname=new URL(r.request().url()).pathname;
+  const local={
+   '/':'app/src/main/assets/index.html',
+   '/editor.js':'app/src/main/assets/editor.js',
+   '/native-glass/highlight-palette.js':'app/src/main/assets/native-glass/highlight-palette.js',
+   '/native-glass/adaptive-toolbar.js':'app/src/main/assets/native-glass/adaptive-toolbar.js'
+  }[pathname];
+  if(!local)return r.fulfill({status:404,body:''});
+  return r.fulfill({contentType:pathname.endsWith('.js')?'text/javascript':'text/html',body:fs.readFileSync(local)});
+ });
  await page.goto('https://easybook.test');await page.waitForFunction(()=>window.easybookRich);
  assert.equal(await page.locator('#glassToggle,#glassValue').count(),0);assert.equal(await page.evaluate(()=>localStorage.getItem('easybook-glass')),null);assert.equal(await page.evaluate(()=>document.documentElement.dataset.glass),'normal');
  const bounds=async selector=>{await page.locator(selector).evaluate(async e=>{const animations=[];for(let n=e;n;n=n.parentElement)animations.push(...n.getAnimations());await Promise.all(animations.filter(a=>a.effect.getTiming().iterations!==Infinity).map(a=>a.finished.catch(()=>{})))});const r=await page.locator(selector).boundingBox(),v=page.viewportSize();assert.ok(r&&r.x>=-1&&r.y>=-1&&r.x+r.width<=v.width+1&&r.y+r.height<=v.height+1,selector+' stays in viewport '+JSON.stringify({r,v}))};
