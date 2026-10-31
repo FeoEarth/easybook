@@ -7,6 +7,7 @@ import {androidAssetLinks} from './android-identity.mjs';
 import {IDENTITY_ORIGIN,identityEnabled,identityPath} from './identity-origin.mjs';
 import {accountConnect} from './account-connect.mjs';
 import {workspaceAPI,workspacePrincipal} from './workspace-api.mjs';
+import {aiAPI} from './ai.mjs';
 import {turnstileConfig} from './turnstile.mjs';
 import {workspaceAccess,WorkspaceError} from './workspace-identity.mjs';
 import {cleanupUploads} from './mcp-uploads.mjs';
@@ -34,6 +35,12 @@ export default {
   if(identityEnabled(env)&&url.origin===IDENTITY_ORIGIN&&identityPath(url.pathname)){if(!env.IDENTITY_SERVICE)return json({error:'Identity service unavailable'},503);return env.IDENTITY_SERVICE.fetch(request);}
   if(url.pathname==='/api/turnstile'&&request.method==='GET')return turnstileConfig(env);
   if(identityV2&&url.pathname.startsWith('/api/workspaces'))return workspaceAPI(request,env);
+  if(identityV2&&url.pathname.startsWith('/api/ai/')){
+   try{
+    const principal=await workspacePrincipal(request,env,{mutation:!['GET','HEAD'].includes(request.method)});
+    return await aiAPI(request,env,principal,{workspaceId:request.headers.get('X-Easybook-Workspace')||''});
+   }catch(e){if(e instanceof WorkspaceError)return json({error:e.code},e.status);return json({error:'Authentication unavailable'},503)}
+  }
   if(identityV2&&(url.pathname==='/mcp'||url.pathname==='/api/mcp/attest'||url.pathname==='/api/mcp/approval'))return json({error:'Use account OAuth authorization'},410);
   if(url.pathname==='/account/connect'&&request.method==='GET')return new Response(accountConnect,{headers:{'Content-Type':'text/html; charset=utf-8','Cache-Control':'no-store','Referrer-Policy':'no-referrer','X-Frame-Options':'DENY','Content-Security-Policy':"default-src 'none'; style-src 'unsafe-inline'; script-src 'unsafe-inline'; connect-src 'self'; form-action 'none'; frame-ancestors 'none'; base-uri 'none'"}});
   if(url.pathname==='/health/mcp'&&request.method==='GET')return mcpHealth(env);

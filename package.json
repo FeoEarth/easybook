@@ -11,7 +11,7 @@
     "licenses:check": "node scripts/generate-third-party-licenses.mjs --check",
     "licenses:delivery:check": "node scripts/prepare-pdf.mjs && node scripts/license-delivery-test.mjs",
     "licenses:android": "gradle -I scripts/android-runtime-artifacts.gradle :app:exportLicenseRuntimeArtifacts --no-daemon && node scripts/generate-android-license-manifest.mjs && npm run licenses:generate",
-    "test": "node scripts/check.mjs && node scripts/document-test.mjs && node scripts/rich-editor-test.mjs && node scripts/format-editor-test.mjs && node scripts/worker-integration.mjs && node scripts/web-store-test.mjs && node scripts/attachment-test.mjs",
+    "test": "node scripts/check.mjs && node scripts/document-test.mjs && node scripts/rich-editor-test.mjs && node scripts/format-editor-test.mjs && node scripts/worker-integration.mjs && node scripts/web-store-test.mjs && node scripts/attachment-test.mjs && node scripts/ai-byok-test.mjs",
     "test:editor": "node scripts/format-editor-test.mjs && node scripts/rich-editor-test.mjs",
     "test:management": "node scripts/note-management-api-test.mjs && node scripts/note-management-ui-test.cjs",
     "test:notes": "node scripts/note-management-ui-test.cjs && node scripts/note-browsing-test.cjs && node scripts/note-management-native-bridge-test.mjs",

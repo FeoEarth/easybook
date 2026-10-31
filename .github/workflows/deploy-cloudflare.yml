@@ -62,6 +62,9 @@ jobs:
         run: npm install --no-save --no-package-lock --no-audit --no-fund wrangler@4.152.0
       - name: Validate bundle without deployment
         run: npx --no-install wrangler deploy --config worker/wrangler.jsonc --dry-run --outdir .wrangler-preflight
+      - name: Apply additive AI credential migration
+        if: github.ref == 'refs/heads/main'
+        run: npx --no-install wrangler d1 execute easybook-data --remote --config worker/wrangler.jsonc --file worker/migrations/0018-ai-credentials.sql
       - name: Install browser for release smoke test
         run: npx --no-install playwright install chromium
       - name: Verify decoded video frames and player controls

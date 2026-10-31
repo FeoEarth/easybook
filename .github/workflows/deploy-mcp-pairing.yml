@@ -6,7 +6,9 @@ on:
     paths:
       - 'mcp-oauth/**'
       - 'worker/mcp*.mjs'
+      - 'worker/ai.mjs'
       - 'worker/migrations/0008-mcp-capabilities.sql'
+      - 'worker/migrations/0018-ai-credentials.sql'
       - 'worker/notes.mjs'
       - 'worker/management.mjs'
       - 'shared/**'
