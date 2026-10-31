@@ -17,7 +17,7 @@ export function validateQrRequest(input) {
   return !!input && QR_CHALLENGE.test(input.challenge||'') && QR_STATE.test(input.state||'');
 }
 export async function createQrChallenge(db, digest, input, kind, now=Date.now()) {
-  if (!validateQrRequest(input) || !['web','android'].includes(kind) || !QR_ID.test(digest)) {
+  if (!validateQrRequest(input) || !['web','android'].includes(kind) || !QR_ID.test(digest) || !QR_ID.test(input.state_hash||'')) {
     throw new TypeError('Invalid QR challenge');
   }
   await db.prepare('INSERT INTO account_qr_logins(id_hash,initiator_kind,challenge,state_hash,created_at,expires_at) VALUES(?,?,?,?,?,?)')
