@@ -508,6 +508,28 @@
       "note": "Google Guava listenablefuture 1.0 empty compatibility artifact; POM omits license metadata. Apache-2.0 per upstream Guava."
     },
     {
+      "name": "com.google.zxing:core",
+      "version": "3.4.1",
+      "type": "jar",
+      "spdx": "Apache-2.0",
+      "author": "ZXing authors",
+      "license_url": "http://www.apache.org/licenses/LICENSE-2.0",
+      "source_pom": "https://repo.maven.apache.org/maven2/com/google/zxing/core/3.4.1/core-3.4.1.pom",
+      "license_file": "third_party/pdfjs/LICENSE",
+      "note": ""
+    },
+    {
+      "name": "com.journeyapps:zxing-android-embedded",
+      "version": "4.3.0",
+      "type": "aar",
+      "spdx": "Apache-2.0",
+      "author": "ZXing authors and Journey Mobile",
+      "license_url": "https://www.apache.org/licenses/LICENSE-2.0",
+      "source_pom": "https://repo.maven.apache.org/maven2/com/journeyapps/zxing-android-embedded/4.3.0/zxing-android-embedded-4.3.0.pom",
+      "license_file": "third_party/pdfjs/LICENSE",
+      "note": ""
+    },
+    {
       "name": "org.jetbrains:annotations",
       "version": "23.0.0",
       "type": "jar",

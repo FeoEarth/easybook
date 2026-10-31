@@ -68,10 +68,26 @@ async function redeemQr(request,env,entry,input,native){
  headers.append('Set-Cookie',established.cookie);
  return new Response(JSON.stringify({ok:true}),{headers});
 }
+async function scanPage(request,env){
+ const current=await session(request,env);
+ if(!current)return redirect('/account');
+ const nonce=random();
+ const content=`<p>用本设备扫描另一台设备显示的 Easybook 登录二维码。批准前请核对请求是否由你本人发起；不会传输工作区同步密钥。</p>
+ <div class="group" style="overflow:hidden;padding:16px"><video id="qr-camera" autoplay playsinline muted hidden style="width:100%;max-height:400px;object-fit:cover;border-radius:16px;background:#101014"></video><button type="button" id="qr-camera-start">打开相机扫描</button><p id="qr-camera-status" role="status">如浏览器不支持扫码，可使用系统相机打开二维码，或在下方粘贴授权链接。</p></div>
+ <form id="qr-manual"><label style="width:100%">授权链接<input id="qr-url" type="url" autocomplete="off" inputmode="url" placeholder="https://easybook.loonxy.com/account/qr/approve?id=…" required></label><button>核对登录请求</button></form>`;
+ const source=`(()=>{const video=document.getElementById('qr-camera'),start=document.getElementById('qr-camera-start'),status=document.getElementById('qr-camera-status'),input=document.getElementById('qr-url');let stream=null,active=false;const stop=()=>{active=false;if(stream){stream.getTracks().forEach(t=>t.stop());stream=null}};const parse=raw=>{try{if(typeof raw!=='string'||raw.length>512)return null;const u=new URL(raw);if(u.origin!==location.origin||u.pathname!=='/account/qr/approve'||u.hash||[...u.searchParams.keys()].length!==1||u.searchParams.getAll('id').length!==1||!/^[a-f0-9]{64}$/.test(u.searchParams.get('id')||''))return null;return u.pathname+u.search}catch{return null}};const navigate=raw=>{const url=parse(raw);if(!url){status.textContent='不是有效的 Easybook 登录二维码，请重试';return false}stop();location.assign(url);return true};document.getElementById('qr-manual').addEventListener('submit',e=>{e.preventDefault();navigate(input.value.trim())});window.addEventListener('pagehide',stop);start.addEventListener('click',async()=>{if(!('BarcodeDetector'in window)||!navigator.mediaDevices?.getUserMedia){status.textContent='此浏览器不支持内置二维码扫描，请使用系统相机打开二维码或粘贴授权链接。';return}start.disabled=true;try{const formats=await BarcodeDetector.getSupportedFormats();if(!formats.includes('qr_code'))throw Error('unsupported');const detector=new BarcodeDetector({formats:['qr_code']});stream=await navigator.mediaDevices.getUserMedia({video:{facingMode:'environment'},audio:false});video.srcObject=stream;video.hidden=false;await video.play();active=true;status.textContent='将二维码放入取景框';const poll=async()=>{if(!active)return;try{const codes=await detector.detect(video);for(const item of codes){if(navigate(item.rawValue))return}}catch{}if(active)setTimeout(poll,180)};void poll()}catch{stop();status.textContent='无法启动相机，请检查相机权限；也可使用系统相机或粘贴授权链接。';start.disabled=false}})})();`;
+ const response=page('扫描登录二维码',content);
+ const html=(await response.text()).replace('</body>',`<script nonce="${nonce}">${source}</script></body>`);
+ const headers=new Headers(response.headers);
+ headers.set('Content-Security-Policy',`default-src 'none'; script-src 'nonce-${nonce}'; style-src 'unsafe-inline'; form-action 'self'; frame-ancestors 'none'; base-uri 'none'`);
+ headers.set('Permissions-Policy','camera=(self)');
+ return new Response(html,{headers});
+}
 export async function qrLoginRoutes(request,env){
  const url=new URL(request.url),path=url.pathname;
  if(path!=='/account/qr'&&!path.startsWith('/account/qr/')&&!path.startsWith('/account/native/qr/'))return null;
  if(!identityEnabled(env)||url.origin!==IDENTITY_ORIGIN)return fail('not_available',404);
+ if(path==='/account/qr/scan'&&request.method==='GET')return scanPage(request,env);
  if(path==='/account/qr'&&request.method==='GET'){
   await rateLimit(request,env,'qr-browser-start',10);
   const current=await session(request,env);

@@ -126,10 +126,11 @@ jobs:
   release:
     needs: apk
     # A successful automatic APK build is normally only a CI artifact.
-    # Exception: this explicitly approved, one-time updater rollout is published on the named merge commit.
+    # Exceptions: named, version-pinned rollout merge commits, never an ordinary push.
     if: >-
       (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main' && inputs.publish_release == true) ||
-      (github.event_name == 'push' && github.ref == 'refs/heads/main' && startsWith(github.event.head_commit.message, 'release(android): in-app updater v0.8.6') && needs.apk.outputs.version == '0.8.6')
+      (github.event_name == 'push' && github.ref == 'refs/heads/main' && startsWith(github.event.head_commit.message, 'release(android): in-app updater v0.8.6') && needs.apk.outputs.version == '0.8.6') ||
+      (github.event_name == 'push' && github.ref == 'refs/heads/main' && startsWith(github.event.head_commit.message, 'release(android): account UI v0.8.7') && needs.apk.outputs.version == '0.8.7')
     runs-on: ubuntu-latest
     permissions:
       contents: write
