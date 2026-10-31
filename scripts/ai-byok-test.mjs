@@ -17,12 +17,20 @@ let result=await aiAPI(request('/api/ai/config','PUT',{provider:'openai',model:'
 assert.equal(result.status,200);assert.equal((await result.json()).configured,true);
 sqlite.exec(readFileSync('worker/migrations/0018-ai-credentials.sql','utf8'));sqlite.exec(readFileSync('worker/migrations/0018-ai-credentials.sql','utf8'));
 const stored=sqlite.prepare('SELECT * FROM account_ai_credentials').get();assert.ok(!JSON.stringify(stored).includes(secret));assert.notEqual(stored.key_ciphertext,secret);
-result=await aiAPI(request('/api/ai/config'),env,principal);const config=await result.json();assert.deepEqual({...config,updatedAt:0},{configured:true,provider:'openai',model:'gpt-4.1-mini',updatedAt:0});assert.ok(!JSON.stringify(config).includes('sk-test'));
+result=await aiAPI(request('/api/ai/config'),env,principal);const config=await result.json();assert.deepEqual({...config,updatedAt:0},{configured:true,provider:'openai',providerName:'OpenAI',baseUrl:'https://api.openai.com/v1',model:'gpt-4.1-mini',updatedAt:0});assert.ok(!JSON.stringify(config).includes('sk-test'));
 
-let authorization='';
-const fetcher=async(_url,init)=>{authorization=init.headers.Authorization;return Response.json({choices:[{message:{role:'assistant',content:'已读取当前工作区。'}}]})};
+let authorization='',upstreamUrl='',redirect='';
+const fetcher=async(url,init)=>{upstreamUrl=url;authorization=init.headers.Authorization;redirect=init.redirect;return Response.json({choices:[{message:{role:'assistant',content:'已读取当前工作区。'}}]})};
 result=await aiAPI(request('/api/ai/chat','POST',{messages:[{role:'user',content:'概览当前工作区'}]}),env,principal,{workspaceId:workspace,fetcher});
-assert.equal(result.status,200);const chat=await result.json();assert.equal(chat.message.content,'已读取当前工作区。');assert.equal(authorization,'Bearer '+secret);assert.ok(!JSON.stringify(chat).includes(secret));
+assert.equal(result.status,200);const chat=await result.json();assert.equal(chat.message.content,'已读取当前工作区。');assert.equal(authorization,'Bearer '+secret);assert.equal(upstreamUrl,'https://api.openai.com/v1/chat/completions');assert.equal(redirect,'manual');assert.ok(!JSON.stringify(chat).includes(secret));
+
+result=await aiAPI(request('/api/ai/config','PUT',{provider:'custom',providerName:'Example AI',baseUrl:'https://ai.example.net/openai/v1/',model:'example-chat',apiKey:secret}),env,principal);
+assert.equal(result.status,200);assert.deepEqual({...await result.json(),updatedAt:0},{configured:true,provider:'custom',providerName:'Example AI',baseUrl:'https://ai.example.net/openai/v1',model:'example-chat',updatedAt:0});
+result=await aiAPI(request('/api/ai/chat','POST',{messages:[{role:'user',content:'测试自定义提供商'}]}),env,principal,{workspaceId:workspace,fetcher});
+assert.equal(result.status,200);assert.equal(upstreamUrl,'https://ai.example.net/openai/v1/chat/completions');assert.equal(redirect,'manual');
+for(const baseUrl of ['http://ai.example.net/v1','https://127.0.0.1/v1','https://localhost/v1','https://user:pass@ai.example.net/v1','https://ai.example.net:8443/v1']){
+ result=await aiAPI(request('/api/ai/config','PUT',{provider:'custom',providerName:'Unsafe',baseUrl,model:'example-chat',apiKey:secret}),env,principal);assert.equal(result.status,400);assert.equal((await result.json()).error,'invalid_provider_url');
+}
 
 result=await aiAPI(request('/api/ai/config','DELETE'),env,{...principal,authenticatedAt:0});assert.equal(result.status,403);assert.equal((await result.json()).error,'reauthentication_required');
 result=await aiAPI(request('/api/ai/config','DELETE'),env,principal);assert.equal(result.status,200);assert.equal(sqlite.prepare('SELECT COUNT(*) n FROM account_ai_credentials').get().n,0);

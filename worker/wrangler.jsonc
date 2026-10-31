@@ -3,7 +3,8 @@
   "main": "index.mjs",
   "compatibility_date": "2026-10-23",
   "compatibility_flags": [
-    "nodejs_compat"
+    "nodejs_compat",
+    "global_fetch_strictly_public"
   ],
   "workers_dev": true,
   "keep_vars": true,

@@ -1,7 +1,8 @@
 # AI BYOK deployment
 
-Easybook's built-in Agent uses the account holder's OpenAI API key and the
-existing MCP tool registry. The application has no shared provider key.
+Easybook's built-in Agent uses the account holder's BYOK credential with either
+OpenAI or a custom OpenAI-compatible provider, and reuses the existing MCP tool
+registry. The application has no shared provider key.
 
 Before deploying the feature:
 
@@ -22,6 +23,13 @@ never contain a key. Changing or deleting a key requires an account session
 authenticated within the previous five minutes. Android sends the key directly
 from the native bridge to the account Worker and never persists it in WebView
 storage.
+
+Custom providers are configured with a display name, model, and API base URL.
+Easybook appends `/chat/completions` to that base URL. The Worker accepts only
+public HTTPS hostnames on the default TLS port, rejects credentials, query
+strings, fragments, IP literals and local/internal suffixes, and does not follow
+redirects. Cloudflare's `global_fetch_strictly_public` compatibility flag adds
+runtime protection against DNS resolution to private addresses.
 
 Agent access is recalculated against the selected workspace and current account
 role on every request. Reader accounts receive read-only MCP tools. Destructive
