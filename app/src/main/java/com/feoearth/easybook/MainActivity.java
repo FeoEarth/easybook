@@ -166,13 +166,15 @@ public class MainActivity extends Activity {
                     String asset=u.getPath().substring(1),mime=asset.endsWith(".mjs")||asset.endsWith(".js")?"application/javascript":asset.endsWith(".css")?"text/css":asset.endsWith(".md")||asset.endsWith(".txt")?"text/plain":asset.endsWith(".wasm")?"application/wasm":asset.endsWith(".json")?"application/json":asset.endsWith(".svg")?"image/svg+xml":asset.endsWith(".ttf")?"font/ttf":"application/octet-stream";
                     try{return new WebResourceResponse(mime,null,200,"OK",Collections.singletonMap("X-Content-Type-Options","nosniff"),getAssets().open(asset));}catch(IOException error){return new WebResourceResponse("text/plain","UTF-8",404,"Not Found",Collections.emptyMap(),new ByteArrayInputStream(new byte[0]));}
                 }
+                if("https".equals(u.getScheme())&&"appassets.androidplatform.net".equals(u.getHost())&&("/native-glass/highlight-palette.js".equals(u.getPath())||"/native-glass/adaptive-toolbar.js".equals(u.getPath()))){
+                    try{return new WebResourceResponse("application/javascript","UTF-8",200,"OK",Collections.singletonMap("X-Content-Type-Options","nosniff"),getAssets().open(u.getPath().substring(1)));}catch(IOException error){return new WebResourceResponse("text/plain","UTF-8",404,"Not Found",Collections.emptyMap(),new ByteArrayInputStream(new byte[0]));}
+                }
                 if (LOCAL.equals(u.toString())) {
                     try {
                         boolean legacy=false;
                         String html=readAsset("index.html");html=html.replace("</head>","<script>localStorage.setItem(\"easybook-fast-mode\",\""+getPreferences(MODE_PRIVATE).getBoolean("fastMode",false)+"\");</script></head>");if(!legacy)html=html.replace("connect-src 'self' https://easybook-sync.1902521952.workers.dev","connect-src 'self'");
                         html=html.replace("<script>","<script>"+(legacy?"window.EasybookRollbackMode=true;":"")+readAsset("native-api.js")+"</script><script>");
                         if(BuildConfig.NATIVE_GLASS_PROTOTYPE && android.os.Build.VERSION.SDK_INT>=33&&!getPreferences(MODE_PRIVATE).getBoolean("fastMode",false))html=html.replace("</body>","<script>"+readAsset("native-glass/dock-surface.js")+";"+readAsset("native-glass/toolbar-surface.js")+";"+readAsset("native-glass/format-surface.js")+";"+readAsset("native-glass/move-surface.js")+";"+readAsset("native-glass/sync-surface.js")+";"+readAsset("native-glass/menu.js")+"</script></body>");
-                        html=html.replace("</body>","<script>"+readAsset("native-glass/highlight-palette.js")+";"+readAsset("native-glass/adaptive-toolbar.js")+"</script></body>");
                         return new WebResourceResponse("text/html","UTF-8",200,"OK",Collections.singletonMap("Cache-Control","no-store"),new ByteArrayInputStream(html.getBytes(StandardCharsets.UTF_8)));
                     }
                     catch (IOException e) { return new WebResourceResponse("text/plain", "UTF-8", new ByteArrayInputStream(new byte[0])); }

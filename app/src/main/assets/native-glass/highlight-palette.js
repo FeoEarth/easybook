@@ -23,7 +23,7 @@ window.installEasybookHighlightPalette=(rich,high,arrow,cluster)=>{
   const saved=localStorage.getItem('easybook-last-highlight')||window.RichNotes.highlights.黄色;
   const recent=original.find(source=>source.dataset.color===saved)||original.find(source=>source.dataset.color);
   if(recent&&remembered!==recent.dataset.color){remembered=recent.dataset.color;high.style.setProperty('--quick-highlight-color',remembered);high.title='应用最近高亮：'+recent.textContent.trim()}
-  if(panel.open&&next!==selected){selected=next;window.NativeStore.call('ui.glass.palette',{color:selected}).catch(()=>{})}else selected=next;
+  if(panel.open&&next!==selected){selected=next;window.NativeStore?.call('ui.glass.palette',{color:selected})?.catch(()=>{})}else selected=next;
  }
  function show(){
   if(rich.isComposing()||!document.body.classList.contains('editing')){opening=false;return}
