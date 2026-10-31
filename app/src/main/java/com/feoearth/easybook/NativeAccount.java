@@ -72,6 +72,86 @@ final class NativeAccount {
             synchronized(db){JSONObject active=read(PENDING);if(activity.isDestroyed()||active==null||!same(flow,active.getString("flow"))||!same(state,active.getString("state")))return;storeSession(response);db.setSetting(PENDING,"");}message("Easybook 账户已登录；工作区密钥保持独立");
         }catch(Exception e){report(e);}});return true;
     }
+    /** Login QR contains only a short-lived approval URL; PKCE proof stays sealed locally. */
+    void beginQr(){
+        if(!startOperation())return;
+        io.execute(()->{try{
+            String verifier=NoteRepository.newKey(),state=NoteRepository.newKey();
+            String challenge=android.util.Base64.encodeToString(MessageDigest.getInstance("SHA-256").digest(verifier.getBytes(StandardCharsets.UTF_8)),android.util.Base64.URL_SAFE|android.util.Base64.NO_WRAP|android.util.Base64.NO_PADDING);
+            stage("生成安全登录二维码");
+            JSONObject response=request("/account/native/qr/start",new JSONObject().put("challenge",challenge).put("state",state),null);
+            String id=response.getString("id"),url=response.getString("confirm_url");
+            Uri link=Uri.parse(url);
+            if(!id.matches("[a-f0-9]{64}")||!"https".equals(link.getScheme())||!"easybook.loonxy.com".equals(link.getHost())||link.getPort()!=-1||!"/account/qr/approve".equals(link.getPath())||!id.equals(link.getQueryParameter("id"))||response.getInt("expires_in")!=120)throw new SecurityException("Invalid QR sign in response");
+            android.graphics.Bitmap image=qrBitmap(response.getJSONArray("qr_rows"));
+            write(PENDING,new JSONObject().put("kind","qr").put("id",id).put("verifier",verifier).put("state",state).put("expires",System.currentTimeMillis()+120000));
+            activity.runOnUiThread(()->showQrDialog(image,id));
+        }catch(Exception e){report(e);}finally{finishOperation();}});
+    }
+    private static android.graphics.Bitmap qrBitmap(JSONArray rows)throws Exception{
+        int n=rows.length();
+        if(n<21||n>177||(n-21)%4!=0)throw new SecurityException("Invalid QR dimensions");
+        int cell=Math.max(3,Math.min(8,512/(n+8))),side=(n+8)*cell;
+        android.graphics.Bitmap image=android.graphics.Bitmap.createBitmap(side,side,android.graphics.Bitmap.Config.ARGB_8888);
+        android.graphics.Canvas canvas=new android.graphics.Canvas(image);canvas.drawColor(android.graphics.Color.WHITE);
+        android.graphics.Paint black=new android.graphics.Paint();black.setColor(android.graphics.Color.BLACK);
+        for(int y=0;y<n;y++){
+            String line=rows.getString(y);
+            if(line.length()!=n||!line.matches("[01]+"))throw new SecurityException("Invalid QR bits");
+            for(int x=0;x<n;x++)if(line.charAt(x)=='1')canvas.drawRect((x+4)*cell,(y+4)*cell,(x+5)*cell,(y+5)*cell,black);
+        }
+        return image;
+    }
+    private void showQrDialog(android.graphics.Bitmap bitmap,String id){
+        if(activity.isDestroyed())return;
+        android.widget.LinearLayout layout=new android.widget.LinearLayout(activity);layout.setOrientation(android.widget.LinearLayout.VERTICAL);
+        int inset=(int)(20*activity.getResources().getDisplayMetrics().density);
+        layout.setPadding(inset,inset,inset,inset);
+        android.widget.ImageView picture=new android.widget.ImageView(activity);picture.setImageBitmap(bitmap);picture.setAdjustViewBounds(true);
+        layout.addView(picture,new android.widget.LinearLayout.LayoutParams(-1,-2));
+        android.widget.TextView note=new android.widget.TextView(activity);note.setText("用另一台已登录 Easybook 的设备扫码并确认。二维码两分钟后失效。");note.setPadding(0,inset,0,0);
+        layout.addView(note);
+        final android.app.AlertDialog dialog=new android.app.AlertDialog.Builder(activity).setTitle("扫码登录 Easybook").setView(layout).setNegativeButton("取消",null).create();
+        dialog.setOnDismissListener(d->{io.execute(()->{try{JSONObject p=read(PENDING);if(p!=null&&"qr".equals(p.optString("kind"))&&id.equals(p.optString("id")))db.setSetting(PENDING,"");}catch(Exception ignored){}});});
+        dialog.show();
+        final android.os.Handler handler=new android.os.Handler(android.os.Looper.getMainLooper());
+        final Runnable[] polling=new Runnable[1];
+        polling[0]=()->{
+            if(!dialog.isShowing()||activity.isDestroyed())return;
+            io.execute(()->{boolean again=true;try{
+                JSONObject pending=read(PENDING);
+                if(pending==null||!"qr".equals(pending.optString("kind"))||!id.equals(pending.optString("id")))return;
+                if(pending.getLong("expires")<=System.currentTimeMillis()){again=false;activity.runOnUiThread(()->{dialog.dismiss();message("二维码已过期，请重新生成");});return;}
+                JSONObject proof=new JSONObject().put("id",id).put("state",pending.getString("state")).put("verifier",pending.getString("verifier"));
+                JSONObject status=request("/account/native/qr/status",proof,null);
+                if("approved".equals(status.optString("status"))){
+                    JSONObject result=request("/account/native/qr/redeem",proof,null);
+                    synchronized(db){JSONObject current=read(PENDING);if(current==null||!id.equals(current.optString("id")))return;storeSession(result);db.setSetting(PENDING,"");}
+                    again=false;activity.runOnUiThread(()->{dialog.dismiss();message("扫码登录成功，工作区密钥保持独立");});return;
+                }
+                if(!"pending".equals(status.optString("status"))){again=false;activity.runOnUiThread(()->{dialog.dismiss();message("扫码请求已失效或被取消");});}
+            }catch(Exception e){report(e);}finally{if(again)activity.runOnUiThread(()->{if(dialog.isShowing())handler.postDelayed(polling[0],3000);});}});
+        };
+        handler.postDelayed(polling[0],1000);
+    }
+    private boolean handleQrApproval(Uri uri){
+        if(uri.getUserInfo()!=null||uri.getPort()!=-1||uri.getFragment()!=null||uri.getQueryParameterNames().size()!=1||uri.getQueryParameters("id").size()!=1)return true;
+        final String id=uri.getQueryParameter("id");
+        if(id==null||!id.matches("[a-f0-9]{64}"))return true;
+        activity.runOnUiThread(()->{if(activity.isDestroyed())return;
+            new android.app.AlertDialog.Builder(activity).setTitle("确认其他设备登录")
+                .setMessage("只允许你本人发起的扫码登录。批准后，另一台设备将拥有独立账户会话，但不会获得工作区同步密钥。")
+                .setNegativeButton("拒绝",(d,w)->submitQrApproval(id,"deny"))
+                .setPositiveButton("确认登录",(d,w)->submitQrApproval(id,"allow")).show();
+        });
+        return true;
+    }
+    private void submitQrApproval(String id,String choice){
+        io.execute(()->{try{String access=token(db);
+            JSONObject result=request("/account/native/qr/approve",new JSONObject().put("id",id).put("decision",choice),access);
+            message("allow".equals(choice)?"已确认其他设备登录":"已拒绝扫码登录");
+        }catch(Exception e){report(e);}});
+    }
     private volatile long lastResumeCheck;
     void resume(){long now=android.os.SystemClock.elapsedRealtime();if(now-lastResumeCheck<1500||starting||io.isShutdown())return;lastResumeCheck=now;io.execute(()->{try{
         JSONObject pending=read(PENDING);if(pending==null||!pending.optString("kind").equals("browser"))return;
