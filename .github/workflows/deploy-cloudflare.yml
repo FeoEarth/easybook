@@ -54,6 +54,7 @@ jobs:
           node scripts/generate-ui.mjs
           git diff --exit-code -- app/src/main/assets/editor.js worker/ui.mjs worker/editor.mjs worker/pdf-static.mjs
           node scripts/folder-navigation-test.mjs
+          node scripts/workspace-invitation-test.mjs
           node scripts/check-web-runtime.mjs
           node scripts/mcp-pairing-release-test.mjs
           node scripts/mcp-capabilities-test.mjs

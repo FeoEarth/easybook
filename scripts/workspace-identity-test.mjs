@@ -93,6 +93,9 @@ assert.equal((await api(base+'/key',{confirm:true},{Cookie:cookies})).status,403
 assert.equal((await api(base,undefined,{Authorization:'Bearer '+'0'.repeat(64),Cookie:cookies})).status,401,'bad explicit key cannot fall back to session');
 assert.equal((await api(base,{name:'劫持'},{Cookie:cookies,'X-Easybook-CSRF':csrfToken,Origin:'https://evil.example'})).status,403);
 assert.equal((await api(base+'/mode',{mode:'shared',confirm:true,firstAccountId:'alice',role:'reader'},{Cookie:cookies,'X-Easybook-CSRF':csrfToken})).status,200);
+// This legacy reader-access fixture is seeded directly; the HTTP conversion
+// itself no longer bypasses the new invitation acceptance requirement.
+sqlite.prepare('INSERT INTO workspace_members(workspace_id,account_id,role,created_at) VALUES(?,?,?,?)').run(wid,'alice','reader',now);
 assert.equal((await api(base,undefined,{Authorization:'Bearer '+fresh.key})).status,401);
 const aliceToken='d'.repeat(64),aliceSession=crypto.randomUUID();
 sqlite.prepare('INSERT INTO account_sessions VALUES(?,?,?,?,?,?,?,NULL)').run(aliceSession,await hash(aliceToken),'alice',now,now+86400000,now,'Synthetic reader');

@@ -133,11 +133,11 @@ export async function renameWorkspace(env,id,principal,name){
 export async function convertToShared(env,id,principal,{confirm=false,firstAccountId,role='editor'}={}){
  const w=await requireManager(env,id,principal,true);
  if(w.mode!=='personal'||!confirm)deny('explicit_conversion_required',409);
- if(firstAccountId===principal.accountId||!['editor','reader'].includes(role)||!await activeAccount(env,firstAccountId))deny('invalid_member',400);
+ if(firstAccountId&&(firstAccountId===principal.accountId||!['editor','reader'].includes(role)||!await activeAccount(env,firstAccountId)))deny('invalid_member',400);
  await change(env,w,principal,[
   stmt(env,'UPDATE workspace_keys SET revoked_at=? WHERE workspace_id=? AND revoked_at IS NULL',Date.now(),id),
   stmt(env,"UPDATE workspaces SET mode='shared',version=version+1 WHERE id=?",id),
-  stmt(env,'INSERT INTO workspace_members(workspace_id,account_id,role,created_at) VALUES(?,?,?,?)',id,firstAccountId,role,Date.now()),
+  ...(firstAccountId?[stmt(env,'INSERT INTO workspace_members(workspace_id,account_id,role,created_at) VALUES(?,?,?,?)',id,firstAccountId,role,Date.now())]:[]),
   invalidate(env,id),event(env,id,principal,'converted_to_shared')
  ]);return metadata(env,id);
 }
@@ -158,8 +158,9 @@ export async function setWorkspaceMember(env,id,principal,accountId,role){
  const w=await requireManager(env,id,principal,true);
  if(w.mode!=='shared'||accountId===w.manager_account_id||!['editor','reader',null].includes(role))deny('invalid_member',400);
  if(role&&!await activeAccount(env,accountId))deny('invalid_member',400);
+ if(role&&!await stmt(env,'SELECT 1 FROM workspace_members WHERE workspace_id=? AND account_id=?',id,accountId).first())deny('invitation_required',409);
  const update=role
-  ?stmt(env,'INSERT INTO workspace_members(workspace_id,account_id,role,created_at) VALUES(?,?,?,?) ON CONFLICT(workspace_id,account_id) DO UPDATE SET role=excluded.role',id,accountId,role,Date.now())
+  ?stmt(env,'UPDATE workspace_members SET role=? WHERE workspace_id=? AND account_id=?',role,id,accountId)
   :stmt(env,'DELETE FROM workspace_members WHERE workspace_id=? AND account_id=?',id,accountId);
  // Revoke on any membership change. A later promotion cannot revive old grants.
  await change(env,w,principal,[update,invalidate(env,id,accountId),stmt(env,'UPDATE workspaces SET version=version+1 WHERE id=?',id),event(env,id,principal,role?'member_role_changed':'member_removed')]);

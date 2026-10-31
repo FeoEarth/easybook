@@ -3,6 +3,7 @@ import {nativeSession} from '../mcp-oauth/src/native-sessions.mjs';
 import {session,csrf,rateLimit,readCookie,ACCOUNT_COOKIE} from '../mcp-oauth/src/accounts.mjs';
 import {boundedJSON,object} from './mcp-common.mjs';
 import {verifyWorkspaceCreation} from './turnstile.mjs';
+import {createInvitation,managedInvitations,inboxInvitations,previewInvitation,revokeInvitation,respondInvitation} from './workspace-invitations.mjs';
 import {
  WorkspaceError,workspaceAccess,createWorkspace,resolveWorkspaceKey,listWorkspaces,
  rotateWorkspaceKey,associateWorkspace,renameWorkspace,convertToShared,
@@ -49,6 +50,12 @@ export async function workspaceAPI(request,env){
   if(mutation&&request.headers.get('Origin')&&request.headers.get('Origin')!==url.origin)problem('origin_not_allowed',403);
   if(mutation&&!['POST','PATCH','DELETE'].includes(request.method))problem('method_not_allowed',405);
   const principal=await workspacePrincipal(request,env,{mutation,allowAnonymous:path==='/api/workspaces'&&request.method==='POST'});
+  if(path==='/api/workspaces/invitations'&&request.method==='GET')return reply(await inboxInvitations(env,principal));
+  if(path==='/api/workspaces/invitations/preview'&&request.method==='GET')return reply(await previewInvitation(env,principal,url.searchParams.get('token')));
+  if(path==='/api/workspaces/invitations/respond'&&request.method==='POST'){
+   await rateLimit(request,env,'workspace-invitation-respond',30);
+   return reply(await respondInvitation(env,principal,await inputBody(request)));
+  }
   if(path==='/api/workspaces'){
    if(request.method==='GET'){
     if(principal.kind==='key')return reply({workspaces:[await workspaceAccess(env,principal.workspaceId,principal)]});
@@ -61,6 +68,17 @@ export async function workspaceAPI(request,env){
     if(input.bootstrapKey!==undefined&&(!/^[a-f0-9]{64}$/.test(input.bootstrapKey)||principal))problem('invalid_bootstrap',400);
     if(!principal)await verifyWorkspaceCreation(request,env,input.turnstileToken);
     return reply(await createWorkspace(env,input.name,principal,input.bootstrapKey),201);
+   }
+   problem('method_not_allowed',405);
+  }
+  const invitePath=path.match(/^\/api\/workspaces\/([a-f0-9]{64})\/invitations(?:\/(revoke))?$/);
+  if(invitePath){
+   const [,id,operation]=invitePath;
+   if(request.method==='GET'&&!operation)return reply(await managedInvitations(env,id,principal));
+   if(request.method==='POST'){
+    await rateLimit(request,env,'workspace-invitation-create',15);
+    const input=await inputBody(request);
+    return reply(operation==='revoke'?await revokeInvitation(env,id,principal,input.id):await createInvitation(env,id,principal,input),operation?200:201);
    }
    problem('method_not_allowed',405);
   }
@@ -90,7 +108,8 @@ export async function workspaceAPI(request,env){
    return reply(await rotateWorkspaceKey(env,id,principal));
   }
   if(action==='mode'){
-   const options={confirm:input.confirm===true,firstAccountId:input.firstAccountId,role:input.role};
+   // First conversion no longer grants membership. Members accept invitations.
+   const options={confirm:input.confirm===true};
    if(input.mode==='shared')return reply({workspace:await convertToShared(env,id,principal,options)});
    if(input.mode==='personal')return reply(await convertToPersonal(env,id,principal,options));
    problem('invalid_mode',400);

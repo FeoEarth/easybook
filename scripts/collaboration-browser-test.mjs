@@ -3,6 +3,9 @@ import {chromium} from 'playwright';
 import {env,sql,a,b} from './core-workspace-release-test.mjs';
 import worker from '../worker/index.mjs';
 import {hash} from '../worker/mcp-common.mjs';
+import {respondInvitation} from '../worker/workspace-invitations.mjs';
+import {readFileSync} from 'node:fs';
+sql.exec(readFileSync('worker/migrations/0019-workspace-invitations.sql','utf8'));
 const origin='https://easybook.loonxy.com',token='5'.repeat(64),sid=crypto.randomUUID(),now=Date.now();
 sql.prepare('INSERT INTO account_sessions VALUES(?,?,?,?,?,?,?,NULL)').run(sid,await hash(token),a.id,now,now+86400000,now,'Synthetic browser');
 let tail=Promise.resolve();const batch=env.DB.batch.bind(env.DB);env.DB.batch=ss=>{const out=tail.then(()=>batch(ss));tail=out.catch(()=>{});return out};
@@ -14,14 +17,18 @@ try{
  async function settings(category='workspace'){if(!await page.locator('#settings').isVisible()){await page.locator('#foldersButton').click();await page.locator('#folderSettings').click()}const panel=page.locator('#settingsCategory-'+category);if(!await panel.isVisible()){if(!await page.locator('#settingsHome').isVisible())await page.locator('#foldersButton').click();await page.locator('[data-settings-category="'+category+'"]').click()}await panel.waitFor({state:'visible'});if(category==='workspace')await page.locator('#workspacePanel').waitFor({state:'visible'})}
  await settings();await page.locator('#workspaceCreate').click();await page.locator('#workspaceNameEditor').waitFor({state:'visible'});await page.locator('#workspaceName').fill('共享界面验收');const [created]=await Promise.all([page.waitForResponse(response=>response.url()===origin+'/api/workspaces'&&response.request().method()==='POST'),page.locator('#workspaceNameSave').click()]);assert.equal(created.status(),201,await created.text());await page.waitForLoadState('load');await page.getByRole('heading',{name:'全部备忘录',exact:true}).waitFor();await settings();await page.locator('#workspaceList [aria-current=true]').getByText('共享界面验收',{exact:true}).waitFor();
  await page.locator('#workspaceMembersOpen').click();await page.locator('#workspaceMemberSummary').filter({hasText:'manager'}).waitFor();
- await page.locator('#workspaceMemberId').fill(b.id);await page.locator('#workspaceMemberRole').selectOption('reader');await page.locator('#workspaceShare').click();await page.locator('#confirmAccept').click();
+ await page.locator('#workspaceShare').click();await page.locator('#confirmAccept').click();
  await page.waitForLoadState('domcontentloaded');await page.waitForTimeout(500);await settings('sync');
  // Shared workspaces never reveal a sync key, even if this device once owned a personal key.
  await page.locator('#pairButton').click();await page.waitForTimeout(150);
  assert.equal(await page.locator('#pairDialog').isVisible(),false,'shared workspace key must stay hidden');
  await settings();
- await page.locator('#workspaceMembersOpen').click();await page.getByText(b.id+' · reader',{exact:true}).waitFor();
- await page.locator('#workspaceMemberId').fill(b.id);await page.locator('#workspaceMemberRole').selectOption('editor');await page.locator('#workspaceMemberSave').click();await page.getByText(b.id+' · editor',{exact:true}).waitFor();
+ await page.locator('#workspaceMembersOpen').click();await page.locator('#workspaceMemberId').fill(b.id);await page.locator('#workspaceMemberRole').selectOption('reader');await page.locator('#workspaceInviteAccount').click();
+ await page.getByText('等待接受',{exact:false}).waitFor();
+ const invitation=sql.prepare("SELECT id FROM workspace_invitations WHERE invited_account_id=? AND status='pending'").get(b.id);assert.ok(invitation);
+ await respondInvitation(env,{kind:'account',accountId:b.id},{id:invitation.id,decision:'accept'});
+ await page.locator('#workspaceMembersOpen').click();await page.locator('#workspaceMembersOpen').click();await page.getByText(b.id+' · 只读',{exact:true}).waitFor();
+ await page.locator('#workspaceMemberId').fill(b.id);await page.locator('#workspaceMemberRole').selectOption('editor');await page.locator('#workspaceMemberSave').click();await page.getByText(b.id+' · 可编辑',{exact:true}).waitFor();
  for(const theme of ['light','dark']){await page.evaluate(theme=>document.documentElement.dataset.theme=theme,theme);assert.ok(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth));await page.screenshot({path:'phase-two-members-'+theme+'.png',fullPage:true})}
  await page.locator('#workspaceManagerTransfer').click();await page.locator('#confirmAccept').click();await page.waitForFunction(()=>document.querySelector('#workspaceManagerControls').hidden);assert.equal(await page.locator('#workspaceLeave').isVisible(),true);
  await page.locator('#workspaceLeave').click();await page.locator('#confirmAccept').click();await page.waitForFunction(()=>document.querySelector('#workspaceMembersPanel').hidden);
