@@ -1,0 +1,20 @@
+import assert from 'node:assert/strict';
+import {QR_TTL_MS,qrState,validateQrRequest,createQrChallenge} from '../src/qr-challenge.mjs';
+
+const hex='a'.repeat(64),challenge='b'.repeat(43);
+assert.equal(QR_TTL_MS,120000);
+assert.equal(validateQrRequest({challenge,state:hex}),true);
+assert.equal(validateQrRequest({challenge:'short',state:hex}),false);
+assert.equal(qrState(null),'unknown');
+assert.equal(qrState({expires_at:1000},1000),'expired');
+assert.equal(qrState({expires_at:2000},1000),'pending');
+assert.equal(qrState({expires_at:2000,approved_at:900},1000),'approved');
+assert.equal(qrState({expires_at:2000,consumed_at:950},1000),'consumed');
+assert.equal(qrState({expires_at:2000,cancelled_at:950},1000),'cancelled');
+let saved;
+const db={prepare(sql){assert.match(sql,/INSERT INTO account_qr_logins/);return {bind(...args){saved=args;return {async run(){return {success:true}}}}}}};
+const r=await createQrChallenge(db,hex,{challenge,state:hex,state_hash:hex},'android',1000);
+assert.deepEqual(r,{expires_at:121000});
+assert.deepEqual(saved,[hex,'android',challenge,hex,1000,121000]);
+await assert.rejects(createQrChallenge(db,hex,{challenge,state:hex,state_hash:'invalid'},'web'),TypeError);
+console.log('QR challenge core tests passed');
