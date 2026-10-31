@@ -1320,7 +1320,7 @@ $('settingsTitle').after(settingsHome);
 const settingsPanels=new Map();let activeSettingsCategory='';
 function settingsPanel(id,title,nodes){const panel=document.createElement('section');panel.id='settingsCategory-'+id;panel.className='settings-category-panel';panel.hidden=true;panel.innerHTML='<div class="settings-category-header"><h2 tabindex="-1">'+title+'</h2></div>';for(const node of nodes)panel.append(node);$('settings').append(panel);settingsPanels.set(id,panel)}
 const accountGroup=$('accountEntry').parentElement,accountLabel=accountGroup.previousElementSibling;
-const aiEntry=document.createElement('button');aiEntry.className='settings-row';aiEntry.id='aiEntry';aiEntry.innerHTML='<svg aria-hidden="true"><use href="#i-account-person"/></svg><span class="row-text"><strong>AI 助手</strong><small>BYOK 密钥、Agent 与当前工作区 MCP 工具</small></span><svg class="chevron" aria-hidden="true"><use href="#i-chevron"/></svg>';accountGroup.append(aiEntry);aiEntry.onclick=showAiPage;
+const aiEntry=document.createElement('button');aiEntry.className='settings-row';aiEntry.id='aiEntry';aiEntry.innerHTML='<svg aria-hidden="true"><use href="#i-account-person"/></svg><span class="row-text"><strong>AI 助手</strong><small>BYOK 密钥、Agent 与当前工作区 MCP 工具</small></span><svg class="chevron" aria-hidden="true"><use href="#i-chevron"/></svg>';accountGroup.append(aiEntry);aiEntry.onclick=()=>showAiPage();
 const connectionGroup=$('pairButton').parentElement,connectionLabel=connectionGroup.previousElementSibling;
 const performanceGroup=$('fastMode').parentElement,performanceLabel=performanceGroup.previousElementSibling;
 const appearanceGroup=document.querySelector('button[data-theme]').closest('.settings-group'),appearanceLabel=appearanceGroup.previousElementSibling;
