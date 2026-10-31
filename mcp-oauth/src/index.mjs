@@ -13,6 +13,7 @@ import {boundedJSON,object,validate,schema,str} from '../../worker/mcp-common.mj
 import {permissions} from '../../worker/mcp-access.mjs';
 import { verifyGithubIdentity } from '../../worker/mcp-github-identity.mjs';
 import { verifyWorkspaceAssertion } from './pairing.mjs';
+import {aiAPI} from '../../worker/ai.mjs';
 
 import {escape,oauthAppearance,htmlHeaders} from './appearance.mjs';
 const pairingWebOrigins = new Set(['https://easybook-sync.1902521952.workers.dev','https://easybook.loonxy.com']);
@@ -20,6 +21,16 @@ const oauthHandler = {
  async fetch(request,env) {
   const url = new URL(request.url);
   const oauth = env.OAUTH_PROVIDER;
+  if(url.pathname==='/account/native/ai'&&request.method==='POST'){
+   const {nativeSession}=await import('./native-sessions.mjs');const current=await nativeSession(request,env);if(!current)return Response.json({error:'unauthorized'},{status:401});
+   let input;try{input=await boundedJSON(request,65536)}catch{return Response.json({error:'invalid_request'},{status:400})}if(!object(input))return Response.json({error:'invalid_request'},{status:400});
+   const principal={kind:'account',accountId:current.account_id,sessionId:current.id,authenticatedAt:current.authenticated_at};let target,method='GET',body;
+   if(input.action==='config')target='/api/ai/config';
+   else if(input.action==='credential'&&['PUT','DELETE'].includes(input.method)){target='/api/ai/config';method=input.method;if(method==='PUT')body=JSON.stringify({provider:input.provider,model:input.model,apiKey:input.apiKey})}
+   else if(input.action==='chat'){target='/api/ai/chat';method='POST';body=JSON.stringify({messages:input.messages})}
+   else return Response.json({error:'invalid_request'},{status:400});
+   const headers={'Content-Type':'application/json'};return aiAPI(new Request(new URL(target,request.url),{method,headers,body}),env,principal,{workspaceId:input.workspace||''});
+  }
   if(identityEnabled(env)&&url.origin===LEGACY_IDENTITY_ORIGIN&&((url.pathname==='/callback'&&url.searchParams.get('state')?.startsWith('account_'))||url.pathname==='/account/login'))return new Response(null,{status:303,headers:{Location:IDENTITY_ORIGIN+url.pathname+url.search,'Cache-Control':'no-store','Referrer-Policy':'no-referrer'}});
   if(modernWorkspaces(env)&&(url.pathname==='/pairing/complete'||url.pathname==='/callback'&&!url.searchParams.get('state')?.startsWith('account_')))return new Response('Legacy authorization retired; authorize your Easybook account',{status:410});
   if(url.pathname.startsWith('/account/native/passkeys/')){const {nativePasskeyRoutes}=await import('./native-passkeys.mjs');return nativePasskeyRoutes(request,env);}

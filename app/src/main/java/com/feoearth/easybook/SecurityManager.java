@@ -41,6 +41,9 @@ public final class SecurityManager {
             case "device.share":fields=fields("title","text");break;
             case "workspace.action":fields=fields("action","name","account","id","accountId","role","mode","confirm","firstAccountId","version","turnstileToken");break;
             case "account.manage":fields=fields("action","id","workspace","cursor","category","choices","confirm");break;
+            case "ai.config":fields=fields("method");break;
+            case "ai.credential":fields=fields("method","provider","model","apiKey");break;
+            case "ai.chat":fields=fields("method","messages","workspace");break;
             case "account.device.revoke":fields=fields("id");break;
             case "account.passkey":fields=fields("register","name");break;
             case "account.devices":case "account.browser":case "account.resume":case "account.login":case "account.status":case "account.logout":case "snapshot":case "security.pair":case "security.account":case "security.mcp":case "security.status":case "migration.status":case "migration.retry":case "migration.rollback":case "migration.cleaned":case "ui.ready":case "device.haptic":case "device.exportNotes":case "device.importNotes":fields=Collections.emptySet();break;
