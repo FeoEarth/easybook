@@ -40,7 +40,7 @@ public final class SecurityManager {
             case "device.copy":fields=fields("value");break;
             case "device.share":fields=fields("title","text");break;
             case "device.update":fields=fields("action");break;
-            case "workspace.action":fields=fields("action","name","account","id","accountId","role","mode","confirm","firstAccountId","version","turnstileToken");break;
+            case "workspace.action":fields=fields("action","name","account","id","accountId","role","mode","confirm","version","turnstileToken","kind","expiresHours","decision","token");break;
             case "account.manage":fields=fields("action","id","workspace","cursor","category","choices","confirm");break;
             case "ai.config":fields=fields("method");break;
             case "ai.credential":fields=fields("method","provider","providerName","baseUrl","model","apiKey");break;
@@ -51,6 +51,12 @@ public final class SecurityManager {
             default:throw new SecurityException("Operation denied");
         }
         Iterator<String> names=args.keys();while(names.hasNext())if(!fields.contains(names.next()))throw new SecurityException("Unexpected parameter");
+        if(method.equals("workspace.action")){
+            String action=args.optString("action","");
+            if(args.has("token")&&!action.equals("inviteRespond")&&!action.equals("invitePreview"))throw new SecurityException("Invitation token not permitted");
+            if(args.has("decision")&&!action.equals("inviteRespond"))throw new SecurityException("Invitation decision not permitted");
+            if((args.has("kind")||args.has("expiresHours"))&&!action.equals("inviteCreate"))throw new SecurityException("Invitation fields not permitted");
+        }
         if(!method.equals("bootstrap")&&!method.equals("device.theme")&&!method.equals("device.haptic")&&!method.equals("migration.status")&&initialized!=generation)throw new SecurityException("Bootstrap required");
         if(args.has("key")&&(!(args.get("key") instanceof String)||!args.getString("key").equals(db.activeSpace())))throw new SecurityException("Workspace changed");
         if(method.equals("commit"))FolderPlacement.validateCommit(args.getJSONObject("changes"));

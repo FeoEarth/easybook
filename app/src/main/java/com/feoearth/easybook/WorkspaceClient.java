@@ -9,7 +9,7 @@ import java.nio.charset.StandardCharsets;
 /** Fixed workspace API only; account tokens and key proofs never enter WebView. */
 final class WorkspaceClient {
  static JSONObject request(String path,JSONObject body,String credential,boolean account)throws Exception{
-  if(!path.matches("/api/workspaces(?:/[a-f0-9]{64}(?:/(?:key|associate|mode|members|manager|leave|delete))?)?"))throw new SecurityException("Workspace path denied");
+  if(!path.matches("/api/workspaces(?:/invitations(?:/(?:preview\\?token=[a-f0-9]{64}|respond))?|/[a-f0-9]{64}(?:/(?:key|associate|mode|members|manager|leave|delete|invitations(?:/revoke)?))?)?"))throw new SecurityException("Workspace path denied");
   HttpsURLConnection c=(HttpsURLConnection)new URL(NativeTransport.origin(false)+path).openConnection();c.setInstanceFollowRedirects(false);c.setConnectTimeout(12000);c.setReadTimeout(15000);c.setRequestMethod(body==null?"GET":"POST");c.setRequestProperty("Content-Type","application/json");
   if(credential!=null)c.setRequestProperty("Authorization",(account?"Easybook-Session ":"Bearer ")+credential);
   try{if(body!=null){byte[] bytes=body.toString().getBytes(StandardCharsets.UTF_8);c.setDoOutput(true);c.setFixedLengthStreamingMode(bytes.length);try(OutputStream o=c.getOutputStream()){o.write(bytes);}}
@@ -36,6 +36,17 @@ final class WorkspaceClient {
    if(current==null)throw new IOException("Workspace unavailable");merge(list,new JSONArray().put(current));return new JSONObject().put("workspaces",list).put("current",current.getString("id")).put("cached",cached).put("accountAccess",!db.setting("account-workspace:"+db.activeSpace(),"").isEmpty());}
   if(action.equals("select")){String id=args.getString("id");if(db.activateCachedWorkspace(id))return new JSONObject().put("selected",true).put("cached",true);JSONObject w=request("/api/workspaces/"+id,null,NativeAccount.token(db),true).getJSONObject("workspace");db.activateAccountWorkspace(w);return new JSONObject().put("selected",true).put("cached",false);}
   if(action.equals("create")){boolean account=args.optBoolean("account");JSONObject body=new JSONObject().put("name",args.getString("name"));if(!account)body.put("turnstileToken",args.getString("turnstileToken"));JSONObject result=request("/api/workspaces",body,account?NativeAccount.token(db):null,account);db.pairWorkspace(result.getString("key"),result.getJSONObject("workspace"),false);return new JSONObject().put("created",true);}
+  if(action.equals("inviteInbox"))return request("/api/workspaces/invitations",null,NativeAccount.token(db),true);
+  if(action.equals("invitePreview")){String token=args.getString("token");if(!token.matches("[a-f0-9]{64}"))throw new SecurityException("Invalid invite token");return request("/api/workspaces/invitations/preview?token="+token,null,NativeAccount.token(db),true);}
+  if(action.equals("inviteRespond")){JSONObject body=new JSONObject().put("id",args.getString("id")).put("decision",args.getString("decision"));if(args.has("token"))body.put("token",args.getString("token"));return request("/api/workspaces/invitations/respond",body,NativeAccount.token(db),true);}
+  if(java.util.Arrays.asList("inviteList","inviteCreate","inviteRevoke").contains(action)){
+   String id=ensure(db).getString("id"),token=NativeAccount.token(db),path="/api/workspaces/"+id+"/invitations";
+   if(action.equals("inviteList"))return request(path,null,token,true);
+   if(action.equals("inviteRevoke"))return request(path+"/revoke",new JSONObject().put("id",args.getString("id")),token,true);
+   JSONObject body=new JSONObject().put("kind",args.getString("kind")).put("role",args.getString("role")).put("expiresHours",args.optInt("expiresHours",24));
+   if(args.has("accountId"))body.put("accountId",args.getString("accountId"));
+   return request(path,body,token,true);
+  }
   if(java.util.Arrays.asList("members","member","mode","manager","leave","delete").contains(action)){
    String id=ensure(db).getString("id"),token=NativeAccount.token(db);
    if(action.equals("members"))return request("/api/workspaces/"+id+"/members",null,token,true);
@@ -43,7 +54,7 @@ final class WorkspaceClient {
    if(action.equals("delete"))body.put("confirm",args.getString("confirm")).put("version",args.getLong("version"));
    if(action.equals("member")){suffix="members";body.put("accountId",args.getString("accountId")).put("role",args.isNull("role")?JSONObject.NULL:args.getString("role"));}
    if(action.equals("manager"))body.put("accountId",args.getString("accountId"));
-   if(action.equals("mode"))body.put("mode",args.getString("mode")).put("firstAccountId",args.optString("accountId")).put("role",args.optString("role","editor"));
+   if(action.equals("mode"))body.put("mode",args.getString("mode"));
    JSONObject result=request("/api/workspaces/"+id+"/"+suffix,body,token,true);
    if(action.equals("mode")){if(result.has("key"))db.pairWorkspace(result.getString("key"),result.getJSONObject("workspace"),false);else db.activateAccountWorkspace(result.getJSONObject("workspace"));}
    return result;
