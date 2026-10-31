@@ -155,7 +155,7 @@ jobs:
             '## 发布信息' \
             '' \
             "- 应用版本：${VERSION}" \
-            "- 发布构建号：${GITHUB_RUN_NUMBER}"
+            "- 发布构建号：${GITHUB_RUN_NUMBER}" \
             "- APK versionCode: ${VERSION_CODE}" \
             '- 发布方式：从 `main` 手动批准发布' \
             '' \
