@@ -1377,7 +1377,7 @@ $('thirdPartyLicensesEntry').onclick=async()=>{
 
 if(native){$('pairKey').remove();$('pairDialog').remove();$('join')?.remove();}switchTab('all');if(identityV2)void refreshWorkspaces();if(history.state?.easybookSync)showSyncPage(false);if(history.state?.easybookMcp&&!native)showMcpPage(false);if(history.state?.easybookAccount&&native)showAccountPage(false);if(window.NativeStore)void window.NativeStore.call('ui.ready');void sync(false,'resume');scheduleRemote();setInterval(()=>{if(tab==='sync'&&!document.hidden)void refreshNativeActivity()},2000);window.addEventListener('online',()=>{autoSyncPaused=false;autoSyncFailures=0;nextAutoSync=0;void sync(false,'resume');scheduleRemote()});window.addEventListener('offline',()=>{activity.pause();status('离线 · 已存本机','offline')});document.addEventListener('visibilitychange',()=>{rich.flushInput();persistNow();if(!document.hidden){void sync(false,'resume');scheduleRemote()}else clearTimeout(remoteTimer)});window.addEventListener('pagehide',()=>{rich.flushInput();persistNow()});
 })().catch(()=>{document.body.innerHTML='<main style="padding:70px 24px">页面未能加载，笔记保留在本机，请重新打开应用。</main>'});
-</script><div class="placement-live" id="placementLive" role="status" aria-live="polite"></div></body></html>
+</script><script src="/native-glass/highlight-palette.js"></script><script src="/native-glass/adaptive-toolbar.js"></script><div class="placement-live" id="placementLive" role="status" aria-live="polite"></div></body></html>
 
 
 

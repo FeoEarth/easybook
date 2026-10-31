@@ -11,11 +11,11 @@
   // Low-frequency actions remain in the existing complete panel, not deleted.
   const low=new Set(['textColorPalette','undoButton','redoButton','toolbarLink','toggleStrike','toggleBlockquote','toggleBulletList','toggleOrderedList','toolbarIndent','toolbarOutdent']);
   const groups={
-   text:['formatButton','toggleBold','toggleItalic','toggleUnderline','quickHighlight','toggleTaskList','attachmentButton'],
-   selection:['toggleBold','toggleItalic','toggleUnderline','toggleStrike','quickHighlight','toolbarLink','formatButton','toggleTaskList','attachmentButton'],
-   list:['toggleBulletList','toggleOrderedList','toggleTaskList','toolbarOutdent','toolbarIndent','formatButton','toggleBold','toggleItalic','toggleUnderline','quickHighlight','attachmentButton'],
-   multiline:['toggleBulletList','toggleOrderedList','toolbarOutdent','toolbarIndent','toggleBlockquote','formatButton','toggleBold','toggleItalic','toggleUnderline','quickHighlight','toggleTaskList','attachmentButton'],
-   heading:['formatButton','toggleBold','toggleItalic','toggleUnderline','quickHighlight','toggleTaskList','attachmentButton']
+   text:['editorAi','formatButton','toggleBold','toggleItalic','toggleUnderline','quickHighlight','toggleTaskList','attachmentButton'],
+   selection:['editorAi','toggleBold','toggleItalic','toggleUnderline','toggleStrike','quickHighlight','toolbarLink','formatButton','toggleTaskList','attachmentButton'],
+   list:['editorAi','toggleBulletList','toggleOrderedList','toggleTaskList','toolbarOutdent','toolbarIndent','formatButton','toggleBold','toggleItalic','toggleUnderline','quickHighlight','attachmentButton'],
+   multiline:['editorAi','toggleBulletList','toggleOrderedList','toolbarOutdent','toolbarIndent','toggleBlockquote','formatButton','toggleBold','toggleItalic','toggleUnderline','quickHighlight','toggleTaskList','attachmentButton'],
+   heading:['editorAi','formatButton','toggleBold','toggleItalic','toggleUnderline','quickHighlight','toggleTaskList','attachmentButton']
   };
   let current='',pending='',timer=0,pressed=false,scrolling=false,scrollTimer=0;
   const entries=[...track.children];
