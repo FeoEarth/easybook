@@ -272,7 +272,9 @@ const providerOptions={
  apiRoute:'/mcp',apiHandler,defaultHandler:oauthHandler,
  resourceMetadata:{resource:'https://easybook-mcp-oauth.1902521952.workers.dev/mcp'},
  authorizeEndpoint:'/authorize',tokenEndpoint:'/token',clientRegistrationEndpoint:'/register',
- accessTokenTTL:300,refreshTokenTTL:2592000,
+ // Give third-party MCP clients a practical session window even when refresh scheduling is delayed.
+ // Refresh-token rotation remains enabled; this does not bypass revocation or scope checks.
+ accessTokenTTL:3600,refreshTokenTTL:2592000,
  onError:({code,internal})=>{console.warn(JSON.stringify({event:'oauth_denied',code,category:internal?.category,reason:internal?.reason}))},
  tokenExchangeCallback:async options=>{
   if(modernWorkspaces(options.env)&&!options.props?.accountId)throw new OAuthError('invalid_grant',{description:'Authorize with your Easybook account at the canonical domain'});
