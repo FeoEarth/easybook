@@ -48,9 +48,17 @@ async function rpc(access,method,params={}){return request('/mcp',{method:'POST'
 assert.equal((await rpc(tokens.access_token,'initialize')).status,200);
 const denied=await (await rpc(tokens.access_token,'tools/call',{name:'notes_create',arguments:{title:'Must not write',text:'x'}})).json();assert.ok(denied.result.isError,'read token cannot write');
 const resourceDenied=await (await rpc(tokens.access_token,'resources/read',{uri:'easybook://folders'})).json();assert.ok(resourceDenied.error,'resource scopes enforced');
+// Simulate a client disconnect/provider interruption before rotation: same refresh token
+// must remain usable when the client retries instead of being consumed by D1.
+const {guardTokens}=await import('../mcp-oauth/src/token-guard.mjs');
+const refreshRequest=()=>new Request(origin+'/oauth/token',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:new URLSearchParams({grant_type:'refresh_token',refresh_token:tokens.refresh_token,client_id:client.client_id,resource})});
+await assert.rejects(guardTokens(refreshRequest(),env,ctx,{fetch:async()=>{throw Error('simulated refresh interruption')}}),/simulated refresh interruption/);
 const newTokensResponse=await token({grant_type:'refresh_token',refresh_token:tokens.refresh_token});assert.equal(newTokensResponse.status,200,await newTokensResponse.clone().text());const rotated=await newTokensResponse.json();assert.notEqual(rotated.refresh_token,tokens.refresh_token);
-assert.equal((await token({grant_type:'refresh_token',refresh_token:tokens.refresh_token,token:'bypass-attempt'})).status,400,'replayed refresh with extra field is rejected');
-assert.equal((await rpc(rotated.access_token,'initialize')).status,403,'replay revokes entire grant');
+// The pinned Provider intentionally allows one previous token for lost-response retries.
+const retriedResponse=await token({grant_type:'refresh_token',refresh_token:tokens.refresh_token});assert.equal(retriedResponse.status,200,await retriedResponse.clone().text());const retried=await retriedResponse.json();assert.notEqual(retried.refresh_token,rotated.refresh_token);
+assert.equal((await rpc(retried.access_token,'initialize')).status,200,'retry must preserve authorized access');
+const staleResponse=await token({grant_type:'refresh_token',refresh_token:rotated.refresh_token});assert.equal(staleResponse.status,400,'tokens outside current/previous rotation window must be denied');
+assert.equal((await rpc(retried.access_token,'initialize')).status,200,'refresh retry must not revoke the grant');
 const second=await authorize(),code2=new URL(second.headers.get('Location')).searchParams.get('code');
 const bad=await token({grant_type:'authorization_code',code:code2,redirect_uri:'https://client.example/callback',code_verifier:'X'.repeat(64)});assert.equal(bad.status,400,'PKCE mismatch denied');
 const third=await authorize(),code3=new URL(third.headers.get('Location')).searchParams.get('code');
@@ -72,4 +80,4 @@ if(process.env.EASYBOOK_ACCOUNT_UI==='1'){
  }}finally{await browser.close()}
 }
 assert.equal((await form('/account/sessions/revoke',{id:s.id})).status,303);assert.equal(await session(new Request(origin,{headers:{Cookie:cookieHeader()}}),env),null);
-console.log('PASS: real pinned OAuth Provider; account login/state/cookies/CSRF, migration retry, signed claim/replay, workspace isolation, PKCE/code replay, refresh rotation/replay, scopes/resources, immediate revocation, foreign token, metadata, device revoke. No private notes.');
+console.log('PASS: real pinned OAuth Provider; account login/state/cookies/CSRF, migration retry, signed claim/replay, workspace isolation, PKCE/code replay, refresh rotation/cancel retry, scopes/resources, immediate revocation, foreign token, metadata, device revoke. No private notes.');
