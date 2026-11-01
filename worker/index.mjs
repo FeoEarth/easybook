@@ -30,7 +30,7 @@ const json = (data, status=200) => Response.json(data, {status, headers});
 async function otaManifest() {
  const digest=async value=>Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256',new TextEncoder().encode(value)))).map(v=>v.toString(16).padStart(2,'0')).join('');
  const [htmlHash,editorHash]=await Promise.all([digest(html),digest(editor)]);
- return {schema:1,revision:htmlHash.slice(0,16)+'-'+editorHash.slice(0,16),minNativeVersionCode:67,files:[{name:'index.html',url:'/ota/index.html',sha256:htmlHash},{name:'editor.js',url:'/ota/editor.js',sha256:editorHash}]};
+ return {schema:1,revision:htmlHash.slice(0,16)+'-'+editorHash.slice(0,16),minNativeVersionCode:68,files:[{name:'index.html',url:'/ota/index.html',sha256:htmlHash},{name:'editor.js',url:'/ota/editor.js',sha256:editorHash}]};
 }
 export default {
  async scheduled(controller,env){if(await runSecurityAdmin(env))return;const results=await Promise.allSettled([cleanupUploads(env,10),runAttachmentPurges(env,10),runWorkspacePurges(env,5),maintainIdentity(env)]);if(results.some(r=>r.status==='rejected'))throw Error('Scheduled maintenance incomplete')},
