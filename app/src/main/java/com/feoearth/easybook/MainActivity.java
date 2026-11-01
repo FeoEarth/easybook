@@ -238,6 +238,10 @@ public class MainActivity extends Activity {
                 if(action.equals("install"))return appUpdater.install();
                 if(action.equals("open")){openAppRelease();return new JSONObject().put("opened",true);}
                 throw new IllegalArgumentException();}
+            case "device.webOta":{String action=bounded(args,"action",8);
+                if(action.equals("check"))return webOta.status();
+                if(action.equals("install"))return webOta.install();
+                throw new IllegalArgumentException();}
             case "attachment.get":{String space=repository.activeSpace(),id=bounded(args,"id",64);requireAttachmentReference(space,id);return repository.attachments.get(space,id);}
             case "attachment.restore":{String space=repository.activeSpace();JSONArray files=args.getJSONArray("files");if(files.length()>100)throw new IllegalArgumentException();for(int i=0;i<files.length();i++){JSONObject f=files.getJSONObject(i);repository.attachments.accept(space,f.getString("id"),f);repository.saveAttachment(space,new JSONObject(f.toString()).put("data",JSONObject.NULL).put("dirty",true));}return new JSONObject().put("restored",files.length());}
             case "attachment.open":case "attachment.share":{String space=repository.activeSpace(),id=bounded(args,"id",64);requireAttachmentReference(space,id);JSONObject f=repository.attachments.get(space,id);if(!f.optBoolean("available"))throw new IOException("Attachment only on original device");openNativeFile(f,method.equals("attachment.share"),generation);return new JSONObject().put("opened",true);}
