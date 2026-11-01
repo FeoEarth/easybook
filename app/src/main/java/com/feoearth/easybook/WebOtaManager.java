@@ -46,12 +46,28 @@ final class WebOtaManager {
     }
     void ready(){prefs.edit().putBoolean("bootPending",false).apply();}
     synchronized void rollback(){
+        String failed=prefs.getString("active","");
         String previous=prefs.getString("previous","");
         File slot=new File(root,previous);
         current=previous.matches("[a-f0-9]{16}-[a-f0-9]{16}")&&complete(slot)?slot:null;
-        prefs.edit().putString("active",current==null?"":previous).remove("previous").putBoolean("bootPending",false).apply();
+        prefs.edit().putString("active",current==null?"":previous).putString("rejected",failed).remove("previous").putBoolean("bootPending",false).apply();
     }
     void checkAsync(){executor.execute(()->{try{downloadUpdate();}catch(Exception e){android.util.Log.w("EasybookWebOTA","Update skipped: "+e.getClass().getSimpleName());}});}
+    JSONObject status()throws Exception {
+        JSONObject manifest=manifest();
+        String revision=manifest.getString("revision"),active=prefs.getString("active","");
+        boolean compatible=manifest.getInt("minNativeVersionCode")<=BuildConfig.VERSION_CODE;
+        return new JSONObject().put("current",active.isEmpty()?"APK 内置资源":active)
+            .put("latest",revision).put("compatible",compatible)
+            .put("available",compatible&&!revision.equals(active)&&!revision.equals(prefs.getString("rejected","")))
+            .put("pendingRestart",!active.isEmpty()&&(current==null||!active.equals(current.getName())));
+    }
+    JSONObject install()throws Exception {downloadUpdate();return status();}
+    private static JSONObject manifest()throws Exception {
+        JSONObject value=new JSONObject(new String(get("/ota/manifest.json",4096),StandardCharsets.UTF_8));
+        if(value.getInt("schema")!=1||!value.getString("revision").matches("[a-f0-9]{16}-[a-f0-9]{16}"))throw new IOException("Invalid OTA manifest");
+        return value;
+    }
     private static byte[] get(String path,int limit)throws IOException {
         HttpURLConnection c=(HttpURLConnection)new URL(ORIGIN+path).openConnection();
         c.setConnectTimeout(8000);c.setReadTimeout(15000);c.setInstanceFollowRedirects(false);c.setRequestProperty("Accept","application/octet-stream");
@@ -67,10 +83,10 @@ final class WebOtaManager {
         for(byte value:digest)b.append(String.format(java.util.Locale.ROOT,"%02x",value&255));return b.toString();
     }
     private void downloadUpdate()throws Exception {
-        JSONObject manifest=new JSONObject(new String(get("/ota/manifest.json",4096),StandardCharsets.UTF_8));
+        JSONObject manifest=manifest();
         if(manifest.getInt("schema")!=1||manifest.getInt("minNativeVersionCode")>BuildConfig.VERSION_CODE)return;
         String revision=manifest.getString("revision");
-        if(!revision.matches("[a-f0-9]{16}-[a-f0-9]{16}")||revision.equals(prefs.getString("active","")))return;
+        if(revision.equals(prefs.getString("active",""))||revision.equals(prefs.getString("rejected","")))return;
         JSONArray entries=manifest.getJSONArray("files");if(entries.length()!=FILES.length)return;
         Map<String,byte[]> bytes=new HashMap<>();
         for(int i=0;i<entries.length();i++){
