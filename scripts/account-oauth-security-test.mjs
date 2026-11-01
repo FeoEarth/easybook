@@ -57,7 +57,7 @@ const newTokensResponse=await token({grant_type:'refresh_token',refresh_token:to
 // The pinned Provider intentionally allows one previous token for lost-response retries.
 const retriedResponse=await token({grant_type:'refresh_token',refresh_token:tokens.refresh_token});assert.equal(retriedResponse.status,200,await retriedResponse.clone().text());const retried=await retriedResponse.json();assert.notEqual(retried.refresh_token,rotated.refresh_token);
 assert.equal((await rpc(retried.access_token,'initialize')).status,200,'retry must preserve authorized access');
-const staleResponse=await token({grant_type:'refresh_token',refresh_token:rotated.refresh_token});assert.equal(staleResponse.status,200,await staleResponse.clone().text());
+const staleResponse=await token({grant_type:'refresh_token',refresh_token:rotated.refresh_token});assert.equal(staleResponse.status,400,'tokens outside current/previous rotation window must be denied');
 assert.equal((await rpc(retried.access_token,'initialize')).status,200,'refresh retry must not revoke the grant');
 const second=await authorize(),code2=new URL(second.headers.get('Location')).searchParams.get('code');
 const bad=await token({grant_type:'authorization_code',code:code2,redirect_uri:'https://client.example/callback',code_verifier:'X'.repeat(64)});assert.equal(bad.status,400,'PKCE mismatch denied');
