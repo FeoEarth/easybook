@@ -25,10 +25,19 @@ import editor from './editor.mjs';
 import {attachments} from './attachments.mjs';
 const headers = {'Access-Control-Allow-Origin':'*','Access-Control-Allow-Headers':'Authorization, Content-Type','Access-Control-Allow-Methods':'GET, PUT, OPTIONS','Cache-Control':'no-store','X-Content-Type-Options':'nosniff'};
 const json = (data, status=200) => Response.json(data, {status, headers});
+// Android OTA intentionally publishes only Web UI assets. Native bridge and glass
+// implementation stay bundled in the signed APK.
+async function otaManifest() {
+ const digest=async value=>Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256',new TextEncoder().encode(value)))).map(v=>v.toString(16).padStart(2,'0')).join('');
+ const [htmlHash,editorHash]=await Promise.all([digest(html),digest(editor)]);
+ return {schema:1,revision:htmlHash.slice(0,16)+'-'+editorHash.slice(0,16),minNativeVersionCode:67,files:[{name:'index.html',url:'/ota/index.html',sha256:htmlHash},{name:'editor.js',url:'/ota/editor.js',sha256:editorHash}]};
+}
 export default {
  async scheduled(controller,env){if(await runSecurityAdmin(env))return;const results=await Promise.allSettled([cleanupUploads(env,10),runAttachmentPurges(env,10),runWorkspacePurges(env,5),maintainIdentity(env)]);if(results.some(r=>r.status==='rejected'))throw Error('Scheduled maintenance incomplete')},
  async fetch(request, env) {
   const url = new URL(request.url);
+  if(request.method==='GET'&&url.pathname==='/ota/manifest.json')return Response.json(await otaManifest(),{headers:{'Cache-Control':'no-store','X-Content-Type-Options':'nosniff'}});
+  if(request.method==='GET'&&(url.pathname==='/ota/index.html'||url.pathname==='/ota/editor.js'))return new Response(url.pathname.endsWith('.html')?html:editor,{headers:{'Content-Type':url.pathname.endsWith('.html')?'text/html; charset=utf-8':'application/javascript; charset=utf-8','Cache-Control':'no-store','X-Content-Type-Options':'nosniff'}});
   if(url.pathname.startsWith('/api/')||identityPath(url.pathname)){try{await requireRestoreAccess(env)}catch{return json({error:'Security recovery in progress'},503)}}
   if(url.pathname==='/.well-known/assetlinks.json'&&identityEnabled(env)&&url.origin===IDENTITY_ORIGIN&&request.method==='GET')return Response.json(androidAssetLinks,{headers:{'Cache-Control':'public, max-age=3600','X-Content-Type-Options':'nosniff'}});
   // Deliberately unset on production until the coordinated identity cutover.
