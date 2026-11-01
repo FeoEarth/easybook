@@ -43,7 +43,7 @@ async function authorize(workspaceId=workspace){const consent=await request(auth
 assert.equal((await authorize(other)).status,403,'cannot authorize unowned workspace');
 const completed=await authorize();assert.equal(completed.status,303);const code=new URL(completed.headers.get('Location')).searchParams.get('code');
 async function token(data){return request('/oauth/token',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:new URLSearchParams({client_id:client.client_id,resource,...data})});}
-const exchange=await token({grant_type:'authorization_code',code,redirect_uri:'https://client.example/callback',code_verifier:verifier});assert.equal(exchange.status,200,await exchange.clone().text());let tokens=await exchange.json();assert.equal(tokens.scope,'notes.read');assert.equal(tokens.expires_in,300);
+const exchange=await token({grant_type:'authorization_code',code,redirect_uri:'https://client.example/callback',code_verifier:verifier});assert.equal(exchange.status,200,await exchange.clone().text());let tokens=await exchange.json();assert.equal(tokens.scope,'notes.read');assert.equal(tokens.expires_in,3600);
 async function rpc(access,method,params={}){return request('/mcp',{method:'POST',headers:{Authorization:'Bearer '+access,'Content-Type':'application/json'},body:JSON.stringify({jsonrpc:'2.0',id:1,method,params})});}
 assert.equal((await rpc(tokens.access_token,'initialize')).status,200);
 const denied=await (await rpc(tokens.access_token,'tools/call',{name:'notes_create',arguments:{title:'Must not write',text:'x'}})).json();assert.ok(denied.result.isError,'read token cannot write');
