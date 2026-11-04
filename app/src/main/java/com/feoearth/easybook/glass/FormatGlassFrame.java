@@ -79,6 +79,7 @@ final class FormatGlassFrame {
             }catch(Exception|LinkageError error){fail();return;}
         }
         if(!attached){attached=true;glass.setVisibility(View.INVISIBLE);if(move||sync){moveShield=new FrameLayout(activity);moveShield.setClickable(true);moveShield.setOnClickListener(v->{if(valid.getAsBoolean())web.evaluateJavascript(sync?"window.easybookSyncSurfaceClose&&window.easybookSyncSurfaceClose()":"document.getElementById('moveCancel').click()",null);});root.addView(moveShield,new FrameLayout.LayoutParams(-1,-1));}root.addView(glass,new FrameLayout.LayoutParams(1,1));}
+        if(dock&&"DockSearch".equals(dockPrefix)&&controls!=null){boolean focused=args.optBoolean("focused");controls.setVisibility(focused?View.INVISIBLE:View.VISIBLE);controls.setImportantForAccessibility(focused?View.IMPORTANT_FOR_ACCESSIBILITY_NO_HIDE_DESCENDANTS:View.IMPORTANT_FOR_ACCESSIBILITY_AUTO);}
         applyGeometry();if(loaded)render(args.has("content"));changed.run();
     }
     private void applyGeometry(){

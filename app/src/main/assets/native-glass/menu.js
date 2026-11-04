@@ -6,7 +6,8 @@
  const style=document.createElement('style');style.textContent='.native-glass-source{visibility:hidden!important}.native-glass-source::backdrop{background:transparent!important}#contextDialog.native-glass-source{visibility:visible!important}#contextDialog.native-glass-source .context-actions{visibility:hidden!important}.native-anchored-menu{position:fixed!important;right:auto!important;bottom:auto!important;margin:0!important;overflow:auto!important;width:min(292px,calc(100vw - 24px))!important}';document.head.append(style);
  // Protected historical format layout is never flattened into native menu items.
  const managed=['linkDialog','menuDialog','contextDialog','folderMenu','folderMoveDialog','nativeAttachmentMenu','nativeHighlightPalette','syncChoiceDialog','syncRecordActions'];
- const restore=()=>{if(source){source.classList.remove('native-glass-source');if(source.id==='contextDialog'){source.querySelector('.context-actions').style.minHeight='';window.easybookPositionContext?.()}}};
+ const restore=(target=source)=>{if(target){target.classList.remove('native-glass-source');if(target.id==='contextDialog'){target.querySelector('.context-actions').style.minHeight='';window.easybookPositionContext?.()}}};
+ const restoreAfterClose=target=>{if(!target)return;setTimeout(()=>restore(target),360)};
  window.easybookNativeContextHeight=height=>{if(source?.id!=='contextDialog'||!source.open||!Number.isFinite(height))return;const actions=source.querySelector('.context-actions'),value=Math.max(0,Math.min(10000,height))+'px';if(actions.style.minHeight!==value){actions.style.minHeight=value;window.easybookPositionContext?.();anchorKey='';schedule()}};
  const options=rect=>{
   const theme=document.documentElement.dataset.theme;
@@ -72,17 +73,18 @@
  window.easybookNativeGlassClosed=command=>{
   active=false;
   if(command)return;
-  const previous=source;restore();source=null;actions.clear();
+  const previous=source;source=null;actions.clear();
   if(previous?.id==='nativeAttachmentMenu')window.easybookRich?.releaseSelection();
   if(previous?.open){blocked.add(previous);if(previous.id==='moveDialog')$('moveCancel').click();else previous.close()}
+  restoreAfterClose(previous);
  };
  const commands={layout:'viewToggle',select:'selectNotes',checklist:'template'};
  window.easybookNativeGlassCommand=(id,value)=>{
   active=false;acting=true;
-  const previous=source;restore();source=null;
+  const previous=source;source=null;
   if(previous?.id==='linkDialog')$('linkUrl').value=value||'';
   const element=actions.get(id)||(commands[id]?$(commands[id]):id==='sort-title'?document.querySelector('[data-note-sort="title"]'):id==='sort-updated'?document.querySelector('[data-note-sort="updated"]'):null);
-  actions.clear();if(element?.isConnected&&!element.disabled)element.click();button.setAttribute('aria-expanded','false');
+  actions.clear();if(element?.isConnected&&!element.disabled)element.click();if(previous?.open)previous.close();restoreAfterClose(previous);button.setAttribute('aria-expanded','false');
   acting=false;schedule();
  };
  button.addEventListener('click',event=>{
