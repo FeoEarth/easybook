@@ -1,4 +1,22 @@
 plugins { id 'com.android.application' }
+
+// A release is signed only when all four private signing inputs are present.
+// CI builds without those inputs are intentionally unsigned; never fall back
+// to the development certificate for an installable Release APK.
+def releaseSigning = [
+    path: System.getenv('EASYBOOK_RELEASE_KEYSTORE_PATH'),
+    storePassword: System.getenv('EASYBOOK_RELEASE_STORE_PASSWORD'),
+    alias: System.getenv('EASYBOOK_RELEASE_KEY_ALIAS'),
+    keyPassword: System.getenv('EASYBOOK_RELEASE_KEY_PASSWORD')
+]
+def releaseSigningPresent = releaseSigning.values().count { it != null && !it.trim().isEmpty() }
+if (releaseSigningPresent > 0 && releaseSigningPresent < releaseSigning.size()) {
+    throw new GradleException('Incomplete Android Release signing configuration')
+}
+def releaseSigningReady = releaseSigningPresent == releaseSigning.size()
+if (System.getenv('EASYBOOK_REQUIRE_RELEASE_SIGNING') == 'true' && !releaseSigningReady) {
+    throw new GradleException('Official Android Release signing is required; configure all release signing secrets')
+}
 android {
     namespace 'com.feoearth.easybook'
     compileSdk 35
@@ -12,10 +30,26 @@ android {
             keyAlias 'androiddebugkey'
             keyPassword 'android'
         }
+        if (releaseSigningReady) {
+            release {
+                storeFile file(releaseSigning.path)
+                storePassword releaseSigning.storePassword
+                keyAlias releaseSigning.alias
+                keyPassword releaseSigning.keyPassword
+            }
+        }
     }
     buildTypes {
         debug { buildConfigField 'boolean', 'NATIVE_GLASS_PROTOTYPE', project.hasProperty('nativeGlassPrototype') ? 'true' : 'false' }
-        release { buildConfigField 'boolean', 'NATIVE_GLASS_PROTOTYPE', 'true'; minifyEnabled false; debuggable false; signingConfig signingConfigs.debug } }
+        release {
+            buildConfigField 'boolean', 'NATIVE_GLASS_PROTOTYPE', 'true'
+            minifyEnabled false
+            debuggable false
+            if (releaseSigningReady) {
+                signingConfig signingConfigs.release
+            }
+        }
+    }
     compileOptions { sourceCompatibility JavaVersion.VERSION_17; targetCompatibility JavaVersion.VERSION_17 }
 }
 

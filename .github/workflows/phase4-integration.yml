@@ -71,7 +71,7 @@ jobs:
           mkdir -p "$HOME/.easybook-signing"
           keytool -genkeypair -keystore "$HOME/.easybook-signing/development.keystore" -storepass android -alias androiddebugkey -keypass android -dname "CN=Easybook CI" -keyalg RSA -keysize 2048 -validity 10000
       - name: Build native integration and instrumentation
-        run: gradle :app:assembleRelease :app:assembleDebugAndroidTest --no-daemon
+        run: gradle :app:assembleDebug :app:assembleDebugAndroidTest --no-daemon
       - name: Enable KVM
         if: github.event_name == 'workflow_dispatch'
         run: |
@@ -89,7 +89,7 @@ jobs:
           emulator-boot-timeout: 180
           disable-animations: true
           script: |
-            adb install -r app/build/outputs/apk/release/app-release.apk
+            adb install -r app/build/outputs/apk/debug/app-debug.apk
             adb install -r app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk
             adb shell am instrument -w com.feoearth.easybook.notes.test/com.feoearth.easybook.PhaseTwoInstrumentation | tee /tmp/easybook-native-checks.txt
             grep -q 'passed=true' /tmp/easybook-native-checks.txt
