@@ -33,6 +33,7 @@ android {
         if (releaseSigningReady) {
             release {
                 storeFile file(releaseSigning.path)
+                storeType 'pkcs12'
                 storePassword releaseSigning.storePassword
                 keyAlias releaseSigning.alias
                 keyPassword releaseSigning.keyPassword

@@ -111,9 +111,9 @@ jobs:
             fi
           done
           umask 077
-          printf '%s' "$EASYBOOK_RELEASE_KEYSTORE_BASE64" | base64 --decode > "$RUNNER_TEMP/easybook-release.jks"
-          test -s "$RUNNER_TEMP/easybook-release.jks"
-          echo "EASYBOOK_RELEASE_KEYSTORE_PATH=$RUNNER_TEMP/easybook-release.jks" >> "$GITHUB_ENV"
+          printf '%s' "$EASYBOOK_RELEASE_KEYSTORE_BASE64" | base64 --decode > "$RUNNER_TEMP/easybook-release.p12"
+          test -s "$RUNNER_TEMP/easybook-release.p12"
+          echo "EASYBOOK_RELEASE_KEYSTORE_PATH=$RUNNER_TEMP/easybook-release.p12" >> "$GITHUB_ENV"
       - name: Build officially signed Release APK
         if: steps.signing_key.outcome == 'success'
         env:
@@ -154,7 +154,7 @@ jobs:
             SHA256SUMS.txt
       - name: Remove temporary private signing key
         if: always() && steps.signing_key.outcome == 'success'
-        run: rm -f "$RUNNER_TEMP/easybook-release.jks"
+        run: rm -f "$RUNNER_TEMP/easybook-release.p12"
   release:
     needs: apk
     # No automatic release for any push. Only an explicit, trusted main dispatch
