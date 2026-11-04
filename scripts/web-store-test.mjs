@@ -32,6 +32,10 @@ assert.deepEqual((await migrated.listWorkspaces()).filter(w=>[cachedShared.id,ca
 const cachedKey='d'.repeat(64);await migrated.load(cachedKey);await migrated.save(cachedKey,{notes:[{id:'catalog-note'}],folders:[],inflight:{},cursor:0});
 await migrated.bindWorkspace(cachedKey,cachedPersonal);
 assert.equal((await migrated.load(cachedKey)).notes[0].id,'catalog-note','catalog metadata never redirects existing offline data');
+await migrated.cacheWorkspaces([{...cachedPersonal,name:'个人目录（已改名）'}]);
+assert.equal((await migrated.listWorkspaces()).some(w=>w.id===cachedShared.id),false,'removed account catalog entry is pruned');
+assert.equal((await migrated.listWorkspaces()).find(w=>w.id===cachedPersonal.id)?.name,'个人目录（已改名）','server rename supersedes cached metadata');
+assert.equal((await migrated.load(cachedKey)).notes[0].id,'catalog-note','catalog pruning never erases personal offline notes');
 const stale=new WebStore(factory);await stale.open();await stale.load(rotatedKey);
 await migrated.save(rotatedKey,{notes:[{id:'newer'}],folders:[],inflight:{},cursor:28});
 await assert.rejects(()=>stale.save(rotatedKey,{notes:[],folders:[],inflight:{},cursor:0}));

@@ -980,7 +980,7 @@ function renderWorkspaceChoices(){
  const grouped=settings=>['personal','shared'].map(mode=>{const rows=values.filter(w=>w.mode===mode);return rows.length?'<div class="workspace-type-heading">'+(mode==='personal'?'个人工作区':'共享工作区')+'</div>'+rows.map(w=>workspaceRow(w,settings)).join(''):''}).join('');
  $('workspaceList').innerHTML=grouped(true)||'<p class="workspace-switch-hint">暂时无法读取工作区</p>';
  $('workspaceSwitchList').innerHTML=grouped(false)||'<p class="workspace-switch-hint">暂无可切换的工作区</p>';
- $('workspaceHome').hidden=!selected;$('workspaceQuick').hidden=!selected;
+ $('workspaceHome').hidden=!selected&&!values.length;$('workspaceQuick').hidden=!selected&&!values.length;
  if(selected){
   $('workspaceHomeName').textContent=selected.name||'我的工作区';
   $('workspaceQuickName').textContent=selected.name||'我的工作区';
@@ -994,7 +994,7 @@ function renderWorkspaceChoices(){
   if($('workspaceInviteInboxOpen'))$('workspaceInviteInboxOpen').disabled=!workspaceSignedIn;
   $('workspaceMembersOpen').querySelector('strong').textContent=personal?'共享此工作区':'成员与权限';
   $('workspaceMembersOpen').querySelector('small').textContent=!workspaceSignedIn?'登录账户后可管理成员与共享':personal?'邀请成员前会将其转换为共享工作区':manager?'管理成员、权限和工作区类型':'查看当前成员和你的权限';
- }
+ }else if(values.length){$('workspaceHomeName').textContent='选择工作区';$('workspaceQuickName').textContent='选择工作区';$('workspaceQuickDetail').textContent='当前工作区不可用 · 点击切换';$('workspaceRename').hidden=true;$('workspaceAssociate').hidden=true;$('workspaceRotate').hidden=true;$('workspaceMembersOpen').disabled=true;}
  for(const btn of document.querySelectorAll('#workspaceList [data-workspace],#workspaceSwitchList [data-workspace]'))if(workspacePending)btn.disabled=true;
  $('workspaceSwitchList').setAttribute('aria-busy',String(workspacePending));
  $('workspaceNameSave').disabled=workspacePending;$('workspaceCreate').disabled=workspacePending;
@@ -1006,8 +1006,8 @@ function renderWorkspaceSkeleton(){
 async function refreshWorkspaces(){
  if(!identityV2)return;$('workspacePanel').hidden=false;
  try{
-  let entries=[],current=null,signedIn=false,accountName='',nativeCached=false;
-  if(native){const result=await native.call('workspace.action',{action:'list'});entries=result.workspaces||[];current=result.current;nativeCached=!!result.cached;workspaceAccountAccess=!!result.accountAccess;try{workspaceSignedIn=!!(await native.call('account.status')).signedIn}catch{workspaceSignedIn=false}if(nativeCached)$('workspaceSwitchStatus').textContent='当前为离线缓存，可继续切换已加载的工作区'}
+  let entries=[],current=null,signedIn=false,accountName='',nativeCached=false,nativeUnavailable=false,authoritative=false;
+  if(native){const result=await native.call('workspace.action',{action:'list'});entries=result.workspaces||[];current=result.current;nativeCached=!!result.cached;nativeUnavailable=!!result.currentUnavailable;workspaceAccountAccess=!!result.accountAccess;try{workspaceSignedIn=!!(await native.call('account.status')).signedIn}catch{workspaceSignedIn=false}if(nativeCached)$('workspaceSwitchStatus').textContent='当前为离线缓存，可继续切换已加载的工作区'}
   else{
    const local=await webStore.listWorkspaces();
    if(key.startsWith('account:'))current=key.slice(8);
@@ -1021,8 +1021,24 @@ async function refreshWorkspaces(){
    // Render the cached catalog immediately. Switching still verifies that the
    // device has a personal key or a live account session before activation.
    entries=local;
-   if(signedIn){try{const remote=(await workspaceRequest()).workspaces;await webStore.cacheWorkspaces(remote);entries=entries.concat(remote)}catch{}}
-   if(!entries.some(w=>w.id===current)){const cached=local.find(w=>w.id===current);if(cached)entries.unshift(cached)}
+   if(signedIn){try{
+    const remote=(await workspaceRequest()).workspaces;await webStore.cacheWorkspaces(remote);authoritative=true;
+    const remoteIds=new Set(remote.map(w=>w.id)),personal=[];
+    // A separate local personal key can authorize workspaces outside this account.
+    for(const w of local){
+     if(remoteIds.has(w.id)||w.mode!=='personal')continue;
+     let personalKey=null;try{personalKey=await webStore.personalWorkspaceCredential(w.id)}catch{}
+     if(!personalKey)continue;
+     try{
+      const response=await fetch(API+'/api/workspaces',{headers:{Authorization:'Bearer '+personalKey},cache:'no-store',credentials:'omit'});
+      if(!response.ok){if(response.status>=500)personal.push(w);continue}
+      const verified=(await response.json()).workspaces?.find(candidate=>candidate.id===w.id);
+      if(verified)personal.push(verified);
+     }catch{personal.push(w)}
+    }
+    entries=personal.concat(remote);
+   }catch{}}
+   if(!authoritative&&!entries.some(w=>w.id===current)){const cached=local.find(w=>w.id===current);if(cached)entries.unshift(cached)}
   }
   if(current!==workspaceCurrent&&workspaceCurrent){$('workspaceMembersPanel').hidden=true;$('workspaceMembersOpen').setAttribute('aria-expanded','false')}
   workspaceCurrent=current;
@@ -1031,6 +1047,10 @@ async function refreshWorkspaces(){
   $('workspaceStatus').textContent=native?(nativeCached?'离线模式 · 内容保存在本机':'已连接工作区 · 内容保存在本机'):signedIn?'已登录'+(accountName?' · '+accountName:'')+' · 可切换已关联工作区':'无需账户即可使用独立同步密钥';
   if(!native||$('workspaceSwitchStatus').textContent==='正在读取工作区…')$('workspaceSwitchStatus').textContent='';
   renderWorkspaceChoices();
+  if(nativeUnavailable||authoritative&&current&&!workspaceChoices.has(current)){
+   $('workspaceSwitchStatus').textContent='当前工作区已不在授权列表中。请选择其他工作区；本机数据未被清除。';
+   $('workspaceStatus').textContent='当前工作区访问已失效 · 请切换工作区';
+  }
  }catch(e){$('workspaceStatus').textContent=e?.message||'工作区暂不可用';$('workspaceSwitchStatus').textContent=e?.message||'请检查网络后重试'}
 }
 async function switchWorkspaceChoice(id){

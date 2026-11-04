@@ -20,6 +20,7 @@ final class WorkspaceClient {
  static void merge(JSONArray target,JSONArray source)throws Exception{
   for(int i=0;i<source.length();i++){JSONObject candidate=source.getJSONObject(i);boolean found=false;for(int j=0;j<target.length();j++)if(target.getJSONObject(j).getString("id").equals(candidate.getString("id"))){target.put(j,candidate);found=true;break;}if(!found)target.put(candidate);}
  }
+ static JSONObject lookup(JSONArray items,String id)throws JSONException{for(int i=0;i<items.length();i++){JSONObject row=items.getJSONObject(i);if(id.equals(row.optString("id")))return row;}return null;}
  static JSONObject ensure(NoteRepository db)throws Exception{return ensure(db,null);}
  static JSONObject ensure(NoteRepository db,String turnstileToken)throws Exception{
   String local=db.activeSpace();if(!db.setting("account-workspace:"+local,"").isEmpty())return new JSONObject().put("id",db.setting("account-workspace:"+local,""));
@@ -30,11 +31,71 @@ final class WorkspaceClient {
  }
  static JSONObject perform(NoteRepository db,String action,JSONObject args)throws Exception{
   if(action.equals("bootstrap")){try{ensure(db,args.optString("turnstileToken",null));return new JSONObject().put("ready",true);}catch(NativeSync.HttpsTransport.HttpFailure error){if(error.status==401&&!args.has("turnstileToken"))return new JSONObject().put("turnstileRequired",true);throw error;}}
-  if(action.equals("list")){JSONObject current=db.cachedActiveWorkspace();JSONArray list=db.cachedWorkspaces();boolean cached=false;
-   try{JSONObject refreshed=ensure(db);if(refreshed!=null&&refreshed.has("name"))current=refreshed;}catch(Exception unavailable){if(current==null)throw unavailable;cached=true;}
-   try{JSONArray remote=request("/api/workspaces",null,NativeAccount.token(db),true).getJSONArray("workspaces");db.cacheWorkspaces(remote);merge(list,remote);}catch(CredentialVault.KeyUnavailable ignored){}catch(Exception unavailable){cached=true;}
-   if(current==null)throw new IOException("Workspace unavailable");merge(list,new JSONArray().put(current));return new JSONObject().put("workspaces",list).put("current",current.getString("id")).put("cached",cached).put("accountAccess",!db.setting("account-workspace:"+db.activeSpace(),"").isEmpty());}
-  if(action.equals("select")){String id=args.getString("id");if(db.activateCachedWorkspace(id))return new JSONObject().put("selected",true).put("cached",true);JSONObject w=request("/api/workspaces/"+id,null,NativeAccount.token(db),true).getJSONObject("workspace");db.activateAccountWorkspace(w);return new JSONObject().put("selected",true).put("cached",false);}
+  if(action.equals("list")){
+   JSONObject current=db.cachedActiveWorkspace();JSONArray list=db.cachedWorkspaces();boolean cached=false,authoritative=false,activeKeyVerified=false,currentDenied=false;
+   try{JSONObject refreshed=ensure(db);if(refreshed!=null&&refreshed.has("name")){current=refreshed;activeKeyVerified=true;}else if(refreshed==null&&current!=null){currentDenied=true;db.markWorkspaceUnavailable(current.getString("id"));list=db.cachedWorkspaces();}}
+   catch(NativeSync.HttpsTransport.HttpFailure denied){
+    if(denied.status==401||denied.status==403||denied.status==404){currentDenied=true;if(current!=null)db.markWorkspaceUnavailable(current.getString("id"));list=db.cachedWorkspaces();}
+    else cached=true;
+    if(current==null)throw denied;
+   }catch(Exception unavailable){if(current==null)throw unavailable;cached=true;}
+   try{
+    JSONArray remote=request("/api/workspaces",null,NativeAccount.token(db),true).getJSONArray("workspaces");
+    db.cacheWorkspaces(remote);list=new JSONArray();merge(list,remote);authoritative=true;
+    // Personal-key workspaces need not belong to the signed-in account.
+    // Verify those keys online; an explicit revoked/denied result removes only the
+    // catalog entry, never the local notes or encrypted credential.
+    JSONArray personal=db.localKeyWorkspaces();
+    for(int i=0;i<personal.length();i++){
+     JSONObject local=personal.getJSONObject(i);String id=local.getString("id");
+     if(lookup(list,id)!=null)continue;
+     if(activeKeyVerified&&current!=null&&id.equals(current.optString("id"))){merge(list,new JSONArray().put(current));continue;}
+     try{
+      String key=db.localKeyCredential(id);if(key==null)continue;
+      JSONArray verified=request("/api/workspaces",null,key,false).getJSONArray("workspaces");
+      JSONObject match=lookup(verified,id);
+      if(match!=null){db.updateWorkspaceMetadata(match);merge(list,new JSONArray().put(match));}
+     }catch(NativeSync.HttpsTransport.HttpFailure denied){
+      if(denied.status!=401&&denied.status!=403&&denied.status!=404){cached=true;merge(list,new JSONArray().put(local));}
+     }catch(IOException offline){cached=true;merge(list,new JSONArray().put(local));}
+    }
+    JSONObject newest=current==null?null:lookup(list,current.optString("id"));
+    if(newest!=null){current=newest;currentDenied=false;}
+   }catch(CredentialVault.KeyUnavailable unavailable){cached=!activeKeyVerified;}catch(Exception unavailable){cached=true;}
+   if(current==null)throw new IOException("Workspace unavailable");
+   if(!authoritative&&!currentDenied)merge(list,new JSONArray().put(current));
+   boolean currentUnavailable=currentDenied||authoritative&&lookup(list,current.getString("id"))==null;
+   return new JSONObject().put("workspaces",list).put("current",current.getString("id")).put("cached",cached).put("currentUnavailable",currentUnavailable).put("accountAccess",!db.setting("account-workspace:"+db.activeSpace(),"").isEmpty());
+  }
+  if(action.equals("select")){
+   String id=args.getString("id");
+   if(!id.matches("[a-f0-9]{64}"))throw new SecurityException("Invalid workspace");
+   String accountToken=null;try{accountToken=NativeAccount.token(db);}catch(CredentialVault.KeyUnavailable ignored){}
+   NativeSync.HttpsTransport.HttpFailure denied=null;IOException offline=null;boolean keyDenied=false;
+   if(accountToken!=null){
+    try{JSONObject w=request("/api/workspaces/"+id,null,accountToken,true).getJSONObject("workspace");db.activateAccountWorkspace(w);return new JSONObject().put("selected",true).put("cached",false);}
+    catch(NativeSync.HttpsTransport.HttpFailure e){denied=e;}
+    catch(IOException e){offline=e;}
+   }
+   String personalKey=db.localKeyCredential(id);
+   if(personalKey!=null){
+    try{
+     JSONObject w=lookup(request("/api/workspaces",null,personalKey,false).getJSONArray("workspaces"),id);
+     if(w==null)throw new SecurityException("Workspace key mismatch");
+     db.updateWorkspaceMetadata(w);
+     if(!db.activateCachedWorkspace(id))throw new IOException("Local workspace unavailable");
+     db.bindWorkspaceIdentity(db.activeSpace(),w);
+     return new JSONObject().put("selected",true).put("cached",false);
+    }catch(NativeSync.HttpsTransport.HttpFailure e){denied=e;offline=null;keyDenied=true;}
+    catch(IOException e){offline=e;}
+   }
+   // Offline access is available only when a credential exists and the server
+   // could not be reached. A definite 401/403/404 is never treated as offline.
+   if(offline!=null&&(accountToken!=null||personalKey!=null)&&db.activateCachedWorkspace(id))return new JSONObject().put("selected",true).put("cached",true);
+   if(denied!=null){if(denied.status==403||denied.status==404||keyDenied&&denied.status==401)db.markWorkspaceUnavailable(id);throw denied;}
+   if(offline!=null)throw offline;
+   throw new SecurityException("Workspace authorization required");
+  }
   if(action.equals("create")){boolean account=args.optBoolean("account");JSONObject body=new JSONObject().put("name",args.getString("name"));if(!account)body.put("turnstileToken",args.getString("turnstileToken"));JSONObject result=request("/api/workspaces",body,account?NativeAccount.token(db):null,account);db.pairWorkspace(result.getString("key"),result.getJSONObject("workspace"),false);return new JSONObject().put("created",true);}
   if(action.equals("inviteInbox"))return request("/api/workspaces/invitations",null,NativeAccount.token(db),true);
   if(action.equals("invitePreview")){String token=args.getString("token");if(!token.matches("[a-f0-9]{64}"))throw new SecurityException("Invalid invite token");return request("/api/workspaces/invitations/preview?token="+token,null,NativeAccount.token(db),true);}
@@ -60,7 +121,7 @@ final class WorkspaceClient {
    return result;
   }
   JSONObject w=ensure(db);String id=w.getString("id");boolean account=!db.setting("account-workspace:"+db.activeSpace(),"").isEmpty();String credential=account?NativeAccount.token(db):db.credential(db.activeSpace());
-  if(action.equals("rename")){JSONObject result=request("/api/workspaces/"+id,new JSONObject().put("name",args.getString("name")),credential,account);return result;}
+  if(action.equals("rename")){JSONObject result=request("/api/workspaces/"+id,new JSONObject().put("name",args.getString("name")),credential,account);db.updateWorkspaceMetadata(result.getJSONObject("workspace"));return result;}
   if(action.equals("associate")){JSONObject result=request("/api/workspaces/"+id+"/associate",new JSONObject().put("key",db.credential(db.activeSpace())),NativeAccount.token(db),true);return result;}
   if(action.equals("rotate")){JSONObject result=request("/api/workspaces/"+id+"/key",new JSONObject().put("confirm",true),credential,account);db.pairWorkspace(result.getString("key"),result.getJSONObject("workspace"),false);db.setSetting("account-workspace:"+db.activeSpace(),"");return new JSONObject().put("rotated",true);}
   throw new SecurityException("Workspace action denied");
