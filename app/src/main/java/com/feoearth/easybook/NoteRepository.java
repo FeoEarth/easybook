@@ -71,7 +71,7 @@ public final class NoteRepository extends SQLiteOpenHelper {
             String role=identity.optString("role","manager");if(!Arrays.asList("reader","editor","manager").contains(role))throw new SecurityException("Invalid workspace role");
             ContentValues record=new ContentValues();record.put("local_id",ref);record.put("workspace_id",server);record.put("name",identity.getString("name"));record.put("mode",identity.getString("mode"));record.put("role",role);if(db.insertWithOnConflict("workspace_identity",null,record,SQLiteDatabase.CONFLICT_REPLACE)==-1)throw new SQLiteException("Identity persistence failed");
             ContentValues binding=new ContentValues();binding.put("key_hash",hash(credential));binding.put("local_id",ref);if(db.insertWithOnConflict("workspace_credentials",null,binding,SQLiteDatabase.CONFLICT_REPLACE)==-1)throw new SQLiteException("Credential binding failed");
-            db.setTransactionSuccessful();
+            db.delete("settings","name=?",new String[]{"workspace-unavailable:"+server});db.setTransactionSuccessful();
         }finally{db.endTransaction();}
     }
     public synchronized void pairWorkspace(String credential,JSONObject identity,boolean rotate)throws Exception{
@@ -97,7 +97,7 @@ public final class NoteRepository extends SQLiteOpenHelper {
             if(ref==null){String placeholder=newKey();pairWorkspace(placeholder,new JSONObject(identity.toString()).put("mode","personal"),false);ref=setting("active","");setSetting("account-placeholder:space:"+ref,"1");}else setSetting("active",ref);
             String role=identity.optString("role","manager");if(!Arrays.asList("reader","editor","manager").contains(role))throw new SecurityException("Invalid workspace role");
             ContentValues metadata=new ContentValues();metadata.put("mode",identity.getString("mode"));metadata.put("name",identity.getString("name"));metadata.put("role",role);db.update("workspace_identity",metadata,"local_id=?",new String[]{ref});
-            setSetting("account-workspace:space:"+ref,id);db.setTransactionSuccessful();
+            setSetting("account-workspace:space:"+ref,id);db.delete("settings","name=?",new String[]{"workspace-unavailable:"+id});db.setTransactionSuccessful();
         }finally{db.endTransaction();}
     }
     synchronized JSONObject cachedActiveWorkspace()throws Exception{
@@ -108,20 +108,77 @@ public final class NoteRepository extends SQLiteOpenHelper {
     }
     synchronized JSONArray cachedWorkspaces()throws Exception{
         LinkedHashMap<String,JSONObject> rows=new LinkedHashMap<>();
-        try(Cursor c=getReadableDatabase().rawQuery("SELECT workspace_id,name,mode,role FROM workspace_catalog ORDER BY name COLLATE NOCASE,workspace_id",null)){
+        try(Cursor c=getReadableDatabase().rawQuery("SELECT workspace_id,name,mode,role FROM workspace_catalog WHERE NOT EXISTS(SELECT 1 FROM settings s WHERE s.name='workspace-unavailable:'||workspace_id AND s.value='1') ORDER BY name COLLATE NOCASE,workspace_id",null)){
             while(c.moveToNext())rows.put(c.getString(0),new JSONObject().put("id",c.getString(0)).put("name",c.getString(1)).put("mode",c.getString(2)).put("role",c.getString(3)));
         }
-        try(Cursor c=getReadableDatabase().rawQuery("SELECT workspace_id,name,mode,role FROM workspace_identity ORDER BY name COLLATE NOCASE,workspace_id",null)){
-            while(c.moveToNext())rows.put(c.getString(0),new JSONObject().put("id",c.getString(0)).put("name",c.getString(1)).put("mode",c.getString(2)).put("role",c.getString(3)));
+        try(Cursor c=getReadableDatabase().rawQuery("SELECT workspace_id,name,mode,role FROM workspace_identity WHERE NOT EXISTS(SELECT 1 FROM settings s WHERE s.name='workspace-unavailable:'||workspace_id AND s.value='1') ORDER BY name COLLATE NOCASE,workspace_id",null)){
+            while(c.moveToNext())rows.putIfAbsent(c.getString(0),new JSONObject().put("id",c.getString(0)).put("name",c.getString(1)).put("mode",c.getString(2)).put("role",c.getString(3)));
         }
         JSONArray result=new JSONArray();for(JSONObject row:rows.values())result.put(row);
         return result;
     }
+    /** A successful account catalog response is authoritative for account entries only.
+     * Keep workspace_identity, credentials, records and attachments intact for offline recovery. */
     synchronized void cacheWorkspaces(JSONArray workspaces)throws Exception{
-        SQLiteDatabase db=getWritableDatabase();db.beginTransaction();try{for(int i=0;i<workspaces.length();i++){JSONObject w=workspaces.getJSONObject(i);String id=w.getString("id"),name=w.getString("name"),mode=w.getString("mode"),role=w.optString("role","manager");if(!id.matches("[a-f0-9]{64}")||name.trim().isEmpty()||name.length()>60||!Arrays.asList("personal","shared").contains(mode)||!Arrays.asList("reader","editor","manager").contains(role))throw new SecurityException("Invalid workspace catalog");ContentValues row=new ContentValues();row.put("workspace_id",id);row.put("name",name);row.put("mode",mode);row.put("role",role);db.insertWithOnConflict("workspace_catalog",null,row,SQLiteDatabase.CONFLICT_REPLACE);}db.setTransactionSuccessful();}finally{db.endTransaction();}
+        if(workspaces==null)throw new SecurityException("Invalid workspace catalog");
+        ArrayList<JSONObject> valid=new ArrayList<>();
+        for(int i=0;i<workspaces.length();i++){
+            JSONObject w=workspaces.getJSONObject(i);String id=w.getString("id"),name=w.getString("name"),mode=w.getString("mode"),role=w.optString("role","manager");
+            if(!id.matches("[a-f0-9]{64}")||name.trim().isEmpty()||name.length()>60||!Arrays.asList("personal","shared").contains(mode)||!Arrays.asList("reader","editor","manager").contains(role))throw new SecurityException("Invalid workspace catalog");
+            valid.add(w);
+        }
+        SQLiteDatabase db=getWritableDatabase();db.beginTransaction();try{
+            HashSet<String> allowed=new HashSet<>();for(JSONObject w:valid)allowed.add(w.getString("id"));
+            HashSet<String> previous=new HashSet<>();
+            try(Cursor old=db.rawQuery("SELECT workspace_id FROM workspace_catalog UNION SELECT i.workspace_id FROM workspace_identity i JOIN settings s ON s.name='account-workspace:space:'||i.local_id AND s.value<>''",null)){
+                while(old.moveToNext())previous.add(old.getString(0));
+            }
+            for(String id:previous)if(!allowed.contains(id)){
+                ContentValues state=new ContentValues();state.put("name","workspace-unavailable:"+id);state.put("value","1");
+                db.insertWithOnConflict("settings",null,state,SQLiteDatabase.CONFLICT_REPLACE);
+            }
+            db.delete("workspace_catalog",null,null);
+            for(JSONObject w:valid){db.delete("settings","name=?",new String[]{"workspace-unavailable:"+w.getString("id")});
+                ContentValues row=new ContentValues();for(String field:new String[]{"id","name","mode","role"})row.put(field.equals("id")?"workspace_id":field,w.optString(field,field.equals("role")?"manager":""));
+                if(db.insertWithOnConflict("workspace_catalog",null,row,SQLiteDatabase.CONFLICT_REPLACE)==-1)throw new SQLiteException("Workspace catalog write failed");
+                ContentValues metadata=new ContentValues();metadata.put("name",w.getString("name"));metadata.put("mode",w.getString("mode"));metadata.put("role",w.optString("role","manager"));
+                db.update("workspace_identity",metadata,"workspace_id=?",new String[]{w.getString("id")});
+            }
+            db.setTransactionSuccessful();
+        }finally{db.endTransaction();}
+    }
+    /** Local personal keys can be used without account association, but their server
+     * authority must be checked before an online catalog advertises them. */
+    synchronized JSONArray localKeyWorkspaces()throws Exception{
+        JSONArray result=new JSONArray();
+        try(Cursor c=getReadableDatabase().rawQuery("SELECT i.workspace_id,i.name,i.mode,i.role FROM workspace_identity i WHERE i.mode='personal' AND NOT EXISTS(SELECT 1 FROM settings s WHERE s.name='account-workspace:space:'||i.local_id AND s.value<>'') AND NOT EXISTS(SELECT 1 FROM settings p WHERE p.name='account-placeholder:space:'||i.local_id AND p.value='1') ORDER BY i.name COLLATE NOCASE",null)){
+            while(c.moveToNext())result.put(new JSONObject().put("id",c.getString(0)).put("name",c.getString(1)).put("mode",c.getString(2)).put("role",c.getString(3)));
+        }
+        return result;
+    }
+    synchronized String localKeyCredential(String workspaceId)throws Exception{
+        if(workspaceId==null||!workspaceId.matches("[a-f0-9]{64}"))throw new IllegalArgumentException("Invalid workspace");
+        try(Cursor c=getReadableDatabase().rawQuery("SELECT i.local_id FROM workspace_identity i WHERE i.workspace_id=? AND i.mode='personal' AND NOT EXISTS(SELECT 1 FROM settings s WHERE s.name='account-workspace:space:'||i.local_id AND s.value<>'') AND NOT EXISTS(SELECT 1 FROM settings p WHERE p.name='account-placeholder:space:'||i.local_id AND p.value='1')",new String[]{workspaceId})){
+            return c.moveToFirst()?credential("space:"+c.getString(0)):null;
+        }
+    }
+    synchronized void updateWorkspaceMetadata(JSONObject workspace)throws Exception{
+        String id=workspace.getString("id"),name=workspace.getString("name"),mode=workspace.getString("mode"),role=workspace.optString("role","manager");
+        if(!id.matches("[a-f0-9]{64}")||name.trim().isEmpty()||name.length()>60||!Arrays.asList("personal","shared").contains(mode)||!Arrays.asList("reader","editor","manager").contains(role))throw new SecurityException("Invalid workspace metadata");
+        ContentValues row=new ContentValues();row.put("name",name);row.put("mode",mode);row.put("role",role);
+        SQLiteDatabase db=getWritableDatabase();db.beginTransaction();try{
+            db.update("workspace_identity",row,"workspace_id=?",new String[]{id});
+            db.update("workspace_catalog",row,"workspace_id=?",new String[]{id});
+            db.delete("settings","name=?",new String[]{"workspace-unavailable:"+id});
+            db.setTransactionSuccessful();
+        }finally{db.endTransaction();}
+    }
+    synchronized void markWorkspaceUnavailable(String workspaceId){
+        if(workspaceId!=null&&workspaceId.matches("[a-f0-9]{64}"))setSetting("workspace-unavailable:"+workspaceId,"1");
     }
     synchronized boolean activateCachedWorkspace(String workspaceId)throws Exception{
         if(workspaceId==null||!workspaceId.matches("[a-f0-9]{64}"))throw new IllegalArgumentException("Invalid workspace");
+        if("1".equals(setting("workspace-unavailable:"+workspaceId,"")))return false;
         try(Cursor c=getReadableDatabase().rawQuery("SELECT local_id FROM workspace_identity WHERE workspace_id=?",new String[]{workspaceId})){
             if(c.moveToFirst()){setSetting("active",c.getString(0));return true;}
         }

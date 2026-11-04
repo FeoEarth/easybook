@@ -49,7 +49,7 @@ export class WebStore {
  async cacheWorkspaces(workspaces){
   if(!Array.isArray(workspaces))throw Error('Invalid workspace catalog');
   const valid=workspaces.map(workspace=>{if(!workspace||!/^[a-f0-9]{64}$/.test(workspace.id)||!['personal','shared'].includes(workspace.mode)||typeof workspace.name!=='string'||!workspace.name.trim()||workspace.name.length>60||!['reader','editor','manager'].includes(workspace.role||'manager'))throw Error('Invalid workspace catalog');return {...workspace,role:workspace.role||'manager'}});
-  return new Promise((resolve,reject)=>{const t=this.db.transaction('workspaces','readwrite'),store=t.objectStore('workspaces');for(const workspace of valid){const r=store.get(workspace.id);r.onsuccess=()=>store.put({...workspace,localNamespace:r.result?.localNamespace||'catalog:'+workspace.id,catalogOnly:r.result?.catalogOnly??!r.result})}t.oncomplete=()=>resolve();t.onerror=t.onabort=()=>reject(t.error||Error('Workspace catalog cache failed'))})
+  return new Promise((resolve,reject)=>{const t=this.db.transaction('workspaces','readwrite'),store=t.objectStore('workspaces'),ids=new Set(valid.map(w=>w.id)),all=store.getAll();all.onsuccess=()=>{for(const row of all.result)if(row.catalogOnly&&!ids.has(row.id))store.delete(row.id);for(const workspace of valid){const r=store.get(workspace.id);r.onsuccess=()=>store.put({...workspace,localNamespace:r.result?.localNamespace||'catalog:'+workspace.id,catalogOnly:r.result?.catalogOnly??!r.result})}};t.oncomplete=()=>resolve();t.onerror=t.onabort=()=>reject(t.error||Error('Workspace catalog cache failed'))})
  }
  flush(){return this.tail}
 }
