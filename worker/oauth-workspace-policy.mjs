@@ -13,10 +13,21 @@ function shape(row,children,tokenScopes){
 }
 export async function workspacePolicy(env,policyId,{accountId=null,clientId=null,tokenScopes=V2_SCOPES}={}){
  if(typeof policyId!=='string'||!/^[a-f0-9-]{36}$/.test(policyId))return null;
- const row=await env.DB.prepare(parentSQL+' AND g.id=?').bind(policyId).first();
- if(!row||!await oauthAllowed(env,row)||accountId&&row.account_id!==accountId||clientId&&row.client_id!==clientId)return null;
- const {results}=await env.DB.prepare(childSQL+' AND c.policy_id=? ORDER BY c.created_at,c.workspace_id LIMIT 50').bind(row.id).all();
- return shape(row,await allowedChildGrants(env,await allowedWorkspaces(env,results,'workspace_id')),tokenScopes);
+ // Parent, child and security checks are independent reads. Start child lookup
+ // immediately to avoid an extra D1 round trip on OAuth refresh.
+ const parent=env.DB.prepare(parentSQL+' AND g.id=?').bind(policyId).first();
+ const children=env.DB.prepare(childSQL+' AND c.policy_id=? ORDER BY c.created_at,c.workspace_id LIMIT 50').bind(policyId).all();
+ const [row,{results}]=await Promise.all([parent,children]);
+ if(!row||accountId&&row.account_id!==accountId||clientId&&row.client_id!==clientId)return null;
+ const permitted=oauthAllowed(env,row);
+ // Both security filters must approve each child. Running them concurrently
+ // preserves fail-closed security while reducing the critical path.
+ const [parentAllowed,validWorkspaces,validChildren]=await Promise.all([
+  permitted,allowedWorkspaces(env,results,'workspace_id'),allowedChildGrants(env,results)
+ ]);
+ if(!parentAllowed)return null;
+ const childKeys=new Set(validChildren.map(child=>child.policy_id+':'+child.workspace_id));
+ return shape(row,validWorkspaces.filter(child=>childKeys.has(child.policy_id+':'+child.workspace_id)),tokenScopes);
 }
 export async function accountPolicies(env,accountId){
  const {results:rows}=await env.DB.prepare(parentSQL+' AND g.account_id=? ORDER BY g.created_at DESC LIMIT 50').bind(accountId).all();if(!rows.length)return [];

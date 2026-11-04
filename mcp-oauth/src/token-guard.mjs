@@ -33,11 +33,14 @@ export async function guardTokens(request,env,ctx,provider){
   // The provider validates the client, token, authorization and revocation itself.
   // Do not reserve the refresh token in D1 before this potentially slow KV exchange:
   // client timeouts would strand an unverified one-use record and block every retry.
+  const refreshStart=Date.now();
   const attempt=provider.fetch(request,env,ctx);
   // Keep the exchange alive when the client drops the HTTP connection. The provider
   // accepts the previous refresh token so a client can safely retry after rotation.
   if(ctx?.waitUntil)ctx.waitUntil(attempt.then(()=>{},()=>{}));
   const response=await attempt;
+  // Metrics only: never log tokens, client secrets or authorization headers.
+  console.info(JSON.stringify({event:'oauth_refresh_completed',duration_ms:Date.now()-refreshStart,status:response.status}));
   if(response.ok){
    // Token indexing supports account-level revocation, but must not delay the
    // refresh response. The provider's own revocation is authoritative.
