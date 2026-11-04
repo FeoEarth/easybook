@@ -43,7 +43,7 @@ on:
   workflow_dispatch:
     inputs:
       publish_release:
-        description: 'Publish the validated APK as a GitHub Release'
+        description: 'Build with the private Release key and publish only from main'
         required: false
         type: boolean
         default: false
@@ -72,17 +72,6 @@ jobs:
       - uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: '8.9'
-      - name: Restore development signing key
-        uses: actions/cache@v4
-        with:
-          path: ~/.easybook-signing/development.keystore
-          key: easybook-notes-signing-v2
-      - name: Prepare development signing key
-        run: |
-          mkdir -p "$HOME/.easybook-signing"
-          if [ ! -f "$HOME/.easybook-signing/development.keystore" ]; then
-            keytool -genkeypair -keystore "$HOME/.easybook-signing/development.keystore" -storepass android -alias androiddebugkey -keypass android -dname "CN=Android Debug,O=Easybook,C=SG" -keyalg RSA -keysize 2048 -validity 10000
-          fi
       - uses: actions/setup-node@v4
         with:
           node-version: '24'
@@ -96,14 +85,52 @@ jobs:
         run: npm run build:editor && node scripts/table-integrity.mjs && node scripts/picker-static-check.mjs
       - name: Android and Web table contract consistency
         run: gradle :app:testReleaseUnitTest --tests com.feoearth.easybook.AttachmentRangeTest --tests com.feoearth.easybook.TableContractTest --tests com.feoearth.easybook.NativeMcpPairingTest --tests com.feoearth.easybook.NativeAccountErrorsTest --tests com.feoearth.easybook.AccountBridgePermissionTest --tests com.feoearth.easybook.NativeTransportTest --no-daemon
-      - name: Build release APK
+      - name: Reject publishing from a non-main branch
+        if: github.event_name == 'workflow_dispatch' && inputs.publish_release == true && github.ref != 'refs/heads/main'
+        run: |
+          echo '::error::Official Android releases must be dispatched from main'
+          exit 1
+      - name: Build unsigned release for CI validation
+        if: github.event_name != 'workflow_dispatch' || inputs.publish_release != true
+        run: gradle :app:assembleRelease --no-daemon
+      - name: Restore private Release signing key
+        id: signing_key
+        if: github.event_name == 'workflow_dispatch' && inputs.publish_release == true && github.ref == 'refs/heads/main'
+        shell: bash
+        env:
+          EASYBOOK_RELEASE_KEYSTORE_BASE64: ${{ secrets.EASYBOOK_RELEASE_KEYSTORE_BASE64 }}
+          EASYBOOK_RELEASE_STORE_PASSWORD: ${{ secrets.EASYBOOK_RELEASE_STORE_PASSWORD }}
+          EASYBOOK_RELEASE_KEY_ALIAS: ${{ secrets.EASYBOOK_RELEASE_KEY_ALIAS }}
+          EASYBOOK_RELEASE_KEY_PASSWORD: ${{ secrets.EASYBOOK_RELEASE_KEY_PASSWORD }}
+        run: |
+          set -euo pipefail
+          for name in EASYBOOK_RELEASE_KEYSTORE_BASE64 EASYBOOK_RELEASE_STORE_PASSWORD EASYBOOK_RELEASE_KEY_ALIAS EASYBOOK_RELEASE_KEY_PASSWORD; do
+            if [[ -z "${!name}" ]]; then
+              echo "::error::Missing required GitHub Actions secret: $name"
+              exit 1
+            fi
+          done
+          umask 077
+          printf '%s' "$EASYBOOK_RELEASE_KEYSTORE_BASE64" | base64 --decode > "$RUNNER_TEMP/easybook-release.jks"
+          test -s "$RUNNER_TEMP/easybook-release.jks"
+          echo "EASYBOOK_RELEASE_KEYSTORE_PATH=$RUNNER_TEMP/easybook-release.jks" >> "$GITHUB_ENV"
+      - name: Build officially signed Release APK
+        if: steps.signing_key.outcome == 'success'
+        env:
+          EASYBOOK_REQUIRE_RELEASE_SIGNING: 'true'
+          EASYBOOK_RELEASE_STORE_PASSWORD: ${{ secrets.EASYBOOK_RELEASE_STORE_PASSWORD }}
+          EASYBOOK_RELEASE_KEY_ALIAS: ${{ secrets.EASYBOOK_RELEASE_KEY_ALIAS }}
+          EASYBOOK_RELEASE_KEY_PASSWORD: ${{ secrets.EASYBOOK_RELEASE_KEY_PASSWORD }}
         run: gradle :app:assembleRelease --no-daemon
       - name: Verify APK signing
+        if: steps.signing_key.outcome == 'success'
         run: '"$ANDROID_HOME/build-tools/35.0.0/apksigner" verify --verbose --print-certs app/build/outputs/apk/release/app-release.apk'
       - name: Verify Passkey signing association
+        if: steps.signing_key.outcome == 'success'
         run: node scripts/check-android-identity.mjs app/build/outputs/apk/release/app-release.apk
       - name: Read version from Android Gradle release configuration
         id: apk_version
+        if: steps.signing_key.outcome == 'success'
         shell: bash
         run: |
           VERSION=$(sed -nE "s/.*versionName[[:space:]]+'([^']+)'.*/\1/p" app/build.gradle | head -n 1)
@@ -114,27 +141,26 @@ jobs:
           [[ "$VERSION_CODE" =~ ^[1-9][0-9]*$ ]] || { echo 'Invalid APK versionCode'; exit 1; }
           echo "code=$VERSION_CODE" >> "$GITHUB_OUTPUT"
       - name: Prepare APK
+        if: steps.signing_key.outcome == 'success'
         run: |
           cp app/build/outputs/apk/release/app-release.apk 'Easybook-${{ steps.apk_version.outputs.name }}.apk'
           sha256sum 'Easybook-${{ steps.apk_version.outputs.name }}.apk' > SHA256SUMS.txt
       - uses: actions/upload-artifact@v4
+        if: steps.signing_key.outcome == 'success'
         with:
           name: Easybook-APK
           path: |
             Easybook-${{ steps.apk_version.outputs.name }}.apk
             SHA256SUMS.txt
+      - name: Remove temporary private signing key
+        if: always() && steps.signing_key.outcome == 'success'
+        run: rm -f "$RUNNER_TEMP/easybook-release.jks"
   release:
     needs: apk
-    # A successful automatic APK build is normally only a CI artifact.
-    # Exceptions: named, version-pinned rollout merge commits, never an ordinary push.
+    # No automatic release for any push. Only an explicit, trusted main dispatch
+    # can access the private signing key and publish an APK.
     if: >-
-      (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main' && inputs.publish_release == true) ||
-      (github.event_name == 'push' && github.ref == 'refs/heads/main' && startsWith(github.event.head_commit.message, 'release(android): OTA restart v0.8.12') && needs.apk.outputs.version == '0.8.12') ||
-      (github.event_name == 'push' && github.ref == 'refs/heads/main' && startsWith(github.event.head_commit.message, 'release(android): OTA integrity v0.8.11') && needs.apk.outputs.version == '0.8.11') ||
-      (github.event_name == 'push' && github.ref == 'refs/heads/main' && startsWith(github.event.head_commit.message, 'release(android): OTA v0.8.9') && needs.apk.outputs.version == '0.8.9') ||
-      (github.event_name == 'push' && github.ref == 'refs/heads/main' && startsWith(github.event.head_commit.message, 'release(android): workspace catalog v0.8.10') && needs.apk.outputs.version == '0.8.10') ||
-      (github.event_name == 'push' && github.ref == 'refs/heads/main' && startsWith(github.event.head_commit.message, 'release(android): in-app updater v0.8.6') && needs.apk.outputs.version == '0.8.6') ||
-      (github.event_name == 'push' && github.ref == 'refs/heads/main' && startsWith(github.event.head_commit.message, 'release(android): account UI v0.8.7') && needs.apk.outputs.version == '0.8.7')
+      github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main' && inputs.publish_release == true
     runs-on: ubuntu-latest
     permissions:
       contents: write

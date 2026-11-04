@@ -5,6 +5,14 @@ node_modules/
 .wrangler/
 *.log
 
+# Android private signing material must never enter this public repository.
+*.jks
+*.keystore
+*.p12
+*.pfx
+*.b64
+*.base64
+
 worker/deploy.mjs
 
 worker/deploy.mjs
