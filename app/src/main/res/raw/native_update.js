@@ -99,7 +99,7 @@
       + '<button id="appUpdateDownload" class="primary" hidden>下载更新</button>'
       + '<button id="appUpdateInstall" class="primary" hidden>安装更新</button></div>'
       + '<section class="web-ota-panel"><h3>Web 热更新</h3><p id="webOtaStatus" aria-live="polite">点击检查以获取最新界面资源。</p>'
-      + '<div class="update-actions"><button id="webOtaCheck">检查热更新</button><button id="webOtaInstall" class="primary" hidden>下载热更新</button></div></section>';
+      + '<div class="update-actions"><button id="webOtaCheck">检查热更新</button><button id="webOtaInstall" class="primary" hidden>下载热更新</button><button id="webOtaRestart" class="primary" hidden>重启并应用</button></div></section>';
     document.body.append(sheet);
     id('appUpdateClose').onclick = () => sheet.close();
     async function check() {
@@ -114,16 +114,17 @@
     }
     entry.onclick = () => {if (!sheet.open) sheet.showModal(); void check();};
     id('appUpdateCheck').onclick = () => void check();
-    const otaStatus=id('webOtaStatus'),otaCheck=id('webOtaCheck'),otaInstall=id('webOtaInstall');
+    const otaStatus=id('webOtaStatus'),otaCheck=id('webOtaCheck'),otaInstall=id('webOtaInstall'),otaRestart=id('webOtaRestart');
     async function checkWebOta(){
       otaCheck.disabled=true;otaStatus.textContent='正在检查 Web 资源版本…';otaInstall.hidden=true;
       try {
         const result=await bridge.call('device.webOta',{action:'check'});
-        otaStatus.textContent=result.pendingRestart?'热更新已下载，退出并重新启动 Easybook 后生效。':
+        otaStatus.textContent=result.pendingRestart?'热更新已下载，可立即重启并应用。':
           !result.compatible?'最新 Web 资源需要新版 Android APK。':
           result.available?'发现新版 Web 资源：'+result.latest+'（当前：'+result.current+'）':
           'Web 资源已经是最新可用版本。当前：'+result.current;
         otaInstall.hidden=!result.available||result.pendingRestart;
+        otaRestart.hidden=!result.pendingRestart;
       }catch(e){otaStatus.textContent='热更新检查失败：'+(e?.message||'请检查网络');}
       finally{otaCheck.disabled=false;}
     }
@@ -131,10 +132,22 @@
     otaInstall.onclick=async()=>{
       otaInstall.disabled=true;otaCheck.disabled=true;otaStatus.textContent='正在下载并验证热更新…';
       try{const result=await bridge.call('device.webOta',{action:'install'});
-        otaStatus.textContent=result.pendingRestart?'资源已校验并保存。下次重新启动应用后生效。':'没有需要安装的新资源。';
+        otaStatus.textContent=result.pendingRestart?'资源已校验并保存，点击「重启并应用」即可生效。':'没有需要安装的新资源。';
         otaInstall.hidden=true;
+        otaRestart.hidden=!result.pendingRestart;
       }catch(e){otaStatus.textContent='热更新失败：'+(e?.message||'请重试');}
       finally{otaInstall.disabled=false;otaCheck.disabled=false;}
+    };
+    otaRestart.onclick=async()=>{
+      otaRestart.disabled=true;otaCheck.disabled=true;otaStatus.textContent='正在保存本地编辑并重启…';
+      try{
+        window.easybookRich?.flushInput?.();
+        window.persistNow?.();
+        if(window.flushNative)await window.flushNative();
+        const result=await bridge.call('device.webOta',{action:'restart'});
+        if(!result.restarting){otaStatus.textContent='没有等待应用的热更新。';otaRestart.hidden=true;}
+      }catch(e){otaStatus.textContent='重启前保存或检查失败：'+(e?.message||'请重试');}
+      finally{otaRestart.disabled=false;otaCheck.disabled=false;}
     };
     id('appUpdateDownload').onclick = async () => {
       notice = ''; speed = 0; lastTick = 0; const btn = id('appUpdateDownload'); btn.disabled = true;

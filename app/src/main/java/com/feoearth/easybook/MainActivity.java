@@ -243,6 +243,14 @@ public class MainActivity extends Activity {
             case "device.webOta":{String action=bounded(args,"action",8);
                 if(action.equals("check"))return webOta.status();
                 if(action.equals("install"))return webOta.install();
+                if(action.equals("restart")){
+                    if(!webOta.needsRestart())return new JSONObject().put("restarting",false);
+                    // Reply to the current bridge request before recreating the WebView.
+                    runOnUiThread(()->{if(!destroyed&&ready&&generation==documentGeneration&&web!=null)
+                        web.postDelayed(()->{if(!destroyed&&generation==documentGeneration)recreate();},180);
+                    });
+                    return new JSONObject().put("restarting",true);
+                }
                 throw new IllegalArgumentException();}
             case "attachment.get":{String space=repository.activeSpace(),id=bounded(args,"id",64);requireAttachmentReference(space,id);return repository.attachments.get(space,id);}
             case "attachment.restore":{String space=repository.activeSpace();JSONArray files=args.getJSONArray("files");if(files.length()>100)throw new IllegalArgumentException();for(int i=0;i<files.length();i++){JSONObject f=files.getJSONObject(i);repository.attachments.accept(space,f.getString("id"),f);repository.saveAttachment(space,new JSONObject(f.toString()).put("data",JSONObject.NULL).put("dirty",true));}return new JSONObject().put("restored",files.length());}

@@ -89,7 +89,11 @@ final class WebOtaManager {
             .put("latest",revision).put("compatible",compatible)
             .put("available",compatible&&!identical&&!revision.equals(active)&&!revision.equals(prefs.getString("rejected","")))
             .put("bundledCurrent",identical)
-            .put("pendingRestart",!active.isEmpty()&&(current==null||!active.equals(current.getName())));
+            .put("pendingRestart",needsRestart());
+    }
+    synchronized boolean needsRestart(){
+        String active=prefs.getString("active","");
+        return !active.isEmpty()&&(current==null||!active.equals(current.getName()));
     }
     private boolean bundledMatches(JSONObject manifest)throws Exception {
         String[] hashes=bundledHashes();JSONArray files=manifest.getJSONArray("files");
