@@ -1,7 +1,7 @@
 import {Buffer} from 'node:buffer';
 import {generateRegistrationOptions,verifyRegistrationResponse,generateAuthenticationOptions,verifyAuthenticationResponse} from '@simplewebauthn/server';
 import {IDENTITY_ORIGIN,identityEnabled} from '../../worker/identity-origin.mjs';
-import {ANDROID_APP_ORIGIN} from '../../worker/android-identity.mjs';
+import {ANDROID_TRUSTED_APP_ORIGINS} from '../../worker/android-identity.mjs';
 import {hash,object} from '../../worker/mcp-common.mjs';
 import {json,random,rateLimit,createSession} from './accounts.mjs';
 import {nativeBody,nativeSession,s256} from './native-sessions.mjs';
@@ -41,7 +41,7 @@ export async function nativePasskeyRoutes(request,env){
  if(kind==='register'){
   if(pending.purpose==='enroll'&&(!current||current.account_id!==pending.account_id||current.id!==pending.session_id||Date.now()-current.authenticated_at>300000))return json({error:'account_session_changed'},403);
   if(pending.purpose==='signup'&&current)return json({error:'account_session_changed'},409);
-  let checked;try{checked=await verifyRegistrationResponse({response:input.response,expectedChallenge:pending.challenge,expectedOrigin:ANDROID_APP_ORIGIN,expectedRPID:rpID,requireUserVerification:true,supportedAlgorithmIDs:algorithms})}catch{return failure()}
+  let checked;try{checked=await verifyRegistrationResponse({response:input.response,expectedChallenge:pending.challenge,expectedOrigin:ANDROID_TRUSTED_APP_ORIGINS,expectedRPID:rpID,requireUserVerification:true,supportedAlgorithmIDs:algorithms})}catch{return failure()}
   if(!checked.verified)return failure();
   const info=checked.registrationInfo,k=info.credential,statements=[];
   if(pending.purpose==='signup')statements.push(env.DB.prepare('INSERT INTO accounts(id,display_name,created_at) VALUES(?,?,?)').bind(pending.account_id,pending.display_name,Date.now()));
@@ -53,7 +53,7 @@ export async function nativePasskeyRoutes(request,env){
  const id=input.response?.id;if(typeof id!=='string'||id.length>2048)return failure();
  const k=await env.DB.prepare('SELECT k.* FROM account_passkeys k JOIN accounts a ON a.id=k.account_id JOIN account_passkey_rps r ON r.credential_id=k.id WHERE k.id=? AND r.rp_id=? AND k.revoked_at IS NULL AND a.deleted_at IS NULL').bind(id,rpID).first();
  if(!k||input.response?.response?.userHandle!==Buffer.from(k.account_id).toString('base64url'))return failure();
- let checked;try{checked=await verifyAuthenticationResponse({response:input.response,expectedChallenge:pending.challenge,expectedOrigin:ANDROID_APP_ORIGIN,expectedRPID:rpID,requireUserVerification:true,credential:{id:k.id,publicKey:new Uint8Array(Buffer.from(k.public_key,'base64url')),counter:k.counter,transports:JSON.parse(k.transports)}})}catch{return failure()}
+ let checked;try{checked=await verifyAuthenticationResponse({response:input.response,expectedChallenge:pending.challenge,expectedOrigin:ANDROID_TRUSTED_APP_ORIGINS,expectedRPID:rpID,requireUserVerification:true,credential:{id:k.id,publicKey:new Uint8Array(Buffer.from(k.public_key,'base64url')),counter:k.counter,transports:JSON.parse(k.transports)}})}catch{return failure()}
  if(!checked.verified)return failure();
  const updated=await env.DB.prepare('UPDATE account_passkeys SET counter=?,last_used_at=?,backed_up=? WHERE id=? AND counter=? AND revoked_at IS NULL AND EXISTS(SELECT 1 FROM accounts WHERE id=account_passkeys.account_id AND deleted_at IS NULL) RETURNING id').bind(checked.authenticationInfo.newCounter,Date.now(),Number(checked.authenticationInfo.credentialBackedUp),k.id,k.counter).first();
  if(!updated)return json({error:'credential_changed'},409);
