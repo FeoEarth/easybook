@@ -37,7 +37,9 @@ export default {
  async fetch(request, env) {
   const url = new URL(request.url);
   if(request.method==='GET'&&url.pathname==='/ota/manifest.json')return Response.json(await otaManifest(),{headers:{'Cache-Control':'no-store','X-Content-Type-Options':'nosniff'}});
-  if(request.method==='GET'&&(url.pathname==='/ota/index.html'||url.pathname==='/ota/editor.js'))return new Response(url.pathname.endsWith('.html')?html:editor,{headers:{'Content-Type':url.pathname.endsWith('.html')?'text/html; charset=utf-8':'application/javascript; charset=utf-8','Cache-Control':'no-store','X-Content-Type-Options':'nosniff'}});
+  // OTA resources are checksum-verified bytes, not browser documents: prevent
+  // intermediary HTML/JS rewriting or stale transformed representations.
+  if(request.method==='GET'&&(url.pathname==='/ota/index.html'||url.pathname==='/ota/editor.js'))return new Response(url.pathname.endsWith('.html')?html:editor,{headers:{'Content-Type':'application/octet-stream','Cache-Control':'no-store, no-transform','X-Content-Type-Options':'nosniff'}});
   if(url.pathname.startsWith('/api/')||identityPath(url.pathname)){try{await requireRestoreAccess(env)}catch{return json({error:'Security recovery in progress'},503)}}
   if(url.pathname==='/.well-known/assetlinks.json'&&identityEnabled(env)&&url.origin===IDENTITY_ORIGIN&&request.method==='GET')return Response.json(androidAssetLinks,{headers:{'Cache-Control':'public, max-age=3600','X-Content-Type-Options':'nosniff'}});
   // Deliberately unset on production until the coordinated identity cutover.
