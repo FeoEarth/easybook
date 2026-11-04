@@ -39,6 +39,7 @@ public class MainActivity extends Activity {
     private String attachmentSpace,attachmentNote,attachmentExportName;private long attachmentGeneration;private File attachmentExport;
     private final ExecutorService io = Executors.newSingleThreadExecutor();
     private static String operationErrorCode(Exception e){
+        if(e instanceof WebOtaManager.OtaException)return ((WebOtaManager.OtaException)e).code;
         if(e instanceof CredentialVault.KeyUnavailable)return "CREDENTIAL_UNAVAILABLE";
         if(e instanceof android.database.sqlite.SQLiteFullException)return "STORAGE_FULL";
         if(e instanceof android.database.sqlite.SQLiteDatabaseLockedException)return "STORAGE_BUSY";
@@ -46,6 +47,7 @@ public class MainActivity extends Activity {
         return "OPERATION_FAILED";
     }
     private static String operationErrorMessage(Exception e){
+        if(e instanceof WebOtaManager.OtaException)return e.getMessage();
         if(e instanceof NativeAccount.HttpFailure)return NativeAccount.failureMessage(e);
         switch(operationErrorCode(e)){
             case "STORAGE_FULL":return "本机存储空间不足，请释放空间后重试";
