@@ -8,6 +8,7 @@ on:
       - 'editor/**'
       - 'shared/**'
       - 'app/src/main/assets/**'
+      - 'app/src/main/res/raw/native_update.js'
       # Dependency or npm build-script changes can alter the production bundle.
       # General test-only scripts and documentation should not deploy.
       - 'package.json'
@@ -25,6 +26,7 @@ on:
       - 'scripts/prepare-pdf.mjs'
       - 'scripts/folder-navigation-test.mjs'
       - 'scripts/check-web-runtime.mjs'
+      - 'scripts/check-ota-manifest.mjs'
       - 'scripts/mcp-pairing-release-test.mjs'
       - 'scripts/mcp-capabilities-test.mjs'
       - 'scripts/mcp-upload-test.mjs'
@@ -52,11 +54,12 @@ jobs:
           node scripts/prepare-pdf.mjs
           node scripts/build-editor.mjs
           node scripts/generate-ui.mjs
-          git diff --exit-code -- app/src/main/assets/editor.js worker/ui.mjs worker/editor.mjs worker/pdf-static.mjs
+          git diff --exit-code -- app/src/main/assets/editor.js worker/ui.mjs worker/editor.mjs worker/native-update.mjs worker/pdf-static.mjs
           node scripts/folder-navigation-test.mjs
           node scripts/web-store-test.mjs
           node scripts/workspace-invitation-test.mjs
           node scripts/check-web-runtime.mjs
+          node scripts/check-ota-manifest.mjs
           node scripts/mcp-pairing-release-test.mjs
           node scripts/mcp-capabilities-test.mjs
           node scripts/mcp-upload-test.mjs

@@ -26,7 +26,8 @@ public class MainActivity extends Activity {
     private android.net.ConnectivityManager connectivity;
     private android.net.ConnectivityManager.NetworkCallback networkCallback;
     private String networkSignature="";
-    private boolean ready;
+    private volatile boolean ready;
+    private volatile boolean updateUiReady;
     private volatile boolean destroyed;
     private volatile long documentGeneration;
     private NoteRepository repository;
@@ -183,7 +184,7 @@ public class MainActivity extends Activity {
                         boolean legacy=false;
                         String html=readWebAsset("index.html");html=html.replace("</head>","<script>localStorage.setItem(\"easybook-fast-mode\",\""+getPreferences(MODE_PRIVATE).getBoolean("fastMode",false)+"\");</script></head>");if(!legacy)html=html.replace("connect-src 'self' https://easybook-sync.1902521952.workers.dev","connect-src 'self'");
                         html=html.replace("<script>","<script>"+(legacy?"window.EasybookRollbackMode=true;":"")+readAsset("native-api.js")+"</script><script>");
-                         html=html.replace("</body>","<script>"+readNativeUpdateScript()+"</script></body>");
+                         html=html.replace("</body>",nativeUpdateScriptTags()+"</body>");
                         if(BuildConfig.NATIVE_GLASS_PROTOTYPE && android.os.Build.VERSION.SDK_INT>=33&&!getPreferences(MODE_PRIVATE).getBoolean("fastMode",false))html=html.replace("</body>","<script>"+readAsset("native-glass/dock-surface.js")+";"+readAsset("native-glass/toolbar-surface.js")+";"+readAsset("native-glass/format-surface.js")+";"+readAsset("native-glass/move-surface.js")+";"+readAsset("native-glass/sync-surface.js")+";"+readAsset("native-glass/menu.js")+"</script></body>");
                         return new WebResourceResponse("text/html","UTF-8",200,"OK",Collections.singletonMap("Cache-Control","no-store"),new ByteArrayInputStream(html.getBytes(StandardCharsets.UTF_8)));
                     }
@@ -194,13 +195,21 @@ public class MainActivity extends Activity {
                 return new WebResourceResponse("text/plain", "UTF-8", new ByteArrayInputStream(new byte[0]));
             }
             @Override public boolean shouldOverrideUrlLoading(WebView v, WebResourceRequest r) { return !r.isForMainFrame() || !LOCAL.equals(r.getUrl().toString()); }
-            @Override public void onPageStarted(WebView v,String url,android.graphics.Bitmap icon){ready=false;documentGeneration++;if(nativeGlass!=null){nativeGlass.clearFormatFrame();nativeGlass.dismiss(true);}}
+            @Override public void onPageStarted(WebView v,String url,android.graphics.Bitmap icon){ready=false;updateUiReady=false;documentGeneration++;if(nativeGlass!=null){nativeGlass.clearFormatFrame();nativeGlass.dismiss(true);}}
         });
         web.loadUrl(LOCAL);
     }
     private String readAsset(String name)throws IOException {try(InputStream in=getAssets().open(name);ByteArrayOutputStream out=new ByteArrayOutputStream()){byte[] b=new byte[8192];int n;while((n=in.read(b))!=-1)out.write(b,0,n);return out.toString("UTF-8");}}
     private String readWebAsset(String name)throws IOException {String updated=webOta.read(name);return updated!=null?updated:readAsset(name);}
     private String readNativeUpdateScript()throws IOException {try(InputStream in=getResources().openRawResource(R.raw.native_update);ByteArrayOutputStream out=new ByteArrayOutputStream()){byte[] buffer=new byte[8192];int n;while((n=in.read(buffer))!=-1)out.write(buffer,0,n);return out.toString("UTF-8");}}
+    private String nativeUpdateScriptTags()throws IOException {
+        String bundled=readNativeUpdateScript(),updated;
+        try{updated=webOta.read("native_update.js");}catch(IOException invalid){updated=null;}
+        if(updated==null)return "<script>"+bundled+"</script>";
+        // If the remote updater fails to parse or initialize, the APK fallback
+        // remains available as a separate script, without any remote fetch.
+        return "<script>"+updated+"</script><script>setTimeout(function(){if(!window.easybookUpdateUiReady){var entry=document.getElementById('appUpdateEntry');if(entry)entry.removeAttribute('data-native-updater-ready');var dialog=document.getElementById('appUpdateDialog');if(dialog)dialog.remove();"+bundled+"}},1800);</script>";
+    }
     private void respond(JavaScriptReplyProxy reply,long generation,JSONObject value){runOnUiThread(()->{if(!destroyed&&generation==documentGeneration&&LOCAL.equals(web.getUrl()))try{reply.postMessage(value.toString());}catch(IllegalStateException ignored){}});}
     private String bounded(JSONObject args,String name,int max)throws Exception{if(!(args.get(name) instanceof String))throw new IllegalArgumentException();String s=args.getString(name);if(s.length()>max)throw new IllegalArgumentException("Value too large");return s;}
     private void openAppRelease(){runOnUiThread(()->{try{startActivity(new Intent(Intent.ACTION_VIEW,Uri.parse("https://github.com/FeoEarth/easybook/releases/latest")));}catch(ActivityNotFoundException e){notifyJs("无法打开下载页面");}});}
@@ -242,6 +251,7 @@ public class MainActivity extends Activity {
                 if(action.equals("open")){openAppRelease();return new JSONObject().put("opened",true);}
                 throw new IllegalArgumentException();}
             case "device.webOta":{String action=bounded(args,"action",8);
+                if(action.equals("uiReady")){runOnUiThread(()->{if(!destroyed&&generation==documentGeneration){updateUiReady=true;if(ready)webOta.ready();}});return new JSONObject().put("ok",true);}
                 if(action.equals("check"))return webOta.status();
                 if(action.equals("install"))return webOta.install();
                 if(action.equals("restart")){
@@ -358,7 +368,7 @@ public class MainActivity extends Activity {
                 runOnUiThread(()->{if(!destroyed && ready && generation==documentGeneration){glassGeneration=generation;if(!nativeGlass.show(args))web.evaluateJavascript("window.easybookNativeGlassFallback && window.easybookNativeGlassFallback()",null);}});
                 return new JSONObject().put("accepted",true);
             }
-            case "ui.ready":runOnUiThread(()->{if(!destroyed&&generation==documentGeneration){ready=true;webOta.ready();webOta.checkAsync();receiveShare(getIntent());}});return new JSONObject();
+            case "ui.ready":runOnUiThread(()->{if(!destroyed&&generation==documentGeneration){ready=true;if(updateUiReady)webOta.ready();webOta.checkAsync();receiveShare(getIntent());}});return new JSONObject();
             case "device.theme":{String mode=bounded(args,"value",10);if(!mode.matches("auto|light|dark"))throw new IllegalArgumentException();new DeviceActions().theme(mode);break;}
             case "device.haptic":runOnUiThread(()->web.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP));break;
             case "device.copy":new DeviceActions().copy(bounded(args,"value",100000));break;

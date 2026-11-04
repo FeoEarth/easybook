@@ -22,26 +22,31 @@ import html from './ui.mjs';
 import pdfStatic from './pdf-static.mjs';
 import nativeGlassStatic from './native-glass-static.mjs';
 import editor from './editor.mjs';
+import nativeUpdate from './native-update.mjs';
 import {attachments} from './attachments.mjs';
 import {androidVersionPolicy} from './android-version-policy.mjs';
 const headers = {'Access-Control-Allow-Origin':'*','Access-Control-Allow-Headers':'Authorization, Content-Type','Access-Control-Allow-Methods':'GET, PUT, OPTIONS','Cache-Control':'no-store','X-Content-Type-Options':'nosniff'};
 const json = (data, status=200) => Response.json(data, {status, headers});
-// Android OTA intentionally publishes only Web UI assets. Native bridge and glass
-// implementation stay bundled in the signed APK.
-async function otaManifest() {
+// Android OTA publishes Web UI and updater presentation only. Native bridge,
+// installation, and glass implementation stay bundled in the signed APK.
+async function otaManifest(v2=false) {
  const digest=async value=>Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256',new TextEncoder().encode(value)))).map(v=>v.toString(16).padStart(2,'0')).join('');
  const [htmlHash,editorHash]=await Promise.all([digest(html),digest(editor)]);
- return {schema:1,revision:htmlHash.slice(0,16)+'-'+editorHash.slice(0,16),minNativeVersionCode:68,files:[{name:'index.html',url:'/ota/index.html',sha256:htmlHash},{name:'editor.js',url:'/ota/editor.js',sha256:editorHash}]};
+ const files=[{name:'index.html',url:'/ota/index.html',sha256:htmlHash},{name:'editor.js',url:'/ota/editor.js',sha256:editorHash}];
+ if(!v2)return {schema:1,revision:htmlHash.slice(0,16)+'-'+editorHash.slice(0,16),minNativeVersionCode:68,files};
+ const updateHash=await digest(nativeUpdate);
+ files.push({name:'native_update.js',url:'/ota/native_update.js',sha256:updateHash});
+ return {schema:2,revision:htmlHash.slice(0,16)+'-'+editorHash.slice(0,16)+'-'+updateHash.slice(0,16),minNativeVersionCode:74,files};
 }
 export default {
  async scheduled(controller,env){if(await runSecurityAdmin(env))return;const results=await Promise.allSettled([cleanupUploads(env,10),runAttachmentPurges(env,10),runWorkspacePurges(env,5),maintainIdentity(env)]);if(results.some(r=>r.status==='rejected'))throw Error('Scheduled maintenance incomplete')},
  async fetch(request, env) {
   const url = new URL(request.url);
   if(request.method==='GET'&&url.pathname==='/android/version-policy.json')return Response.json(androidVersionPolicy(env),{headers:{'Cache-Control':'no-store','X-Content-Type-Options':'nosniff'}});
-  if(request.method==='GET'&&url.pathname==='/ota/manifest.json')return Response.json(await otaManifest(),{headers:{'Cache-Control':'no-store','X-Content-Type-Options':'nosniff'}});
+  if(request.method==='GET'&&url.pathname==='/ota/manifest.json')return Response.json(await otaManifest(url.searchParams.get('v')==='2'),{headers:{'Cache-Control':'no-store','X-Content-Type-Options':'nosniff'}});
   // OTA resources are checksum-verified bytes, not browser documents: prevent
   // intermediary HTML/JS rewriting or stale transformed representations.
-  if(request.method==='GET'&&(url.pathname==='/ota/index.html'||url.pathname==='/ota/editor.js'))return new Response(url.pathname.endsWith('.html')?html:editor,{headers:{'Content-Type':'application/octet-stream','Cache-Control':'no-store, no-transform','X-Content-Type-Options':'nosniff'}});
+  if(request.method==='GET'&&(url.pathname==='/ota/index.html'||url.pathname==='/ota/editor.js'||url.pathname==='/ota/native_update.js'))return new Response(url.pathname==='/ota/index.html'?html:url.pathname==='/ota/editor.js'?editor:nativeUpdate,{headers:{'Content-Type':'application/octet-stream','Cache-Control':'no-store, no-transform','X-Content-Type-Options':'nosniff'}});
   if(url.pathname.startsWith('/api/')||identityPath(url.pathname)){try{await requireRestoreAccess(env)}catch{return json({error:'Security recovery in progress'},503)}}
   if(url.pathname==='/.well-known/assetlinks.json'&&identityEnabled(env)&&url.origin===IDENTITY_ORIGIN&&request.method==='GET')return Response.json(androidAssetLinks,{headers:{'Cache-Control':'public, max-age=3600','X-Content-Type-Options':'nosniff'}});
   // Deliberately unset on production until the coordinated identity cutover.

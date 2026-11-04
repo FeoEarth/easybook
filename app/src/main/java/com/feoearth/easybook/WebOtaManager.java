@@ -17,7 +17,8 @@ import java.util.concurrent.Executors;
 /** Transactional, allowlisted Web-only updates; never replaces the native bridge. */
 final class WebOtaManager {
     private static final String ORIGIN="https://easybook.loonxy.com";
-    private static final String[] FILES={"index.html","editor.js"};
+    private static final String[] FILES={"index.html","editor.js","native_update.js"};
+    private static final String REVISION="[a-f0-9]{16}-[a-f0-9]{16}-[a-f0-9]{16}";
     static final class OtaException extends IOException {
         final String code;
         OtaException(String code,String message){super(message);this.code=code;}
@@ -34,17 +35,24 @@ final class WebOtaManager {
         root=new File(context.getFilesDir(),"web-ota");
         prefs=context.getSharedPreferences("web-ota",Context.MODE_PRIVATE);
         String revision=prefs.getString("active","");
+        // Pre-v2 slots have no updater UI asset. Return to the APK's complete
+        // fallback bundle without deleting user data or the old slot on disk.
+        if(revision.matches("[a-f0-9]{16}-[a-f0-9]{16}")){
+            prefs.edit().remove("active").remove("previous").putBoolean("bootPending",false).commit();
+            revision="";
+        }
         File slot=new File(root,revision);
-        current=revision.matches("[a-f0-9]{16}-[a-f0-9]{16}")&&complete(slot)?slot:null;
+        current=revision.matches(REVISION)&&complete(slot)?slot:null;
         // A failed startup must not repeatedly load a broken Web bundle.
         boolean failedBoot=prefs.getBoolean("bootPending",false);
         if(failedBoot)rollback();
         // Restoring a previously working slot must not trigger a second rollback.
         if(current!=null&&!failedBoot)prefs.edit().putBoolean("bootPending",true).apply();
     }
-    private static boolean complete(File dir){return dir.isDirectory()&&new File(dir,FILES[0]).isFile()&&new File(dir,FILES[1]).isFile();}
+    private static boolean complete(File dir){if(!dir.isDirectory())return false;for(String name:FILES)if(!new File(dir,name).isFile())return false;return true;}
     synchronized String read(String name)throws IOException {
-        if(!name.equals(FILES[0])&&!name.equals(FILES[1]))throw new IOException("Not OTA eligible");
+        boolean eligible=false;for(String file:FILES)if(name.equals(file)){eligible=true;break;}
+        if(!eligible)throw new IOException("Not OTA eligible");
         File dir=current;
         if(dir==null)return null;
         File file=new File(dir,name);
@@ -59,7 +67,7 @@ final class WebOtaManager {
         String failed=prefs.getString("active","");
         String previous=prefs.getString("previous","");
         File slot=new File(root,previous);
-        current=previous.matches("[a-f0-9]{16}-[a-f0-9]{16}")&&complete(slot)?slot:null;
+        current=previous.matches(REVISION)&&complete(slot)?slot:null;
         prefs.edit().putString("active",current==null?"":previous).putString("rejected",failed).remove("previous").putBoolean("bootPending",false).apply();
     }
     void checkAsync(){executor.execute(()->{try{install();}catch(Exception e){android.util.Log.w("EasybookWebOTA","Automatic update skipped",e);}});}
@@ -71,7 +79,8 @@ final class WebOtaManager {
             String[] hashes=new String[FILES.length];
             for(int i=0;i<FILES.length;i++){
                 MessageDigest digest=MessageDigest.getInstance("SHA-256");
-                try(InputStream in=context.getAssets().open(FILES[i])){
+                try(InputStream in=FILES[i].equals("native_update.js")
+                        ?context.getResources().openRawResource(R.raw.native_update):context.getAssets().open(FILES[i])){
                     byte[] buffer=new byte[8192];int n;
                     while((n=in.read(buffer))!=-1)digest.update(buffer,0,n);
                 }
@@ -106,8 +115,8 @@ final class WebOtaManager {
         return statusFor(value);
     }
     private static JSONObject manifest()throws Exception {
-        JSONObject value=new JSONObject(new String(get("/ota/manifest.json",4096),StandardCharsets.UTF_8));
-        if(value.getInt("schema")!=1||!value.getString("revision").matches("[a-f0-9]{16}-[a-f0-9]{16}"))throw new OtaException("OTA_MANIFEST","热更新清单格式不正确");
+        JSONObject value=new JSONObject(new String(get("/ota/manifest.json?v=2",4096),StandardCharsets.UTF_8));
+        if(value.getInt("schema")!=2||!value.getString("revision").matches(REVISION))throw new OtaException("OTA_MANIFEST","热更新清单格式不正确");
         JSONArray files=value.getJSONArray("files");
         if(files.length()!=FILES.length)throw new OtaException("OTA_MANIFEST","热更新资源清单不完整");
         String[] hashes=new String[FILES.length];
@@ -117,7 +126,7 @@ final class WebOtaManager {
             if(!FILES[i].equals(entry.getString("name"))||!("/ota/"+FILES[i]).equals(entry.getString("url"))||!hashes[i].matches("[a-f0-9]{64}"))
                 throw new OtaException("OTA_MANIFEST","热更新资源清单无效");
         }
-        if(!value.getString("revision").equals(hashes[0].substring(0,16)+"-"+hashes[1].substring(0,16)))
+        if(!value.getString("revision").equals(hashes[0].substring(0,16)+"-"+hashes[1].substring(0,16)+"-"+hashes[2].substring(0,16)))
             throw new OtaException("OTA_MANIFEST","热更新版本指纹不一致");
         return value;
     }
@@ -140,7 +149,7 @@ final class WebOtaManager {
     }
     private static String sha256(byte[] bytes)throws Exception {return hex(MessageDigest.getInstance("SHA-256").digest(bytes));}
     private void downloadUpdate(JSONObject manifest)throws Exception {
-        if(manifest.getInt("schema")!=1||manifest.getInt("minNativeVersionCode")>BuildConfig.VERSION_CODE)return;
+        if(manifest.getInt("schema")!=2||manifest.getInt("minNativeVersionCode")>BuildConfig.VERSION_CODE)return;
         String revision=manifest.getString("revision");
         String active=prefs.getString("active","");
         if((active.isEmpty()&&bundledMatches(manifest))||revision.equals(active)||revision.equals(prefs.getString("rejected","")))return;
@@ -148,7 +157,7 @@ final class WebOtaManager {
         Map<String,byte[]> bytes=new HashMap<>();
         for(int i=0;i<entries.length();i++){
             JSONObject entry=entries.getJSONObject(i);String name=entry.getString("name"),path=entry.getString("url");
-            byte[] data=get(path,name.equals("index.html")?4_000_000:8_000_000);
+            byte[] data=get(path,name.equals("index.html")?4_000_000:name.equals("editor.js")?8_000_000:1_000_000);
             if(!sha256(data).equals(entry.getString("sha256")))throw new OtaException("OTA_CHECKSUM","热更新资源 SHA-256 校验失败（"+name+"）");
             bytes.put(name,data);
         }

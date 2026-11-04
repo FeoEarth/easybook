@@ -203,8 +203,12 @@
     return true;
   }
 
-  if (!activate()) {
-    const observer = new MutationObserver(() => { if (activate()) observer.disconnect(); });
-    observer.observe(document.documentElement, {childList:true, subtree:true});
+  function updateUiReady(){
+    window.easybookUpdateUiReady=true;
+    void bridge.call('device.webOta',{action:'uiReady'}).catch(()=>{});
   }
+  if (!activate()) {
+    const observer = new MutationObserver(() => { if (activate()) {observer.disconnect();updateUiReady();} });
+    observer.observe(document.documentElement, {childList:true, subtree:true});
+  } else updateUiReady();
 })();

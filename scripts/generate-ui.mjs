@@ -3,6 +3,10 @@ writeFileSync('worker/ui.mjs','export default '+JSON.stringify(readFileSync('app
 
 writeFileSync('worker/editor.mjs','export default '+JSON.stringify(readFileSync('app/src/main/assets/editor.js','utf8'))+';\n');
 
+// Android updater presentation is OTA-eligible, while the APK keeps the same
+// script in res/raw as the offline recovery implementation.
+writeFileSync('worker/native-update.mjs','export default '+JSON.stringify(readFileSync('app/src/main/res/raw/native_update.js','utf8'))+';\n');
+
 
 // Ship the current, unchanged PDF UI alongside HTML; keep vendor assets in PDF_ASSETS.
 const pdf={};for(const name of ['reader.mjs','glass.mjs','reader.css'])pdf['/pdf/'+name]=readFileSync('app/src/main/assets/pdf/'+name,'utf8');
