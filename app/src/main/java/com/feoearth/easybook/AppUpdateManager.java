@@ -31,6 +31,7 @@ final class AppUpdateManager {
     interface Listener { void changed(JSONObject state); }
 
     private static final String API = "https://api.github.com/repos/FeoEarth/easybook/releases/latest";
+    private static final String POLICY = "https://easybook.loonxy.com/android/version-policy.json";
     private static final String RELEASE_PREFIX = "https://github.com/FeoEarth/easybook/releases/download/";
     private static final Pattern CODE = Pattern.compile("(?m)^- APK versionCode: ([1-9][0-9]{0,9})[ \\t]*$");
     private static final int MAX_METADATA = 262144;
@@ -45,6 +46,9 @@ final class AppUpdateManager {
     private String error = "";
     private long bytes;
     private volatile boolean cancelRequested;
+    private int minSupportedVersionCode;
+    private String compatibilityReason="";
+    private boolean compatibilityChecked;
 
     private static final class Release {
         final String name, tag, notes, url, sha, apkUrl;
@@ -110,6 +114,8 @@ final class AppUpdateManager {
     }
 
     JSONObject check() throws Exception {
+        // Policy availability must not prevent a normal GitHub Release check.
+        try { checkVersionPolicy(); } catch(Exception ignored) {}
         Release candidate=parseRelease(readRelease());
         synchronized(lock) {
             if("downloading".equals(stage))throw new IOException("Download in progress");
@@ -135,7 +141,11 @@ final class AppUpdateManager {
             try {
                 result.put("current",BuildConfig.VERSION_NAME)
                     .put("currentCode",BuildConfig.VERSION_CODE)
-                    .put("stage",stage).put("error",error).put("downloaded",bytes);
+                    .put("stage",stage).put("error",error).put("downloaded",bytes)
+                    .put("compatibilityChecked",compatibilityChecked)
+                    .put("minSupportedVersionCode",minSupportedVersionCode)
+                    .put("compatibilityRequired",compatibilityChecked&&BuildConfig.VERSION_CODE<minSupportedVersionCode)
+                    .put("compatibilityReason",compatibilityReason);
                 if(release!=null)result.put("latest",release.name).put("latestCode",release.code)
                     .put("tag",release.tag).put("notes",release.notes).put("size",release.size)
                     .put("url",release.url)
@@ -144,6 +154,36 @@ final class AppUpdateManager {
             }catch(Exception ignored){}
             return result;
         }
+    }
+
+    JSONObject checkVersionPolicy() throws Exception {
+        HttpURLConnection connection=(HttpURLConnection)new URL(POLICY).openConnection();
+        connection.setConnectTimeout(8000);
+        connection.setReadTimeout(10000);
+        connection.setInstanceFollowRedirects(false);
+        connection.setRequestProperty("Accept","application/json");
+        try {
+            if(connection.getResponseCode()!=200)throw new IOException("Compatibility policy unavailable");
+            if(connection.getContentLengthLong()>4096)throw new IOException("Compatibility policy too large");
+            java.io.ByteArrayOutputStream out=new java.io.ByteArrayOutputStream();
+            try(InputStream in=connection.getInputStream()){
+                byte[] buffer=new byte[1024];int n;
+                while((n=in.read(buffer))!=-1){if(out.size()+n>4096)throw new IOException("Compatibility policy too large");out.write(buffer,0,n);}
+            }
+            JSONObject policy=new JSONObject(out.toString("UTF-8"));
+            if(policy.getInt("schema")!=1)throw new IOException("Unsupported compatibility policy");
+            long minimum=policy.getLong("minSupportedVersionCode");
+            if(minimum<0||minimum>Integer.MAX_VALUE)throw new IOException("Invalid compatibility version");
+            String reason=policy.optString("reason","").trim();
+            if(reason.length()>200)throw new IOException("Invalid compatibility message");
+            synchronized(lock){
+                minSupportedVersionCode=(int)minimum;
+                compatibilityReason=reason.isEmpty()?"当前版本已不再兼容必要服务，请更新 Easybook。":reason;
+                compatibilityChecked=true;
+            }
+            notifyChanged();
+            return state();
+        }finally{connection.disconnect();}
     }
 
     private File apkFile(int code) throws IOException {

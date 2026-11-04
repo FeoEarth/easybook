@@ -3,7 +3,7 @@
   // Android-only screen, added after the shared notes/settings page initializes.
   const bridge = window.NativeStore;
   if (!bridge) return;
-  let sheet, state = null, checking = false, speed = 0, lastBytes = 0, lastTick = 0, notice = '';
+  let sheet, state = null, checking = false, speed = 0, lastBytes = 0, lastTick = 0, notice = '', compatibilityPrompted = false;
   const id = value => document.getElementById(value);
   const size = value => ((Number(value) || 0) / 1048576).toFixed(1) + ' MB';
 
@@ -24,6 +24,9 @@
     #appUpdateDialog .update-actions button{border-radius:19px;background:var(--selected);font-weight:600}
     #appUpdateDialog .update-actions button.primary{background:var(--accent);color:white}
     #appUpdateDialog .update-message{font-size:13px;color:var(--muted);min-height:20px;line-height:1.5}
+    #appUpdateDialog .update-required{padding:12px 14px;border-radius:15px;background:var(--selected);font-size:13px;line-height:1.55;margin:10px 0}
+    #appUpdateDialog .update-required strong{display:block;font-size:14px;margin-bottom:3px}
+    #appUpdateDialog .update-close.local-mode{width:auto;font-size:13px;padding:6px 12px}
     #appUpdateDialog .web-ota-panel{margin-top:18px;padding-top:16px;border-top:1px solid var(--border)}
     #appUpdateDialog .web-ota-panel h3{font-size:16px;margin:0 0 8px}
     #appUpdateDialog .web-ota-panel p{font-size:13px;color:var(--muted);line-height:1.5;overflow-wrap:anywhere}
@@ -40,12 +43,21 @@
     }
     if (!sheet) return;
     const status = id('appUpdateStatus');
-    const available = !!state?.updateAvailable;
+    const required = !!state?.compatibilityRequired;
+    const compatibleRelease = !required || Number(state?.latestCode || 0) >= Number(state?.minSupportedVersionCode || 0);
+    const available = !!state?.updateAvailable && compatibleRelease;
     const stage = state?.stage || 'idle';
     const downloading = stage === 'downloading';
     const current = state?.current || '';
     const latest = state?.latest || '';
-    id('appUpdateVersion').textContent = checking ? '正在检查更新…' : latest
+    const requirement = id('appUpdateCompatibility');
+    requirement.hidden = !required;
+    if(required)requirement.textContent = '最低兼容构建号：'+state.minSupportedVersionCode+'。'+(state.compatibilityReason||'请安装新版 Easybook。')+' 本机笔记和备份仍可访问。';
+    const close=id('appUpdateClose');
+    close.textContent=required?'本机使用':'×';
+    close.classList.toggle('local-mode',required);
+    close.setAttribute('aria-label',required?'继续访问本机数据':'关闭更新窗口');
+    id('appUpdateVersion').textContent = required?'需要更新 Easybook':checking ? '正在检查更新…' : latest
       ? (available ? '发现新版本 ' : '当前已是最新版本 ') + latest : '检查更新';
     id('appUpdateBuild').textContent = latest
       ? '当前 ' + current + '（' + state.currentCode + '） · 最新 ' + latest + '（' + state.latestCode + '）'
@@ -68,12 +80,13 @@
     else if (stage === 'failed') message = state.error || '下载失败，请重试。';
     else if (available) message = 'APK ' + size(state.size) + ' · 由 Android 系统确认安装。';
     else if (latest) message = '无需更新。';
-    id('appUpdateMessage').textContent = notice || message;
+    id('appUpdateMessage').textContent = notice || (required&&!downloading&&stage!=='ready'?'当前构建号低于最低兼容要求。'+(available?'请安装以下正式更新。':latest&&!compatibleRelease?'当前公开发行版尚未达到兼容门槛，请稍后再检查。':'检查新版或前往发行版页面下载。'):message);
     id('appUpdateCancel').hidden = !downloading;
     id('appUpdateCheck').hidden = checking || downloading;
     id('appUpdateDownload').hidden = checking || !available || downloading || stage === 'ready';
     id('appUpdateDownload').textContent = stage === 'failed' ? '重新下载' : '下载更新';
     id('appUpdateInstall').hidden = !available || stage !== 'ready';
+    id('appUpdateOpen').hidden = !required || available;
   }
 
   window.easybookUpdateProgress = data => {
@@ -93,11 +106,12 @@
     sheet.id = 'appUpdateDialog'; sheet.setAttribute('aria-labelledby', 'appUpdateTitle');
     sheet.innerHTML = '<div class="update-heading"><h2 id="appUpdateTitle">Easybook 更新</h2><button id="appUpdateClose" class="update-close" aria-label="关闭更新窗口">×</button></div>'
       + '<div id="appUpdateVersion" class="update-version">检查更新</div><div id="appUpdateBuild" class="update-subtitle"></div>'
+      + '<div id="appUpdateCompatibility" class="update-required" role="alert" hidden></div>'
       + '<div id="appUpdateMessage" class="update-message" aria-live="polite"></div>'
       + '<progress id="appUpdateProgress" max="100" value="0" hidden></progress><div id="appUpdateNotes" class="update-notes" hidden></div>'
       + '<div class="update-actions"><button id="appUpdateCancel" hidden>取消下载</button><button id="appUpdateCheck">重新检查</button>'
       + '<button id="appUpdateDownload" class="primary" hidden>下载更新</button>'
-      + '<button id="appUpdateInstall" class="primary" hidden>安装更新</button></div>'
+      + '<button id="appUpdateInstall" class="primary" hidden>安装更新</button><button id="appUpdateOpen" class="primary" hidden>打开发行版</button></div>'
       + '<section class="web-ota-panel"><h3>Web 热更新</h3><p id="webOtaStatus" aria-live="polite">点击检查以获取最新界面资源。</p>'
       + '<div class="update-actions"><button id="webOtaCheck">检查热更新</button><button id="webOtaInstall" class="primary" hidden>下载热更新</button><button id="webOtaRestart" class="primary" hidden>重启并应用</button></div></section>';
     document.body.append(sheet);
@@ -114,6 +128,7 @@
     }
     entry.onclick = () => {if (!sheet.open) sheet.showModal(); void check();};
     id('appUpdateCheck').onclick = () => void check();
+    id('appUpdateOpen').onclick = () => void bridge.call('device.update',{action:'open'}).catch(e=>{notice='无法打开发行版：'+(e?.message||'请重试');render();});
     const otaStatus=id('webOtaStatus'),otaCheck=id('webOtaCheck'),otaInstall=id('webOtaInstall'),otaRestart=id('webOtaRestart');
     async function checkWebOta(){
       otaCheck.disabled=true;otaStatus.textContent='正在检查 Web 资源版本…';otaInstall.hidden=true;
@@ -176,6 +191,15 @@
     // Shared Web UI's static version footer is not the installed APK's build version.
     // The updater dialog always uses BuildConfig values returned by the native bridge.
     void bridge.call('device.update', {action:'state'}).then(render).catch(() => {});
+    // A failed or offline policy check never prevents local notes from opening.
+    void bridge.call('device.update',{action:'policy'}).then(result=>{
+      render(result);
+      if(result.compatibilityRequired&&!compatibilityPrompted){
+        compatibilityPrompted=true;
+        if(!sheet.open)sheet.showModal();
+        void check();
+      }
+    }).catch(()=>{});
     return true;
   }
 

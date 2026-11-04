@@ -23,6 +23,7 @@ import pdfStatic from './pdf-static.mjs';
 import nativeGlassStatic from './native-glass-static.mjs';
 import editor from './editor.mjs';
 import {attachments} from './attachments.mjs';
+import {androidVersionPolicy} from './android-version-policy.mjs';
 const headers = {'Access-Control-Allow-Origin':'*','Access-Control-Allow-Headers':'Authorization, Content-Type','Access-Control-Allow-Methods':'GET, PUT, OPTIONS','Cache-Control':'no-store','X-Content-Type-Options':'nosniff'};
 const json = (data, status=200) => Response.json(data, {status, headers});
 // Android OTA intentionally publishes only Web UI assets. Native bridge and glass
@@ -36,6 +37,7 @@ export default {
  async scheduled(controller,env){if(await runSecurityAdmin(env))return;const results=await Promise.allSettled([cleanupUploads(env,10),runAttachmentPurges(env,10),runWorkspacePurges(env,5),maintainIdentity(env)]);if(results.some(r=>r.status==='rejected'))throw Error('Scheduled maintenance incomplete')},
  async fetch(request, env) {
   const url = new URL(request.url);
+  if(request.method==='GET'&&url.pathname==='/android/version-policy.json')return Response.json(androidVersionPolicy(env),{headers:{'Cache-Control':'no-store','X-Content-Type-Options':'nosniff'}});
   if(request.method==='GET'&&url.pathname==='/ota/manifest.json')return Response.json(await otaManifest(),{headers:{'Cache-Control':'no-store','X-Content-Type-Options':'nosniff'}});
   // OTA resources are checksum-verified bytes, not browser documents: prevent
   // intermediary HTML/JS rewriting or stale transformed representations.
