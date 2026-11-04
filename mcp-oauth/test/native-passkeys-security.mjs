@@ -54,6 +54,6 @@ p=await options('login');sql.prepare('UPDATE account_native_passkey_challenges S
 p=await options('login');sql.prepare('UPDATE account_passkeys SET revoked_at=? WHERE id=?').run(Date.now(),k.id);assert.equal((await verify('login',p,authentication(p.options,k,handle,2))).status,400);assert.equal(await nativeSession(new Request(origin,{headers:{Authorization:'Easybook-Session '+secondToken}}),env),null,'credential revocation closes derived sessions');
 assert.equal((await request('login/options',{challenge:await s256(verifier),state},null,{Origin:origin})).status,403,'browser cannot invoke native ceremony');
 assert.deepEqual(androidAssetLinks[0].target.sha256_cert_fingerprints.map(value=>value.replaceAll(':','').toLowerCase()),[ANDROID_SIGNING_SHA256,ANDROID_RELEASE_SIGNING_SHA256]);
-assert.equal(ANDROID_TRUSTED_APP_ORIGINS.length,2);
+assert.equal(ANDROID_TRUSTED_APP_ORIGINS.length,1);
 console.log('PASS native Passkeys: actual signed Android-origin WebAuthn signup/login/enrollment; application/RP/challenge/UV/signature/handle checks; PKCE/replay/expiry; revoked credential/session denial; stable account identity; signing association consistency.');
 
