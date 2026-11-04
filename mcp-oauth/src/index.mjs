@@ -277,9 +277,15 @@ const providerOptions={
  tokenExchangeCallback:async options=>{
   if(modernWorkspaces(options.env)&&!options.props?.accountId)throw new OAuthError('invalid_grant',{description:'Authorize with your Easybook account at the canonical domain'});
   if(options.props?.accountId){
+   const started=Date.now();
    const policy=await policyFor(options.env,options.props,options.clientId,options.requestedScope);
    if(!policy||!policy.scopes.length)throw new OAuthError('invalid_grant',{description:'Authorization revoked'});
-   await options.env.DB.prepare('UPDATE oauth_grants SET provider_grant_id=? WHERE id=? AND account_id=? AND revoked_at IS NULL').bind(options.grantId,policy.id,options.userId).run();
+   // provider_grant_id is stable for a grant. Only bind it on the initial code
+   // exchange; refreshing the same grant must not perform another D1 write.
+   if(options.grantType==='authorization_code')
+    await options.env.DB.prepare('UPDATE oauth_grants SET provider_grant_id=? WHERE id=? AND account_id=? AND revoked_at IS NULL').bind(options.grantId,policy.id,options.userId).run();
+   if(options.grantType==='refresh_token')
+    console.info(JSON.stringify({event:'oauth_refresh_policy_checked',duration_ms:Date.now()-started}));
    return {accessTokenScope:policy.scopes};
   }
  },
