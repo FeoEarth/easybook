@@ -182,7 +182,7 @@ public class MainActivity extends Activity {
                 if (LOCAL.equals(u.toString())) {
                     try {
                         boolean legacy=false;
-                        String html=readWebAsset("index.html");html=html.replace("</head>","<script>localStorage.setItem(\"easybook-fast-mode\",\""+getPreferences(MODE_PRIVATE).getBoolean("fastMode",false)+"\");</script></head>");if(!legacy)html=html.replace("connect-src 'self' https://easybook-sync.1902521952.workers.dev","connect-src 'self'");
+                        String html=readWebAsset("index.html");boolean glassAvailable=BuildConfig.NATIVE_GLASS_PROTOTYPE&&android.os.Build.VERSION.SDK_INT>=33;html=html.replace("</head>","<script>localStorage.setItem(\"easybook-fast-mode\",\""+getPreferences(MODE_PRIVATE).getBoolean("fastMode",false)+"\");window.EasybookNativeGlassFallback="+(!glassAvailable)+";</script></head>");if(!legacy)html=html.replace("connect-src 'self' https://easybook-sync.1902521952.workers.dev","connect-src 'self'");
                         html=html.replace("<script>","<script>"+(legacy?"window.EasybookRollbackMode=true;":"")+readAsset("native-api.js")+"</script><script>");
                          html=html.replace("</body>",nativeUpdateScriptTags()+"</body>");
                         if(BuildConfig.NATIVE_GLASS_PROTOTYPE && android.os.Build.VERSION.SDK_INT>=33&&!getPreferences(MODE_PRIVATE).getBoolean("fastMode",false))html=html.replace("</body>","<script>"+readAsset("native-glass/dock-surface.js")+";"+readAsset("native-glass/toolbar-surface.js")+";"+readAsset("native-glass/format-surface.js")+";"+readAsset("native-glass/move-surface.js")+";"+readAsset("native-glass/sync-surface.js")+";"+readAsset("native-glass/menu.js")+"</script></body>");
