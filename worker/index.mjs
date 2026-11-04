@@ -52,7 +52,7 @@ export default {
   // Deliberately unset on production until the coordinated identity cutover.
   const identityV2=env.WORKSPACE_IDENTITY_V2==='true';
   if(identityEnabled(env)&&url.origin===IDENTITY_ORIGIN&&identityPath(url.pathname)){if(!env.IDENTITY_SERVICE)return json({error:'Identity service unavailable'},503);return env.IDENTITY_SERVICE.fetch(request);}
-  if(url.pathname==='/api/turnstile'&&request.method==='GET')return turnstileConfig(env);
+  if(url.pathname==='/api/turnstile'&&['GET','OPTIONS'].includes(request.method))return turnstileConfig(env,request);
   if(identityV2&&url.pathname.startsWith('/api/workspaces'))return workspaceAPI(request,env);
   if(identityV2&&url.pathname.startsWith('/api/ai/')){
    try{

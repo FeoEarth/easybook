@@ -15,7 +15,10 @@ export async function verifyWorkspaceCreation(request,env,token,fetcher=env.TURN
  if(result?.success!==true||result.action!==ACTION||!hostnames.has(result.hostname))deny();
 }
 
-export function turnstileConfig(env){
+export function turnstileConfig(env,request){
  const sitekey=typeof env.TURNSTILE_SITE_KEY==='string'&&!env.TURNSTILE_SITE_KEY.startsWith('REPLACE_')?env.TURNSTILE_SITE_KEY:'';
- return Response.json({sitekey,action:ACTION},{status:sitekey?200:503,headers:{'Cache-Control':'no-store','X-Content-Type-Options':'nosniff'}});
+ const origin=request?.headers.get('Origin')||'',allowed=origin==='https://appassets.androidplatform.net';
+ const headers={'Cache-Control':'no-store','X-Content-Type-Options':'nosniff',...(allowed?{'Access-Control-Allow-Origin':origin,'Access-Control-Allow-Methods':'GET, OPTIONS','Vary':'Origin'}:{})};
+ if(request?.method==='OPTIONS')return new Response(null,{status:allowed?204:403,headers});
+ return Response.json({sitekey,action:ACTION},{status:sitekey?200:503,headers});
 }

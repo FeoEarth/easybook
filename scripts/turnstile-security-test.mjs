@@ -15,4 +15,6 @@ await assert.rejects(()=>verifyWorkspaceCreation(request,base,''),error=>error.c
 await assert.rejects(()=>verifyWorkspaceCreation(request,{...base,TURNSTILE_VERIFY:{fetch:async()=>{throw Error('network')}}},'token'),error=>error.code==='turnstile_verification_failed');
 assert.equal(turnstileConfig({TURNSTILE_SITE_KEY:'REPLACE_WITH_TURNSTILE_SITE_KEY'}).status,503);
 assert.equal(turnstileConfig({TURNSTILE_SITE_KEY:'1x00000000000000000000AA'}).status,200);
+const corsRequest=new Request('https://easybook.loonxy.com/api/turnstile',{headers:{Origin:'https://appassets.androidplatform.net'}});
+assert.equal(turnstileConfig({TURNSTILE_SITE_KEY:'1x00000000000000000000AA'},corsRequest).headers.get('Access-Control-Allow-Origin'),'https://appassets.androidplatform.net');
 console.log('PASS: Turnstile workspace gate validates token, action and hostname and fails closed.');

@@ -66,8 +66,9 @@ export async function workspaceAPI(request,env){
     const input=await inputBody(request);
     if(principal?.kind==='key')problem('use_account_or_anonymous_creation',400);
     if(input.bootstrapKey!==undefined&&(!/^[a-f0-9]{64}$/.test(input.bootstrapKey)||principal))problem('invalid_bootstrap',400);
+    if(input.workspaceId!==undefined&&(!/^[a-f0-9]{64}$/.test(input.workspaceId)||principal||!input.bootstrapKey))problem('invalid_workspace_id',400);
     if(!principal)await verifyWorkspaceCreation(request,env,input.turnstileToken);
-    return reply(await createWorkspace(env,input.name,principal,input.bootstrapKey),201);
+    return reply(await createWorkspace(env,input.name,principal,input.bootstrapKey,input.workspaceId),201);
    }
    problem('method_not_allowed',405);
   }

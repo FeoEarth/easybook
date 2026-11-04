@@ -90,6 +90,11 @@ public final class NoteRepository extends SQLiteOpenHelper {
             bindWorkspaceIdentity("space:"+ref,identity);setSetting("active",ref);setSetting("account-workspace:space:"+ref,"");setSetting("account-placeholder:space:"+ref,"");db.setTransactionSuccessful();
         }finally{db.endTransaction();}
     }
+    synchronized JSONObject createLocalWorkspace(String name)throws Exception{
+        if(name==null||name.trim().isEmpty()||name.trim().length()>60)throw new IllegalArgumentException("Invalid workspace name");
+        String credential=newKey();JSONObject workspace=new JSONObject().put("id",newKey()).put("name",name.trim()).put("mode","personal").put("role","manager");
+        pairWorkspace(credential,workspace,false);setSetting("workspace-pending:"+workspace.getString("id"),"1");return new JSONObject().put("key",credential).put("workspace",workspace);
+    }
     synchronized void activateAccountWorkspace(JSONObject identity)throws Exception{
         String id=identity.getString("id"),ref=null;if(!id.matches("[a-f0-9]{64}")||!Arrays.asList("personal","shared").contains(identity.optString("mode")))throw new SecurityException("Invalid workspace");
         SQLiteDatabase db=getWritableDatabase();db.beginTransaction();try{
@@ -103,7 +108,7 @@ public final class NoteRepository extends SQLiteOpenHelper {
     synchronized JSONObject cachedActiveWorkspace()throws Exception{
         String ref=spaceId(activeSpace());
         try(Cursor c=getReadableDatabase().rawQuery("SELECT workspace_id,name,mode,role FROM workspace_identity WHERE local_id=?",new String[]{ref})){
-            return c.moveToFirst()?new JSONObject().put("id",c.getString(0)).put("name",c.getString(1)).put("mode",c.getString(2)).put("role",c.getString(3)):null;
+            if(!c.moveToFirst())return null;String id=c.getString(0);return new JSONObject().put("id",id).put("name",c.getString(1)).put("mode",c.getString(2)).put("role",c.getString(3)).put("pendingRegistration",!setting("workspace-pending:"+id,"").isEmpty());
         }
     }
     synchronized JSONArray cachedWorkspaces()throws Exception{
@@ -112,7 +117,7 @@ public final class NoteRepository extends SQLiteOpenHelper {
             while(c.moveToNext())rows.put(c.getString(0),new JSONObject().put("id",c.getString(0)).put("name",c.getString(1)).put("mode",c.getString(2)).put("role",c.getString(3)));
         }
         try(Cursor c=getReadableDatabase().rawQuery("SELECT workspace_id,name,mode,role FROM workspace_identity WHERE NOT EXISTS(SELECT 1 FROM settings s WHERE s.name='workspace-unavailable:'||workspace_id AND s.value='1') ORDER BY name COLLATE NOCASE,workspace_id",null)){
-            while(c.moveToNext())rows.putIfAbsent(c.getString(0),new JSONObject().put("id",c.getString(0)).put("name",c.getString(1)).put("mode",c.getString(2)).put("role",c.getString(3)));
+            while(c.moveToNext()){String id=c.getString(0);rows.putIfAbsent(id,new JSONObject().put("id",id).put("name",c.getString(1)).put("mode",c.getString(2)).put("role",c.getString(3)).put("pendingRegistration",!setting("workspace-pending:"+id,"").isEmpty()));}
         }
         JSONArray result=new JSONArray();for(JSONObject row:rows.values())result.put(row);
         return result;

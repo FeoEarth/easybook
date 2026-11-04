@@ -26,8 +26,8 @@ final class WorkspaceClient {
   String local=db.activeSpace();if(!db.setting("account-workspace:"+local,"").isEmpty())return new JSONObject().put("id",db.setting("account-workspace:"+local,""));
   String credential=db.credential(local);JSONObject identity;
   try{identity=request("/api/workspaces",null,credential,false).getJSONArray("workspaces").getJSONObject(0);}
-  catch(NativeSync.HttpsTransport.HttpFailure error){if(error.status==404)return null;if(error.status!=401)throw error;if(turnstileToken==null)throw error;try{identity=request("/api/workspaces",new JSONObject().put("name","我的工作区").put("bootstrapKey",credential).put("turnstileToken",turnstileToken),null,false).getJSONObject("workspace");}catch(Exception failure){throw error;}}
-  db.bindWorkspaceIdentity(local,identity);return identity;
+  catch(NativeSync.HttpsTransport.HttpFailure error){if(error.status==404)return null;if(error.status!=401)throw error;if(turnstileToken==null)throw error;JSONObject cached=db.cachedActiveWorkspace();if(cached==null){cached=new JSONObject().put("id",NoteRepository.newKey()).put("name","我的工作区").put("mode","personal").put("role","manager");db.bindWorkspaceIdentity(local,cached);db.setSetting("workspace-pending:"+cached.getString("id"),"1");}try{identity=request("/api/workspaces",new JSONObject().put("name",cached.getString("name")).put("workspaceId",cached.getString("id")).put("bootstrapKey",credential).put("turnstileToken",turnstileToken),null,false).getJSONObject("workspace");}catch(Exception failure){throw error;}}
+  db.bindWorkspaceIdentity(local,identity);db.setSetting("workspace-pending:"+identity.getString("id"),"");return identity;
  }
  static JSONObject perform(NoteRepository db,String action,JSONObject args)throws Exception{
   if(action.equals("bootstrap")){try{ensure(db,args.optString("turnstileToken",null));return new JSONObject().put("ready",true);}catch(NativeSync.HttpsTransport.HttpFailure error){if(error.status==401&&!args.has("turnstileToken"))return new JSONObject().put("turnstileRequired",true);throw error;}}
@@ -35,7 +35,9 @@ final class WorkspaceClient {
    JSONObject current=db.cachedActiveWorkspace();JSONArray list=db.cachedWorkspaces();boolean cached=false,authoritative=false,activeKeyVerified=false,currentDenied=false;
    try{JSONObject refreshed=ensure(db);if(refreshed!=null&&refreshed.has("name")){current=refreshed;activeKeyVerified=true;}else if(refreshed==null&&current!=null){currentDenied=true;db.markWorkspaceUnavailable(current.getString("id"));list=db.cachedWorkspaces();}}
    catch(NativeSync.HttpsTransport.HttpFailure denied){
-    if(denied.status==401||denied.status==403||denied.status==404){currentDenied=true;if(current!=null)db.markWorkspaceUnavailable(current.getString("id"));list=db.cachedWorkspaces();}
+    boolean pending=current!=null&&!db.setting("workspace-pending:"+current.optString("id"),"").isEmpty();
+    if((denied.status==401&&pending)){cached=true;list=db.cachedWorkspaces();}
+    else if(denied.status==401||denied.status==403||denied.status==404){currentDenied=true;if(current!=null)db.markWorkspaceUnavailable(current.getString("id"));list=db.cachedWorkspaces();}
     else cached=true;
     if(current==null)throw denied;
    }catch(Exception unavailable){if(current==null)throw unavailable;cached=true;}
@@ -59,11 +61,12 @@ final class WorkspaceClient {
       if(denied.status!=401&&denied.status!=403&&denied.status!=404){cached=true;merge(list,new JSONArray().put(local));}
      }catch(IOException offline){cached=true;merge(list,new JSONArray().put(local));}
     }
+    if(current==null&&list.length()>0){current=list.getJSONObject(0);db.activateAccountWorkspace(current);}
     JSONObject newest=current==null?null:lookup(list,current.optString("id"));
     if(newest!=null){current=newest;currentDenied=false;}
    }catch(CredentialVault.KeyUnavailable unavailable){cached=!activeKeyVerified;}catch(Exception unavailable){cached=true;}
    if(current==null)throw new IOException("Workspace unavailable");
-   if(!authoritative&&!currentDenied)merge(list,new JSONArray().put(current));
+   if(!authoritative&&!currentDenied&&current!=null)merge(list,new JSONArray().put(current));
    boolean currentUnavailable=currentDenied||authoritative&&lookup(list,current.getString("id"))==null;
    return new JSONObject().put("workspaces",list).put("current",current.getString("id")).put("cached",cached).put("currentUnavailable",currentUnavailable).put("accountAccess",!db.setting("account-workspace:"+db.activeSpace(),"").isEmpty());
   }
@@ -96,7 +99,7 @@ final class WorkspaceClient {
    if(offline!=null)throw offline;
    throw new SecurityException("Workspace authorization required");
   }
-  if(action.equals("create")){boolean account=args.optBoolean("account");JSONObject body=new JSONObject().put("name",args.getString("name"));if(!account)body.put("turnstileToken",args.getString("turnstileToken"));JSONObject result=request("/api/workspaces",body,account?NativeAccount.token(db):null,account);db.pairWorkspace(result.getString("key"),result.getJSONObject("workspace"),false);return new JSONObject().put("created",true);}
+  if(action.equals("create")){JSONObject result=db.createLocalWorkspace(args.getString("name"));return new JSONObject().put("created",true).put("pendingRegistration",true).put("workspace",result.getJSONObject("workspace"));}
   if(action.equals("inviteInbox"))return request("/api/workspaces/invitations",null,NativeAccount.token(db),true);
   if(action.equals("invitePreview")){String token=args.getString("token");if(!token.matches("[a-f0-9]{64}"))throw new SecurityException("Invalid invite token");return request("/api/workspaces/invitations/preview?token="+token,null,NativeAccount.token(db),true);}
   if(action.equals("inviteRespond")){JSONObject body=new JSONObject().put("id",args.getString("id")).put("decision",args.getString("decision"));if(args.has("token"))body.put("token",args.getString("token"));return request("/api/workspaces/invitations/respond",body,NativeAccount.token(db),true);}

@@ -9,10 +9,11 @@ for(const path of ['worker/schema.sql','mcp-oauth/migrations/0002_accounts.sql',
 const DB={prepare(s){const q=sql.prepare(s);let p=[];return {bind(...args){p=args;return this},async first(){return q.get(...p)||null},async all(){return {results:q.all(...p)}},async run(){return q.run(...p)}}},async batch(statements){sql.exec('BEGIN');try{const out=[];for(const s of statements)out.push(await s.all());sql.exec('COMMIT');return out}catch(e){sql.exec('ROLLBACK');throw e}}};
 const env={DB,WORKSPACE_IDENTITY_V2:'true',IDENTITY_CANONICAL_V2:'true',TURNSTILE_SECRET:'test',TURNSTILE_SITE_KEY:'1x00000000000000000000AA',TURNSTILE_HOSTNAMES:'easybook.loonxy.com',TURNSTILE_VERIFY:{fetch:async()=>Response.json({success:true,action:'create_workspace',hostname:'easybook.loonxy.com'})}},origin='https://easybook.loonxy.com';
 async function req(path,{method='GET',body,headers={}}={}){return worker.fetch(new Request(origin+path,{method,headers:{'Content-Type':'application/json',...headers},body:body?JSON.stringify(body):undefined}),env)}
-const key='9'.repeat(64),keyHeaders={Authorization:'Bearer '+key};
-let r=await req('/api/workspaces',{method:'POST',body:{name:'离线首次联网',bootstrapKey:key,turnstileToken:'verified'}});assert.equal(r.status,201);const created=await r.json(),id=created.workspace.id;assert.notEqual(id,await hash(key));
+const key='9'.repeat(64),localId='8'.repeat(64),keyHeaders={Authorization:'Bearer '+key};
+let r=await req('/api/workspaces',{method:'POST',body:{name:'离线首次联网',workspaceId:localId,bootstrapKey:key,turnstileToken:'verified'}});assert.equal(r.status,201);const created=await r.json(),id=created.workspace.id;assert.equal(id,localId);assert.notEqual(id,await hash(key));
 assert.equal((await req('/api/workspaces',{headers:keyHeaders})).status,200);
-assert.equal((await req('/api/workspaces',{method:'POST',body:{name:'重复',bootstrapKey:key,turnstileToken:'verified'}})).status,409);
+assert.equal((await req('/api/workspaces',{method:'POST',body:{name:'重复重试',workspaceId:localId,bootstrapKey:key,turnstileToken:'verified'}})).status,201);
+assert.equal((await req('/api/workspaces',{method:'POST',body:{name:'冲突',workspaceId:'7'.repeat(64),bootstrapKey:key,turnstileToken:'verified'}})).status,409);
 const note=crypto.randomUUID(),document=textDocument('匿名设备 A 创建');
 r=await req('/api/notes/'+note,{method:'PUT',headers:keyHeaders,body:{id:note,title:'A',document,icon:'📄',folder_id:'',favorite:0,pinned:0,deleted:0,version:0,mutation:crypto.randomUUID(),updated:Date.now()}});assert.equal(r.status,200,await r.clone().text());
 assert.equal((await (await req('/api/notes?cursor=0',{headers:keyHeaders})).json()).notes[0].title,'A');

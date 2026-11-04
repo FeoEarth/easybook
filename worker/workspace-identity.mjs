@@ -56,11 +56,21 @@ function invalidate(env,id,account=null){
  return stmt(env,'UPDATE oauth_grants SET revoked_at=? WHERE workspace_id=? AND revoked_at IS NULL'+suffix,...[Date.now(),id,...(account?[account]:[])]);
 }
 
-export async function createWorkspace(env,name,principal=null,initialKey=null){
+export async function createWorkspace(env,name,principal=null,initialKey=null,initialId=null){
  await requireRestoreAccess(env);
- const id=newWorkspaceSecret(),key=initialKey||newWorkspaceSecret(),now=Date.now();name=nameValue(name);
+ const id=initialId||newWorkspaceSecret(),key=initialKey||newWorkspaceSecret(),now=Date.now();name=nameValue(name);
+ if(!HEX.test(id))deny('invalid_workspace_id',400);
  if(!HEX.test(key))deny('invalid_workspace_key',400);
- if(initialKey&&await stmt(env,'SELECT 1 FROM workspace_keys WHERE key_hash=?',await hash(initialKey)).first())deny('credential_already_registered',409);
+ if(initialKey){
+  const existing=await stmt(env,'SELECT workspace_id,revoked_at FROM workspace_keys WHERE key_hash=?',await hash(initialKey)).first();
+  if(existing){
+   if(initialId&&existing.workspace_id===initialId&&existing.revoked_at===null){
+    const current=await metadata(env,initialId);if(current)return {workspace:current,key:initialKey,registered:true};
+   }
+   deny('credential_already_registered',409);
+  }
+ }
+ if(initialId&&await stmt(env,'SELECT 1 FROM workspaces WHERE id=?',initialId).first())deny('workspace_id_already_registered',409);
  if(principal&&(!['account','oauth'].includes(principal.kind)||!await activeAccount(env,principal.accountId)))deny('account_required');
  if(principal?.kind==='oauth'&&!principal.scopes?.includes('workspace.create'))deny('insufficient_scope');
  // AI may create an account-associated personal workspace but never receives its key.
