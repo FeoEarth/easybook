@@ -47,11 +47,11 @@ final class WorkspaceClient {
   }
   if(action.equals("list")){
    JSONObject current=db.cachedActiveWorkspace();JSONArray list=db.cachedWorkspaces();boolean cached=false,authoritative=false,activeKeyVerified=false,currentDenied=false;
-   try{JSONObject refreshed=ensure(db);if(refreshed!=null&&refreshed.has("name")){current=refreshed;activeKeyVerified=true;}else if(refreshed==null&&current!=null){currentDenied=true;db.markWorkspaceUnavailable(current.getString("id"));list=db.cachedWorkspaces();}}
+   try{JSONObject refreshed=ensure(db);if(refreshed!=null&&refreshed.has("name")){current=refreshed;activeKeyVerified=true;}else if(refreshed==null&&current!=null){boolean local=db.hasLocalPersonalWorkspace(current.getString("id"));currentDenied=!local;if(!local)db.markWorkspaceUnavailable(current.getString("id"));list=db.cachedWorkspaces();if(local)merge(list,new JSONArray().put(new JSONObject(current.toString()).put("localOnly",true)));}}
    catch(NativeSync.HttpsTransport.HttpFailure denied){
     boolean pending=current!=null&&!db.setting("workspace-pending:"+current.optString("id"),"").isEmpty();
     if((denied.status==401&&pending)){cached=true;list=db.cachedWorkspaces();}
-    else if(denied.status==401||denied.status==403||denied.status==404){currentDenied=true;if(current!=null)db.markWorkspaceUnavailable(current.getString("id"));list=db.cachedWorkspaces();}
+    else if(denied.status==401||denied.status==403||denied.status==404){boolean local=current!=null&&db.hasLocalPersonalWorkspace(current.getString("id"));currentDenied=!local;if(current!=null&&!local)db.markWorkspaceUnavailable(current.getString("id"));list=db.cachedWorkspaces();if(local)merge(list,new JSONArray().put(new JSONObject(current.toString()).put("localOnly",true)));}
     else cached=true;
     if(current==null)throw denied;
    }catch(Exception unavailable){if(current==null)throw unavailable;cached=true;}
@@ -73,7 +73,7 @@ final class WorkspaceClient {
       JSONObject match=lookup(verified,id);
       if(match!=null){db.updateWorkspaceMetadata(match);merge(list,new JSONArray().put(match));}
      }catch(NativeSync.HttpsTransport.HttpFailure denied){
-      if(denied.status!=401&&denied.status!=403&&denied.status!=404){cached=true;merge(list,new JSONArray().put(local));}
+      cached=true;merge(list,new JSONArray().put(new JSONObject(local.toString()).put("localOnly",true)));
      }catch(IOException offline){cached=true;merge(list,new JSONArray().put(local));}
     }
     if(current==null&&list.length()>0){current=list.getJSONObject(0);db.activateAccountWorkspace(current);}
@@ -108,6 +108,7 @@ final class WorkspaceClient {
     catch(IOException e){offline=e;}
    }
    if(pendingRegistration&&personalKey!=null&&keyDenied&&denied!=null&&denied.status==401&&db.activateCachedWorkspace(id))return new JSONObject().put("selected",true).put("cached",true).put("pendingRegistration",true);
+   if(personalKey!=null&&keyDenied&&denied!=null&&(denied.status==401||denied.status==403||denied.status==404)&&db.activateCachedWorkspace(id))return new JSONObject().put("selected",true).put("cached",true).put("localOnly",true);
    // Offline access is available only when a credential exists and the server
    // could not be reached. A definite 401/403/404 is never treated as offline.
    if(offline!=null&&(accountToken!=null||personalKey!=null)&&db.activateCachedWorkspace(id))return new JSONObject().put("selected",true).put("cached",true);

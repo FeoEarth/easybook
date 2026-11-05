@@ -172,6 +172,7 @@ public final class NoteRepository extends SQLiteOpenHelper {
             return c.moveToFirst()?credential("space:"+c.getString(0)):null;
         }
     }
+    synchronized boolean hasLocalPersonalWorkspace(String workspaceId)throws Exception{return localKeyCredential(workspaceId)!=null;}
     synchronized void updateWorkspaceMetadata(JSONObject workspace)throws Exception{
         String id=workspace.getString("id"),name=workspace.getString("name"),mode=workspace.getString("mode"),role=workspace.optString("role","manager");
         if(!id.matches("[a-f0-9]{64}")||name.trim().isEmpty()||name.length()>60||!Arrays.asList("personal","shared").contains(mode)||!Arrays.asList("reader","editor","manager").contains(role))throw new SecurityException("Invalid workspace metadata");
@@ -189,7 +190,7 @@ public final class NoteRepository extends SQLiteOpenHelper {
     synchronized boolean activateCachedWorkspace(String workspaceId)throws Exception{
         if(workspaceId==null||!workspaceId.matches("[a-f0-9]{64}"))throw new IllegalArgumentException("Invalid workspace");
         if("1".equals(setting("workspace-unavailable:"+workspaceId,""))){
-            if(setting("workspace-pending:"+workspaceId,"").isEmpty())return false;
+            if(setting("workspace-pending:"+workspaceId,"").isEmpty()&&!hasLocalPersonalWorkspace(workspaceId))return false;
             setSetting("workspace-unavailable:"+workspaceId,"");
         }
         try(Cursor c=getReadableDatabase().rawQuery("SELECT local_id FROM workspace_identity WHERE workspace_id=?",new String[]{workspaceId})){
