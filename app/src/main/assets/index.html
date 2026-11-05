@@ -1203,7 +1203,7 @@ $('aiHubEntry').onclick=openAiHub;
 $('aiHubNew').onclick=()=>{newAiHubSession();$('aiHubPrompt').focus()};
 $('aiHubConversation').onclick=()=>setAiHubMode('conversation');
 $('aiHubAgent').onclick=()=>setAiHubMode('agent');
-$('aiHubSessions').onclick=()=>{renderAiHubSessions();$('aiSessionDialog').showModal()};
+$('aiHubSessions').onclick=()=>{$('aiHubPrompt').blur();renderAiHubSessions();$('aiSessionDialog').showModal()};
 $('aiSessionSearch').oninput=renderAiHubSessions;
 $('aiSessionClose').onclick=()=>$('aiSessionDialog').close();
 $('aiSessionExit').onclick=()=>{$('aiSessionDialog').close();switchTab('folders')};
@@ -1211,13 +1211,13 @@ $('aiSessionNew').onclick=()=>{newAiHubSession();$('aiSessionDialog').close();$(
 $('aiSessionList').onclick=event=>{
  const actions=event.target.closest('[data-ai-actions]'),open=event.target.closest('[data-ai-session]'),rename=event.target.closest('[data-ai-rename]'),remove=event.target.closest('[data-ai-delete]');
  if(actions){const row=$('aiSessionList').querySelector('[data-ai-action-row="'+actions.dataset.aiActions+'"]');if(row){row.hidden=!row.hidden;actions.setAttribute('aria-expanded',String(!row.hidden))}return}
- if(open){aiHubCurrent=open.dataset.aiSession;renderAiHub();$('aiSessionDialog').close();return}
+ if(open){if(aiSessionLongPressed){aiSessionLongPressed=false;return}aiHubCurrent=open.dataset.aiSession;renderAiHub();$('aiSessionDialog').close();return}
  if(rename){const session=aiHubSessions.find(value=>value.id===rename.dataset.aiRename);if(!session)return;aiHubRenameId=session.id;$('aiRenameInput').value=session.title;$('aiRenameDialog').showModal();requestAnimationFrame(()=>$('aiRenameInput').select());return}
  if(remove){const session=aiHubSessions.find(value=>value.id===remove.dataset.aiDelete);if(!session)return;confirmAction('删除此 AI 会话？','会话只会从本机删除，无法撤销。',()=>{aiHubSessions=aiHubSessions.filter(value=>value.id!==session.id);if(!aiHubSessions.length)newAiHubSession(false);else if(aiHubCurrent===session.id)aiHubCurrent=aiHubSessions[0].id;saveAiHubSessions();renderAiHub();renderAiHubSessions()})}
 };
-$('aiSessionList').oncontextmenu=event=>{const row=event.target.closest('.ai-session-row');if(!row)return;event.preventDefault();row.querySelector('[data-ai-actions]')?.click()};
-let aiSessionHold=null;
-$('aiSessionList').addEventListener('pointerdown',event=>{const row=event.target.closest('.ai-session-row');if(!row||event.target.closest('button.ai-session-more'))return;clearTimeout(aiSessionHold);aiSessionHold=setTimeout(()=>row.querySelector('[data-ai-actions]')?.click(),550)});
+$('aiSessionList').oncontextmenu=event=>{const row=event.target.closest('.ai-session-row');if(!row)return;event.preventDefault();const more=row.querySelector('[data-ai-actions]');if(more?.getAttribute('aria-expanded')!=='true')more?.click();aiSessionLongPressed=true};
+let aiSessionHold=null,aiSessionLongPressed=false;
+$('aiSessionList').addEventListener('pointerdown',event=>{const row=event.target.closest('.ai-session-row');if(!row||event.target.closest('button.ai-session-more'))return;clearTimeout(aiSessionHold);aiSessionLongPressed=false;aiSessionHold=setTimeout(()=>{aiSessionLongPressed=true;row.querySelector('[data-ai-actions]')?.click()},550)});
 for(const name of ['pointerup','pointercancel','pointermove'])$('aiSessionList').addEventListener(name,()=>clearTimeout(aiSessionHold));
 $('aiRenameForm').onsubmit=event=>{event.preventDefault();const session=aiHubSessions.find(value=>value.id===aiHubRenameId),title=$('aiRenameInput').value.trim();if(!session||!title)return;session.title=title;session.updatedAt=Date.now();saveAiHubSessions();renderAiHub();renderAiHubSessions();$('aiRenameDialog').close()};$('aiHubForm').onsubmit=event=>{event.preventDefault();void sendAiHubMessage($('aiHubPrompt').value.trim())};
 $('aiHubMessages').onclick=event=>{
