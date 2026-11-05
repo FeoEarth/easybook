@@ -23,13 +23,13 @@ const oauthHandler = {
   const oauth = env.OAUTH_PROVIDER;
   if(url.pathname==='/account/native/ai'&&request.method==='POST'){
    const {nativeSession}=await import('./native-sessions.mjs');const current=await nativeSession(request,env);if(!current)return Response.json({error:'unauthorized'},{status:401});
-   let input;try{input=await boundedJSON(request,65536)}catch{return Response.json({error:'invalid_request'},{status:400})}if(!object(input))return Response.json({error:'invalid_request'},{status:400});
+   let input;try{input=await boundedJSON(request,1600000)}catch{return Response.json({error:'invalid_request'},{status:400})}if(!object(input))return Response.json({error:'invalid_request'},{status:400});
    const principal={kind:'account',accountId:current.account_id,sessionId:current.id,authenticatedAt:current.authenticated_at};let target,method='GET',body;
    if(input.action==='config')target='/api/ai/config';
    else if(input.action==='credential'&&['PUT','DELETE'].includes(input.method)){target='/api/ai/config';method=input.method;body=JSON.stringify(input)}
    else if(input.action==='models'){target='/api/ai/models?credentialId='+encodeURIComponent(input.credentialId||'')}
    else if(input.action==='select'){target='/api/ai/select';method='POST';body=JSON.stringify({credentialId:input.credentialId})}
-   else if(input.action==='chat'){target='/api/ai/chat';method='POST';body=JSON.stringify({messages:input.messages,mode:input.mode})}
+   else if(input.action==='chat'){target='/api/ai/chat';method='POST';body=JSON.stringify({messages:input.messages,mode:input.mode,attachments:input.attachments})}
     else if(input.action==='execute'){target='/api/ai/execute';method='POST';body=JSON.stringify({approvalId:input.approvalId})}
    else return Response.json({error:'invalid_request'},{status:400});
    const headers={'Content-Type':'application/json'};return aiAPI(new Request(new URL(target,request.url),{method,headers,body}),env,principal,{workspaceId:input.workspace||''});
