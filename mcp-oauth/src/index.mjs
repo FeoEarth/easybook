@@ -29,10 +29,10 @@ const oauthHandler = {
    else if(input.action==='credential'&&['PUT','DELETE'].includes(input.method)){target='/api/ai/config';method=input.method;body=JSON.stringify(input)}
    else if(input.action==='models'){target='/api/ai/models?credentialId='+encodeURIComponent(input.credentialId||'')}
    else if(input.action==='select'){target='/api/ai/select';method='POST';body=JSON.stringify({credentialId:input.credentialId})}
-   else if(input.action==='chat'){target='/api/ai/chat';method='POST';body=JSON.stringify({messages:input.messages,mode:input.mode,attachments:input.attachments})}
+   else if(input.action==='chat'){target='/api/ai/chat';method='POST';body=JSON.stringify({messages:input.messages,mode:input.mode,attachments:input.attachments,stream:input.stream===true})}
     else if(input.action==='execute'){target='/api/ai/execute';method='POST';body=JSON.stringify({approvalId:input.approvalId})}
    else return Response.json({error:'invalid_request'},{status:400});
-   const headers={'Content-Type':'application/json'};return aiAPI(new Request(new URL(target,request.url),{method,headers,body}),env,principal,{workspaceId:input.workspace||''});
+   const headers={'Content-Type':'application/json'};return aiAPI(new Request(new URL(target,request.url),{method,headers,body,signal:request.signal}),env,principal,{workspaceId:input.workspace||''});
   }
   if(identityEnabled(env)&&url.origin===LEGACY_IDENTITY_ORIGIN&&((url.pathname==='/callback'&&url.searchParams.get('state')?.startsWith('account_'))||url.pathname==='/account/login'))return new Response(null,{status:303,headers:{Location:IDENTITY_ORIGIN+url.pathname+url.search,'Cache-Control':'no-store','Referrer-Policy':'no-referrer'}});
   if(modernWorkspaces(env)&&(url.pathname==='/pairing/complete'||url.pathname==='/callback'&&!url.searchParams.get('state')?.startsWith('account_')))return new Response('Legacy authorization retired; authorize your Easybook account',{status:410});

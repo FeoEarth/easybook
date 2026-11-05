@@ -41,4 +41,29 @@ result=await aiAPI(request('/api/ai/execute','POST',{approvalId:proposal.approva
 assert.equal(result.status,200,'A valid single-use user approval is accepted');
 result=await aiAPI(request('/api/ai/execute','POST',{approvalId:proposal.approval.id}),env,principal,{workspaceId:workspace});
 assert.equal(result.status,409,'Approval cannot be replayed');
+// BYOK streaming must remain opt-in, work across both provider wire formats,
+// and preserve the same Agent confirmation boundary as JSON completions.
+const sseBody=events=>new ReadableStream({start(controller){const bytes=new TextEncoder().encode(events);for(let offset=0;offset<bytes.length;offset+=17)controller.enqueue(bytes.slice(offset,offset+17));controller.close()}});
+const streamResponse=events=>new Response(sseBody(events),{headers:{'Content-Type':'text/event-stream'}});
+const readEvents=async response=>{assert.equal(response.headers.get('Content-Type')?.startsWith('text/event-stream'),true);const raw=await response.text();return [...raw.matchAll(/event: ([^\n]+)\ndata: ([^\n]+)\n\n/g)].map(([,type,data])=>({type,data:JSON.parse(data)}))};
+await aiAPI(request('/api/ai/select','POST',{credentialId:openaiId}),env,principal);
+let streamRequested=false;
+const streamedOpenai=async(url,init)=>{streamRequested=JSON.parse(init.body).stream===true;return streamResponse('data: '+JSON.stringify({choices:[{delta:{content:'你好'}}]})+'\n\n'+'data: '+JSON.stringify({choices:[{delta:{content:'，世界'}}]})+'\n\n'+'data: [DONE]\n\n')};
+let streamEvents=await readEvents(await aiAPI(request('/api/ai/chat','POST',{messages:[{role:'user',content:'你好'}],stream:true}),env,principal,{workspaceId:workspace,fetcher:streamedOpenai}));
+assert.equal(streamRequested,true);assert.deepEqual(streamEvents.map(event=>event.type),['delta','delta','done']);assert.equal(streamEvents.at(-1).data.message.content,'你好，世界');
+const streamedTool=async()=>streamResponse([
+ {choices:[{delta:{tool_calls:[{index:0,id:'stream-create',function:{name:'notes_create',arguments:'{"title":"'}}]}}]},
+ {choices:[{delta:{tool_calls:[{index:0,function:{arguments:'审批测试"}'}}]}}]}
+].map(item=>'data: '+JSON.stringify(item)+'\n\n').join('')+'data: [DONE]\n\n');
+streamEvents=await readEvents(await aiAPI(request('/api/ai/chat','POST',{mode:'agent',messages:[{role:'user',content:'创建'}],stream:true}),env,principal,{workspaceId:workspace,fetcher:streamedTool}));
+assert.deepEqual(streamEvents.map(event=>event.type),['reset','done']);assert.equal(streamEvents.at(-1).data.approval.tool,'notes_create');
+assert.equal(sqlite.prepare('SELECT COUNT(*) n FROM ai_agent_approvals WHERE id=? AND consumed_at IS NULL').get(streamEvents.at(-1).data.approval.id).n,1);
+await aiAPI(request('/api/ai/config','PUT',{label:'Claude Stream',provider:'anthropic',model:'claude-test',apiKey:secret}),env,principal);
+const streamedAnthropic=async(url,init)=>{assert.equal(JSON.parse(init.body).stream,true);return streamResponse('event: content_block_delta\ndata: '+JSON.stringify({type:'content_block_delta',index:0,delta:{type:'text_delta',text:'逐字'}})+'\n\n'+'event: content_block_delta\ndata: '+JSON.stringify({type:'content_block_delta',index:0,delta:{type:'text_delta',text:'输出'}})+'\n\n')};
+streamEvents=await readEvents(await aiAPI(request('/api/ai/chat','POST',{messages:[{role:'user',content:'测试'}],stream:true}),env,principal,{workspaceId:workspace,fetcher:streamedAnthropic}));
+assert.equal(streamEvents.at(-1).data.message.content,'逐字输出');
+assert.deepEqual(streamEvents.map(event=>event.type),['delta','delta','done']);
+const jsonFallback=async()=>Response.json({content:[{type:'text',text:'兼容非流式提供商'}]});
+streamEvents=await readEvents(await aiAPI(request('/api/ai/chat','POST',{messages:[{role:'user',content:'测试'}],stream:true}),env,principal,{workspaceId:workspace,fetcher:jsonFallback}));
+assert.equal(streamEvents.at(-1).data.message.content,'兼容非流式提供商');
 sqlite.close();console.log('PASS multi-BYOK encryption, provider presets, model discovery, active switching, Anthropic protocol and workspace authorization');

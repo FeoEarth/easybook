@@ -200,7 +200,7 @@ public class MainActivity extends Activity {
                 return new WebResourceResponse("text/plain", "UTF-8", new ByteArrayInputStream(new byte[0]));
             }
             @Override public boolean shouldOverrideUrlLoading(WebView v, WebResourceRequest r) { return !r.isForMainFrame() || !LOCAL.equals(r.getUrl().toString()); }
-            @Override public void onPageStarted(WebView v,String url,android.graphics.Bitmap icon){if(localAiEngine!=null)localAiEngine.cancel();ready=false;updateUiReady=false;documentGeneration++;if(nativeGlass!=null){nativeGlass.clearFormatFrame();nativeGlass.dismiss(true);}}
+            @Override public void onPageStarted(WebView v,String url,android.graphics.Bitmap icon){if(localAiEngine!=null)localAiEngine.cancel();if(nativeAccount!=null)nativeAccount.cancelAiStream(null);ready=false;updateUiReady=false;documentGeneration++;if(nativeGlass!=null){nativeGlass.clearFormatFrame();nativeGlass.dismiss(true);}}
         });
         web.loadUrl(LOCAL);
     }
@@ -312,6 +312,16 @@ public class MainActivity extends Activity {
             case "ai.models":return nativeAccount.ai(new JSONObject(args.toString()).put("action","models"));
             case "ai.select":return nativeAccount.ai(new JSONObject(args.toString()).put("action","select"));
             case "ai.chat":return nativeAccount.ai(new JSONObject(args.toString()).put("action","chat"));
+            case "ai.stream.start":{
+                String id=bounded(args,"id",70);
+                if(!id.matches("[a-f0-9-]{20,70}"))throw new IllegalArgumentException("Invalid AI stream ID");
+                nativeAccount.startAiStream(new JSONObject(args.toString()).put("action","chat").put("stream",true),event->runOnUiThread(()->{
+                    if(!destroyed&&ready&&generation==documentGeneration&&LOCAL.equals(web.getUrl()))
+                        web.evaluateJavascript("window.easybookByokEvent&&window.easybookByokEvent("+event.toString()+")",null);
+                }));
+                return new JSONObject().put("accepted",true);
+            }
+            case "ai.stream.cancel":nativeAccount.cancelAiStream(bounded(args,"id",70));return new JSONObject().put("accepted",true);
             case "ai.execute":return nativeAccount.ai(new JSONObject(args.toString()).put("action","execute"));
             case "ai.attachment.pick":{
                 runOnUiThread(()->{if(destroyed||generation!=documentGeneration||aiPickerOpen)return;aiPickerOpen=true;
@@ -544,7 +554,7 @@ public class MainActivity extends Activity {
     }
     @Override protected void onResume(){super.onResume();if(nativeAccount!=null)nativeAccount.resume();}
     @Override protected void onPause() { if(localAiEngine!=null)localAiEngine.cancel();if(security!=null)security.dismissConnection(); if(nativeGlass!=null)nativeGlass.dismiss(true);web.evaluateJavascript("window.EasybookVideo?.pauseAll();window.persistNow && window.persistNow()", null); super.onPause(); }
-    @Override protected void onDestroy() { hideVideoFullscreen(); if(nativeAccount!=null)nativeAccount.cancel(); if(localAiEngine!=null)localAiEngine.shutdown();if(localAiModels!=null)localAiModels.shutdown(); if(security!=null)security.dismissConnection(); if(connectivity!=null&&networkCallback!=null)connectivity.unregisterNetworkCallback(networkCallback); if(nativeGlass!=null){nativeGlass.clearFormatFrame();nativeGlass.dismiss(true);}ready=false; destroyed=true;if(WebViewFeature.isFeatureSupported(WebViewFeature.WEB_MESSAGE_LISTENER))WebViewCompat.removeWebMessageListener(web,"EasybookNative");web.destroy();if(appUpdater!=null)appUpdater.shutdown();io.shutdown();super.onDestroy(); }
+    @Override protected void onDestroy() { hideVideoFullscreen(); if(nativeAccount!=null){nativeAccount.cancel();nativeAccount.shutdownAiStream();} if(localAiEngine!=null)localAiEngine.shutdown();if(localAiModels!=null)localAiModels.shutdown(); if(security!=null)security.dismissConnection(); if(connectivity!=null&&networkCallback!=null)connectivity.unregisterNetworkCallback(networkCallback); if(nativeGlass!=null){nativeGlass.clearFormatFrame();nativeGlass.dismiss(true);}ready=false; destroyed=true;if(WebViewFeature.isFeatureSupported(WebViewFeature.WEB_MESSAGE_LISTENER))WebViewCompat.removeWebMessageListener(web,"EasybookNative");web.destroy();if(appUpdater!=null)appUpdater.shutdown();io.shutdown();super.onDestroy(); }
 }
 
 
