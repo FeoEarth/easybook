@@ -281,6 +281,7 @@ public class MainActivity extends Activity {
                 if(action.equals("select")||action.equals("create")||action.equals("rotate")||action.equals("mode"))runOnUiThread(()->{if(!destroyed&&generation==documentGeneration)web.reload();});
                 return result;
             }
+            case "conflict.resolve":repository.resolveConflict(repository.activeSpace(),bounded(args,"id",36),bounded(args,"choice",16));return repository.snapshot(repository.activeSpace());
             case "account.manage":return nativeAccount.manage(args);
             case "ai.config":return nativeAccount.ai(new JSONObject().put("action","config"));
             case "ai.credential":return nativeAccount.ai(new JSONObject(args.toString()).put("action","credential"));

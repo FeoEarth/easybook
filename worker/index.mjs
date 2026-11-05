@@ -121,7 +121,7 @@ export default {
    if(url.pathname === '/api/folders' && request.method === 'GET') {
     const after=url.searchParams.get('after')||'';
     if(after.length>80)return json({error:'Invalid cursor'},400);
-    const {results}=await env.DB.prepare('SELECT id,name,updated,deleted FROM folders WHERE workspace=? AND id>? ORDER BY id LIMIT 100').bind(workspace,after).all();
+    const {results}=await env.DB.prepare("SELECT f.id,f.name,f.updated,f.deleted,COALESCE(r.version,1) version,COALESCE(r.mutation,'') mutation FROM folders f LEFT JOIN folder_revisions r ON r.workspace=f.workspace AND r.folder_id=f.id WHERE f.workspace=? AND f.id>? ORDER BY f.id LIMIT 100").bind(workspace,after).all();
     return json({folders:results,next:results.length===100?results.at(-1).id:null});
    }
    const folderId=url.pathname.match(/^\/api\/folders\/([a-f0-9-]{36})$/)?.[1];
@@ -136,9 +136,18 @@ export default {
    if(folderId){
     if(typeof n.name!=='string'||!n.name.trim()||n.name.length>60)return json({error:'Invalid folder'},400);
     if(n.deleted!==undefined&&![0,1].includes(n.deleted)||n.updated!==undefined&&(!Number.isSafeInteger(n.updated)||n.updated<0||n.updated>Date.now()+86400000))return json({error:'Invalid folder revision'},400);
+    const revised=Number.isSafeInteger(n.version)&&n.version>=0&&typeof n.mutation==='string'&&/^[a-f0-9-]{36}$/.test(n.mutation);
+    if(revised){
+     const replay=await env.DB.prepare('SELECT folder_id,response FROM folder_receipts WHERE workspace=? AND mutation=?').bind(workspace,n.mutation).first();if(replay)return replay.folder_id===folderId?json({folder:JSON.parse(replay.response),replayed:true}):json({error:'Mutation reused'},409);
+     const before=await env.DB.prepare("SELECT f.id,COALESCE(r.version,1) version FROM folders f LEFT JOIN folder_revisions r ON r.workspace=f.workspace AND r.folder_id=f.id WHERE f.workspace=? AND f.id=?").bind(workspace,folderId).first();
+     if(n.version===0&&!before)await env.DB.batch([env.DB.prepare('INSERT INTO folders(workspace,id,name,updated,deleted) VALUES(?,?,?,?,?)').bind(workspace,folderId,n.name.trim(),Date.now(),n.deleted||0),env.DB.prepare('INSERT INTO folder_revisions(workspace,folder_id,version,mutation) VALUES(?,?,1,?)').bind(workspace,folderId,n.mutation)]);
+     else if(before&&before.version===n.version)await env.DB.batch([env.DB.prepare('INSERT INTO folder_revisions(workspace,folder_id,version,mutation) VALUES(?,?,2,?) ON CONFLICT(workspace,folder_id) DO UPDATE SET version=folder_revisions.version+1,mutation=excluded.mutation WHERE folder_revisions.version=?').bind(workspace,folderId,n.mutation,n.version),env.DB.prepare('UPDATE folders SET name=?,updated=?,deleted=? WHERE workspace=? AND id=? AND deleted=0 AND EXISTS(SELECT 1 FROM folder_revisions WHERE workspace=? AND folder_id=? AND mutation=?)').bind(n.name.trim(),Date.now(),n.deleted||0,workspace,folderId,workspace,folderId,n.mutation)]);
+     const folder=await env.DB.prepare("SELECT f.id,f.name,f.updated,f.deleted,COALESCE(r.version,1) version,COALESCE(r.mutation,'') mutation FROM folders f LEFT JOIN folder_revisions r ON r.workspace=f.workspace AND r.folder_id=f.id WHERE f.workspace=? AND f.id=?").bind(workspace,folderId).first();
+     if(folder?.mutation===n.mutation){await env.DB.prepare('INSERT INTO folder_receipts(workspace,mutation,folder_id,response) VALUES(?,?,?,?) ON CONFLICT(workspace,mutation) DO NOTHING').bind(workspace,n.mutation,folderId,JSON.stringify(folder)).run();return json({folder})}
+     return json({error:'Conflict',folder},409);
+    }
     await env.DB.prepare('INSERT INTO folders(workspace,id,name,updated,deleted) VALUES(?,?,?,?,?) ON CONFLICT(workspace,id) DO UPDATE SET name=CASE WHEN folders.deleted=0 AND excluded.updated>folders.updated THEN excluded.name ELSE folders.name END,updated=MAX(folders.updated,excluded.updated),deleted=MAX(folders.deleted,excluded.deleted)').bind(workspace,folderId,n.name.trim(),n.updated??Date.now(),n.deleted||0).run();
-    const folder=await env.DB.prepare('SELECT id,name,updated,deleted FROM folders WHERE workspace=? AND id=?').bind(workspace,folderId).first();
-    return json({folder});
+    const folder=await env.DB.prepare("SELECT f.id,f.name,f.updated,f.deleted,COALESCE(r.version,1) version,COALESCE(r.mutation,'') mutation FROM folders f LEFT JOIN folder_revisions r ON r.workspace=f.workspace AND r.folder_id=f.id WHERE f.workspace=? AND f.id=?").bind(workspace,folderId).first();return json({folder,legacy:true});
    }
    return json({error:'Not found'},404);
   } catch(e) { console.error(JSON.stringify({event:'request_failed',name:e.name})); const response=json({error:'Service temporarily unavailable'},503); return url.pathname==='/api/mcp/attest'?pairingResponse(response):response; }
