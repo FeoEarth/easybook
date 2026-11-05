@@ -95,6 +95,11 @@ public final class NoteRepository extends SQLiteOpenHelper {
         String credential=newKey();JSONObject workspace=new JSONObject().put("id",newKey()).put("name",name.trim()).put("mode","personal").put("role","manager");
         pairWorkspace(credential,workspace,false);setSetting("workspace-pending:"+workspace.getString("id"),"1");return new JSONObject().put("key",credential).put("workspace",workspace);
     }
+    synchronized JSONObject ensureLocalWorkspace()throws Exception{
+        JSONObject current=cachedActiveWorkspace();if(current!=null)return current;
+        String space=activeSpace();JSONObject workspace=new JSONObject().put("id",newKey()).put("name","我的工作区").put("mode","personal").put("role","manager").put("pendingRegistration",true);
+        setSetting("workspace-pending:"+workspace.getString("id"),"1");bindWorkspaceIdentity(space,workspace);return workspace;
+    }
     synchronized void activateAccountWorkspace(JSONObject identity)throws Exception{
         String id=identity.getString("id"),ref=null;if(!id.matches("[a-f0-9]{64}")||!Arrays.asList("personal","shared").contains(identity.optString("mode")))throw new SecurityException("Invalid workspace");
         SQLiteDatabase db=getWritableDatabase();db.beginTransaction();try{

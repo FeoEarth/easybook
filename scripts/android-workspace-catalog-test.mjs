@@ -24,5 +24,8 @@ assert.match(html,/data-register-workspace=.*立即联网注册.*registerLocalWo
 assert.match(html,/当前工作区.*切换工作区.*添加工作区.*管理当前工作区/s,'workspace settings must present actions in an object-first hierarchy');
 assert.match(html,/保存在本机.*个人工作区.*共享工作区/s,'local pending, registered personal and shared workspaces must be separate groups');
 assert.match(client,/action\.equals\("rename"\).*workspace-pending:.*updateWorkspaceMetadata/s,'pending local workspaces must be manageable without server registration');
+assert.match(activity,/case "bootstrap".*ensureLocalWorkspace\(\).*snapshot/s,'first Android bootstrap must create a complete local workspace before rendering');
+assert.match(repository,/ensureLocalWorkspace\(\).*newKey\(\).*我的工作区.*pendingRegistration.*workspace-pending:.*bindWorkspaceIdentity/s,'first offline launch must persist a local workspace ID and pending registration state');
+assert.match(html,/easybookAccountChanged=.*if\(identityV2\)void refreshWorkspaces\(\)/,'first login must refresh account workspaces from every page');
 
 console.log('PASS Android workspace catalog: cached workspaces render before online refresh and during sync.');
