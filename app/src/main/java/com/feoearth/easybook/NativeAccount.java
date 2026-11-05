@@ -222,7 +222,7 @@ final class NativeAccount {
         return result;
     }
     JSONObject ai(JSONObject args)throws Exception{
-        String action=args.getString("action");if(!java.util.Arrays.asList("config","credential","models","select","chat").contains(action))throw new SecurityException("AI action denied");
+        String action=args.getString("action");if(!java.util.Arrays.asList("config","credential","models","select","chat","execute").contains(action))throw new SecurityException("AI action denied");
         if(action.equals("credential")&&!java.util.Arrays.asList("PUT","DELETE").contains(args.optString("method")))throw new SecurityException("AI credential method denied");
         if(args.has("workspace")&&!args.optString("workspace").matches("[a-f0-9]{64}"))throw new SecurityException("Invalid workspace");
         return request("/account/native/ai",args,token(db));
