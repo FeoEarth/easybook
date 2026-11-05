@@ -356,6 +356,8 @@ body[data-page=ai] .topbar,body[data-page=ai] .dock-wrap{display:none}body[data-
 .workspace-switch-dialog{padding:20px 16px 15px;max-width:450px}.workspace-switch-hint{margin:0 4px 16px}.workspace-switch-list{background:var(--control-fill,var(--selected));border-radius:17px;overflow:hidden}.workspace-choice{display:flex;align-items:center;gap:12px;width:100%;min-height:65px;padding:11px 14px;text-align:left;position:relative}.workspace-choice+.workspace-choice:before{content:'';position:absolute;top:0;left:51px;right:0;height:1px;background:var(--line)}.workspace-choice:active:not(:disabled){background:var(--selected)}.workspace-choice .workspace-choice-icon{width:31px;height:31px;flex-shrink:0;display:grid;place-items:center;border-radius:11px;background:var(--paper);color:var(--accent)}.workspace-choice-icon svg{width:18px;height:18px}.workspace-choice-copy{min-width:0;flex:1}.workspace-choice-copy strong{font-size:15px;font-weight:550;display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.workspace-choice-copy small{font-size:12px;color:var(--muted);margin-top:4px;display:block}.workspace-choice .workspace-choice-check{font-size:19px;color:var(--accent);font-weight:600}.workspace-choice[aria-current=true]{cursor:default}.workspace-choice:disabled{opacity:1}.workspace-choice:focus-visible,.workspace-quick-row:focus-visible,.workspace-home-chip:focus-visible{outline:2px solid var(--accent);outline-offset:2px}.workspace-switch-dialog #workspaceSwitchStatus{min-height:17px;margin:10px 4px 4px}.workspace-manage-link{width:100%;min-height:48px;display:flex;align-items:center;justify-content:space-between;padding:11px 10px;color:var(--accent);font-weight:600;font-size:15px}.workspace-manage-link svg{width:16px;height:16px}.workspace-name-editor{padding:14px 0 16px;border-top:1px solid var(--line)}.workspace-name-editor label{display:block;font-size:15px;font-weight:600}.workspace-name-editor p{margin:5px 0 12px;color:var(--muted);font-size:12px;line-height:1.4}.workspace-name-editor input{width:100%;height:48px;border-radius:12px;border:1px solid var(--line);background:var(--bg);color:var(--ink);padding:10px 12px;font:inherit;outline:none}.workspace-name-editor input:focus{border-color:var(--accent)}.workspace-name-actions{display:flex;gap:10px;justify-content:flex-end;margin-top:12px}.workspace-name-actions button{min-height:44px;min-width:70px;border-radius:12px;padding:10px 16px;background:var(--control-fill,var(--selected))}.workspace-name-actions button[type=submit]{background:var(--accent);color:white;font-weight:600}.workspace-name-actions button:disabled{opacity:.5}.workspace-status-dot{font-size:13px;color:var(--accent);font-weight:650;flex-shrink:0}.workspace-settings-choice{min-height:64px}.workspace-settings-choice[disabled]{opacity:1}.workspace-settings-choice small{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.workspace-switch-dialog:not([open]){display:none}.workspace-home-chip[hidden],.workspace-quick-row[hidden],.workspace-name-editor[hidden]{display:none}@media(prefers-reduced-motion:reduce){.workspace-quick-row{transition:none}}
 .workspace-skeleton{display:flex;align-items:center;gap:12px;min-height:65px;padding:11px 14px}.workspace-skeleton-icon,.workspace-skeleton-line{background:rgba(127,127,127,.16);background:color-mix(in srgb,var(--muted) 18%,transparent);animation:workspace-pulse 1.25s ease-in-out infinite}.workspace-skeleton-icon{width:31px;height:31px;border-radius:11px;flex:none}.workspace-skeleton-copy{flex:1}.workspace-skeleton-line{height:11px;width:42%;border-radius:999px}.workspace-skeleton-line+ .workspace-skeleton-line{width:68%;height:9px;margin-top:8px}@keyframes workspace-pulse{50%{opacity:.42}}@media(prefers-reduced-motion:reduce){.workspace-skeleton-icon,.workspace-skeleton-line{animation:none}}
 .workspace-type-heading{padding:11px 14px 7px;color:var(--muted);font-size:12px;font-weight:650;letter-spacing:.02em}.workspace-type-heading:not(:first-child){border-top:1px solid var(--line)}
+.workspace-register-action{width:100%;min-height:44px;padding:8px 14px 11px;text-align:left;color:var(--accent);font-size:13px;font-weight:650;border-radius:0;border-bottom:1px solid var(--line)}.workspace-register-action:disabled{opacity:.45}
+.workspace-current-card{display:flex;align-items:center;gap:13px;padding:15px 16px;background:var(--paper);border-radius:17px;margin-bottom:20px}.workspace-current-icon{width:42px;height:42px;display:grid;place-items:center;flex:none;border-radius:13px;background:var(--selected);color:var(--accent)}.workspace-current-icon svg{width:23px;height:23px}.workspace-current-copy{min-width:0;flex:1}.workspace-current-copy strong{display:block;font-size:17px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.workspace-current-copy small{display:block;margin-top:4px;color:var(--muted);font-size:12px;line-height:1.45}.workspace-current-state{flex:none;color:var(--accent);font-size:12px;font-weight:650}.workspace-action-label{margin-top:24px}.workspace-register-action+ .settings-row{border-top:0}
 #workspaceMembersPanel{margin:10px 0 22px;padding:14px;border:1px solid var(--line);border-radius:17px;background:var(--control-fill,var(--selected))}#workspaceMembersPanel>.footer-note{margin:0 2px 12px}#workspaceMembersPanel>.settings-group{margin:10px 0;background:var(--paper)}#workspaceMembersOpen[aria-expanded=true] .chevron{transform:rotate(90deg)}#workspaceMembersOpen .chevron{transition:transform .16s ease}.workspace-member-empty{padding:14px;color:var(--muted);font-size:13px}
 
 
@@ -632,7 +634,14 @@ const native=window.NativeStore&&!window.EasybookRollbackMode?window.NativeStore
 let boot=null;if(native){boot=await native.call('bootstrap',{legacy:{active:'',storage:{}}});localStorage.removeItem('easybook-key');await native.call('migration.cleaned')}
 const webStore=native?null:new EasybookWebStore(indexedDB);if(webStore)await webStore.open();
 let key=native?boot.key:await webStore.activeCredential(localStorage.getItem('easybook-key'));if(!native)localStorage.removeItem('easybook-key');
-if(native&&identityV2&&navigator.onLine){try{const state=await native.call('workspace.action',{action:'bootstrap'});if(state.turnstileRequired)await native.call('workspace.action',{action:'bootstrap',turnstileToken:await workspaceTurnstile()})}catch{/* Keep local records available; verification retries on the next launch. */}}
+let nativeRegistrationRetry=null;
+async function retryNativeWorkspaceRegistration(){
+ if(!native||!identityV2||!navigator.onLine)return false;
+ if(nativeRegistrationRetry)return nativeRegistrationRetry;
+ nativeRegistrationRetry=(async()=>{try{const state=await native.call('workspace.action',{action:'bootstrap'});if(state.turnstileRequired)await native.call('workspace.action',{action:'bootstrap',turnstileToken:await workspaceTurnstile()});return true}catch{return false}finally{nativeRegistrationRetry=null}})();
+ return nativeRegistrationRetry;
+}
+if(native&&identityV2&&navigator.onLine)await retryNativeWorkspaceRegistration();
 async function registerWebWorkspace(credential,workspace){const r=await fetch(API+'/api/workspaces',{method:'POST',credentials:'omit',headers:{'Content-Type':'application/json'},body:JSON.stringify({name:workspace.name,workspaceId:workspace.id,bootstrapKey:credential})});if(!r.ok)throw Error('工作区注册失败（'+r.status+'）');const registered=(await r.json()).workspace;await webStore.bindWorkspace(credential,registered);return registered}
 if(!native&&identityV2&&!key.startsWith('account:')){let local=await webStore.workspaceForCredential(key);if(!local){local={id:randomKey(),name:'我的工作区',mode:'personal',role:'manager',pendingRegistration:true};await webStore.bindWorkspace(key,local)}if(navigator.onLine){try{await webStore.bindWorkspace(key,await workspaceIdentity(key))}catch{try{await registerWebWorkspace(key,local)}catch{/* Pending registration remains local and retries during sync. */}}}}
 let localSpace=native?key:await webStore.namespace(key);
@@ -1046,34 +1055,44 @@ $('aiSaveMemory').onclick=()=>{try{const value=$('aiMemory').value.trim();if(val
 async function selectWebWorkspace(next,w){if(busy||moveBusy)throw Error('请等待当前同步或保存完成');rich.flushInput();persistNow();await flushLocal();await webStore.bindWorkspace(next,w);await webStore.setActiveCredential(next);localStorage.removeItem('easybook-key');location.reload()}
 let workspaceChoices=new Map(),workspaceCurrent='',workspacePending=false,workspaceEditorMode='',workspaceReturnFocus=null,workspaceSignedIn=false,workspaceAccountAccess=false;
 $('workspaceMembersOpen').setAttribute('aria-expanded','false');$('workspaceMembersOpen').innerHTML='<span class="row-text"><strong>成员与权限</strong><small>查看成员和共享设置</small></span><svg class="chevron" aria-hidden="true"><use href="#i-chevron"/></svg>';$('workspaceMembersOpen').closest('.settings-group').previousElementSibling.textContent='成员与权限';
+const workspaceSwitchLabel=$('workspaceList').previousElementSibling,workspaceActionGroup=$('workspaceCreate').parentElement;
+workspaceSwitchLabel.textContent='切换工作区';
+const workspaceCurrentLabel=document.createElement('div');workspaceCurrentLabel.className='settings-label';workspaceCurrentLabel.textContent='当前工作区';
+const workspaceCurrentCard=document.createElement('div');workspaceCurrentCard.id='workspaceCurrentCard';workspaceCurrentCard.className='workspace-current-card';workspaceCurrentCard.innerHTML='<span class="workspace-current-icon"><svg aria-hidden="true"><use href="#i-folder"/></svg></span><span class="workspace-current-copy"><strong id="workspaceCurrentName">正在读取…</strong><small id="workspaceCurrentDetail">本机数据保持可用</small></span><span class="workspace-current-state" id="workspaceCurrentState"></span>';
+const workspaceCreateLabel=document.createElement('div');workspaceCreateLabel.className='settings-label workspace-action-label';workspaceCreateLabel.textContent='添加工作区';
+const workspaceCreateGroup=document.createElement('div');workspaceCreateGroup.className='settings-group';workspaceCreateGroup.append($('workspaceCreate'));
+const workspaceActionLabel=document.createElement('div');workspaceActionLabel.className='settings-label workspace-action-label';workspaceActionLabel.textContent='管理当前工作区';
+workspaceSwitchLabel.before(workspaceCurrentLabel,workspaceCurrentCard);workspaceActionGroup.before(workspaceCreateLabel,workspaceCreateGroup,workspaceActionLabel);
 const workspaceKind=w=>w.mode==='shared'?'共享工作区':'个人工作区';
 const workspaceRole=w=>w.role==='reader'?'只读':w.role==='editor'?'可编辑':'管理者';
 function workspaceRow(w,settings=false){
  const current=w.id===workspaceCurrent,detail=esc(workspaceKind(w)+' · '+(w.pendingRegistration?'等待联网注册':current?'当前工作区':workspaceRole(w))),name=esc(w.name||'我的工作区');
- return settings?'<button class="settings-row workspace-settings-choice" data-workspace="'+esc(w.id)+'" '+(current?'disabled aria-current="true"':'')+'><span class="row-text"><strong>'+name+'</strong><small>'+detail+'</small></span>'+(current?'<span class="workspace-status-dot">✓ 当前</span>':'<svg class="chevron" aria-hidden="true"><use href="#i-chevron"/></svg>')+'</button>':
+ return settings?'<button class="settings-row workspace-settings-choice" data-workspace="'+esc(w.id)+'" '+(current?'disabled aria-current="true"':'')+'><span class="row-text"><strong>'+name+'</strong><small>'+detail+'</small></span>'+(current?'<span class="workspace-status-dot">✓ 当前</span>':'<svg class="chevron" aria-hidden="true"><use href="#i-chevron"/></svg>')+'</button>'+(w.pendingRegistration?'<button class="workspace-register-action" data-register-workspace="'+esc(w.id)+'">立即联网注册 · 本机数据会保留</button>':''):
  '<button class="workspace-choice" data-workspace="'+esc(w.id)+'" '+(current?'disabled aria-current="true"':'')+'><span class="workspace-choice-icon" aria-hidden="true"><svg><use href="#i-folder"/></svg></span><span class="workspace-choice-copy"><strong>'+name+'</strong><small>'+detail+'</small></span>'+(current?'<span class="workspace-choice-check" aria-label="当前工作区">✓</span>':'<svg class="workspace-chevron" aria-hidden="true"><use href="#i-chevron"/></svg>')+'</button>';
 }
 function renderWorkspaceChoices(){
  const values=[...workspaceChoices.values()],selected=workspaceChoices.get(workspaceCurrent);
- const grouped=settings=>['personal','shared'].map(mode=>{const rows=values.filter(w=>w.mode===mode);return rows.length?'<div class="workspace-type-heading">'+(mode==='personal'?'个人工作区':'共享工作区')+'</div>'+rows.map(w=>workspaceRow(w,settings)).join(''):''}).join('');
+ const groups=[['pending','保存在本机',w=>w.pendingRegistration],['personal','个人工作区',w=>w.mode==='personal'&&!w.pendingRegistration],['shared','共享工作区',w=>w.mode==='shared']];
+ const grouped=settings=>groups.map(([,label,match])=>{const rows=values.filter(match);return rows.length?'<div class="workspace-type-heading">'+label+'</div>'+rows.map(w=>workspaceRow(w,settings)).join(''):''}).join('');
  $('workspaceList').innerHTML=grouped(true)||'<p class="workspace-switch-hint">暂时无法读取工作区</p>';
  $('workspaceSwitchList').innerHTML=grouped(false)||'<p class="workspace-switch-hint">暂无可切换的工作区</p>';
  $('workspaceHome').hidden=!selected&&!values.length;$('workspaceQuick').hidden=!selected&&!values.length;
  if(selected){
+  $('workspaceCurrentName').textContent=selected.name||'我的工作区';$('workspaceCurrentDetail').textContent=selected.pendingRegistration?'仅保存在本机；注册后可跨设备同步':workspaceKind(selected)+' · '+workspaceRole(selected);$('workspaceCurrentState').textContent=selected.pendingRegistration?'待注册':'✓ 当前';
   $('workspaceHomeName').textContent=selected.name||'我的工作区';
   $('workspaceQuickName').textContent=selected.name||'我的工作区';
   $('workspaceQuickDetail').textContent=selected.pendingRegistration?'已保存在本机 · 等待联网注册':workspaceKind(selected)+' · 点击切换';
   const manager=selected.role==='manager',personal=selected.mode==='personal';
   $('workspaceRename').hidden=!manager;$('workspaceRename').disabled=!manager;
   $('workspaceRename').title=manager?'':'只有工作区管理者可以修改名称';
-  $('workspaceAssociate').hidden=!personal||workspaceAccountAccess||!workspaceSignedIn;
-  $('workspaceRotate').hidden=!personal||!manager;
-  $('workspaceMembersOpen').disabled=!workspaceSignedIn;
+  $('workspaceAssociate').hidden=!personal||selected.pendingRegistration||workspaceAccountAccess||!workspaceSignedIn;
+  $('workspaceRotate').hidden=!personal||selected.pendingRegistration||!manager;
+  $('workspaceMembersOpen').disabled=!workspaceSignedIn||selected.pendingRegistration;
   if($('workspaceInviteInboxOpen'))$('workspaceInviteInboxOpen').disabled=!workspaceSignedIn;
   $('workspaceMembersOpen').querySelector('strong').textContent=personal?'共享此工作区':'成员与权限';
-  $('workspaceMembersOpen').querySelector('small').textContent=!workspaceSignedIn?'登录账户后可管理成员与共享':personal?'邀请成员前会将其转换为共享工作区':manager?'管理成员、权限和工作区类型':'查看当前成员和你的权限';
- }else if(values.length){$('workspaceHomeName').textContent='选择工作区';$('workspaceQuickName').textContent='选择工作区';$('workspaceQuickDetail').textContent='当前工作区不可用 · 点击切换';$('workspaceRename').hidden=true;$('workspaceAssociate').hidden=true;$('workspaceRotate').hidden=true;$('workspaceMembersOpen').disabled=true;}
- for(const btn of document.querySelectorAll('#workspaceList [data-workspace],#workspaceSwitchList [data-workspace]'))if(workspacePending)btn.disabled=true;
+  $('workspaceMembersOpen').querySelector('small').textContent=selected.pendingRegistration?'请先完成联网注册':!workspaceSignedIn?'登录账户后可管理成员与共享':personal?'邀请成员前会将其转换为共享工作区':manager?'管理成员、权限和工作区类型':'查看当前成员和你的权限';
+ }else if(values.length){$('workspaceCurrentName').textContent='当前工作区不可用';$('workspaceCurrentDetail').textContent='请选择一个本机可用或已授权的工作区';$('workspaceCurrentState').textContent='需切换';$('workspaceHomeName').textContent='选择工作区';$('workspaceQuickName').textContent='选择工作区';$('workspaceQuickDetail').textContent='当前工作区不可用 · 点击切换';$('workspaceRename').hidden=true;$('workspaceAssociate').hidden=true;$('workspaceRotate').hidden=true;$('workspaceMembersOpen').disabled=true;}
+ for(const btn of document.querySelectorAll('#workspaceList [data-workspace],#workspaceList [data-register-workspace],#workspaceSwitchList [data-workspace]'))if(workspacePending)btn.disabled=true;
  $('workspaceSwitchList').setAttribute('aria-busy',String(workspacePending));
  $('workspaceNameSave').disabled=workspacePending;$('workspaceCreate').disabled=workspacePending;
 }
@@ -1223,7 +1242,18 @@ async function workspaceRowClicked(e){
  const button=e.target.closest('[data-workspace]');if(!button)return;
  try{await switchWorkspaceChoice(button.dataset.workspace)}catch(error){toast(error?.message||'切换失败')}
 }
-$('workspaceList').addEventListener('click',e=>void workspaceRowClicked(e));
+async function registerLocalWorkspace(id){
+ if(workspacePending||busy||moveBusy)return toast('请等待当前保存或同步完成');
+ const workspace=workspaceChoices.get(id);if(!workspace?.pendingRegistration)return;
+ workspacePending=true;renderWorkspaceChoices();$('workspaceStatus').textContent='正在注册本机工作区…';
+ try{
+  if(native){let state=await native.call('workspace.action',{action:'register',id});if(state.turnstileRequired)state=await native.call('workspace.action',{action:'register',id,turnstileToken:await workspaceTurnstile()});if(!state.ready)throw Error('工作区注册未完成')}
+  else{const credential=await webStore.personalWorkspaceCredential(id);if(!credential)throw Error('本机同步密钥不可用');await registerWebWorkspace(credential,workspace)}
+  await refreshWorkspaces();$('workspaceStatus').textContent='工作区已注册，可在其他设备连接';toast('工作区注册成功');
+ }catch(error){$('workspaceStatus').textContent=error?.message||'注册未完成，本机数据已保留';toast('注册未完成，可稍后重试')}
+ finally{workspacePending=false;renderWorkspaceChoices()}
+}
+$('workspaceList').addEventListener('click',e=>{const register=e.target.closest('[data-register-workspace]');if(register){void registerLocalWorkspace(register.dataset.registerWorkspace);return}void workspaceRowClicked(e)});
 $('workspaceSwitchList').addEventListener('click',e=>void workspaceRowClicked(e));
 $('workspaceSwitchManage').onclick=()=>{closeWorkspaceSwitcher();switchTab('settings');$('workspaceCreate').focus()};
 $('workspaceCreate').onclick=()=>showWorkspaceNameEditor('create');
@@ -1631,7 +1661,7 @@ $('thirdPartyLicensesEntry').onclick=async()=>{
  }catch(error){content.textContent='许可证暂时无法读取，请稍后重试。\n'+String(error.message||error)}
 };
 
-if(native){$('pairKey').remove();$('pairDialog').remove();$('join')?.remove();}switchTab('all');if(identityV2)void refreshWorkspaces();if(history.state?.easybookSync)showSyncPage(false);if(history.state?.easybookMcp&&!native)showMcpPage(false);if(history.state?.easybookAccount&&native)showAccountPage(false);if(window.NativeStore)void window.NativeStore.call('ui.ready');void sync(false,'resume');scheduleRemote();setInterval(()=>{if(tab==='sync'&&!document.hidden)void refreshNativeActivity()},2000);window.addEventListener('online',()=>{autoSyncPaused=false;autoSyncFailures=0;nextAutoSync=0;void sync(false,'resume');scheduleRemote()});window.addEventListener('offline',()=>{activity.pause();status('离线 · 已存本机','offline')});document.addEventListener('visibilitychange',()=>{rich.flushInput();persistNow();if(!document.hidden){void sync(false,'resume');scheduleRemote()}else clearTimeout(remoteTimer)});window.addEventListener('pagehide',()=>{rich.flushInput();persistNow()});
+if(native){$('pairKey').remove();$('pairDialog').remove();$('join')?.remove();}switchTab('all');if(identityV2)void refreshWorkspaces();if(history.state?.easybookSync)showSyncPage(false);if(history.state?.easybookMcp&&!native)showMcpPage(false);if(history.state?.easybookAccount&&native)showAccountPage(false);if(window.NativeStore)void window.NativeStore.call('ui.ready');void sync(false,'resume');scheduleRemote();setInterval(()=>{if(tab==='sync'&&!document.hidden)void refreshNativeActivity()},2000);window.addEventListener('online',async()=>{autoSyncPaused=false;autoSyncFailures=0;nextAutoSync=0;const registered=await retryNativeWorkspaceRegistration();if(registered&&identityV2)await refreshWorkspaces();void sync(false,'resume');scheduleRemote()});window.addEventListener('offline',()=>{activity.pause();status('离线 · 已存本机','offline')});document.addEventListener('visibilitychange',()=>{rich.flushInput();persistNow();if(!document.hidden){void sync(false,'resume');scheduleRemote()}else clearTimeout(remoteTimer)});window.addEventListener('pagehide',()=>{rich.flushInput();persistNow()});
 })().catch(()=>{document.body.innerHTML='<main style="padding:70px 24px">页面未能加载，笔记保留在本机，请重新打开应用。</main>'});
 </script><script src="/native-glass/highlight-palette.js"></script><script src="/native-glass/adaptive-toolbar.js"></script><div class="placement-live" id="placementLive" role="status" aria-live="polite"></div></body></html>
 

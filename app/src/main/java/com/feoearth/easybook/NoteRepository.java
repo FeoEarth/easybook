@@ -157,7 +157,7 @@ public final class NoteRepository extends SQLiteOpenHelper {
     synchronized JSONArray localKeyWorkspaces()throws Exception{
         JSONArray result=new JSONArray();
         try(Cursor c=getReadableDatabase().rawQuery("SELECT i.workspace_id,i.name,i.mode,i.role FROM workspace_identity i WHERE i.mode='personal' AND NOT EXISTS(SELECT 1 FROM settings s WHERE s.name='account-workspace:space:'||i.local_id AND s.value<>'') AND NOT EXISTS(SELECT 1 FROM settings p WHERE p.name='account-placeholder:space:'||i.local_id AND p.value='1') ORDER BY i.name COLLATE NOCASE",null)){
-            while(c.moveToNext())result.put(new JSONObject().put("id",c.getString(0)).put("name",c.getString(1)).put("mode",c.getString(2)).put("role",c.getString(3)));
+            while(c.moveToNext()){String id=c.getString(0);result.put(new JSONObject().put("id",id).put("name",c.getString(1)).put("mode",c.getString(2)).put("role",c.getString(3)).put("pendingRegistration",!setting("workspace-pending:"+id,"").isEmpty()));}
         }
         return result;
     }
@@ -183,7 +183,10 @@ public final class NoteRepository extends SQLiteOpenHelper {
     }
     synchronized boolean activateCachedWorkspace(String workspaceId)throws Exception{
         if(workspaceId==null||!workspaceId.matches("[a-f0-9]{64}"))throw new IllegalArgumentException("Invalid workspace");
-        if("1".equals(setting("workspace-unavailable:"+workspaceId,"")))return false;
+        if("1".equals(setting("workspace-unavailable:"+workspaceId,""))){
+            if(setting("workspace-pending:"+workspaceId,"").isEmpty())return false;
+            setSetting("workspace-unavailable:"+workspaceId,"");
+        }
         try(Cursor c=getReadableDatabase().rawQuery("SELECT local_id FROM workspace_identity WHERE workspace_id=?",new String[]{workspaceId})){
             if(c.moveToFirst()){setSetting("active",c.getString(0));return true;}
         }

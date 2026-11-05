@@ -31,6 +31,15 @@ final class WorkspaceClient {
  }
  static JSONObject perform(NoteRepository db,String action,JSONObject args)throws Exception{
   if(action.equals("bootstrap")){try{ensure(db,args.optString("turnstileToken",null));return new JSONObject().put("ready",true);}catch(NativeSync.HttpsTransport.HttpFailure error){if(error.status==401&&!args.has("turnstileToken"))return new JSONObject().put("turnstileRequired",true);throw error;}}
+  if(action.equals("register")){
+   String id=args.getString("id"),token=args.optString("turnstileToken",null);if(!id.matches("[a-f0-9]{64}"))throw new SecurityException("Invalid workspace");
+   if(db.setting("workspace-pending:"+id,"").isEmpty())return new JSONObject().put("ready",true);
+   if(token==null)return new JSONObject().put("turnstileRequired",true);
+   String credential=db.localKeyCredential(id);JSONObject local=lookup(db.localKeyWorkspaces(),id);if(credential==null||local==null)throw new SecurityException("Local workspace credential unavailable");
+   JSONObject registered=request("/api/workspaces",new JSONObject().put("name",local.getString("name")).put("workspaceId",id).put("bootstrapKey",credential).put("turnstileToken",token),null,false).getJSONObject("workspace");
+   if(!id.equals(registered.getString("id")))throw new SecurityException("Workspace identity changed");
+   db.updateWorkspaceMetadata(registered);db.setSetting("workspace-pending:"+id,"");return new JSONObject().put("ready",true).put("workspace",registered);
+  }
   if(action.equals("listCached")){
    JSONObject current=db.cachedActiveWorkspace();if(current==null)throw new IOException("Workspace unavailable");
    JSONArray list=db.cachedWorkspaces();if(lookup(list,current.getString("id"))==null)merge(list,new JSONArray().put(current));
@@ -56,6 +65,7 @@ final class WorkspaceClient {
     for(int i=0;i<personal.length();i++){
      JSONObject local=personal.getJSONObject(i);String id=local.getString("id");
      if(lookup(list,id)!=null)continue;
+     if(local.optBoolean("pendingRegistration")){cached=true;merge(list,new JSONArray().put(local));continue;}
      if(activeKeyVerified&&current!=null&&id.equals(current.optString("id"))){merge(list,new JSONArray().put(current));continue;}
      try{
       String key=db.localKeyCredential(id);if(key==null)continue;
@@ -85,7 +95,7 @@ final class WorkspaceClient {
     catch(NativeSync.HttpsTransport.HttpFailure e){denied=e;}
     catch(IOException e){offline=e;}
    }
-   String personalKey=db.localKeyCredential(id);
+   String personalKey=db.localKeyCredential(id);boolean pendingRegistration=!db.setting("workspace-pending:"+id,"").isEmpty();
    if(personalKey!=null){
     try{
      JSONObject w=lookup(request("/api/workspaces",null,personalKey,false).getJSONArray("workspaces"),id);
@@ -97,6 +107,7 @@ final class WorkspaceClient {
     }catch(NativeSync.HttpsTransport.HttpFailure e){denied=e;offline=null;keyDenied=true;}
     catch(IOException e){offline=e;}
    }
+   if(pendingRegistration&&personalKey!=null&&keyDenied&&denied!=null&&denied.status==401&&db.activateCachedWorkspace(id))return new JSONObject().put("selected",true).put("cached",true).put("pendingRegistration",true);
    // Offline access is available only when a credential exists and the server
    // could not be reached. A definite 401/403/404 is never treated as offline.
    if(offline!=null&&(accountToken!=null||personalKey!=null)&&db.activateCachedWorkspace(id))return new JSONObject().put("selected",true).put("cached",true);
@@ -128,6 +139,7 @@ final class WorkspaceClient {
    if(action.equals("mode")){if(result.has("key"))db.pairWorkspace(result.getString("key"),result.getJSONObject("workspace"),false);else db.activateAccountWorkspace(result.getJSONObject("workspace"));}
    return result;
   }
+  if(action.equals("rename")){JSONObject local=db.cachedActiveWorkspace();if(local!=null&&!db.setting("workspace-pending:"+local.getString("id"),"").isEmpty()){local.put("name",args.getString("name"));db.updateWorkspaceMetadata(local);return new JSONObject().put("workspace",local).put("local",true);}}
   JSONObject w=ensure(db);String id=w.getString("id");boolean account=!db.setting("account-workspace:"+db.activeSpace(),"").isEmpty();String credential=account?NativeAccount.token(db):db.credential(db.activeSpace());
   if(action.equals("rename")){JSONObject result=request("/api/workspaces/"+id,new JSONObject().put("name",args.getString("name")),credential,account);db.updateWorkspaceMetadata(result.getJSONObject("workspace"));return result;}
   if(action.equals("associate")){JSONObject result=request("/api/workspaces/"+id+"/associate",new JSONObject().put("key",db.credential(db.activeSpace())),NativeAccount.token(db),true);return result;}
