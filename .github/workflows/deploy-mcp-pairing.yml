@@ -9,6 +9,7 @@ on:
       - 'worker/ai.mjs'
       - 'worker/migrations/0008-mcp-capabilities.sql'
       - 'worker/migrations/0018-ai-credentials.sql'
+      - 'worker/migrations/0021-ai-profiles.sql'
       - 'worker/notes.mjs'
       - 'worker/management.mjs'
       - 'shared/**'
@@ -48,6 +49,7 @@ jobs:
           node scripts/mcp-capabilities-test.mjs
           node scripts/mcp-upload-test.mjs
           node scripts/mcp-pairing-release-test.mjs
+          node scripts/ai-byok-test.mjs
           # Migration is applied via authorized Cloudflare; candidate smoke verifies runtime D1 readiness.
       - name: Upload OAuth candidate only
         id: candidate

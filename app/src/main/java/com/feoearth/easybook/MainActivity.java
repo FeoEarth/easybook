@@ -287,6 +287,8 @@ public class MainActivity extends Activity {
             case "account.manage":return nativeAccount.manage(args);
             case "ai.config":return nativeAccount.ai(new JSONObject().put("action","config"));
             case "ai.credential":return nativeAccount.ai(new JSONObject(args.toString()).put("action","credential"));
+            case "ai.models":return nativeAccount.ai(new JSONObject(args.toString()).put("action","models"));
+            case "ai.select":return nativeAccount.ai(new JSONObject(args.toString()).put("action","select"));
             case "ai.chat":return nativeAccount.ai(new JSONObject(args.toString()).put("action","chat"));
             case "account.devices":return nativeAccount.devices();
             case "account.device.revoke":return nativeAccount.revokeDevice(bounded(args,"id",36));

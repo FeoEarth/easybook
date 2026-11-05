@@ -44,7 +44,9 @@ public final class SecurityManager {
             case "conflict.resolve":fields=fields("id","choice");break;
             case "account.manage":fields=fields("action","id","workspace","cursor","category","choices","confirm");break;
             case "ai.config":fields=fields("method");break;
-            case "ai.credential":fields=fields("method","provider","providerName","baseUrl","model","apiKey");break;
+            case "ai.credential":fields=fields("method","credentialId","label","provider","providerName","baseUrl","model","apiKey","active");break;
+            case "ai.models":fields=fields("credentialId");break;
+            case "ai.select":fields=fields("credentialId");break;
             case "ai.chat":fields=fields("method","messages","workspace");break;
             case "account.device.revoke":fields=fields("id");break;
             case "account.passkey":fields=fields("register","name");break;
