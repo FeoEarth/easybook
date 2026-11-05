@@ -6,7 +6,7 @@ This inventory covers the locked production npm graphs for the Web editor/PDF bu
 
 **Coverage boundary:** development/test and platform-specific optional npm packages are excluded; esbuild is listed but marked build-only. The Android `releaseRuntimeClasspath` is resolved by Gradle, but final APK byte-for-byte contents are not yet audited. Proprietary Google Play Services modules are **not open-source**: their Maven POMs point to the Android SDK License terms, which are linked rather than reproduced as an open-source license text. The Liberation font uses its own GPL-2.0-based agreement with exceptions, identified with a local `LicenseRef` rather than inaccurately described as Apache-2.0.
 
-Entries: 147 (56 npm main, 27 npm OAuth, 9 embedded PDF resources, 54 resolved Android runtime modules, one native glass port).
+Entries: 151 (56 npm main, 27 npm OAuth, 9 embedded PDF resources, 58 resolved Android runtime modules, one native glass port).
 
 ## Audit inputs / 审计输入
 
@@ -65,6 +65,7 @@ Entries: 147 (56 npm main, 27 npm OAuth, 9 embedded PDF resources, 54 resolved A
 | androidx.versionedparcelable:versionedparcelable | 1.1.1 | Android release runtime | `Apache-2.0` | The Android Open Source Project | [0d542e0c88](#license-text-0d542e0c8804e39a) |
 | androidx.viewpager:viewpager | 1.0.0 | Android release runtime | `Apache-2.0` | The Android Open Source Project | [0d542e0c88](#license-text-0d542e0c8804e39a) |
 | androidx.webkit:webkit | 1.12.1 | Android release runtime | `Apache-2.0` | The Android Open Source Project | [0d542e0c88](#license-text-0d542e0c8804e39a) |
+| com.google.ai.edge.litertlm:litertlm-android | 0.18.0 | Android release runtime | `Apache-2.0` | Google LLC | [0d542e0c88](#license-text-0d542e0c8804e39a) |
 | com.google.android.gms:play-services-auth | 21.1.1 | Android release runtime | `LicenseRef-Android-SDK-License` | Google LLC | [Official proprietary terms](https://developer.android.com/studio/terms.html) |
 | com.google.android.gms:play-services-auth-api-phone | 18.0.2 | Android release runtime | `LicenseRef-Android-SDK-License` | Google LLC | [Official proprietary terms](https://developer.android.com/studio/terms.html) |
 | com.google.android.gms:play-services-auth-base | 18.0.10 | Android release runtime | `LicenseRef-Android-SDK-License` | Google LLC | [Official proprietary terms](https://developer.android.com/studio/terms.html) |
@@ -75,15 +76,18 @@ Entries: 147 (56 npm main, 27 npm OAuth, 9 embedded PDF resources, 54 resolved A
 | com.google.android.gms:play-services-identity-credentials | 16.0.0-alpha02 | Android release runtime | `LicenseRef-Android-SDK-License` | Google LLC | [Official proprietary terms](https://developer.android.com/studio/terms.html) |
 | com.google.android.gms:play-services-tasks | 18.2.0 | Android release runtime | `LicenseRef-Android-SDK-License` | Google LLC | [Official proprietary terms](https://developer.android.com/studio/terms.html) |
 | com.google.android.libraries.identity.googleid:googleid | 1.1.0 | Android release runtime | `LicenseRef-Android-SDK-License` | Google LLC | [Official proprietary terms](https://developer.android.com/studio/terms.html) |
+| com.google.code.gson:gson | 2.14.0 | Android release runtime | `Apache-2.0` | Google LLC | [0d542e0c88](#license-text-0d542e0c8804e39a) |
+| com.google.errorprone:error_prone_annotations | 2.48.0 | Android release runtime | `Apache-2.0` | Google LLC | [0d542e0c88](#license-text-0d542e0c8804e39a) |
 | com.google.guava:listenablefuture | 1.0 | Android release runtime | `Apache-2.0` | Google LLC | [0d542e0c88](#license-text-0d542e0c8804e39a) |
 | com.google.zxing:core | 3.4.1 | Android release runtime | `Apache-2.0` | ZXing authors | [0d542e0c88](#license-text-0d542e0c8804e39a) |
 | com.journeyapps:zxing-android-embedded | 4.3.0 | Android release runtime | `Apache-2.0` | ZXing authors and Journey Mobile | [0d542e0c88](#license-text-0d542e0c8804e39a) |
 | org.jetbrains:annotations | 23.0.0 | Android release runtime | `Apache-2.0` | JetBrains s.r.o. | [0d542e0c88](#license-text-0d542e0c8804e39a) |
-| org.jetbrains.kotlin:kotlin-stdlib | 1.9.24 | Android release runtime | `Apache-2.0` | JetBrains s.r.o. | [0d542e0c88](#license-text-0d542e0c8804e39a) |
+| org.jetbrains.kotlin:kotlin-reflect | 2.4.0 | Android release runtime | `Apache-2.0` | JetBrains s.r.o. | [0d542e0c88](#license-text-0d542e0c8804e39a) |
+| org.jetbrains.kotlin:kotlin-stdlib | 2.4.0 | Android release runtime | `Apache-2.0` | JetBrains s.r.o. | [0d542e0c88](#license-text-0d542e0c8804e39a) |
 | org.jetbrains.kotlin:kotlin-stdlib-jdk7 | 1.9.0 | Android release runtime | `Apache-2.0` | JetBrains s.r.o. | [0d542e0c88](#license-text-0d542e0c8804e39a) |
-| org.jetbrains.kotlin:kotlin-stdlib-jdk8 | 1.8.20 | Android release runtime | `Apache-2.0` | JetBrains s.r.o. | [0d542e0c88](#license-text-0d542e0c8804e39a) |
-| org.jetbrains.kotlinx:kotlinx-coroutines-android | 1.7.3 | Android release runtime | `Apache-2.0` | JetBrains s.r.o. | [0d542e0c88](#license-text-0d542e0c8804e39a) |
-| org.jetbrains.kotlinx:kotlinx-coroutines-core-jvm | 1.7.3 | Android release runtime | `Apache-2.0` | JetBrains s.r.o. | [0d542e0c88](#license-text-0d542e0c8804e39a) |
+| org.jetbrains.kotlin:kotlin-stdlib-jdk8 | 1.8.0 | Android release runtime | `Apache-2.0` | JetBrains s.r.o. | [0d542e0c88](#license-text-0d542e0c8804e39a) |
+| org.jetbrains.kotlinx:kotlinx-coroutines-android | 1.11.0 | Android release runtime | `Apache-2.0` | JetBrains s.r.o. | [0d542e0c88](#license-text-0d542e0c8804e39a) |
+| org.jetbrains.kotlinx:kotlinx-coroutines-core-jvm | 1.11.0 | Android release runtime | `Apache-2.0` | JetBrains s.r.o. | [0d542e0c88](#license-text-0d542e0c8804e39a) |
 | @cloudflare/workers-oauth-provider | 1.2.4 | OAuth Worker | `MIT` | Copyright (c) 2025 Cloudflare, Inc. | [5514f48637](#license-text-5514f48637fa1d8f) |
 | @hexagon/base64 | 1.1.28 | OAuth Worker | `MIT` | Copyright (c) 2021-2022 Hexagon <github.com/Hexagon> | [a66f704bd1](#license-text-a66f704bd1383227) |
 | @levischuck/tiny-cbor | 0.2.11 | OAuth Worker | `MIT` | Copyright (c) 2025 Levi | [5871de5277](#license-text-5871de52772b5b8e) |
@@ -172,6 +176,7 @@ Entries: 147 (56 npm main, 27 npm OAuth, 9 embedded PDF resources, 54 resolved A
 
 - **QWEA0/Liquid-Glass-Android (ported shader)@16afe4d8b5d08a370d3f8c50b08d7f5c6eb5da4d**: Java/AGSL port; the separate MIT license is also packaged at native-glass/LICENSE.txt.
 - **pdfjs-dist/standard_fonts/LICENSE_LIBERATION@6.4.299**: Custom GPL-2.0-based font agreement with additional exceptions; see original text.
+- **com.google.ai.edge.litertlm:litertlm-android@0.18.0**: LiteRT-LM on-device model inference runtime; the optional model weights are downloaded separately.
 - **com.google.android.gms:play-services-auth@21.1.1**: Proprietary Google Android SDK terms (not an OSI-approved open-source license).
 - **com.google.android.gms:play-services-auth-api-phone@18.0.2**: Proprietary Google Android SDK terms (not an OSI-approved open-source license).
 - **com.google.android.gms:play-services-auth-base@18.0.10**: Proprietary Google Android SDK terms (not an OSI-approved open-source license).

@@ -81,7 +81,7 @@ async function pomFor({group,name,version}){
   throw Error(`Cannot read pinned Maven POM from ${url}: ${lastError}`);
 }
 function sourceUrl({group,name,version}){
-  const host=group.startsWith('androidx.')||group.startsWith('com.google.android.')?
+  const host=group.startsWith('androidx.')||group.startsWith('com.google.android.')||group.startsWith('com.google.ai.edge.')?
     'https://dl.google.com/dl/android/maven2':'https://repo.maven.apache.org/maven2';
   return `${host}/${group.replaceAll('.','/')}/${name}/${version}/${name}-${version}.pom`;
 }
