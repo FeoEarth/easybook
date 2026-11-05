@@ -27,6 +27,8 @@ import {attachments} from './attachments.mjs';
 import {androidVersionPolicy} from './android-version-policy.mjs';
 const headers = {'Access-Control-Allow-Origin':'*','Access-Control-Allow-Headers':'Authorization, Content-Type','Access-Control-Allow-Methods':'GET, PUT, OPTIONS','Cache-Control':'no-store','X-Content-Type-Options':'nosniff'};
 const json = (data, status=200) => Response.json(data, {status, headers});
+const folderSchemas=new WeakMap();
+function ensureFolderRevisionSchema(env){let ready=folderSchemas.get(env.DB);if(!ready){ready=env.DB.batch([env.DB.prepare("CREATE TABLE IF NOT EXISTS folder_revisions(workspace TEXT NOT NULL,folder_id TEXT NOT NULL,version INTEGER NOT NULL DEFAULT 1 CHECK(version>0),mutation TEXT NOT NULL DEFAULT '',PRIMARY KEY(workspace,folder_id))"),env.DB.prepare('CREATE TABLE IF NOT EXISTS folder_receipts(workspace TEXT NOT NULL,mutation TEXT NOT NULL,folder_id TEXT NOT NULL,response TEXT NOT NULL,PRIMARY KEY(workspace,mutation))')]).catch(error=>{folderSchemas.delete(env.DB);throw error});folderSchemas.set(env.DB,ready)}return ready}
 // Android OTA publishes Web UI and updater presentation only. Native bridge,
 // installation, and glass implementation stay bundled in the signed APK.
 async function otaManifest(v2=false) {
@@ -119,6 +121,7 @@ export default {
    const attachmentId=url.pathname.match(/^\/api\/attachments\/([a-f0-9]{64})$/)?.[1];if(attachmentId)return await attachments(request,env,workspace,attachmentId,headers);
    if(url.pathname==='/api/notes'||url.pathname.startsWith('/api/notes/'))return await notes(request,env,workspace,url,json);
    if(url.pathname === '/api/folders' && request.method === 'GET') {
+    await ensureFolderRevisionSchema(env);
     const after=url.searchParams.get('after')||'';
     if(after.length>80)return json({error:'Invalid cursor'},400);
     const {results}=await env.DB.prepare("SELECT f.id,f.name,f.updated,f.deleted,COALESCE(r.version,1) version,COALESCE(r.mutation,'') mutation FROM folders f LEFT JOIN folder_revisions r ON r.workspace=f.workspace AND r.folder_id=f.id WHERE f.workspace=? AND f.id>? ORDER BY f.id LIMIT 100").bind(workspace,after).all();
@@ -134,6 +137,7 @@ export default {
    let n; try {n=JSON.parse(new TextDecoder().decode(bytes));} catch{return json({error:'Invalid JSON'},400);}
    if(!n||typeof n!=='object'||Array.isArray(n))return json({error:'Invalid JSON object'},400);
    if(folderId){
+    await ensureFolderRevisionSchema(env);
     if(typeof n.name!=='string'||!n.name.trim()||n.name.length>60)return json({error:'Invalid folder'},400);
     if(n.deleted!==undefined&&![0,1].includes(n.deleted)||n.updated!==undefined&&(!Number.isSafeInteger(n.updated)||n.updated<0||n.updated>Date.now()+86400000))return json({error:'Invalid folder revision'},400);
     const revised=Number.isSafeInteger(n.version)&&n.version>=0&&typeof n.mutation==='string'&&/^[a-f0-9-]{36}$/.test(n.mutation);
