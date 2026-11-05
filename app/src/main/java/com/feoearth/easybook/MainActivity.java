@@ -33,6 +33,8 @@ public class MainActivity extends Activity {
     private NoteRepository repository;
     private SecurityManager security;
     private NativeAccount nativeAccount;
+    private LocalAiModels localAiModels;
+    private LocalAiEngine localAiEngine;
     private AppUpdateManager appUpdater;
     private WebOtaManager webOta;
     private static final ExecutorService syncIo=Executors.newSingleThreadExecutor();
@@ -63,6 +65,8 @@ public class MainActivity extends Activity {
     @Override public void onCreate(Bundle state) {
         super.onCreate(state);
         webOta=new WebOtaManager(this);
+        localAiModels=new LocalAiModels(this);
+        localAiEngine=new LocalAiEngine();
         repository=NoteRepository.get(this);SyncPolicy.initialize(this);
         nativeAccount=new NativeAccount(this,repository,io);nativeAccount.handle(getIntent());
         security=new SecurityManager(this,repository,io);
@@ -196,7 +200,7 @@ public class MainActivity extends Activity {
                 return new WebResourceResponse("text/plain", "UTF-8", new ByteArrayInputStream(new byte[0]));
             }
             @Override public boolean shouldOverrideUrlLoading(WebView v, WebResourceRequest r) { return !r.isForMainFrame() || !LOCAL.equals(r.getUrl().toString()); }
-            @Override public void onPageStarted(WebView v,String url,android.graphics.Bitmap icon){ready=false;updateUiReady=false;documentGeneration++;if(nativeGlass!=null){nativeGlass.clearFormatFrame();nativeGlass.dismiss(true);}}
+            @Override public void onPageStarted(WebView v,String url,android.graphics.Bitmap icon){if(localAiEngine!=null)localAiEngine.cancel();ready=false;updateUiReady=false;documentGeneration++;if(nativeGlass!=null){nativeGlass.clearFormatFrame();nativeGlass.dismiss(true);}}
         });
         web.loadUrl(LOCAL);
     }
@@ -285,6 +289,24 @@ public class MainActivity extends Activity {
             }
             case "conflict.resolve":repository.resolveConflict(repository.activeSpace(),bounded(args,"id",36),bounded(args,"choice",16));return repository.snapshot(repository.activeSpace());
             case "account.manage":return nativeAccount.manage(args);
+            case "ai.local.status":return localAiModels.status().put("errors",localAiModels.errors());
+            case "ai.local.install":return localAiModels.install(bounded(args,"model",40));
+            case "ai.local.download.cancel":localAiModels.cancel(bounded(args,"model",40));return localAiModels.status();
+            case "ai.local.delete":{
+                if(localAiEngine.busy())throw new IllegalStateException("请等待本地 AI 生成结束");
+                localAiEngine.unload();localAiModels.delete(bounded(args,"model",40));return localAiModels.status();
+            }
+            case "ai.local.generate":{
+                String requestId=bounded(args,"id",70),model=bounded(args,"model",40),prompt=bounded(args,"prompt",16000);
+                if(!requestId.matches("[a-f0-9-]{20,70}")||prompt.trim().isEmpty())throw new IllegalArgumentException("Invalid local AI request");
+                File verified=localAiModels.installedPath(model);
+                localAiEngine.generate(requestId,model,verified,prompt,event->runOnUiThread(()->{
+                    if(!destroyed&&ready&&generation==documentGeneration&&LOCAL.equals(web.getUrl()))
+                        web.evaluateJavascript("window.easybookLocalAiEvent&&window.easybookLocalAiEvent("+event.toString()+")",null);
+                }));
+                return new JSONObject().put("accepted",true);
+            }
+            case "ai.local.cancel":localAiEngine.cancel();return new JSONObject().put("accepted",true);
             case "ai.config":return nativeAccount.ai(new JSONObject().put("action","config"));
             case "ai.credential":return nativeAccount.ai(new JSONObject(args.toString()).put("action","credential"));
             case "ai.models":return nativeAccount.ai(new JSONObject(args.toString()).put("action","models"));
@@ -521,8 +543,8 @@ public class MainActivity extends Activity {
         web.evaluateJavascript("window.handleBack()", handled -> {if (!"true".equals(handled)) MainActivity.super.onBackPressed();});
     }
     @Override protected void onResume(){super.onResume();if(nativeAccount!=null)nativeAccount.resume();}
-    @Override protected void onPause() { if(security!=null)security.dismissConnection(); if(nativeGlass!=null)nativeGlass.dismiss(true);web.evaluateJavascript("window.EasybookVideo?.pauseAll();window.persistNow && window.persistNow()", null); super.onPause(); }
-    @Override protected void onDestroy() { hideVideoFullscreen(); if(nativeAccount!=null)nativeAccount.cancel(); if(security!=null)security.dismissConnection(); if(connectivity!=null&&networkCallback!=null)connectivity.unregisterNetworkCallback(networkCallback); if(nativeGlass!=null){nativeGlass.clearFormatFrame();nativeGlass.dismiss(true);}ready=false; destroyed=true;if(WebViewFeature.isFeatureSupported(WebViewFeature.WEB_MESSAGE_LISTENER))WebViewCompat.removeWebMessageListener(web,"EasybookNative");web.destroy();if(appUpdater!=null)appUpdater.shutdown();io.shutdown();super.onDestroy(); }
+    @Override protected void onPause() { if(localAiEngine!=null)localAiEngine.cancel();if(security!=null)security.dismissConnection(); if(nativeGlass!=null)nativeGlass.dismiss(true);web.evaluateJavascript("window.EasybookVideo?.pauseAll();window.persistNow && window.persistNow()", null); super.onPause(); }
+    @Override protected void onDestroy() { hideVideoFullscreen(); if(nativeAccount!=null)nativeAccount.cancel(); if(localAiEngine!=null)localAiEngine.shutdown();if(localAiModels!=null)localAiModels.shutdown(); if(security!=null)security.dismissConnection(); if(connectivity!=null&&networkCallback!=null)connectivity.unregisterNetworkCallback(networkCallback); if(nativeGlass!=null){nativeGlass.clearFormatFrame();nativeGlass.dismiss(true);}ready=false; destroyed=true;if(WebViewFeature.isFeatureSupported(WebViewFeature.WEB_MESSAGE_LISTENER))WebViewCompat.removeWebMessageListener(web,"EasybookNative");web.destroy();if(appUpdater!=null)appUpdater.shutdown();io.shutdown();super.onDestroy(); }
 }
 
 
