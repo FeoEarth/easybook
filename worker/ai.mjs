@@ -77,9 +77,25 @@ function toolsFor(role,mode){
 async function ensureAgentApprovalSchema(env){
  await env.DB.prepare('CREATE TABLE IF NOT EXISTS ai_agent_approvals(id TEXT PRIMARY KEY,account_id TEXT NOT NULL,workspace_id TEXT NOT NULL,tool_name TEXT NOT NULL,tool_args TEXT NOT NULL,expires_at INTEGER NOT NULL,consumed_at INTEGER)').run();
 }
-function safeMessages(input){
+function safeMessages(input,attachments=[]){
  if(!Array.isArray(input)||input.length<1||input.length>40)throw Object.assign(Error('Invalid messages'),{status:400,code:'invalid_messages'});
- let size=0;return input.map(message=>{if(!object(message)||!['user','assistant'].includes(message.role)||typeof message.content!=='string')throw Object.assign(Error('Invalid messages'),{status:400,code:'invalid_messages'});size+=message.content.length;if(size>60000)throw Object.assign(Error('Messages too large'),{status:413,code:'messages_too_large'});return {role:message.role,content:message.content}});
+ let size=0;const result=input.map(message=>{if(!object(message)||!['user','assistant'].includes(message.role)||typeof message.content!=='string')throw Object.assign(Error('Invalid messages'),{status:400,code:'invalid_messages'});size+=message.content.length;if(size>60000)throw Object.assign(Error('Messages too large'),{status:413,code:'messages_too_large'});return {role:message.role,content:message.content}});
+ if(!Array.isArray(attachments)||attachments.length>3)throw Object.assign(Error('Invalid AI attachments'),{status:400,code:'invalid_attachments'});
+ if(!attachments.length)return result;
+ if(result.at(-1).role!=='user')throw Object.assign(Error('Attachments require final user message'),{status:400,code:'invalid_attachments'});
+ const parts=[{type:'text',text:result.at(-1).content}];let textSize=0;
+ for(const file of attachments){
+  if(!object(file)||typeof file.name!=='string'||file.name.length>120||!file.name.trim())throw Object.assign(Error('Invalid attachment name'),{status:400,code:'invalid_attachments'});
+  if(file.type==='text'){
+   if(typeof file.text!=='string'||file.text.length>30000)throw Object.assign(Error('Invalid text attachment'),{status:400,code:'invalid_attachments'});
+   textSize+=file.text.length;if(textSize>45000)throw Object.assign(Error('Text attachments too large'),{status:413,code:'attachments_too_large'});
+   parts[0].text+='\n\n[附件 '+file.name+']\n'+file.text+'\n[/附件]';
+  }else if(file.type==='image'){
+   if(!['image/jpeg','image/png','image/webp'].includes(file.mime)||typeof file.data!=='string'||file.data.length>300000||!/^[A-Za-z0-9+/]+={0,2}$/.test(file.data))throw Object.assign(Error('Invalid image attachment'),{status:400,code:'invalid_attachments'});
+   parts.push({type:'image_url',image_url:{url:'data:'+file.mime+';base64,'+file.data}});
+  }else throw Object.assign(Error('Unsupported AI attachment'),{status:400,code:'invalid_attachments'});
+ }
+ result[result.length-1].content=parts.length===1?parts[0].text:parts;return result;
 }
 async function openAICompletion(key,row,messages,tools,fetcher=fetch){
  const upstream=await fetcher(row.base_url.replace(/\/$/,'')+'/chat/completions',{method:'POST',redirect:'manual',headers:{Authorization:'Bearer '+key,'Content-Type':'application/json'},body:JSON.stringify({model:row.model,messages,tools,tool_choice:'auto',max_completion_tokens:2000}),signal:AbortSignal.timeout(45000)});
@@ -88,7 +104,7 @@ async function openAICompletion(key,row,messages,tools,fetcher=fetch){
  const message=data?.choices?.[0]?.message;if(!message||typeof message!=='object')throw Object.assign(Error('Invalid AI provider response'),{status:502,code:'provider_error'});return message;
 }
 function anthropicMessages(messages){
- const result=[];for(const message of messages){if(message.role==='system')continue;if(message.role==='tool'){const block={type:'tool_result',tool_use_id:message.tool_call_id,content:message.content};const previous=result.at(-1);if(previous?.role==='user'&&Array.isArray(previous.content))previous.content.push(block);else result.push({role:'user',content:[block]});continue}if(message.role==='assistant'&&Array.isArray(message.tool_calls)){const content=[];if(message.content)content.push({type:'text',text:message.content});for(const call of message.tool_calls)content.push({type:'tool_use',id:call.id,name:call.function.name,input:JSON.parse(call.function.arguments||'{}')});result.push({role:'assistant',content});continue}result.push({role:message.role,content:message.content})}return result;
+ const result=[];for(const message of messages){if(message.role==='system')continue;if(message.role==='tool'){const block={type:'tool_result',tool_use_id:message.tool_call_id,content:message.content};const previous=result.at(-1);if(previous?.role==='user'&&Array.isArray(previous.content))previous.content.push(block);else result.push({role:'user',content:[block]});continue}if(message.role==='assistant'&&Array.isArray(message.tool_calls)){const content=[];if(message.content)content.push({type:'text',text:message.content});for(const call of message.tool_calls)content.push({type:'tool_use',id:call.id,name:call.function.name,input:JSON.parse(call.function.arguments||'{}')});result.push({role:'assistant',content});continue}result.push({role:message.role,content:Array.isArray(message.content)?message.content.map(part=>part.type==='image_url'?{type:'image',source:{type:'base64',media_type:part.image_url.url.slice(5,part.image_url.url.indexOf(';')),data:part.image_url.url.slice(part.image_url.url.indexOf(',')+1)}}:{type:'text',text:part.text}):message.content})}return result;
 }
 async function anthropicCompletion(key,row,messages,tools,fetcher=fetch){
  const system=messages.filter(message=>message.role==='system').map(message=>message.content).join('\n\n');
@@ -146,7 +162,7 @@ export async function aiAPI(request,env,principal,{workspaceId,fetcher=fetch}={}
    return response({ok:!result?.error,tool:tool.name,result:result?.error?undefined:result,error:result?.error});
   }
   const row=await credential(env,principal.accountId);if(!row)return response({error:'ai_not_configured'},409);
-  const input=await boundedJSON(request,65536),messages=safeMessages(input?.messages),mode=input?.mode==='agent'?'agent':'conversation',scopes=toolScopes(access.role,mode),tools=toolsFor(access.role,mode),key=await open(env,row);
+  const input=await boundedJSON(request,1600000),messages=safeMessages(input?.messages,input?.attachments||[]),mode=input?.mode==='agent'?'agent':'conversation',scopes=toolScopes(access.role,mode),tools=toolsFor(access.role,mode),key=await open(env,row);
   const conversation=[{role:'system',content:'你是 Easybook 内置 AI 助手。笔记内容以 Markdown 提供，面向用户的回复必须使用清晰、有效的 Markdown。不得猜测工具结果。'+(mode==='agent'?'当前为 Agent 模式：可以受控地分步骤使用当前工作区工具。所有写入都会暂停，等待用户在 Easybook 内逐项核对并确认；不得宣称未确认的操作已执行。高风险及永久删除操作不可用。':'当前为对话模式：只能读取工作区；不能创建、修改、移动或删除任何内容。如需写入，请提示用户切换 Agent 模式。')},...messages];
   const used=[];
   for(let turn=0;turn<6;turn++){

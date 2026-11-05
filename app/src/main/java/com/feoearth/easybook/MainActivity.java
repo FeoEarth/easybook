@@ -37,7 +37,7 @@ public class MainActivity extends Activity {
     private WebOtaManager webOta;
     private static final ExecutorService syncIo=Executors.newSingleThreadExecutor();
     private String pendingExport;
-    private String attachmentSpace,attachmentNote,attachmentExportName;private long attachmentGeneration;private File attachmentExport;
+    private String attachmentSpace,attachmentNote,attachmentExportName;private long attachmentGeneration;private File attachmentExport;private boolean aiPickerOpen;
     private final ExecutorService io = Executors.newSingleThreadExecutor();
     private static String operationErrorCode(Exception e){
         if(e instanceof WebOtaManager.OtaException)return ((WebOtaManager.OtaException)e).code;
@@ -291,6 +291,23 @@ public class MainActivity extends Activity {
             case "ai.select":return nativeAccount.ai(new JSONObject(args.toString()).put("action","select"));
             case "ai.chat":return nativeAccount.ai(new JSONObject(args.toString()).put("action","chat"));
             case "ai.execute":return nativeAccount.ai(new JSONObject(args.toString()).put("action","execute"));
+            case "ai.attachment.pick":{
+                runOnUiThread(()->{if(destroyed||generation!=documentGeneration||aiPickerOpen)return;aiPickerOpen=true;
+                    Intent picker=new Intent(Intent.ACTION_OPEN_DOCUMENT);picker.addCategory(Intent.CATEGORY_OPENABLE);picker.setType("*/*");
+                    picker.putExtra(Intent.EXTRA_MIME_TYPES,new String[]{"image/*","application/pdf","text/plain","text/*","application/json"});
+                    picker.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
+                    try{startActivityForResult(picker,86);}catch(ActivityNotFoundException e){aiPickerOpen=false;notifyJs("设备未提供文件选择器");}
+                });return new JSONObject().put("picker",true);
+            }
+            case "ai.speech":{
+                runOnUiThread(()->{if(destroyed||generation!=documentGeneration)return;
+                    Intent intent=new Intent(android.speech.RecognizerIntent.ACTION_RECOGNIZE_SPEECH);
+                    intent.putExtra(android.speech.RecognizerIntent.EXTRA_LANGUAGE_MODEL,android.speech.RecognizerIntent.LANGUAGE_MODEL_FREE_FORM);
+                    intent.putExtra(android.speech.RecognizerIntent.EXTRA_PROMPT,"向 Easybook AI 语音输入");
+                    intent.putExtra(android.speech.RecognizerIntent.EXTRA_LANGUAGE,java.util.Locale.getDefault().toLanguageTag());
+                    try{startActivityForResult(intent,87);}catch(ActivityNotFoundException e){notifyJs("没有可用的系统语音识别服务");}
+                });return new JSONObject().put("started",true);
+            }
             case "account.devices":return nativeAccount.devices();
             case "account.device.revoke":return nativeAccount.revokeDevice(bounded(args,"id",36));
             case "account.logout":nativeAccount.signOut();return new JSONObject().put("pending",true);
@@ -426,6 +443,12 @@ public class MainActivity extends Activity {
     @Override protected void onActivityResult(int request, int result, Intent data) {
         super.onActivityResult(request, result, data);
         if(request==85){if(result==RESULT_OK&&data!=null&&nativeAccount!=null)nativeAccount.approveScannedQr(data.getStringExtra(QrScanActivity.EXTRA_CHALLENGE_ID));return;}
+        if(request==87){if(result==RESULT_OK&&data!=null){java.util.ArrayList<String> texts=data.getStringArrayListExtra(android.speech.RecognizerIntent.EXTRA_RESULTS);if(texts!=null&&!texts.isEmpty()&&texts.get(0)!=null)web.evaluateJavascript("window.receiveAiTranscript&&window.receiveAiTranscript("+JSONObject.quote(texts.get(0))+")",null);}return;}
+        if(request==86){aiPickerOpen=false;if(result!=RESULT_OK||data==null||data.getData()==null)return;final Uri aiUri=data.getData();final long aiGeneration=documentGeneration;
+            io.execute(()->{try{JSONObject file=readAiFile(aiUri);runOnUiThread(()->{if(!destroyed&&aiGeneration==documentGeneration)web.evaluateJavascript("window.receiveAiFile&&window.receiveAiFile("+file.toString()+")",null);});}
+                catch(Exception e){runOnUiThread(()->notifyJs("AI 附件无法读取或超过限制；请尝试较小文件"));}});
+            return;
+        }
         if (request == 81 && (result != RESULT_OK || data == null)) {pendingExport = null; return;}
         if(request==84&&(result!=RESULT_OK||data==null)){attachmentExport=null;return;}
         if(request==83){final String space=attachmentSpace,noteId=attachmentNote;final long generation=attachmentGeneration;attachmentSpace=null;attachmentNote=null;if(space==null)return;java.util.LinkedHashSet<Uri> selected=new java.util.LinkedHashSet<>();if(result==RESULT_OK&&data!=null){if(data.getClipData()!=null)for(int i=0;i<data.getClipData().getItemCount();i++)selected.add(data.getClipData().getItemAt(i).getUri());if(data.getData()!=null)selected.add(data.getData());}if(selected.isEmpty()){pickerFinished(generation);return;}final int flags=data.getFlags()&Intent.FLAG_GRANT_READ_URI_PERMISSION;io.execute(()->{for(Uri uri:selected){if(uri==null||!"content".equals(uri.getScheme()))continue;boolean persisted=false;try{try{getContentResolver().takePersistableUriPermission(uri,flags);persisted=true;}catch(SecurityException ignored){}try(InputStream in=getContentResolver().openInputStream(uri)){if(in==null)throw new IOException();String name="附件";try(android.database.Cursor cursor=getContentResolver().query(uri,new String[]{android.provider.OpenableColumns.DISPLAY_NAME},null,null,null)){if(cursor!=null&&cursor.moveToFirst())name=cursor.getString(0);}JSONObject meta=repository.attachments.saveStream(space,name,getContentResolver().getType(uri),in,true,null,-1);runOnUiThread(()->{if(!destroyed&&generation==documentGeneration)web.evaluateJavascript("window.receiveAttachment("+JSONObject.quote(space)+","+JSONObject.quote(noteId)+","+meta.toString()+")",null);});}}catch(Exception e){runOnUiThread(()->notifyJs("附件未添加：单文件最多1 GB，请检查读取权限及存储空间后重试"));}finally{if(persisted)try{getContentResolver().releasePersistableUriPermission(uri,flags);}catch(SecurityException ignored){}}}pickerFinished(generation);});return;}
@@ -446,6 +469,37 @@ public class MainActivity extends Activity {
                 runOnUiThread(() -> web.evaluateJavascript("window.importBackupText("+JSONObject.quote(text)+")",null));
             } catch (IOException e) {runOnUiThread(() -> notifyJs("无法读取文件或备份超过 50 MB"));}
         });
+    }
+    private JSONObject readAiFile(Uri uri)throws Exception{
+        if(!"content".equals(uri.getScheme()))throw new SecurityException("Invalid file URI");
+        String name="附件",mime=getContentResolver().getType(uri);
+        try(android.database.Cursor c=getContentResolver().query(uri,new String[]{android.provider.OpenableColumns.DISPLAY_NAME,android.provider.OpenableColumns.SIZE},null,null,null)){
+            if(c!=null&&c.moveToFirst()){String found=c.getString(0);if(found!=null&&!found.isEmpty())name=AttachmentStore.cleanName(found);long bytes=c.isNull(1)?-1:c.getLong(1);if(bytes>20L*1024*1024)throw new IOException("AI file too large");}
+        }
+        if(mime==null)mime="application/octet-stream";
+        byte[] bytes;
+        if(mime.startsWith("image/")){
+            android.graphics.BitmapFactory.Options bounds=new android.graphics.BitmapFactory.Options();bounds.inJustDecodeBounds=true;
+            try(InputStream in=getContentResolver().openInputStream(uri)){if(in==null)throw new IOException();android.graphics.BitmapFactory.decodeStream(in,null,bounds);}
+            if(bounds.outWidth<1||bounds.outHeight<1||bounds.outWidth>20000||bounds.outHeight>20000)throw new IOException("Invalid image");
+            android.graphics.BitmapFactory.Options opts=new android.graphics.BitmapFactory.Options();opts.inSampleSize=1;
+            while(Math.max(bounds.outWidth/opts.inSampleSize,bounds.outHeight/opts.inSampleSize)>1280)opts.inSampleSize*=2;
+            android.graphics.Bitmap bitmap;try(InputStream in=getContentResolver().openInputStream(uri)){if(in==null)throw new IOException();bitmap=android.graphics.BitmapFactory.decodeStream(in,null,opts);}
+            if(bitmap==null)throw new IOException("Image decode failed");
+            ByteArrayOutputStream out=new ByteArrayOutputStream();int quality=78;
+            do{out.reset();bitmap.compress(android.graphics.Bitmap.CompressFormat.JPEG,quality,out);quality-=10;}while(out.size()>220000&&quality>=38);
+            bitmap.recycle();if(out.size()>300000)throw new IOException("Image still too large");
+            bytes=out.toByteArray();mime="image/jpeg";name=name.replaceAll("(?i)\\.[a-z0-9]{1,7}$","")+".jpg";
+        }else{
+            String lower=name.toLowerCase(java.util.Locale.ROOT);
+            if(!mime.equals("application/pdf")&&!mime.startsWith("text/")&&!mime.equals("application/json")&&!lower.matches(".*\\.(pdf|txt|md|markdown|csv|json|log)$"))throw new IOException("Unsupported AI attachment");
+            try(InputStream in=getContentResolver().openInputStream(uri);ByteArrayOutputStream out=new ByteArrayOutputStream()){
+                if(in==null)throw new IOException();byte[] buffer=new byte[8192];int n;
+                while((n=in.read(buffer))!=-1){if(out.size()+n>3*1024*1024)throw new IOException("AI file too large");out.write(buffer,0,n);}
+                bytes=out.toByteArray();
+            }
+        }
+        return new JSONObject().put("name",name).put("mime",mime).put("data",android.util.Base64.encodeToString(bytes,android.util.Base64.NO_WRAP));
     }
     private Intent documentPicker(String kind){Intent picker=new Intent(Intent.ACTION_OPEN_DOCUMENT);picker.addCategory(Intent.CATEGORY_OPENABLE);picker.setType("*/*");picker.putExtra(Intent.EXTRA_ALLOW_MULTIPLE,true);picker.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION|Intent.FLAG_GRANT_PERSISTABLE_URI_PERMISSION);if(kind.equals("media"))picker.putExtra(Intent.EXTRA_MIME_TYPES,new String[]{"image/*","video/*"});return picker;}
     private void pickerFinished(long generation){runOnUiThread(()->{if(!destroyed&&generation==documentGeneration)web.evaluateJavascript("window.attachmentPickerFinished&&window.attachmentPickerFinished()",null);});}

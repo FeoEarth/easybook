@@ -566,6 +566,20 @@ body.keyboard .ai-hub-welcome{display:none}body.keyboard .ai-hub>.ai-messages{pa
 .ai-session-actions{display:flex;gap:6px;padding:5px 8px}.ai-session-actions[hidden]{display:none}.ai-session-actions button{min-height:40px;padding:6px 14px;border-radius:10px;background:var(--control-fill);font-size:13px}
 .ai-session-footer{padding:8px 14px max(10px,env(safe-area-inset-bottom));border-top:1px solid var(--border)}.ai-session-footer p{margin:0 10px 8px;color:var(--muted);font-size:11px;line-height:1.4}
 @media(max-width:520px){.ai-hub-nav{gap:6px;padding-inline:14px}.ai-hub>.ai-messages{padding-inline:16px}.ai-hub-suggestions{grid-template-columns:1fr}.ai-hub-suggestions button:nth-child(n+3){display:none}}
+
+/* AI attachment tray and system speech input */
+.ai-hub-attachments{display:flex;gap:7px;overflow-x:auto;padding:0 1px 8px;max-width:100%;scrollbar-width:none}
+.ai-hub-attachments[hidden]{display:none}
+.ai-hub-attachment{display:flex;align-items:center;gap:6px;flex:none;max-width:210px;padding:7px 8px 7px 11px;border-radius:15px;background:var(--control-fill);font-size:12px}
+.ai-hub-attachment span{overflow:hidden;white-space:nowrap;text-overflow:ellipsis}
+.ai-hub-attachment button{display:grid;place-items:center;flex:none;width:22px;height:22px;padding:0;border-radius:50%;background:var(--selected);font-size:16px}
+.ai-hub-composer .ai-compose{gap:4px;padding-left:6px}
+.ai-hub-composer .ai-hub-attach,.ai-hub-composer .ai-hub-voice{display:grid;place-items:center;flex-shrink:0;width:38px;height:40px;min-height:40px;padding:7px;border-radius:50%;color:var(--ink);background:transparent}
+.ai-hub-composer .ai-hub-attach svg,.ai-hub-composer .ai-hub-voice svg{width:23px;height:23px}
+.ai-hub-composer .ai-hub-voice[aria-pressed=true]{background:var(--accent);color:white;animation:ai-listening 1.1s ease-in-out infinite alternate}
+@keyframes ai-listening{from{opacity:.7}to{opacity:1}}
+@media(max-width:370px){.ai-hub-composer .ai-compose{gap:1px}.ai-hub-composer .ai-hub-attach,.ai-hub-composer .ai-hub-voice{width:34px;padding:6px}.ai-hub-composer textarea{font-size:14px}}
+@media(prefers-reduced-motion:reduce){.ai-hub-composer .ai-hub-voice[aria-pressed=true]{animation:none}}
 </style></head><body>
 <svg xmlns="http://www.w3.org/2000/svg" style="position:absolute;width:0;height:0;overflow:hidden" aria-hidden="true"><defs>
 <symbol id="i-spark" viewBox="0 0 24 24"><path d="M12 2c.8 5.3 3.7 8.2 9 9-5.3.8-8.2 3.7-9 9-.8-5.3-3.7-8.2-9-9 5.3-.8 8.2-3.7 9-9Z"/><path d="M19 2c.2 1.8 1.2 2.8 3 3-1.8.2-2.8 1.2-3 3-.2-1.8-1.2-2.8-3-3 1.8-.2 2.8-1.2 3-3Z"/></symbol>
@@ -601,7 +615,17 @@ body.keyboard .ai-hub-welcome{display:none}body.keyboard .ai-hub>.ai-messages{pa
 </nav>
 <header class="ai-hub-header"><h1 id="aiHubTitle" tabindex="-1">新会话</h1><button type="button" id="aiHubModel" class="ai-hub-model" aria-haspopup="dialog" aria-controls="aiHubModelDialog">选择模型</button></header>
 <div id="aiHubMessages" class="ai-messages" aria-live="polite"></div>
-<div class="ai-hub-composer"><form id="aiHubForm" class="ai-compose"><textarea id="aiHubPrompt" rows="1" maxlength="12000" placeholder="询问 Easybook AI" required aria-label="向 Easybook AI 发送消息"></textarea><button id="aiHubSend" type="submit" aria-label="发送"><svg aria-hidden="true"><use href="#i-export"/></svg></button></form><p id="aiHubHint">会话仅保存在本机 · AI 可能会出错</p></div>
+<div class="ai-hub-composer">
+<div id="aiHubAttachments" class="ai-hub-attachments" aria-label="待发送附件" hidden></div>
+<form id="aiHubForm" class="ai-compose">
+<button type="button" id="aiHubAttach" class="ai-hub-attach" aria-label="添加附件" title="添加图片、PDF 或文本文件"><svg aria-hidden="true"><use href="#i-plus"/></svg></button>
+<textarea id="aiHubPrompt" rows="1" maxlength="12000" placeholder="询问 Easybook AI" aria-label="向 Easybook AI 发送消息"></textarea>
+<button type="button" id="aiHubVoice" class="ai-hub-voice" aria-label="语音输入" title="语音转文字"><svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><rect x="9" y="2.5" width="6" height="12" rx="3"/><path d="M5.5 11a6.5 6.5 0 0 0 13 0M12 17.5v4m-4 0h8"/></svg></button>
+<button id="aiHubSend" type="submit" aria-label="发送"><svg aria-hidden="true"><use href="#i-export"/></svg></button>
+</form>
+<input id="aiHubFile" type="file" accept="image/*,application/pdf,text/plain,text/markdown,text/csv,application/json,.txt,.md,.markdown,.csv,.json,.log" multiple hidden>
+<p id="aiHubHint">会话仅保存在本机 · AI 可能会出错</p>
+</div>
 </section>
 <section class="view sync-page account-page" id="accountSettings" hidden="">
 <nav class="sync-nav ui-nav"><button class="sync-back" id="accountBack" aria-label="返回设置"><svg aria-hidden="true"><use href="#i-back"></use></svg><span>设置</span></button></nav>
@@ -1164,28 +1188,125 @@ function renderAiHubSessions(){
  }
  $('aiSessionList').innerHTML=[...groups].map(([group,sessions])=>'<h3 class="ai-session-group">'+group+'</h3>'+sessions.map(session=>'<div class="ai-session-row" aria-current="'+String(session.id===aiHubCurrent)+'"><button type="button" class="ai-session-open" data-ai-session="'+esc(session.id)+'"><strong>'+esc(session.title)+'</strong></button><button type="button" class="ai-session-more" data-ai-actions="'+esc(session.id)+'" aria-label="管理会话：'+esc(session.title)+'" aria-expanded="false">⋯</button></div><div class="ai-session-actions" data-ai-action-row="'+esc(session.id)+'" hidden><button type="button" data-ai-rename="'+esc(session.id)+'">重命名</button><button type="button" data-ai-delete="'+esc(session.id)+'">删除</button></div>').join('')).join('')||'<p class="ai-session-group">没有匹配的会话</p>';
 }
-function openAiHub(){loadAiHubSessions();switchTab('ai-hub');void refreshAiConfig().then(()=>renderAiHub()).catch(()=>{})}
+function openAiHub(){clearAiHubFiles();loadAiHubSessions();switchTab('ai-hub');void refreshAiConfig().then(()=>renderAiHub()).catch(()=>{})}
 function setAiHubMode(mode){const session=currentAiHubSession();if(!session||aiHubBusy)return;session.mode=mode==='agent'?'agent':'conversation';saveAiHubSessions();renderAiHub()}
 async function activateAiHubModel(session){if(!session.profileId||!session.model)return;const profile=aiProfiles.find(value=>value.id===session.profileId);if(!profile)return;if(!profile.active)await aiRequest('select',{method:'POST',body:{credentialId:profile.id}});if(profile.model!==session.model)await aiRequest('config',{method:'PUT',body:{credentialId:profile.id,label:profile.label,provider:profile.provider,providerName:profile.providerName,baseUrl:profile.baseUrl,model:session.model,active:true}});if(!profile.active||profile.model!==session.model)await refreshAiConfig({force:true})}
-function setAiHubBusy(value){aiHubBusy=value;$('aiHubSend').disabled=value;$('aiHubSend').setAttribute('aria-label',value?'正在思考':'发送');$('aiHubSend').innerHTML=value?'<span aria-hidden="true">…</span>':'<svg aria-hidden="true"><use href="#i-export"/></svg>'}
+function setAiHubBusy(value){aiHubBusy=value;$('aiHubSend').disabled=value;$('aiHubAttach').disabled=value;$('aiHubVoice').disabled=value;$('aiHubSend').setAttribute('aria-label',value?'正在思考':'发送');$('aiHubSend').innerHTML=value?'<span aria-hidden="true">…</span>':'<svg aria-hidden="true"><use href="#i-export"/></svg>'}
+let aiHubFiles=[],aiSpeechRecognition=null;
+function renderAiHubFiles(){
+ $('aiHubAttachments').hidden=!aiHubFiles.length;
+ $('aiHubAttachments').innerHTML=aiHubFiles.map((file,index)=>'<div class="ai-hub-attachment"><span title="'+esc(file.name)+'">📎 '+esc(file.name)+'</span><button type="button" data-ai-file-remove="'+index+'" aria-label="移除 '+esc(file.name)+'">×</button></div>').join('');
+}
+function clearAiHubFiles(){aiHubFiles=[];renderAiHubFiles()}
+function aiHubTextFile(name,mime){return mime.startsWith('text/')||mime==='application/json'||/\.(txt|md|markdown|csv|json|log)$/i.test(name)}
+async function aiHubImageFile(file){
+ if(file.size>20*1024*1024)throw Error('图片超过 20 MB，请先压缩');
+ const url=URL.createObjectURL(file),img=new Image();
+ try{
+  img.src=url;await img.decode();
+  let scale=Math.min(1,1280/Math.max(img.naturalWidth,img.naturalHeight));if(!Number.isFinite(scale)||scale<=0)throw Error('图片无法读取');
+  const canvas=document.createElement('canvas'),ctx=canvas.getContext('2d');if(!ctx)throw Error('浏览器不支持图片压缩');
+  for(let attempt=0;attempt<6;attempt++){
+   canvas.width=Math.max(1,Math.round(img.naturalWidth*scale));canvas.height=Math.max(1,Math.round(img.naturalHeight*scale));
+   ctx.fillStyle='#fff';ctx.fillRect(0,0,canvas.width,canvas.height);ctx.drawImage(img,0,0,canvas.width,canvas.height);
+   const base64=canvas.toDataURL('image/jpeg',Math.max(.48,.8-attempt*.06)).split(',')[1];
+   if(base64.length<=240000)return {type:'image',name:file.name.slice(0,120),mime:'image/jpeg',data:base64};
+   scale*=.78;
+  }
+  throw Error('图片无法压缩到 AI 支持的大小');
+ }finally{URL.revokeObjectURL(url)}
+}
+async function aiHubPdfText(file){
+ if(file.size>3*1024*1024)throw Error('PDF 超过 3 MB，请先拆分');
+ const pdfjs=await import('/pdf/vendor/pdf.mjs');
+ pdfjs.GlobalWorkerOptions.workerSrc='/pdf/vendor/pdf.worker.mjs';
+ const doc=await pdfjs.getDocument({data:new Uint8Array(await file.arrayBuffer()),useSystemFonts:true}).promise;
+ try{
+  let extracted='';const pages=Math.min(doc.numPages,20);
+  for(let i=1;i<=pages&&extracted.length<24000;i++){
+   const page=await doc.getPage(i),content=await page.getTextContent();
+   extracted+='\n[第 '+i+' 页]\n'+content.items.map(item=>item.str||'').join(' ').slice(0,6000);
+  }
+  if(!extracted.trim())throw Error('PDF 没有可提取的文字；扫描件暂不支持 OCR');
+  return extracted.slice(0,25000)+(doc.numPages>pages?'\n[其余页面未读取]':'');
+ }finally{await doc.destroy()}
+}
+async function prepareAiHubFile(file){
+ if(!file||typeof file.name!=='string')throw Error('无法读取附件');
+ const name=file.name.slice(0,120),mime=file.type||'';
+ if(mime.startsWith('image/'))return aiHubImageFile(file);
+ if(mime==='application/pdf'||/\.pdf$/i.test(name))return {type:'text',name,text:await aiHubPdfText(file)};
+ if(aiHubTextFile(name,mime)){
+  if(file.size>300000)throw Error('文本文件超过 300 KB');
+  return {type:'text',name,text:(await file.text()).slice(0,25000)};
+ }
+ throw Error('仅支持图片、PDF、Markdown、TXT、CSV 和 JSON');
+}
+async function addAiHubFiles(files){
+ for(const file of files){
+  if(aiHubFiles.length>=3){toast('每次最多添加 3 个 AI 附件');break}
+  try{const prepared=await prepareAiHubFile(file);
+   if(prepared.type==='text'&&aiHubFiles.filter(x=>x.type==='text').reduce((n,x)=>n+x.text.length,0)+prepared.text.length>45000)throw Error('本次文本附件总量超过限制');
+   aiHubFiles.push(prepared);renderAiHubFiles();
+  }catch(error){toast(file.name+'：'+error.message)}
+ }
+}
+window.receiveAiFile=async payload=>{
+ try{
+  if(!payload||typeof payload.data!=='string'||payload.data.length>4500000)throw Error('附件过大');
+  const binary=atob(payload.data),bytes=new Uint8Array(binary.length);
+  for(let i=0;i<binary.length;i++)bytes[i]=binary.charCodeAt(i);
+  await addAiHubFiles([new File([bytes],payload.name||'附件',{type:payload.mime||''})]);
+ }catch(error){toast(error.message)}
+};
+window.receiveAiTranscript=text=>{
+ if(typeof text!=='string'||!text.trim())return;
+ const input=$('aiHubPrompt');input.value=(input.value.trim()?input.value.trim()+' ':'')+text.trim();
+ input.dispatchEvent(new Event('input'));input.focus();
+};
+$('aiHubAttach').onclick=async()=>{
+ if(aiHubBusy)return;
+ if(native)try{await native.call('ai.attachment.pick',{})}catch(error){toast(error.message)}
+ else $('aiHubFile').click();
+};
+$('aiHubFile').onchange=async event=>{const files=Array.from(event.target.files||[]);event.target.value='';await addAiHubFiles(files)};
+$('aiHubAttachments').onclick=event=>{const button=event.target.closest('[data-ai-file-remove]');if(!button)return;aiHubFiles.splice(Number(button.dataset.aiFileRemove),1);renderAiHubFiles()};
+$('aiHubVoice').onclick=async()=>{
+ if(native){try{await native.call('ai.speech',{})}catch(error){toast(error.message)}return}
+ if(aiSpeechRecognition){aiSpeechRecognition.stop();return}
+ const Recognition=window.SpeechRecognition||window.webkitSpeechRecognition;
+ if(!Recognition){toast('当前浏览器不支持语音识别，请使用 Android 系统语音输入');return}
+ const recognition=new Recognition();aiSpeechRecognition=recognition;recognition.lang=navigator.language||'zh-CN';recognition.interimResults=false;recognition.maxAlternatives=1;
+ $('aiHubVoice').setAttribute('aria-pressed','true');
+ recognition.onresult=event=>{const result=event.results?.[event.resultIndex]?.[0]?.transcript;if(result)window.receiveAiTranscript(result)};
+ recognition.onerror=event=>{if(event.error!=='aborted')toast('语音识别未完成：'+(event.error||'请重试'))};
+ recognition.onend=()=>{aiSpeechRecognition=null;$('aiHubVoice').setAttribute('aria-pressed','false')};
+ try{recognition.start()}catch(error){recognition.onend();toast('无法启动语音识别')}
+};
 async function sendAiHubMessage(content){
- if(aiHubBusy||!content)return;
+ if(aiHubBusy||(!content&&!aiHubFiles.length))return;
  const session=currentAiHubSession()||newAiHubSession();
  if(session.pendingApproval){toast('请先确认或取消待执行的操作');return}
- setAiHubBusy(true);
+ const attachments=aiHubFiles.map(file=>({...file})),names=attachments.map(file=>file.name);
+ const prompt=content||'请分析附件';
+ const label=prompt+(names.length?'\n\n📎 '+names.join('、'):'');
+ let sent=null;setAiHubBusy(true);
  try{
   if(aiConfigured===null)await refreshAiConfig();
   if(!aiConfigured){toast('请先在“设置 → AI 与 MCP”配置 BYOK');return}
   await activateAiHubModel(session);
-  session.messages.push({role:'user',content});
-  if(session.title==='新会话')session.title=content.replace(/\s+/g,' ').slice(0,28)||'新会话';
+  sent={role:'user',content:label};session.messages.push(sent);
+  if(session.title==='新会话')session.title=(content||names[0]||'新会话').replace(/\s+/g,' ').slice(0,28);
   session.updatedAt=Date.now();$('aiHubPrompt').value='';$('aiHubPrompt').style.height='';renderAiHub();saveAiHubSessions();
   const payload=compactAiMessages(session.messages.map(({role,content})=>({role,content})));
-  const data=await aiRequest('chat',{method:'POST',body:{messages:payload,mode:session.mode==='agent'?'agent':'conversation'}});
+  const data=await aiRequest('chat',{method:'POST',body:{messages:payload,mode:session.mode==='agent'?'agent':'conversation',attachments}});
   if(data.approval){session.pendingApproval=data.approval;session.messages.push({role:'assistant',content:data.message?.content||'需要确认操作：'+data.approval.tool});}
   else session.messages.push({role:'assistant',content:data.message.content||'已完成',tools:(data.tools||[]).map(tool=>tool.name)});
-  session.updatedAt=Date.now();saveAiHubSessions();renderAiHub();$('aiHubMessages').lastElementChild?.scrollIntoView({behavior:'smooth',block:'nearest'});
- }catch(error){toast(error.message)}finally{setAiHubBusy(false)}
+  clearAiHubFiles();session.updatedAt=Date.now();saveAiHubSessions();renderAiHub();$('aiHubMessages').lastElementChild?.scrollIntoView({behavior:'smooth',block:'nearest'});
+ }catch(error){
+  if(sent&&session.messages.at(-1)===sent){session.messages.pop();saveAiHubSessions();renderAiHub();$('aiHubPrompt').value=content;$('aiHubPrompt').dispatchEvent(new Event('input'))}
+  toast(error.message);
+ }finally{setAiHubBusy(false)}
 }
 async function confirmAiHubAction(accept){
  const session=currentAiHubSession(),pending=session?.pendingApproval;if(!pending||aiHubBusy)return;
@@ -1200,7 +1321,7 @@ async function confirmAiHubAction(accept){
 }
 function renderAiHubModels(){const query=normalizeSearch($('aiHubModelSearch').value),active=activeAiProfile(),choices=aiChatModelChoices.filter(choice=>!query||normalizeSearch(choice.model+' '+choice.label).includes(query));$('aiHubModelCount').textContent=choices.length+' 个';$('aiHubModelOptions').innerHTML=choices.map(choice=>'<button type="button" class="ai-model-option" role="radio" aria-checked="'+String(choice.profileId===active?.id&&choice.model===active?.model)+'" data-hub-profile="'+esc(choice.profileId)+'" data-hub-model="'+esc(choice.model)+'"><span>'+esc(choice.model)+'<small>'+esc(choice.label)+'</small></span>'+(choice.profileId===active?.id&&choice.model===active?.model?'<svg aria-hidden="true"><use href="#i-check"/></svg>':'')+'</button>').join('')}
 $('aiHubEntry').onclick=openAiHub;
-$('aiHubNew').onclick=()=>{newAiHubSession();$('aiHubPrompt').focus()};
+$('aiHubNew').onclick=()=>{newAiHubSession();clearAiHubFiles();$('aiHubPrompt').focus()};
 $('aiHubConversation').onclick=()=>setAiHubMode('conversation');
 $('aiHubAgent').onclick=()=>setAiHubMode('agent');
 $('aiHubSessions').onclick=()=>{$('aiHubPrompt').blur();renderAiHubSessions();$('aiSessionDialog').showModal()};
@@ -1211,7 +1332,7 @@ $('aiSessionNew').onclick=()=>{newAiHubSession();$('aiSessionDialog').close();$(
 $('aiSessionList').onclick=event=>{
  const actions=event.target.closest('[data-ai-actions]'),open=event.target.closest('[data-ai-session]'),rename=event.target.closest('[data-ai-rename]'),remove=event.target.closest('[data-ai-delete]');
  if(actions){const row=$('aiSessionList').querySelector('[data-ai-action-row="'+actions.dataset.aiActions+'"]');if(row){row.hidden=!row.hidden;actions.setAttribute('aria-expanded',String(!row.hidden))}return}
- if(open){if(aiSessionLongPressed){aiSessionLongPressed=false;return}aiHubCurrent=open.dataset.aiSession;renderAiHub();$('aiSessionDialog').close();return}
+ if(open){if(aiSessionLongPressed){aiSessionLongPressed=false;return}aiHubCurrent=open.dataset.aiSession;clearAiHubFiles();renderAiHub();$('aiSessionDialog').close();return}
  if(rename){const session=aiHubSessions.find(value=>value.id===rename.dataset.aiRename);if(!session)return;aiHubRenameId=session.id;$('aiRenameInput').value=session.title;$('aiRenameDialog').showModal();requestAnimationFrame(()=>$('aiRenameInput').select());return}
  if(remove){const session=aiHubSessions.find(value=>value.id===remove.dataset.aiDelete);if(!session)return;confirmAction('删除此 AI 会话？','会话只会从本机删除，无法撤销。',()=>{aiHubSessions=aiHubSessions.filter(value=>value.id!==session.id);if(!aiHubSessions.length)newAiHubSession(false);else if(aiHubCurrent===session.id)aiHubCurrent=aiHubSessions[0].id;saveAiHubSessions();renderAiHub();renderAiHubSessions()})}
 };
