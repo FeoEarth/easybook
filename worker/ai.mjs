@@ -69,9 +69,13 @@ function providerConfig(input){
  return {providerName:input.providerName.trim(),baseUrl:url.href.replace(/\/$/,''),protocol:input.provider==='custom-anthropic'?'anthropic':'openai'};
 }
 const publicProfile=row=>({id:row.id,label:row.label,provider:row.provider,protocol:row.protocol,providerName:row.provider_name,baseUrl:row.base_url,model:row.model,active:!!row.active,updatedAt:row.updated_at});
-function toolsFor(role){
- const scopes=role==='reader'?READ:[...READ,...WRITE];
+function toolScopes(role,mode){return mode==='agent'&&role!=='reader'?[...READ,...WRITE]:READ}
+function toolsFor(role,mode){
+ const scopes=toolScopes(role,mode);
  return registry.filter(t=>!t.risk&&scopes.includes(t.scope)&&!['access_request_permissions','operations_request_confirmation'].includes(t.name)).map(t=>({type:'function',function:{name:t.name,description:t.description,parameters:t.inputSchema}}));
+}
+async function ensureAgentApprovalSchema(env){
+ await env.DB.prepare('CREATE TABLE IF NOT EXISTS ai_agent_approvals(id TEXT PRIMARY KEY,account_id TEXT NOT NULL,workspace_id TEXT NOT NULL,tool_name TEXT NOT NULL,tool_args TEXT NOT NULL,expires_at INTEGER NOT NULL,consumed_at INTEGER)').run();
 }
 function safeMessages(input){
  if(!Array.isArray(input)||input.length<1||input.length>40)throw Object.assign(Error('Invalid messages'),{status:400,code:'invalid_messages'});
@@ -123,20 +127,46 @@ export async function aiAPI(request,env,principal,{workspaceId,fetcher=fetch}={}
   if(path==='/api/ai/models'&&request.method==='GET'){
    const row=await credential(env,principal.accountId,url.searchParams.get('credentialId')||'');if(!row)return response({error:'ai_not_configured'},409);return response({models:await discoverModels(await open(env,row),row,fetcher),credentialId:row.id});
   }
-  if(path!=='/api/ai/chat'||request.method!=='POST')return response({error:'not_found'},404);
+  if(!['/api/ai/chat','/api/ai/execute'].includes(path)||request.method!=='POST')return response({error:'not_found'},404);
   if(!/^[a-f0-9]{64}$/.test(workspaceId||''))return response({error:'workspace_required'},400);
   const access=await workspaceAccess(env,workspaceId,principal);if(!access||!allowedRoles.has(access.role))return response({error:'workspace_access_denied'},403);
+  if(path==='/api/ai/execute'&&request.method==='POST'){
+   if(access.role==='reader')return response({error:'workspace_access_denied'},403);
+   const input=await boundedJSON(request,4096),id=input?.approvalId;
+   if(typeof id!=='string'||!/^[a-f0-9-]{36}$/.test(id))return response({error:'invalid_approval'},400);
+   await ensureAgentApprovalSchema(env);
+   const pending=await env.DB.prepare('SELECT tool_name,tool_args FROM ai_agent_approvals WHERE id=? AND account_id=? AND workspace_id=? AND expires_at>? AND consumed_at IS NULL').bind(id,principal.accountId,workspaceId,Date.now()).first();
+   if(!pending)return response({error:'approval_expired'},409);
+   const tool=registry.find(t=>t.name===pending.tool_name&&!t.risk&&WRITE.includes(t.scope));
+   if(!tool)return response({error:'approval_denied'},403);
+   const claimed=await env.DB.prepare('UPDATE ai_agent_approvals SET consumed_at=? WHERE id=? AND account_id=? AND workspace_id=? AND expires_at>? AND consumed_at IS NULL RETURNING id').bind(Date.now(),id,principal.accountId,workspaceId,Date.now()).first();
+   if(!claimed)return response({error:'approval_expired'},409);
+   let result;try{result=await callTool({env,workspace:workspaceId,client:'easybook-agent:'+principal.accountId,scopes:toolScopes(access.role,'agent')},tool.name,JSON.parse(pending.tool_args))}
+   catch(error){result={error:{code:error.code||'TOOL_ERROR',message:error.code?error.message:'Tool failed'}}}
+   return response({ok:!result?.error,tool:tool.name,result:result?.error?undefined:result,error:result?.error});
+  }
   const row=await credential(env,principal.accountId);if(!row)return response({error:'ai_not_configured'},409);
-  const input=await boundedJSON(request,65536),messages=safeMessages(input?.messages),tools=toolsFor(access.role),key=await open(env,row);
-  const conversation=[{role:'system',content:'你是 Easybook 内置 AI 助手。笔记内容以 Markdown 提供，面向用户的回复必须使用清晰、有效的 Markdown。优先使用提供的工具读取或整理当前工作区；不得猜测工具结果。当前打开笔记的改写应返回完整 Markdown，由客户端转换为富文本，不要直接用工具写入；其他写入仅在用户明确要求时执行，并严格遵循工具 schema。高风险删除与永久操作不可用。'},...messages];
+  const input=await boundedJSON(request,65536),messages=safeMessages(input?.messages),mode=input?.mode==='agent'?'agent':'conversation',scopes=toolScopes(access.role,mode),tools=toolsFor(access.role,mode),key=await open(env,row);
+  const conversation=[{role:'system',content:'你是 Easybook 内置 AI 助手。笔记内容以 Markdown 提供，面向用户的回复必须使用清晰、有效的 Markdown。不得猜测工具结果。'+(mode==='agent'?'当前为 Agent 模式：可以受控地分步骤使用当前工作区工具。所有写入都会暂停，等待用户在 Easybook 内逐项核对并确认；不得宣称未确认的操作已执行。高风险及永久删除操作不可用。':'当前为对话模式：只能读取工作区；不能创建、修改、移动或删除任何内容。如需写入，请提示用户切换 Agent 模式。')},...messages];
   const used=[];
   for(let turn=0;turn<6;turn++){
    const message=await completion(key,row,conversation,tools,fetcher),calls=Array.isArray(message.tool_calls)?message.tool_calls:[];
    conversation.push(message);
    if(!calls.length)return response({message:{role:'assistant',content:typeof message.content==='string'?message.content:''},tools:used,model:row.model,providerName:row.provider_name});
+   const writeCall=calls.slice(0,6).find(call=>registry.some(t=>t.name===call?.function?.name&&!t.risk&&WRITE.includes(t.scope)&&scopes.includes(t.scope)));
+   if(writeCall){
+    const name=writeCall.function.name;let args;
+    try{args=JSON.parse(writeCall.function.arguments||'{}');if(!object(args))throw Error('invalid')}catch{return response({error:'invalid_tool_arguments'},400)}
+    const serialized=JSON.stringify(args);if(serialized.length>30000)return response({error:'tool_arguments_too_large'},413);
+    await ensureAgentApprovalSchema(env);
+    await env.DB.prepare('DELETE FROM ai_agent_approvals WHERE expires_at<?').bind(Date.now()-86400000).run();
+    const id=crypto.randomUUID(),expiresAt=Date.now()+300000;
+    await env.DB.prepare('INSERT INTO ai_agent_approvals(id,account_id,workspace_id,tool_name,tool_args,expires_at) VALUES(?,?,?,?,?,?)').bind(id,principal.accountId,workspaceId,name,serialized,expiresAt).run();
+    return response({message:{role:'assistant',content:'Agent 已准备 '+name+' 操作，正在等待你核对参数并确认。未确认前不会修改工作区。'},tools:used,approval:{id,tool:name,arguments:args,expiresAt}});
+   }
    for(const call of calls.slice(0,6)){
     const name=call?.function?.name;let args,result;
-    try{args=JSON.parse(call?.function?.arguments||'{}');result=await callTool({env,workspace:workspaceId,client:'easybook-agent:'+principal.accountId,scopes:access.role==='reader'?READ:[...READ,...WRITE]},name,args)}
+    try{args=JSON.parse(call?.function?.arguments||'{}');result=await callTool({env,workspace:workspaceId,client:'easybook-agent:'+principal.accountId,scopes},name,args)}
     catch(error){result={error:{code:error.code||'TOOL_ERROR',message:error.code?error.message:'Tool failed'}}}
     used.push({name,ok:!result?.error});conversation.push({role:'tool',tool_call_id:call.id,content:JSON.stringify(result).slice(0,180000)});
    }
