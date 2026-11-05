@@ -61,6 +61,24 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      - name: Check release version before building
+        if: github.event_name == 'workflow_dispatch' && inputs.publish_release == true
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          if [[ "$GITHUB_REF" != 'refs/heads/main' ]]; then
+            echo '::error::Official Android releases must be dispatched from main'
+            exit 1
+          fi
+          VERSION_CODE=$(sed -nE 's/.*versionCode[[:space:]]+([0-9]+).*/\1/p' app/build.gradle | head -n 1)
+          [[ "$VERSION_CODE" =~ ^[1-9][0-9]*$ ]] || { echo '::error::Invalid Release APK versionCode'; exit 1; }
+          PREVIOUS=$(gh api "repos/$GITHUB_REPOSITORY/releases/latest" --jq .body 2>/dev/null | sed -nE 's/^- APK versionCode: ([0-9]+)$/\1/p' | head -n 1 || true)
+          if [[ "$PREVIOUS" =~ ^[0-9]+$ ]] && (( VERSION_CODE <= PREVIOUS )); then
+            echo "::error::versionCode must increase: $VERSION_CODE <= $PREVIOUS. Bump app/build.gradle before dispatch."
+            exit 1
+          fi
       - uses: actions/setup-java@v4
         with:
           distribution: temurin
