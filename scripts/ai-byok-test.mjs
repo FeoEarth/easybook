@@ -15,4 +15,21 @@ result=await aiAPI(request('/api/ai/config','PUT',{label:'Claude',provider:'anth
 result=await aiAPI(request('/api/ai/select','POST',{credentialId:openaiId}),env,principal);assert.equal(result.status,200);config=await (await aiAPI(request('/api/ai/config'),env,principal)).json();assert.equal(config.activeId,openaiId);assert.equal(config.profiles.length,2);for(const [provider,base] of [['gemini','https://generativelanguage.googleapis.com/v1beta/openai'],['deepseek','https://api.deepseek.com'],['kimi','https://api.moonshot.cn/v1']]){result=await aiAPI(request('/api/ai/config','PUT',{label:provider,provider,model:'model-test',apiKey:secret}),env,principal);assert.equal(result.status,200);assert.equal((await result.json()).baseUrl,base)}
 for(const baseUrl of ['http://ai.example.net/v1','https://127.0.0.1/v1','https://localhost/v1','https://user:pass@ai.example.net/v1','https://ai.example.net:8443/v1']){result=await aiAPI(request('/api/ai/config','PUT',{provider:'custom',providerName:'Unsafe',baseUrl,model:'example-chat',apiKey:secret}),env,principal);assert.equal(result.status,400);assert.equal((await result.json()).error,'invalid_provider_url')}
 result=await aiAPI(request('/api/ai/config','DELETE',{credentialId:anthropicId}),env,{...principal,authenticatedAt:0});assert.equal(result.status,403);result=await aiAPI(request('/api/ai/config','DELETE',{credentialId:anthropicId}),env,principal);assert.equal(result.status,200);assert.equal(sqlite.prepare('SELECT COUNT(*) n FROM account_ai_profiles WHERE id=?').get(anthropicId).n,0);assert.equal(sqlite.prepare('SELECT COUNT(*) n FROM account_ai_profiles').get().n,4);
+const agentTools=[];
+const agentFetcher=async(url,init={})=>{
+ const body=JSON.parse(init.body||'{}');
+ agentTools.push((body.tools||[]).map(tool=>tool.function?.name));
+ if(!(body.tools||[]).some(tool=>tool.function?.name==='notes_create'))return Response.json({choices:[{message:{role:'assistant',content:'对话模式只读'}}]});
+ return Response.json({choices:[{message:{role:'assistant',content:'',tool_calls:[{id:'call-create-1',type:'function',function:{name:'notes_create',arguments:JSON.stringify({title:'AI approval test',text:'Pending confirmation'})}}]}}]});
+};
+result=await aiAPI(request('/api/ai/chat','POST',{mode:'conversation',messages:[{role:'user',content:'创建测试笔记'}]}),env,principal,{workspaceId:workspace,fetcher:agentFetcher});
+assert.equal(result.status,200);assert.ok(!agentTools.at(-1).includes('notes_create'),'Conversation never exposes writing tools');
+result=await aiAPI(request('/api/ai/chat','POST',{mode:'agent',messages:[{role:'user',content:'创建测试笔记'}]}),env,principal,{workspaceId:workspace,fetcher:agentFetcher});
+assert.equal(result.status,200);const proposal=await result.json();
+assert.equal(proposal.approval.tool,'notes_create');assert.ok(agentTools.at(-1).includes('notes_create'),'Agent can propose writing tools');
+assert.equal(sqlite.prepare('SELECT COUNT(*) n FROM ai_agent_approvals WHERE id=? AND consumed_at IS NULL').get(proposal.approval.id).n,1,'Writing requires approval');
+result=await aiAPI(request('/api/ai/execute','POST',{approvalId:proposal.approval.id}),env,principal,{workspaceId:workspace});
+assert.equal(result.status,200,'A valid single-use user approval is accepted');
+result=await aiAPI(request('/api/ai/execute','POST',{approvalId:proposal.approval.id}),env,principal,{workspaceId:workspace});
+assert.equal(result.status,409,'Approval cannot be replayed');
 sqlite.close();console.log('PASS multi-BYOK encryption, provider presets, model discovery, active switching, Anthropic protocol and workspace authorization');
