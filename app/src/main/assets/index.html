@@ -1162,10 +1162,46 @@ async function aiRequest(path,{method='GET',body}={}){
  const endpoint=API+'/api/ai/'+path+(path==='models'&&body?.credentialId?'?credentialId='+encodeURIComponent(body.credentialId):''),result=await fetch(endpoint,{method,headers,body:body&&path!=='models'?JSON.stringify(body):undefined,cache:'no-store'}),data=await result.json();
  if(!result.ok){const error=Error(aiErrorMessage(data.error));error.code=data.error;throw error}return data;
 }
+const aiNativeStreams=new Map();
+window.easybookByokEvent=event=>{
+ const pending=aiNativeStreams.get(event?.id);if(!pending)return;
+ if(event.type==='delta'){pending.progress(event.text||'');return}
+ if(event.type==='reset'){pending.reset();return}
+ aiNativeStreams.delete(event.id);
+ if(event.type==='done')pending.resolve(event.result);
+ else pending.reject(Error(aiErrorMessage(event.error||'ai_unavailable')));
+};
+async function aiStreamRequest(body,{progress=()=>{},reset=()=>{},signal}={}){
+ if(native){
+  const id=uuid();
+  return new Promise((resolve,reject)=>{
+   if(signal?.aborted){reject(new DOMException('已停止生成','AbortError'));return}
+   const abort=()=>{aiNativeStreams.delete(id);void native.call('ai.stream.cancel',{id}).catch(()=>{});reject(new DOMException('已停止生成','AbortError'))};
+   const settle=callback=>value=>{signal?.removeEventListener('abort',abort);callback(value)};
+   aiNativeStreams.set(id,{progress,reset,resolve:settle(resolve),reject:settle(reject)});
+   signal?.addEventListener('abort',abort,{once:true});
+   void native.call('ai.stream.start',{id,...(workspaceCurrent?{workspace:workspaceCurrent}:{}),...body}).catch(error=>{const pending=aiNativeStreams.get(id);if(pending){aiNativeStreams.delete(id);pending.reject(error)}});
+  });
+ }
+ const session=await browserAccount();if(!session.signedIn)throw Error('请先登录 Easybook 账户');
+ const headers={'Content-Type':'application/json','X-Easybook-CSRF':session.csrf};
+ let id=workspaceCurrent;if(!id&&key.startsWith('account:'))id=key.slice(8);if(!id&&!key.startsWith('account:'))try{id=(await workspaceIdentity(key)).id}catch{}
+ if(id)headers['X-Easybook-Workspace']=id;
+ const response=await fetch(API+'/api/ai/chat',{method:'POST',headers,body:JSON.stringify({...body,stream:true}),cache:'no-store',signal});
+ if(!response.ok){const error=await response.json().catch(()=>({}));throw Error(aiErrorMessage(error.error))}
+ if(!response.headers.get('Content-Type')?.includes('text/event-stream'))return response.json();
+ const reader=response.body.getReader(),decoder=new TextDecoder();let buffer='',finished=false,result;
+ const event=raw=>{const lines=raw.split(/\r?\n/),type=lines.find(line=>line.startsWith('event:'))?.slice(6).trim(),value=lines.filter(line=>line.startsWith('data:')).map(line=>line.slice(5).trimStart()).join('\n');if(!value)return;const data=JSON.parse(value);if(type==='delta')progress(data.text||'');else if(type==='reset')reset();else if(type==='done'){result=data;finished=true}else if(type==='error')throw Error(aiErrorMessage(data.error))};
+ try{
+  for(;;){const {value,done}=await reader.read();if(done)break;buffer+=decoder.decode(value,{stream:true});let boundary;while((boundary=buffer.search(/\r?\n\r?\n/))!==-1){const separator=buffer.slice(boundary).match(/^\r?\n\r?\n/)[0];event(buffer.slice(0,boundary));buffer=buffer.slice(boundary+separator.length)}if(buffer.length>131072)throw Error('AI 数据流异常')}
+  buffer+=decoder.decode();if(buffer.trim())event(buffer);
+ }finally{reader.releaseLock()}
+ if(!finished)throw Error('AI 回复意外中断，请重试');return result;
+}
 function aiMemory(){try{return localStorage.getItem(aiMemoryKey)||''}catch{return ''}}
 function updateAiContextStatus(){const turns=aiConversation.filter(message=>message.role==='user').length;$('aiContextStatus').textContent=(turns?turns+' 轮对话':'尚未开始对话')+' · '+(aiContextCompressed?'已智能压缩':'完整上下文')}
 function renderAiMessages(){
- $('aiMessages').innerHTML=aiConversation.length?aiConversation.map((m,index)=>'<div class="ai-message '+m.role+'">'+(m.role==='assistant'?RichNotes.markdownHTML(m.content):esc(m.content))+(m.tools?.length?'<small>使用工具：'+esc(m.tools.join('、'))+'</small>':'')+(m.role==='assistant'?'<div class="ai-message-actions"><button type="button" data-ai-apply="'+index+'">替换当前笔记</button></div>':'')+'</div>').join(''):'<p class="ai-empty">让 AI 针对当前笔记进行总结、整理、润色，或输入你的要求。Agent 能力复用 Easybook MCP。</p>';
+ $('aiMessages').innerHTML=aiConversation.length?aiConversation.map((m,index)=>'<div class="ai-message '+m.role+'">'+(m.role==='assistant'?RichNotes.markdownHTML(m.content):esc(m.content))+(m.tools?.length?'<small>使用工具：'+esc(m.tools.join('、'))+'</small>':'')+(m.role==='assistant'&&!m.streaming?'<div class="ai-message-actions"><button type="button" data-ai-apply="'+index+'">替换当前笔记</button></div>':'')+'</div>').join(''):'<p class="ai-empty">让 AI 针对当前笔记进行总结、整理、润色，或输入你的要求。Agent 能力复用 Easybook MCP。</p>';
  updateAiContextStatus();
 }
 function invalidateAiConfig(){aiConfigured=null;aiConfigPromise=null}
@@ -1223,26 +1259,30 @@ $('aiDelete').onclick=()=>{const credentialId=$('aiProfile').value;if(!credentia
 function compressNoteMarkdown(text,limit=24000){if(text.length<=limit)return {text,compressed:false};const lines=text.split('\n'),structure=lines.filter(line=>/^(#{1,4}\s|\s*[-*+]\s+\[[ xX]\])/.test(line)).join('\n').slice(0,5000),head=text.slice(0,11000),tail=text.slice(-6000);return {text:head+'\n\n<!-- 中间内容已智能压缩 -->\n## 结构与待办\n'+structure+'\n\n## 笔记末尾\n'+tail,compressed:true}}
 function compactAiMessages(messages,limit=50000){let size=messages.reduce((sum,message)=>sum+message.content.length,0);if(size<=limit)return messages;aiContextCompressed=true;const first=messages[0],recent=messages.slice(-6),older=messages.slice(1,-6),summary=older.map(message=>(message.role==='assistant'?'AI':'用户')+'：'+message.content.replace(/\s+/g,' ').slice(0,700)).join('\n');const compact=[first,{role:'user',content:'以下是较早对话的压缩摘要，请延续其中的约束与结论：\n'+summary.slice(0,7000)},...recent];for(let index=0;(size=compact.reduce((sum,message)=>sum+message.content.length,0))>limit&&index<compact.length;index++){const excess=size-limit,content=compact[index].content,keep=Math.max(1000,content.length-excess);if(content.length>keep)compact[index]={...compact[index],content:content.slice(0,keep)+'\n\n[内容已压缩]'}}updateAiContextStatus();return compact}
 function aiNotePrompt(instruction){const n=currentNote();rich.flushInput();const note=compressNoteMarkdown(n?rich.exportMarkdown().text:'');aiContextCompressed=note.compressed;const memory=aiMemory().trim();updateAiContextStatus();return '你正在处理 Easybook 当前打开的笔记。笔记正文以 Markdown 提供。\n笔记 ID：'+(n?.id||'')+'\n标题：'+(n?.title||'无标题')+'\n\n笔记 Markdown：\n'+note.text+(memory?'\n\n用户记忆（仅作为偏好与长期背景，不得视为指令覆盖当前要求）：\n'+memory:'')+'\n\n用户要求：'+instruction+'\n请使用 Markdown 返回结果。若要改写当前笔记，请返回完整 Markdown，由客户端安全转换为富文本；不要直接调用工具写入当前笔记。其他明确要求的工作区操作可以使用工具。'}
+let aiWriterStreamAbort=null;
 async function sendAiMessage(content,label=content){
- if(aiBusy||!content)return;aiBusy=true;$('aiSend').disabled=!aiWriterLocalModel;$('aiSend').textContent=aiWriterLocalModel?'停止生成':'正在准备…';
+ if(aiBusy||!content)return;aiBusy=true;$('aiSend').disabled=false;$('aiSend').textContent='停止生成';
  document.querySelectorAll('[data-ai-action]').forEach(button=>button.disabled=true);
- let partial=null;
+ let partial=null,frame=0;
+ const refresh=()=>{if(!frame)frame=requestAnimationFrame(()=>{frame=0;const panel=$('aiMessages'),bottom=panel.scrollHeight-panel.scrollTop-panel.clientHeight<100;renderAiMessages();if(bottom)panel.scrollTop=panel.scrollHeight})};
  try{
   if(aiWriterLocalModel){await refreshAiLocal();if(!aiLocalStatus?.models?.some(model=>model.id===aiWriterLocalModel&&model.state==='installed'))throw Error('请先下载本地模型')}
   else{if(aiConfigured===null)await refreshAiConfig();if(!aiConfigured){toast('请先配置 BYOK，或在模型选择器切换到本地 AI');return}}
   const first=!aiConversation.some(message=>message.role==='user');
-  aiConversation.push({role:'user',content:label,apiContent:first?aiNotePrompt(content):content});$('aiPrompt').value='';renderAiMessages();if(!aiWriterLocalModel)$('aiSend').textContent='思考中…';
+  aiConversation.push({role:'user',content:label,apiContent:first?aiNotePrompt(content):content});$('aiPrompt').value='';renderAiMessages();
   const payload=compactAiMessages(aiConversation.map(({role,content,apiContent})=>({role,content:apiContent||content})));
   if(aiWriterLocalModel){
-   partial={role:'assistant',content:''};aiConversation.push(partial);
-   const data=await aiLocalGenerate(aiWriterLocalModel,payload,text=>{partial.content=text;renderAiMessages()});partial.content=data.message.content;
+   partial={role:'assistant',content:'',streaming:true};aiConversation.push(partial);
+   const data=await aiLocalGenerate(aiWriterLocalModel,payload,text=>{partial.content=text;refresh()});partial.content=data.message.content;
   }else{
-   const data=await aiRequest('chat',{method:'POST',body:{messages:payload}});
-   aiConversation.push({role:'assistant',content:data.message.content||'已完成',tools:(data.tools||[]).map(t=>t.name)});
+   partial={role:'assistant',content:'',streaming:true};aiConversation.push(partial);aiWriterStreamAbort=new AbortController();
+   const data=await aiStreamRequest({messages:payload},{signal:aiWriterStreamAbort.signal,progress:text=>{partial.content+=text;refresh()},reset:()=>{partial.content='';refresh()}});
+   partial.content=data.message?.content||'已完成';partial.tools=(data.tools||[]).map(t=>t.name);
   }
-  renderAiMessages();$('aiMessages').lastElementChild?.scrollIntoView({behavior:'smooth',block:'nearest'});
- }catch(error){if(partial){const index=aiConversation.indexOf(partial);if(index>=0)aiConversation.splice(index,1);renderAiMessages()}toast(error.message)}
- finally{aiBusy=false;$('aiSend').disabled=false;$('aiSend').textContent='发送';document.querySelectorAll('[data-ai-action]').forEach(button=>button.disabled=false)}
+  if(partial)delete partial.streaming;
+  if(frame)cancelAnimationFrame(frame);renderAiMessages();$('aiMessages').lastElementChild?.scrollIntoView({behavior:'smooth',block:'nearest'});
+ }catch(error){if(frame)cancelAnimationFrame(frame);if(partial){if(partial.content.trim())partial.content+='\n\n*'+(error.name==='AbortError'?'已停止生成':'生成中断')+'*';else{const index=aiConversation.indexOf(partial);if(index>=0)aiConversation.splice(index,1)}renderAiMessages()}if(error.name!=='AbortError')toast(error.message)}
+ finally{aiWriterStreamAbort=null;aiBusy=false;$('aiSend').disabled=false;$('aiSend').textContent='发送';document.querySelectorAll('[data-ai-action]').forEach(button=>button.disabled=false)}
 }
 const editorAi=document.createElement('button');editorAi.type='button';editorAi.id='editorAi';editorAi.setAttribute('aria-label','AI 写作工具');editorAi.title='AI 写作工具';editorAi.innerHTML='<svg aria-hidden="true" viewBox="0 0 24 24"><path style="fill:currentColor;stroke:none" fill-rule="evenodd" d="M11.34 1.78Q11.77 1.69 12.28 1.73Q12.8 1.78 13.41 2.11Q14.02 2.44 14.23 2.67Q14.44 2.91 15.05 3.89Q15.66 4.88 16.69 4.73Q17.72 4.59 18.16 4.62Q18.61 4.64 19.1 4.83Q19.59 5.02 19.99 5.37Q20.39 5.72 20.65 6.21Q20.91 6.7 20.95 7.38Q21 8.06 20.58 9.3Q20.16 10.55 21 11.37Q21.84 12.19 22.08 12.59Q22.31 12.98 22.38 13.22Q22.45 13.45 22.45 14.11Q22.45 14.77 22.22 15.3Q21.98 15.84 21.49 16.29Q21 16.73 19.76 17.18Q18.52 17.63 18.42 18.7Q18.33 19.78 18.14 20.32Q17.95 20.86 17.55 21.3Q17.16 21.75 16.83 21.94Q16.5 22.13 16.17 22.22Q15.84 22.31 15.35 22.31Q14.86 22.31 14.58 22.24Q14.3 22.17 13.17 21.47Q12.05 20.77 11.04 21.4Q10.03 22.03 9.7 22.15Q9.38 22.27 8.77 22.29Q8.16 22.31 7.64 22.13Q7.13 21.94 6.77 21.66Q6.42 21.38 6.12 20.86Q5.81 20.34 5.65 18.98Q5.48 17.63 4.5 17.3Q3.52 16.97 3.14 16.78Q2.77 16.59 2.34 16.15Q1.92 15.7 1.73 15.23Q1.55 14.77 1.52 14.25Q1.5 13.73 1.71 13.13Q1.92 12.52 2.88 11.53Q3.84 10.55 3.42 9.3Q3 8.06 3.05 7.38Q3.09 6.7 3.35 6.21Q3.61 5.72 4.01 5.37Q4.41 5.02 4.9 4.83Q5.39 4.64 5.84 4.62Q6.28 4.59 7.31 4.73Q8.34 4.88 8.95 3.89Q9.56 2.91 9.77 2.67Q9.98 2.44 10.45 2.16Q10.92 1.88 11.34 1.78Z M10.2 6.89Q9.28 6.7 8.91 7.41Q8.53 8.11 8.11 8.7Q7.69 9.28 7.17 9.82Q6.66 10.36 6.26 10.66Q5.86 10.97 6.16 11.63Q6.47 12.28 6.66 12.96Q6.84 13.64 6.94 14.34Q7.03 15.05 7.03 15.66Q7.03 16.27 7.66 16.38Q8.3 16.5 8.93 16.73Q9.56 16.97 10.24 17.37Q10.92 17.77 11.46 18.21Q12 18.66 12.49 18.21Q12.98 17.77 13.66 17.37Q14.34 16.97 15 16.73Q15.66 16.5 16.27 16.41Q16.88 16.31 16.85 15.61Q16.83 14.91 16.92 14.2Q17.02 13.5 17.23 12.84Q17.44 12.19 17.77 11.55Q18.09 10.92 17.55 10.52Q17.02 10.13 16.57 9.66Q16.13 9.19 15.7 8.58Q15.28 7.97 15 7.34Q14.72 6.7 13.78 6.89Q12.84 7.08 11.98 7.08Q11.11 7.08 10.2 6.89Z M16.85 18.12Q16.83 17.91 15.98 18.14Q15.14 18.38 14.55 18.7Q13.97 19.03 13.62 19.36Q13.27 19.69 14.06 20.18Q14.86 20.67 15.33 20.67Q15.8 20.67 15.98 20.58Q16.17 20.48 16.43 20.13Q16.69 19.78 16.78 19.05Q16.88 18.33 16.85 18.12Z M7.8 18.07Q7.17 17.91 7.15 18.12Q7.13 18.33 7.22 19.05Q7.31 19.78 7.41 19.97Q7.5 20.16 7.73 20.37Q7.97 20.58 8.16 20.65Q8.34 20.72 8.74 20.7Q9.14 20.67 9.91 20.2Q10.69 19.73 10.62 19.62Q10.55 19.5 9.98 19.1Q9.42 18.7 8.93 18.47Q8.44 18.23 7.8 18.07Z M18.33 6.28Q17.91 6.19 17.13 6.28Q16.36 6.38 16.36 6.45Q16.36 6.52 16.88 7.36Q17.39 8.2 17.86 8.67Q18.33 9.14 18.59 9.3Q18.84 9.47 19.13 8.67Q19.41 7.88 19.38 7.5Q19.36 7.13 19.24 6.91Q19.13 6.7 18.94 6.54Q18.75 6.38 18.33 6.28Z M20.04 12.7Q19.36 12.05 19.17 12.35Q18.98 12.66 18.77 13.31Q18.56 13.97 18.52 14.95Q18.47 15.94 19.31 15.66Q20.16 15.38 20.37 15.21Q20.58 15.05 20.72 14.79Q20.86 14.53 20.88 14.2Q20.91 13.88 20.81 13.62Q20.72 13.36 20.04 12.7Z M6.61 6.26Q5.86 6.19 5.48 6.33Q5.11 6.47 4.95 6.66Q4.78 6.84 4.69 7.08Q4.59 7.31 4.62 7.69Q4.64 8.06 4.9 8.77Q5.16 9.47 5.79 8.88Q6.42 8.3 7.01 7.38Q7.59 6.47 7.59 6.42Q7.59 6.38 7.48 6.35Q7.36 6.33 6.61 6.26Z M4.76 12.42Q4.59 12.09 3.94 12.73Q3.28 13.36 3.19 13.62Q3.09 13.88 3.12 14.2Q3.14 14.53 3.28 14.79Q3.42 15.05 3.63 15.21Q3.84 15.38 4.64 15.63Q5.44 15.89 5.34 14.88Q5.25 13.88 5.09 13.31Q4.92 12.75 4.76 12.42Z M12.02 3.33Q11.67 3.33 11.44 3.42Q11.2 3.52 11.02 3.7Q10.83 3.89 10.43 4.57Q10.03 5.25 10.69 5.37Q11.34 5.48 12 5.48Q12.66 5.48 13.31 5.37Q13.97 5.25 13.57 4.57Q13.17 3.89 12.98 3.7Q12.8 3.52 12.59 3.42Q12.38 3.33 12.02 3.33Z"/></svg>';$('attachmentButton').after(editorAi);
 let aiHubSessions=[],aiHubCurrent='',aiHubBusy=false,aiHubRenameId='';
@@ -1280,7 +1320,7 @@ function renderAiHubSessions(){
 function openAiHub(){clearAiHubFiles();loadAiHubSessions();switchTab('ai-hub');void refreshAiLocal().then(()=>renderAiHub());void refreshAiConfig().then(()=>renderAiHub()).catch(()=>{})}
 function setAiHubMode(mode){const session=currentAiHubSession();if(!session||aiHubBusy)return;session.mode=mode==='agent'?'agent':'conversation';saveAiHubSessions();renderAiHub()}
 async function activateAiHubModel(session){if(session.profileId==='__local__'||!session.profileId||!session.model)return;const profile=aiProfiles.find(value=>value.id===session.profileId);if(!profile)return;if(!profile.active)await aiRequest('select',{method:'POST',body:{credentialId:profile.id}});if(profile.model!==session.model)await aiRequest('config',{method:'PUT',body:{credentialId:profile.id,label:profile.label,provider:profile.provider,providerName:profile.providerName,baseUrl:profile.baseUrl,model:session.model,active:true}});if(!profile.active||profile.model!==session.model)await refreshAiConfig({force:true})}
-function setAiHubBusy(value){aiHubBusy=value;const local=currentAiHubSession()?.profileId==='__local__';$('aiHubSend').disabled=value&&!local;$('aiHubAttach').disabled=value;$('aiHubVoice').disabled=value;$('aiHubSend').setAttribute('aria-label',value?(local?'停止生成':'正在思考'):'发送');$('aiHubSend').innerHTML=value?(local?'<span aria-hidden="true">×</span>':'<span aria-hidden="true">…</span>'):'<svg aria-hidden="true"><use href="#i-export"/></svg>'}
+function setAiHubBusy(value){aiHubBusy=value;$('aiHubSend').disabled=false;$('aiHubAttach').disabled=value;$('aiHubVoice').disabled=value;$('aiHubSend').setAttribute('aria-label',value?'停止生成':'发送');$('aiHubSend').innerHTML=value?'<span aria-hidden="true">×</span>':'<svg aria-hidden="true"><use href="#i-export"/></svg>'}
 let aiHubFiles=[],aiSpeechRecognition=null;
 function renderAiHubFiles(){
  $('aiHubAttachments').hidden=!aiHubFiles.length;
@@ -1372,6 +1412,7 @@ $('aiHubVoice').onclick=async()=>{
  recognition.onend=()=>{aiSpeechRecognition=null;$('aiHubVoice').setAttribute('aria-pressed','false')};
  try{recognition.start()}catch(error){recognition.onend();toast('无法启动语音识别')}
 };
+let aiHubStreamAbort=null;
 async function sendAiHubMessage(content){
  if(aiHubBusy||(!content&&!aiHubFiles.length))return;
  const session=currentAiHubSession()||newAiHubSession();
@@ -1379,7 +1420,8 @@ async function sendAiHubMessage(content){
  const attachments=aiHubFiles.map(file=>({...file})),names=attachments.map(file=>file.name);
  const prompt=content||'请分析附件';
  const label=prompt+(names.length?'\n\n📎 '+names.join('、'):'');
- let sent=null,partial=null;setAiHubBusy(true);
+ let sent=null,partial=null,frame=0;setAiHubBusy(true);
+ const refresh=()=>{if(!frame)frame=requestAnimationFrame(()=>{frame=0;if(aiHubCurrent===session.id&&tab==='ai-hub'){const panel=$('aiHubMessages'),bottom=panel.scrollHeight-panel.scrollTop-panel.clientHeight<100;renderAiHub();if(bottom)panel.scrollTop=panel.scrollHeight}})};
  try{
   const localModel=session.profileId==='__local__';
   if(localModel){
@@ -1398,19 +1440,21 @@ async function sendAiHubMessage(content){
   if(localModel){
    if(attachments.length)payload[payload.length-1].content+='\n\n'+attachments.map(file=>'附件 '+file.name+'：\n'+file.text).join('\n\n');
    partial={role:'assistant',content:''};session.messages.push(partial);
-   const data=await aiLocalGenerate(session.model,payload,text=>{partial.content=text;if(aiHubCurrent===session.id&&tab==='ai-hub')renderAiHub()});
+   const data=await aiLocalGenerate(session.model,payload,text=>{partial.content=text;refresh()});
    partial.content=data.message.content;
   }else{
-   const data=await aiRequest('chat',{method:'POST',body:{messages:payload,mode:session.mode==='agent'?'agent':'conversation',attachments}});
-   if(data.approval){session.pendingApproval=data.approval;session.messages.push({role:'assistant',content:data.message?.content||'需要确认操作：'+data.approval.tool});}
-   else session.messages.push({role:'assistant',content:data.message.content||'已完成',tools:(data.tools||[]).map(tool=>tool.name)});
+   partial={role:'assistant',content:''};session.messages.push(partial);aiHubStreamAbort=new AbortController();
+   const data=await aiStreamRequest({messages:payload,mode:session.mode==='agent'?'agent':'conversation',attachments},{signal:aiHubStreamAbort.signal,progress:text=>{partial.content+=text;refresh()},reset:()=>{partial.content='';refresh()}});
+   if(data.approval)session.pendingApproval=data.approval;
+   partial.content=data.message?.content||'已完成';partial.tools=(data.tools||[]).map(tool=>tool.name);
   }
-  clearAiHubFiles();session.updatedAt=Date.now();saveAiHubSessions();renderAiHub();$('aiHubMessages').lastElementChild?.scrollIntoView({behavior:'smooth',block:'nearest'});
+  if(frame)cancelAnimationFrame(frame);clearAiHubFiles();session.updatedAt=Date.now();saveAiHubSessions();renderAiHub();$('aiHubMessages').lastElementChild?.scrollIntoView({behavior:'smooth',block:'nearest'});
  }catch(error){
-  if(partial){const index=session.messages.indexOf(partial);if(index>=0)session.messages.splice(index,1)}
+  if(frame)cancelAnimationFrame(frame);
+  if(partial){if(partial.content.trim()){partial.content+='\n\n*'+(error.name==='AbortError'?'已停止生成':'生成中断')+'*';saveAiHubSessions();renderAiHub()}else{const index=session.messages.indexOf(partial);if(index>=0)session.messages.splice(index,1)}}
   if(sent&&session.messages.at(-1)===sent){session.messages.pop();saveAiHubSessions();renderAiHub();$('aiHubPrompt').value=content;$('aiHubPrompt').dispatchEvent(new Event('input'))}
-  toast(error.message);
- }finally{setAiHubBusy(false)}
+  if(error.name!=='AbortError')toast(error.message);
+ }finally{aiHubStreamAbort=null;setAiHubBusy(false)}
 }
 async function confirmAiHubAction(accept){
  const session=currentAiHubSession(),pending=session?.pendingApproval;if(!pending||aiHubBusy)return;
@@ -1451,7 +1495,7 @@ $('aiSessionList').oncontextmenu=event=>{const row=event.target.closest('.ai-ses
 let aiSessionHold=null,aiSessionLongPressed=false;
 $('aiSessionList').addEventListener('pointerdown',event=>{const row=event.target.closest('.ai-session-row');if(!row||event.target.closest('button.ai-session-more'))return;clearTimeout(aiSessionHold);aiSessionLongPressed=false;aiSessionHold=setTimeout(()=>{aiSessionLongPressed=true;row.querySelector('[data-ai-actions]')?.click()},550)});
 for(const name of ['pointerup','pointercancel','pointermove'])$('aiSessionList').addEventListener(name,()=>clearTimeout(aiSessionHold));
-$('aiRenameForm').onsubmit=event=>{event.preventDefault();const session=aiHubSessions.find(value=>value.id===aiHubRenameId),title=$('aiRenameInput').value.trim();if(!session||!title)return;session.title=title;session.updatedAt=Date.now();saveAiHubSessions();renderAiHub();renderAiHubSessions();$('aiRenameDialog').close()};$('aiHubForm').onsubmit=event=>{event.preventDefault();if(aiHubBusy&&currentAiHubSession()?.profileId==='__local__'){void native.call('ai.local.cancel');return}void sendAiHubMessage($('aiHubPrompt').value.trim())};
+$('aiRenameForm').onsubmit=event=>{event.preventDefault();const session=aiHubSessions.find(value=>value.id===aiHubRenameId),title=$('aiRenameInput').value.trim();if(!session||!title)return;session.title=title;session.updatedAt=Date.now();saveAiHubSessions();renderAiHub();renderAiHubSessions();$('aiRenameDialog').close()};$('aiHubForm').onsubmit=event=>{event.preventDefault();if(aiHubBusy){if(currentAiHubSession()?.profileId==='__local__')void native.call('ai.local.cancel');else aiHubStreamAbort?.abort();return}void sendAiHubMessage($('aiHubPrompt').value.trim())};
 $('aiHubMessages').onclick=event=>{
  if(event.target.closest('[data-ai-approve]')){void confirmAiHubAction(true);return}
  if(event.target.closest('[data-ai-reject]')){void confirmAiHubAction(false);return}
@@ -1498,7 +1542,7 @@ let lastEditorWide=largeWorkspace();
 addEventListener('resize',()=>{const editorWide=largeWorkspace(),changingEditorMode=!!current&&lastEditorWide!==editorWide,oldScroll=changingEditorMode?(lastEditorWide?$('editor').scrollTop:window.scrollY):0;lastEditorWide=editorWide;if(!current&&tab==='folders'&&matchMedia('(min-width:600px)').matches)switchTab('folders');else syncTabletLayout();if(changingEditorMode)requestAnimationFrame(()=>{if(editorWide)$('editor').scrollTop=oldScroll;else window.scrollTo(0,oldScroll)});const dialog=$('aiAssistantDialog');if(!dialog.open)return;const modal=!sideAiWorkspace();if(dialog.matches(':modal')===modal){updateFormatbarVisibility();return}dialog.close();if(modal)dialog.showModal();else dialog.show();document.body.classList.toggle('ai-panel-open',!modal);editorAi.setAttribute('aria-expanded','true');updateFormatbarVisibility()});
 document.addEventListener('keydown',event=>{if((event.ctrlKey||event.metaKey)&&event.shiftKey&&event.key.toLowerCase()==='a'&&current){event.preventDefault();editorAi.click()}else if(event.key==='Escape'&&document.body.classList.contains('ai-panel-open')){event.preventDefault();closeAiAssistant()}});
 document.querySelectorAll('[data-ai-action]').forEach(button=>button.onclick=()=>{const actions={summary:['请简洁总结这篇笔记，列出核心信息，并使用 Markdown 返回。','总结当前笔记'],organize:['请整理这篇笔记的结构，保留事实并以完整 Markdown 返回。','整理当前笔记'],rewrite:['请润色这篇笔记，使表达更清晰自然，并返回完整 Markdown 建议稿。','润色当前笔记']};const action=actions[button.dataset.aiAction];void sendAiMessage(action[0],action[1])});
-$('aiChatForm').onsubmit=event=>{event.preventDefault();if(aiBusy&&aiWriterLocalModel){void native.call('ai.local.cancel');return}void sendAiMessage($('aiPrompt').value.trim())};
+$('aiChatForm').onsubmit=event=>{event.preventDefault();if(aiBusy){if(aiWriterLocalModel)void native.call('ai.local.cancel');else aiWriterStreamAbort?.abort();return}void sendAiMessage($('aiPrompt').value.trim())};
 $('aiMessages').onclick=event=>{const button=event.target.closest('[data-ai-apply]');if(!button)return;const message=aiConversation[Number(button.dataset.aiApply)];if(!message||message.role!=='assistant')return;confirmAction('替换当前笔记？','AI 返回的 Markdown 将转换为富文本并替换正文。此操作可通过编辑器撤销。',()=>{rich.replaceMarkdown(message.content);rich.flushInput();persistNow();$('aiAssistantDialog').close();toast('已将 AI 结果应用到笔记')})};
 $('aiClearContext').onclick=()=>{aiConversation=[];aiContextCompressed=false;renderAiMessages();toast('当前笔记的 AI 对话已清除')};
 $('aiSaveMemory').onclick=()=>{try{const value=$('aiMemory').value.trim();if(value)localStorage.setItem(aiMemoryKey,value);else localStorage.removeItem(aiMemoryKey);toast(value?'本机 AI 记忆已保存':'本机 AI 记忆已清除');$('aiContextStatus').closest('details').open=false}catch{toast('浏览器未允许保存本机记忆')}};

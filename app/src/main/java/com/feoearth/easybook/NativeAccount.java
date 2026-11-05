@@ -15,6 +15,8 @@ import java.io.*;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.function.Consumer;
 
 /** Account tokens and PKCE verifiers are native-only Keystore envelopes.
  * Browser callbacks carry a short-lived one-use code, never a session token. */
@@ -26,6 +28,9 @@ final class NativeAccount {
     private static final String SESSION="account-session-v1",PENDING="account-login-pending-v1",LOGOUT="account-logout-pending-v1";
     private final Activity activity;private final NoteRepository db;private final ExecutorService io;
     private static final ExecutorService revocations=java.util.concurrent.Executors.newSingleThreadExecutor();
+    private final ExecutorService aiStreams=Executors.newSingleThreadExecutor();
+    private String aiStreamId;
+    private HttpsURLConnection aiStreamConnection;
     private volatile boolean starting;
     private volatile String feedback="",stage="账户验证";
     private void stage(String value){stage=value;feedback=value+"…";changed();}
@@ -227,6 +232,65 @@ final class NativeAccount {
         if(args.has("workspace")&&!args.optString("workspace").matches("[a-f0-9]{64}"))throw new SecurityException("Invalid workspace");
         return request("/account/native/ai",args,token(db));
     }
+    /** Native transport owns the account session; only sanitized model events reach WebView. */
+    synchronized void startAiStream(JSONObject args,Consumer<JSONObject> emit)throws Exception{
+        String id=args.getString("id"),workspace=args.getString("workspace");
+        if(!id.matches("[a-f0-9-]{20,70}")||!workspace.matches("[a-f0-9]{64}")||!args.has("messages"))throw new SecurityException("Invalid AI stream request");
+        if(aiStreamId!=null)throw new IllegalStateException("AI generation already running");
+        String session=token(db);
+        aiStreamId=id;
+        aiStreams.execute(()->{
+            HttpsURLConnection connection=null;
+            try{
+                String endpoint=NativeTransport.origin(true);
+                connection=(HttpsURLConnection)new URL(endpoint+"/account/native/ai").openConnection();
+                connection.setInstanceFollowRedirects(false);connection.setConnectTimeout(12000);connection.setReadTimeout(125000);connection.setRequestMethod("POST");
+                connection.setRequestProperty("X-Easybook-Native","1");connection.setRequestProperty("Content-Type","application/json");connection.setRequestProperty("Accept","text/event-stream");
+                connection.setRequestProperty("Authorization","Easybook-Session "+session);
+                synchronized(this){if(!id.equals(aiStreamId))return;aiStreamConnection=connection;}
+                byte[] bytes=args.toString().getBytes(StandardCharsets.UTF_8);connection.setDoOutput(true);connection.setFixedLengthStreamingMode(bytes.length);
+                try(OutputStream out=connection.getOutputStream()){out.write(bytes);}
+                int status=connection.getResponseCode();
+                if(status!=200)throw new HttpFailure(status,false,serverError(connection));
+                if(!String.valueOf(connection.getContentType()).contains("text/event-stream"))throw new IOException("AI streaming unavailable");
+                try(BufferedReader lines=new BufferedReader(new InputStreamReader(connection.getInputStream(),StandardCharsets.UTF_8))){
+                    String line,type="",data="";int chars=0;boolean done=false;
+                    while((line=lines.readLine())!=null){
+                        if(!id.equals(currentAiStreamId()))return;
+                        chars+=line.length();if(chars>4*1024*1024)throw new IOException("AI response too large");
+                        if(line.isEmpty()){
+                            if(!data.isEmpty()){
+                                JSONObject payload=new JSONObject(data),event=new JSONObject().put("id",id).put("type",type);
+                                if(type.equals("delta"))event.put("text",payload.optString("text"));
+                                else if(type.equals("done")){event.put("result",payload);done=true;}
+                                else if(type.equals("error")){event.put("error",payload.optString("error","ai_unavailable"));done=true;}
+                                if(type.equals("delta")||type.equals("reset")||done)emit.accept(event);
+                                if(done)return;
+                            }
+                            type="";data="";continue;
+                        }
+                        if(line.startsWith("event:"))type=line.substring(6).trim();
+                        else if(line.startsWith("data:"))data+=line.substring(5).trim();
+                    }
+                    if(!done)throw new IOException("AI stream interrupted");
+                }
+            }catch(Exception error){
+                if(id.equals(currentAiStreamId())){
+                    String code=error instanceof HttpFailure&& !((HttpFailure)error).code.isEmpty()?((HttpFailure)error).code:"ai_unavailable";
+                    try{emit.accept(new JSONObject().put("id",id).put("type","error").put("error",code));}catch(JSONException ignored){}
+                }
+            }finally{
+                synchronized(this){if(id.equals(aiStreamId)){aiStreamId=null;aiStreamConnection=null;}}
+                if(connection!=null)connection.disconnect();
+            }
+        });
+    }
+    private synchronized String currentAiStreamId(){return aiStreamId;}
+    synchronized void cancelAiStream(String id){
+        if(aiStreamId==null||id!=null&&!id.equals(aiStreamId))return;
+        aiStreamId=null;if(aiStreamConnection!=null){aiStreamConnection.disconnect();aiStreamConnection=null;}
+    }
+    void shutdownAiStream(){cancelAiStream(null);aiStreams.shutdownNow();}
     JSONObject devices()throws Exception{JSONObject saved=read(SESSION);if(saved==null)throw new CredentialVault.KeyUnavailable();try{return request("/account/native/sessions",null,saved.getString("token"));}catch(HttpFailure error){if(error.status==401)db.setSetting(SESSION,"");throw error;}}
     JSONObject revokeDevice(String id)throws Exception{if(id==null||!id.matches("[a-f0-9-]{36}"))throw new SecurityException("Invalid device");JSONObject saved=read(SESSION);if(saved==null)throw new CredentialVault.KeyUnavailable();JSONObject result=request("/account/native/sessions/revoke",new JSONObject().put("id",id),saved.getString("token"));if(result.optBoolean("current"))db.setSetting(SESSION,"");return result;}
     private void retryLogout(){try{for(;;){

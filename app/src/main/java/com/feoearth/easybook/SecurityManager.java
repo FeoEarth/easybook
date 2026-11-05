@@ -51,6 +51,8 @@ public final class SecurityManager {
             case "ai.models":fields=fields("credentialId");break;
             case "ai.select":fields=fields("credentialId");break;
             case "ai.chat":fields=fields("method","messages","workspace","mode","attachments");break;
+            case "ai.stream.start":fields=fields("id","messages","workspace","mode","attachments");break;
+            case "ai.stream.cancel":fields=fields("id");break;
             case "ai.execute":fields=fields("method","approvalId","workspace");break;
             case "ai.attachment.pick":case "ai.speech":fields=Collections.emptySet();break;
             case "account.device.revoke":fields=fields("id");break;

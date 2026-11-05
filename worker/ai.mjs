@@ -2,8 +2,10 @@ import {boundedJSON,object,READ,WRITE} from './mcp-common.mjs';
 import {registry} from './mcp-registry.mjs';
 import {callTool} from './mcp-services.mjs';
 import {workspaceAccess} from './workspace-identity.mjs';
+import {readAIProviderStream} from './ai-stream.mjs';
 
 const encoder=new TextEncoder(),decoder=new TextDecoder();
+const providerSignal=(requestSignal,streaming)=>requestSignal?AbortSignal.any([requestSignal,AbortSignal.timeout(streaming?120000:45000)]):AbortSignal.timeout(streaming?120000:45000);
 const response=(body,status=200)=>Response.json(body,{status,headers:{'Cache-Control':'no-store','Referrer-Policy':'no-referrer','X-Content-Type-Options':'nosniff'}});
 const b64=bytes=>btoa(String.fromCharCode(...bytes));
 const unb64=value=>Uint8Array.from(atob(value),c=>c.charCodeAt(0));
@@ -97,8 +99,9 @@ function safeMessages(input,attachments=[]){
  }
  result[result.length-1].content=parts.length===1?parts[0].text:parts;return result;
 }
-async function openAICompletion(key,row,messages,tools,fetcher=fetch){
- const upstream=await fetcher(row.base_url.replace(/\/$/,'')+'/chat/completions',{method:'POST',redirect:'manual',headers:{Authorization:'Bearer '+key,'Content-Type':'application/json'},body:JSON.stringify({model:row.model,messages,tools,tool_choice:'auto',max_completion_tokens:2000}),signal:AbortSignal.timeout(45000)});
+async function openAICompletion(key,row,messages,tools,fetcher=fetch,onDelta,signal){
+ const upstream=await fetcher(row.base_url.replace(/\/$/,'')+'/chat/completions',{method:'POST',redirect:'manual',headers:{Authorization:'Bearer '+key,'Content-Type':'application/json'},body:JSON.stringify({model:row.model,messages,tools,tool_choice:'auto',max_completion_tokens:2000,...(onDelta?{stream:true}:{})}),signal:providerSignal(signal,!!onDelta)});
+ if(onDelta&&upstream.ok&&upstream.headers.get('Content-Type')?.includes('text/event-stream'))return readAIProviderStream(upstream,'openai',onDelta);
  let data;try{data=await upstream.json()}catch{data=null}
  if(!upstream.ok)throw Object.assign(Error(data?.error?.message||'AI provider request failed'),{status:upstream.status===401?401:502,code:upstream.status===401?'provider_key_rejected':'provider_error'});
  const message=data?.choices?.[0]?.message;if(!message||typeof message!=='object')throw Object.assign(Error('Invalid AI provider response'),{status:502,code:'provider_error'});return message;
@@ -106,13 +109,14 @@ async function openAICompletion(key,row,messages,tools,fetcher=fetch){
 function anthropicMessages(messages){
  const result=[];for(const message of messages){if(message.role==='system')continue;if(message.role==='tool'){const block={type:'tool_result',tool_use_id:message.tool_call_id,content:message.content};const previous=result.at(-1);if(previous?.role==='user'&&Array.isArray(previous.content))previous.content.push(block);else result.push({role:'user',content:[block]});continue}if(message.role==='assistant'&&Array.isArray(message.tool_calls)){const content=[];if(message.content)content.push({type:'text',text:message.content});for(const call of message.tool_calls)content.push({type:'tool_use',id:call.id,name:call.function.name,input:JSON.parse(call.function.arguments||'{}')});result.push({role:'assistant',content});continue}result.push({role:message.role,content:Array.isArray(message.content)?message.content.map(part=>part.type==='image_url'?{type:'image',source:{type:'base64',media_type:part.image_url.url.slice(5,part.image_url.url.indexOf(';')),data:part.image_url.url.slice(part.image_url.url.indexOf(',')+1)}}:{type:'text',text:part.text}):message.content})}return result;
 }
-async function anthropicCompletion(key,row,messages,tools,fetcher=fetch){
+async function anthropicCompletion(key,row,messages,tools,fetcher=fetch,onDelta,signal){
  const system=messages.filter(message=>message.role==='system').map(message=>message.content).join('\n\n');
- const upstream=await fetcher(row.base_url.replace(/\/$/,'')+'/messages',{method:'POST',redirect:'manual',headers:{'x-api-key':key,'anthropic-version':'2023-06-01','Content-Type':'application/json'},body:JSON.stringify({model:row.model,system,messages:anthropicMessages(messages),tools:tools.map(tool=>({name:tool.function.name,description:tool.function.description,input_schema:tool.function.parameters})),tool_choice:{type:'auto'},max_tokens:2000}),signal:AbortSignal.timeout(45000)});
+ const upstream=await fetcher(row.base_url.replace(/\/$/,'')+'/messages',{method:'POST',redirect:'manual',headers:{'x-api-key':key,'anthropic-version':'2023-06-01','Content-Type':'application/json'},body:JSON.stringify({model:row.model,system,messages:anthropicMessages(messages),tools:tools.map(tool=>({name:tool.function.name,description:tool.function.description,input_schema:tool.function.parameters})),tool_choice:{type:'auto'},max_tokens:2000,...(onDelta?{stream:true}:{})}),signal:providerSignal(signal,!!onDelta)});
+ if(onDelta&&upstream.ok&&upstream.headers.get('Content-Type')?.includes('text/event-stream'))return readAIProviderStream(upstream,'anthropic',onDelta);
  let data;try{data=await upstream.json()}catch{data=null}if(!upstream.ok)throw Object.assign(Error(data?.error?.message||'AI provider request failed'),{status:upstream.status===401?401:502,code:upstream.status===401?'provider_key_rejected':'provider_error'});
  if(!Array.isArray(data?.content))throw Object.assign(Error('Invalid AI provider response'),{status:502,code:'provider_error'});const text=data.content.filter(block=>block.type==='text').map(block=>block.text||'').join('\n'),calls=data.content.filter(block=>block.type==='tool_use').map(block=>({id:block.id,type:'function',function:{name:block.name,arguments:JSON.stringify(block.input||{})}}));return {role:'assistant',content:text,...(calls.length?{tool_calls:calls}:{})};
 }
-const completion=(key,row,messages,tools,fetcher)=>row.protocol==='anthropic'?anthropicCompletion(key,row,messages,tools,fetcher):openAICompletion(key,row,messages,tools,fetcher);
+const completion=(key,row,messages,tools,fetcher,onDelta,signal)=>row.protocol==='anthropic'?anthropicCompletion(key,row,messages,tools,fetcher,onDelta,signal):openAICompletion(key,row,messages,tools,fetcher,onDelta,signal);
 async function discoverModels(key,row,fetcher=fetch){
  const headers=row.protocol==='anthropic'?{'x-api-key':key,'anthropic-version':'2023-06-01'}:{Authorization:'Bearer '+key};const upstream=await fetcher(row.base_url.replace(/\/$/,'')+'/models',{headers,redirect:'manual',signal:AbortSignal.timeout(20000)});let data;try{data=await upstream.json()}catch{data=null}if(!upstream.ok)throw Object.assign(Error('Model discovery failed'),{status:upstream.status===401?401:502,code:upstream.status===401?'provider_key_rejected':'model_discovery_failed'});const items=Array.isArray(data?.data)?data.data:Array.isArray(data?.models)?data.models:[];return [...new Set(items.map(item=>item?.id||item?.name?.replace(/^models\//,'')).filter(model=>typeof model==='string'&&modelPattern.test(model)))].sort().slice(0,500)}
 export async function aiAPI(request,env,principal,{workspaceId,fetcher=fetch}={}){
@@ -163,22 +167,24 @@ export async function aiAPI(request,env,principal,{workspaceId,fetcher=fetch}={}
   }
   const row=await credential(env,principal.accountId);if(!row)return response({error:'ai_not_configured'},409);
   const input=await boundedJSON(request,1600000),messages=safeMessages(input?.messages,input?.attachments||[]),mode=input?.mode==='agent'?'agent':'conversation',scopes=toolScopes(access.role,mode),tools=toolsFor(access.role,mode),key=await open(env,row);
-  const conversation=[{role:'system',content:'你是 Easybook 内置 AI 助手。笔记内容以 Markdown 提供，面向用户的回复必须使用清晰、有效的 Markdown。不得猜测工具结果。'+(mode==='agent'?'当前为 Agent 模式：可以受控地分步骤使用当前工作区工具。所有写入都会暂停，等待用户在 Easybook 内逐项核对并确认；不得宣称未确认的操作已执行。高风险及永久删除操作不可用。':'当前为对话模式：只能读取工作区；不能创建、修改、移动或删除任何内容。如需写入，请提示用户切换 Agent 模式。')},...messages];
-  const used=[];
-  for(let turn=0;turn<6;turn++){
-   const message=await completion(key,row,conversation,tools,fetcher),calls=Array.isArray(message.tool_calls)?message.tool_calls:[];
+  const run=async(emit=()=>{})=>{
+   const conversation=[{role:'system',content:'你是 Easybook 内置 AI 助手。笔记内容以 Markdown 提供，面向用户的回复必须使用清晰、有效的 Markdown。不得猜测工具结果。'+(mode==='agent'?'当前为 Agent 模式：可以受控地分步骤使用当前工作区工具。所有写入都会暂停，等待用户在 Easybook 内逐项核对并确认；不得宣称未确认的操作已执行。高风险及永久删除操作不可用。':'当前为对话模式：只能读取工作区；不能创建、修改、移动或删除任何内容。如需写入，请提示用户切换 Agent 模式。')},...messages];
+   const used=[];
+   for(let turn=0;turn<6;turn++){
+   const message=await completion(key,row,conversation,tools,fetcher,input?.stream===true?text=>emit('delta',{text}):undefined,request.signal),calls=Array.isArray(message.tool_calls)?message.tool_calls:[];
    conversation.push(message);
-   if(!calls.length)return response({message:{role:'assistant',content:typeof message.content==='string'?message.content:''},tools:used,model:row.model,providerName:row.provider_name});
+   if(!calls.length)return {message:{role:'assistant',content:typeof message.content==='string'?message.content:''},tools:used,model:row.model,providerName:row.provider_name};
+   emit('reset',{});
    const writeCall=calls.slice(0,6).find(call=>registry.some(t=>t.name===call?.function?.name&&!t.risk&&WRITE.includes(t.scope)&&scopes.includes(t.scope)));
    if(writeCall){
     const name=writeCall.function.name;let args;
-    try{args=JSON.parse(writeCall.function.arguments||'{}');if(!object(args))throw Error('invalid')}catch{return response({error:'invalid_tool_arguments'},400)}
-    const serialized=JSON.stringify(args);if(serialized.length>30000)return response({error:'tool_arguments_too_large'},413);
+    try{args=JSON.parse(writeCall.function.arguments||'{}');if(!object(args))throw Error('invalid')}catch{throw Object.assign(Error('Invalid tool arguments'),{code:'invalid_tool_arguments',status:400})}
+    const serialized=JSON.stringify(args);if(serialized.length>30000)throw Object.assign(Error('Tool arguments too large'),{code:'tool_arguments_too_large',status:413});
     await ensureAgentApprovalSchema(env);
     await env.DB.prepare('DELETE FROM ai_agent_approvals WHERE expires_at<?').bind(Date.now()-86400000).run();
     const id=crypto.randomUUID(),expiresAt=Date.now()+300000;
     await env.DB.prepare('INSERT INTO ai_agent_approvals(id,account_id,workspace_id,tool_name,tool_args,expires_at) VALUES(?,?,?,?,?,?)').bind(id,principal.accountId,workspaceId,name,serialized,expiresAt).run();
-    return response({message:{role:'assistant',content:'Agent 已准备 '+name+' 操作，正在等待你核对参数并确认。未确认前不会修改工作区。'},tools:used,approval:{id,tool:name,arguments:args,expiresAt}});
+    return {message:{role:'assistant',content:'Agent 已准备 '+name+' 操作，正在等待你核对参数并确认。未确认前不会修改工作区。'},tools:used,approval:{id,tool:name,arguments:args,expiresAt}};
    }
    for(const call of calls.slice(0,6)){
     const name=call?.function?.name;let args,result;
@@ -187,7 +193,14 @@ export async function aiAPI(request,env,principal,{workspaceId,fetcher=fetch}={}
     used.push({name,ok:!result?.error});conversation.push({role:'tool',tool_call_id:call.id,content:JSON.stringify(result).slice(0,180000)});
    }
   }
-  return response({error:'agent_turn_limit'},422);
+   throw Object.assign(Error('Agent turn limit'),{code:'agent_turn_limit',status:422});
+  };
+  if(input?.stream!==true)return response(await run());
+  const stream=new ReadableStream({start(controller){
+   const push=(event,data)=>controller.enqueue(encoder.encode('event: '+event+'\ndata: '+JSON.stringify(data)+'\n\n'));
+   void run(push).then(result=>push('done',result)).catch(error=>{console.error(JSON.stringify({event:'ai_stream_failed',name:error?.name,code:error?.code}));try{push('error',{error:error?.code||'ai_unavailable'})}catch{}}).finally(()=>{try{controller.close()}catch{}});
+  }});
+  return new Response(stream,{headers:{'Content-Type':'text/event-stream; charset=utf-8','Cache-Control':'no-store, no-transform','X-Accel-Buffering':'no','Referrer-Policy':'no-referrer','X-Content-Type-Options':'nosniff'}});
  }catch(error){if(error?.code==='PAYLOAD_TOO_LARGE')return response({error:'payload_too_large'},413);console.error(JSON.stringify({event:'ai_request_failed',name:error?.name,code:error?.code}));return response({error:error?.code||'ai_unavailable'},error?.status||503)}
 }
 
