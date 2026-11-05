@@ -7,7 +7,7 @@ import {nativePasskeyRoutes} from '../src/native-passkeys.mjs';
 import {nativeSession,s256} from '../src/native-sessions.mjs';
 import {passkeyRoutes} from '../src/passkeys.mjs';
 import {session as webSession} from '../src/accounts.mjs';
-import {ANDROID_APP_ORIGIN,ANDROID_TRUSTED_APP_ORIGINS,androidAssetLinks,ANDROID_SIGNING_SHA256,ANDROID_RELEASE_SIGNING_SHA256} from '../../worker/android-identity.mjs';
+import {ANDROID_APP_ORIGIN,ANDROID_TRUSTED_APP_ORIGINS,ANDROID_TRUSTED_SIGNING_SHA256,androidAssetLinks} from '../../worker/android-identity.mjs';
 const sql=new DatabaseSync(':memory:');for(const file of ['0002_accounts.sql','0003_passkeys.sql','0004_native_identity.sql'])sql.exec(readFileSync('mcp-oauth/migrations/'+file,'utf8'));
 const DB={prepare(s){const q=sql.prepare(s);let p=[];return {bind(...args){p=args;return this},async first(){return q.get(...p)||null},async all(){return {results:q.all(...p)}},async run(){return q.run(...p)}}},async batch(statements){sql.exec('BEGIN');try{const result=[];for(const s of statements)result.push(await s.all());sql.exec('COMMIT');return result}catch(e){sql.exec('ROLLBACK');throw e}}};
 const env={DB,IDENTITY_CANONICAL_V2:'true'},origin='https://easybook.loonxy.com',rpID='easybook.loonxy.com',verifier='v'.repeat(64),state='f'.repeat(64);let serial=0;
@@ -54,7 +54,7 @@ p=await options('register',token);sql.prepare('UPDATE account_sessions SET revok
 p=await options('login');sql.prepare('UPDATE account_native_passkey_challenges SET expires_at=0 WHERE id=?').run(p.flow);assert.equal((await verify('login',p,authentication(p.options,k,handle,2))).status,400);
 p=await options('login');sql.prepare('UPDATE account_passkeys SET revoked_at=? WHERE id=?').run(Date.now(),k.id);assert.equal((await verify('login',p,authentication(p.options,k,handle,2))).status,400);assert.equal(await nativeSession(new Request(origin,{headers:{Authorization:'Easybook-Session '+secondToken}}),env),null,'credential revocation closes derived sessions');
 assert.equal((await request('login/options',{challenge:await s256(verifier),state},null,{Origin:origin})).status,403,'browser cannot invoke native ceremony');
-assert.deepEqual(androidAssetLinks[0].target.sha256_cert_fingerprints.map(value=>value.replaceAll(':','').toLowerCase()),[ANDROID_SIGNING_SHA256,ANDROID_RELEASE_SIGNING_SHA256]);
+assert.deepEqual(androidAssetLinks[0].target.sha256_cert_fingerprints.map(value=>value.replaceAll(':','').toLowerCase()),ANDROID_TRUSTED_SIGNING_SHA256);
 assert.equal(ANDROID_TRUSTED_APP_ORIGINS.length,1);
 console.log('PASS native Passkeys: actual signed Android-origin WebAuthn signup/login/enrollment; application/RP/challenge/UV/signature/handle checks; PKCE/replay/expiry; revoked credential/session denial; stable account identity; signing association consistency.');
 
