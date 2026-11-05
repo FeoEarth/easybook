@@ -1022,10 +1022,10 @@ let aiConfigured=null,aiConfigPromise=null,aiBusy=false,aiConversation=[],aiConv
 const aiMemoryKey='easybook-ai-memory-v1';
 const aiErrorMessage=code=>({account_required:'请先登录 Easybook 账户',reauthentication_required:'请先重新验证身份，再更新密钥',credential_vault_unavailable:'AI 凭据保险库尚未配置',credential_unavailable:'无法解密已保存的密钥，请重新保存',invalid_provider:'请完整填写自定义提供商信息',invalid_provider_url:'Base URL 必须是公开的 HTTPS 地址',provider_key_rejected:'API 密钥被提供商拒绝',provider_error:'AI 提供商暂时不可用',model_discovery_failed:'无法从提供商获取模型列表',ai_not_configured:'请先保存 BYOK 密钥',workspace_access_denied:'当前账户无权访问此工作区',workspace_required:'请先选择账户中的工作区',agent_turn_limit:'Agent 工具调用次数已达上限'}[code]||code||'AI 请求失败');
 async function aiRequest(path,{method='GET',body}={}){
- if(native){const operation=path==='config'?(method==='GET'?'ai.config':'ai.credential'):path==='models'?'ai.models':path==='select'?'ai.select':path==='execute'?'ai.execute':'ai.chat';return native.call(operation,{method,...(path==='chat'&&workspaceCurrent?{workspace:workspaceCurrent}:{}),...(body||{})})}
+ if(native){const operation=path==='config'?(method==='GET'?'ai.config':'ai.credential'):path==='models'?'ai.models':path==='select'?'ai.select':path==='execute'?'ai.execute':'ai.chat';return native.call(operation,{method,...((path==='chat'||path==='execute')&&workspaceCurrent?{workspace:workspaceCurrent}:{}),...(body||{})})}
  const session=await browserAccount();if(!session.signedIn)throw Error('请先登录 Easybook 账户');
  const headers={'Content-Type':'application/json'};if(method!=='GET')headers['X-Easybook-CSRF']=session.csrf;
- if(path==='chat'){
+ if(path==='chat'||path==='execute'){
   let id=workspaceCurrent;if(!id&&key.startsWith('account:'))id=key.slice(8);if(!id&&!key.startsWith('account:'))try{id=(await workspaceIdentity(key)).id}catch{}
   if(id)headers['X-Easybook-Workspace']=id;
  }
