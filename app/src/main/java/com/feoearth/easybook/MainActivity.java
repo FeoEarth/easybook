@@ -277,8 +277,9 @@ public class MainActivity extends Activity {
             case "account.login":nativeAccount.begin();return new JSONObject().put("externalBrowser",true);
             case "account.status":return nativeAccount.publicStatus();
             case "workspace.action":{
-                if(NativeSync.isRunning(repository.activeSpace()))throw new IllegalStateException("Sync running");
-                String action=bounded(args,"action",16);JSONObject result=WorkspaceClient.perform(repository,action,args);
+                String action=bounded(args,"action",16);
+                if(NativeSync.isRunning(repository.activeSpace())&&!action.equals("list")&&!action.equals("listCached"))throw new IllegalStateException("Sync running");
+                JSONObject result=WorkspaceClient.perform(repository,action,args);
                 if(action.equals("select")||action.equals("create")||action.equals("rotate")||action.equals("mode"))runOnUiThread(()->{if(!destroyed&&generation==documentGeneration)web.reload();});
                 return result;
             }

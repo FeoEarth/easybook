@@ -1085,7 +1085,10 @@ async function refreshWorkspaces(){
  if(!identityV2)return;$('workspacePanel').hidden=false;
  try{
   let entries=[],current=null,signedIn=false,accountName='',nativeCached=false,nativeUnavailable=false,authoritative=false;
-  if(native){const result=await native.call('workspace.action',{action:'list'});entries=result.workspaces||[];current=result.current;nativeCached=!!result.cached;nativeUnavailable=!!result.currentUnavailable;workspaceAccountAccess=!!result.accountAccess;try{workspaceSignedIn=!!(await native.call('account.status')).signedIn}catch{workspaceSignedIn=false}if(nativeCached)$('workspaceSwitchStatus').textContent='当前为离线缓存，可继续切换已加载的工作区'}
+  if(native){
+   try{const cached=await native.call('workspace.action',{action:'listCached'});workspaceCurrent=cached.current;workspaceChoices=new Map((cached.workspaces||[]).filter(w=>/^[a-f0-9]{64}$/.test(w.id)).map(w=>[w.id,w]));window.easybookWorkspaceChoices=workspaceChoices;workspaceAccountAccess=!!cached.accountAccess;renderWorkspaceChoices()}catch{}
+   const result=await native.call('workspace.action',{action:'list'});entries=result.workspaces||[];current=result.current;nativeCached=!!result.cached;nativeUnavailable=!!result.currentUnavailable;workspaceAccountAccess=!!result.accountAccess;try{workspaceSignedIn=!!(await native.call('account.status')).signedIn}catch{workspaceSignedIn=false}if(nativeCached)$('workspaceSwitchStatus').textContent='当前为离线缓存，可继续切换已加载的工作区'
+  }
   else{
    const local=await webStore.listWorkspaces();
    if(key.startsWith('account:'))current=key.slice(8);

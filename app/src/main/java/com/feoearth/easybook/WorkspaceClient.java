@@ -31,6 +31,11 @@ final class WorkspaceClient {
  }
  static JSONObject perform(NoteRepository db,String action,JSONObject args)throws Exception{
   if(action.equals("bootstrap")){try{ensure(db,args.optString("turnstileToken",null));return new JSONObject().put("ready",true);}catch(NativeSync.HttpsTransport.HttpFailure error){if(error.status==401&&!args.has("turnstileToken"))return new JSONObject().put("turnstileRequired",true);throw error;}}
+  if(action.equals("listCached")){
+   JSONObject current=db.cachedActiveWorkspace();if(current==null)throw new IOException("Workspace unavailable");
+   JSONArray list=db.cachedWorkspaces();if(lookup(list,current.getString("id"))==null)merge(list,new JSONArray().put(current));
+   return new JSONObject().put("workspaces",list).put("current",current.getString("id")).put("cached",true).put("currentUnavailable",false).put("accountAccess",!db.setting("account-workspace:"+db.activeSpace(),"").isEmpty());
+  }
   if(action.equals("list")){
    JSONObject current=db.cachedActiveWorkspace();JSONArray list=db.cachedWorkspaces();boolean cached=false,authoritative=false,activeKeyVerified=false,currentDenied=false;
    try{JSONObject refreshed=ensure(db);if(refreshed!=null&&refreshed.has("name")){current=refreshed;activeKeyVerified=true;}else if(refreshed==null&&current!=null){currentDenied=true;db.markWorkspaceUnavailable(current.getString("id"));list=db.cachedWorkspaces();}}
