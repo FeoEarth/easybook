@@ -29,7 +29,8 @@ const oauthHandler = {
    else if(input.action==='credential'&&['PUT','DELETE'].includes(input.method)){target='/api/ai/config';method=input.method;body=JSON.stringify(input)}
    else if(input.action==='models'){target='/api/ai/models?credentialId='+encodeURIComponent(input.credentialId||'')}
    else if(input.action==='select'){target='/api/ai/select';method='POST';body=JSON.stringify({credentialId:input.credentialId})}
-   else if(input.action==='chat'){target='/api/ai/chat';method='POST';body=JSON.stringify({messages:input.messages})}
+   else if(input.action==='chat'){target='/api/ai/chat';method='POST';body=JSON.stringify({messages:input.messages,mode:input.mode})}
+    else if(input.action==='execute'){target='/api/ai/execute';method='POST';body=JSON.stringify({approvalId:input.approvalId})}
    else return Response.json({error:'invalid_request'},{status:400});
    const headers={'Content-Type':'application/json'};return aiAPI(new Request(new URL(target,request.url),{method,headers,body}),env,principal,{workspaceId:input.workspace||''});
   }
