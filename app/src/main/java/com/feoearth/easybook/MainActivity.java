@@ -59,6 +59,7 @@ public class MainActivity extends Activity {
     }
     void accountChanged(){runOnUiThread(()->{if(!destroyed&&ready&&web!=null&&LOCAL.equals(web.getUrl()))web.evaluateJavascript("window.easybookAccountChanged&&window.easybookAccountChanged()",null);});}
     private static final String LOCAL = "https://appassets.androidplatform.net/index.html";
+    private boolean darkAppearance(){String mode=getPreferences(MODE_PRIVATE).getString("themeMode","auto");return "dark".equals(mode)||(!"light".equals(mode)&&(getResources().getConfiguration().uiMode&Configuration.UI_MODE_NIGHT_MASK)==Configuration.UI_MODE_NIGHT_YES);}
     @Override public void onCreate(Bundle state) {
         super.onCreate(state);
         webOta=new WebOtaManager(this);
@@ -75,7 +76,7 @@ public class MainActivity extends Activity {
             @Override public void onCapabilitiesChanged(android.net.Network n,android.net.NetworkCapabilities c){changed(c);}
             @Override public void onLost(android.net.Network n){changed(null);}
         };connectivity.registerDefaultNetworkCallback(networkCallback);
-        boolean dark = (getResources().getConfiguration().uiMode & Configuration.UI_MODE_NIGHT_MASK) == Configuration.UI_MODE_NIGHT_YES;
+        boolean dark = darkAppearance();
         if(security!=null)security.setDark(dark);
             int color = dark ? 0xff000000 : 0xfff2f2f7;
         getWindow().setStatusBarColor(color);
@@ -182,7 +183,7 @@ public class MainActivity extends Activity {
                 if (LOCAL.equals(u.toString())) {
                     try {
                         boolean legacy=false;
-                        String html=readWebAsset("index.html");boolean glassAvailable=BuildConfig.NATIVE_GLASS_PROTOTYPE&&android.os.Build.VERSION.SDK_INT>=33;html=html.replace("</head>","<script>localStorage.setItem(\"easybook-fast-mode\",\""+getPreferences(MODE_PRIVATE).getBoolean("fastMode",false)+"\");window.EasybookNativeGlassFallback="+(!glassAvailable)+";</script></head>");if(!legacy)html=html.replace("connect-src 'self' https://easybook-sync.1902521952.workers.dev","connect-src 'self'");
+                        String html=readWebAsset("index.html");boolean glassAvailable=BuildConfig.NATIVE_GLASS_PROTOTYPE&&android.os.Build.VERSION.SDK_INT>=33;html=html.replace("<head>","<head><script>(function(){var t=localStorage.getItem('easybook-theme')||'auto';document.documentElement.dataset.theme=t;document.documentElement.style.colorScheme=t==='auto'?'light dark':t})();</script>");html=html.replace("</head>","<script>localStorage.setItem(\"easybook-fast-mode\",\""+getPreferences(MODE_PRIVATE).getBoolean("fastMode",false)+"\");window.EasybookNativeGlassFallback="+(!glassAvailable)+";</script></head>");if(!legacy)html=html.replace("connect-src 'self' https://easybook-sync.1902521952.workers.dev","connect-src 'self'");
                         html=html.replace("<script>","<script>"+(legacy?"window.EasybookRollbackMode=true;":"")+readAsset("native-api.js")+"</script><script>");
                          html=html.replace("</body>",nativeUpdateScriptTags()+"</body>");
                         if(BuildConfig.NATIVE_GLASS_PROTOTYPE && android.os.Build.VERSION.SDK_INT>=33&&!getPreferences(MODE_PRIVATE).getBoolean("fastMode",false))html=html.replace("</body>","<script>"+readAsset("native-glass/dock-surface.js")+";"+readAsset("native-glass/toolbar-surface.js")+";"+readAsset("native-glass/format-surface.js")+";"+readAsset("native-glass/move-surface.js")+";"+readAsset("native-glass/sync-surface.js")+";"+readAsset("native-glass/menu.js")+"</script></body>");
@@ -389,6 +390,7 @@ public class MainActivity extends Activity {
     private void requireAttachmentReference(String space,String id)throws Exception{AttachmentStore.validId(id);JSONArray notes=repository.rows(space,"note");for(int i=0;i<notes.length();i++)if(DocumentModel.assets(notes.getJSONObject(i).getJSONObject("document")).contains(id))return;throw new SecurityException("Unreferenced attachment");}
     public class DeviceActions {
         public void theme(String value) { runOnUiThread(() -> {
+            getPreferences(MODE_PRIVATE).edit().putString("themeMode",value).apply();
             boolean dark = "dark".equals(value) || (!"light".equals(value) && (getResources().getConfiguration().uiMode & Configuration.UI_MODE_NIGHT_MASK) == Configuration.UI_MODE_NIGHT_YES);
             if(security!=null)security.setDark(dark);
             int color = dark ? 0xff000000 : 0xfff2f2f7;
