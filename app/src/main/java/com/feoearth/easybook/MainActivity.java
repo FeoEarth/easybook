@@ -373,6 +373,7 @@ public class MainActivity extends Activity {
                 if(method.equals("ui.glass.pdf")&&(args.getInt("slot")<0||args.getInt("slot")>7))throw new IllegalArgumentException();
                 if(method.equals("ui.glass.dock")&&(args.getInt("slot")<0||args.getInt("slot")>2))throw new IllegalArgumentException();
                 if(!(args.get("visible") instanceof Boolean))throw new IllegalArgumentException();
+                if(method.equals("ui.glass.dock")&&args.has("focused")&&!(args.get("focused") instanceof Boolean))throw new IllegalArgumentException();
                 if(args.getBoolean("visible")){
                     if(method.equals("ui.glass.move")||method.equals("ui.glass.sync")){double scroll=args.getDouble("scrollTop"),bottom=args.getDouble("bottomCorner");if(!Double.isFinite(scroll)||scroll<0||scroll>100000||!Double.isFinite(bottom)||bottom<0||bottom>10000)throw new IllegalArgumentException();}
                     if(method.equals("ui.glass.toolbar")){double scroll=args.getDouble("scrollLeft");if(!Double.isFinite(scroll)||scroll<0||scroll>100000)throw new IllegalArgumentException();}

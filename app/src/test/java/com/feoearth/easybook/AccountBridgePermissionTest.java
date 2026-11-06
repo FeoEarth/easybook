@@ -15,4 +15,13 @@ public class AccountBridgePermissionTest {
   try{security.authorize("workspace.action",new JSONObject().put("action","list").put("token","forged"),7);fail();}catch(SecurityException expected){}
   try{security.authorize("account.manage",new JSONObject().put("action","history"),8);fail();}catch(SecurityException expected){}
  }
+ @Test public void dockFocusStateIsAllowedWithoutOpeningOtherGlassEndpoints()throws Exception{
+  SecurityManager security=new SecurityManager(null,null,null);security.initialized(7);
+  JSONObject dock=new JSONObject().put("slot",0).put("visible",true).put("focused",false);
+  security.authorize("ui.glass.dock",dock,7);
+  dock.put("focused",true);
+  security.authorize("ui.glass.dock",dock,7);
+  try{security.authorize("ui.glass.pdf",dock,7);fail("PDF should not accept dock-only focus state");}catch(SecurityException expected){}
+  try{security.authorize("ui.glass.dock",dock.put("unexpected",true),7);fail("Unknown dock fields must still be rejected");}catch(SecurityException expected){}
+ }
 }
