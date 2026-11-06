@@ -548,23 +548,32 @@ body.keyboard .ai-hub-welcome{display:none}body.keyboard .ai-hub>.ai-messages{pa
 .ai-approval-card strong,.ai-approval-card small{display:block}.ai-approval-card small{margin-top:5px;color:var(--muted);line-height:1.5}
 .ai-approval-card pre{max-height:140px;overflow:auto;white-space:pre-wrap;overflow-wrap:anywhere;font-size:12px}
 .ai-approval-actions{display:flex;gap:8px;margin-top:10px}.ai-approval-actions button{flex:1;min-height:42px;border-radius:12px;background:var(--control-fill)}.ai-approval-actions [data-ai-approve]{background:var(--accent);color:white}
-.ai-session-dialog,.ai-session-dialog[open]{box-sizing:border-box;position:fixed;inset:0 auto 0 0;display:grid;grid-template-rows:auto auto minmax(0,1fr) auto;width:min(360px,88vw);height:var(--viewport-height,100dvh);max-height:var(--viewport-height,100dvh);padding:0;border:0;border-right:1px solid var(--material-edge,var(--border));border-radius:0;background:var(--bg);box-shadow:16px 0 42px #0002}
+.ai-session-dialog,.ai-session-dialog[open]{box-sizing:border-box;position:fixed;inset:0 auto 0 0;display:grid;grid-template-rows:auto minmax(0,1fr) auto;width:min(360px,86vw);height:var(--viewport-height,100dvh);max-height:var(--viewport-height,100dvh);padding:0;border:0;border-right:1px solid var(--border);border-radius:0;background:var(--paper);box-shadow:16px 0 42px #0002;color:var(--ink)}
 .ai-session-dialog:not([open]){display:none}.ai-session-dialog::backdrop{background:#0009;backdrop-filter:blur(2px)}
-.ai-session-nav{display:flex;align-items:center;justify-content:space-between;padding:max(18px,env(safe-area-inset-top)) 20px 8px}
-.ai-session-nav h2{margin:0;font-size:23px;letter-spacing:-.5px}.ai-session-nav button{display:grid;place-items:center;width:44px;height:44px;border-radius:50%;background:var(--control-fill)}
+.ai-session-nav{display:flex;align-items:center;gap:6px;padding:max(18px,env(safe-area-inset-top)) 14px 16px 22px}
+.ai-session-nav h2{flex:1;min-width:0;margin:0;font-size:23px;font-weight:680;letter-spacing:-.6px;white-space:nowrap}.ai-session-nav button{display:grid;place-items:center;flex:none;width:42px;height:42px;min-width:42px;border-radius:50%;background:transparent}.ai-session-nav button:active,.ai-session-nav button[aria-expanded=true]{background:var(--control-fill)}
 .ai-session-nav svg,.ai-session-search svg,.ai-session-create svg,.ai-session-footer svg{width:20px;height:20px}
-.ai-session-search{display:flex;align-items:center;gap:10px;margin:8px 16px 4px;padding:0 12px;min-height:44px;border-radius:14px;background:var(--control-fill);color:var(--muted)}
+.ai-session-search{display:flex;align-items:center;gap:10px;margin:0 18px 10px;padding:0 12px;min-height:46px;border-radius:13px;background:var(--control-fill);color:var(--muted)}
+.ai-session-search svg{flex:none;fill:none;stroke:currentColor;stroke-width:1.9;stroke-linecap:round}
 .ai-session-search input{min-width:0;width:100%;border:0;background:transparent;outline:0;color:var(--ink);font:inherit;font-size:15px}
-.ai-session-content{min-height:0;padding:8px 12px;overflow:auto;overscroll-behavior:contain}
+.ai-session-content{min-height:0;padding:4px 12px 16px;overflow:auto;overscroll-behavior:contain}
 .ai-session-create,.ai-session-footer button{display:flex;align-items:center;gap:12px;width:100%;min-height:48px;padding:8px 14px;border-radius:14px;text-align:left;font-size:15px}
+.ai-session-create{width:calc(100% - 24px);margin:0 12px 6px;font-weight:560}
 .ai-session-create:active,.ai-session-footer button:active{background:var(--control-fill)}
-.ai-session-group{margin:18px 12px 5px;font-size:12px;font-weight:600;color:var(--muted)}
-.ai-session-row{display:flex;gap:5px;min-height:50px;padding:3px 4px 3px 10px;border-radius:14px}.ai-session-row::after{display:none!important}
+.ai-session-group{margin:20px 14px 8px;font-size:12px;font-weight:650;color:var(--muted)}
+.ai-session-row{display:flex;gap:5px;min-height:48px;padding:2px 4px 2px 10px;border-radius:12px}.ai-session-row::after{display:none!important}
 .ai-session-open{flex:1;min-width:0;min-height:46px;padding:6px;text-align:left;font-size:15px}.ai-session-open strong{font-weight:500}.ai-session-open small{display:none}
-.ai-session-row[aria-current=true]{background:var(--selected)}
+.ai-session-row[aria-current=true]{background:var(--control-fill)}
 .ai-session-row .ai-session-more{flex:none;display:grid;place-items:center;width:38px;min-width:38px;height:42px;min-height:42px;padding:0;border-radius:50%;color:var(--muted);font-size:24px}
 .ai-session-actions{display:flex;gap:6px;padding:5px 8px}.ai-session-actions[hidden]{display:none}.ai-session-actions button{min-height:40px;padding:6px 14px;border-radius:10px;background:var(--control-fill);font-size:13px}
-.ai-session-footer{padding:8px 14px max(10px,env(safe-area-inset-bottom));border-top:1px solid var(--border)}.ai-session-footer p{margin:0 10px 8px;color:var(--muted);font-size:11px;line-height:1.4}
+.ai-session-footer{padding:10px 12px max(12px,env(safe-area-inset-bottom));border-top:1px solid var(--border)}.ai-session-footer button{font-weight:550}
+.ai-tool-activity{clear:both;display:grid;gap:7px;margin-top:12px;padding:11px 13px;border:1px solid var(--border);border-radius:14px;background:var(--control-fill);font-size:12px;line-height:1.45}
+.ai-tool-activity-title{display:flex;gap:8px;align-items:center;color:var(--ink);font-size:12px;font-weight:650;letter-spacing:.1px}
+.ai-tool-activity-title code{font-size:12px;font-weight:650}.ai-tool-activity-title span{margin-left:auto;color:var(--muted);font-weight:400}
+.ai-tool-step{display:flex;gap:8px;align-items:center;min-width:0;color:var(--muted)}.ai-tool-step strong{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--ink);font-weight:520}.ai-tool-step small{flex:none;margin:0!important;opacity:1!important}
+.ai-tool-indicator{flex:none;width:13px;height:13px;display:grid;place-items:center;font-size:13px}.ai-tool-step[data-status=running] .ai-tool-indicator{border:2px solid currentColor;border-right-color:transparent;border-radius:50%;animation:ai-tool-spin .8s linear infinite}.ai-tool-step[data-status=done] .ai-tool-indicator{color:var(--green)}.ai-tool-step[data-status=failed] .ai-tool-indicator{color:var(--danger)}
+.ai-thinking{color:var(--muted);font-size:13px}.ai-thinking:after{content:'…';animation:ai-thinking-pulse 1.3s ease-in-out infinite alternate}@keyframes ai-tool-spin{to{transform:rotate(360deg)}}@keyframes ai-thinking-pulse{to{opacity:.2}}
+@media(prefers-reduced-motion:reduce){.ai-tool-step[data-status=running] .ai-tool-indicator,.ai-thinking:after{animation:none}}
 @media(max-width:520px){.ai-hub-nav{gap:6px;padding-inline:14px}.ai-hub>.ai-messages{padding-inline:16px}.ai-hub-suggestions{grid-template-columns:1fr}.ai-hub-suggestions button:nth-child(n+3){display:none}}
 
 /* AI attachment tray and system speech input */
@@ -676,11 +685,12 @@ body.keyboard .ai-hub-welcome{display:none}body.keyboard .ai-hub>.ai-messages{pa
 <div class="settings-group ai-actions"><button type="submit" id="aiSave">保存并启用此配置</button><button type="button" class="danger" id="aiDelete">删除此配置</button></div></form><p id="aiConfigStatus" class="ai-note ai-status" role="status"></p></div>
 </div></section>
 <dialog id="aiModelDialog" class="ui-material ai-model-dialog" aria-labelledby="aiModelDialogTitle"><div class="sync-panel-grabber" aria-hidden="true"></div><nav class="ai-model-nav"><button type="button" id="aiModelClose">关闭</button><h2 id="aiModelDialogTitle">选择模型</h2><span id="aiModelCount"></span></nav><div class="ai-model-content"><label class="ai-model-search"><svg aria-hidden="true"><use href="#i-search"/></svg><input id="aiModelSearch" type="search" autocomplete="off" placeholder="搜索模型" aria-label="搜索模型"></label><div id="aiModelOptions" class="ai-model-options" role="radiogroup" aria-label="提供商模型列表"></div><p id="aiModelEmpty" class="ai-model-empty" hidden>没有匹配的模型</p></div></dialog>
-<dialog id="aiSessionDialog" class="ui-material ai-model-dialog ai-session-dialog" aria-labelledby="aiSessionTitle">
-<nav class="ai-session-nav"><h2 id="aiSessionTitle">Easybook AI</h2><button type="button" id="aiSessionClose" aria-label="关闭会话列表"><svg><use href="#i-back"/></svg></button></nav>
-<div class="ai-session-search"><svg aria-hidden="true"><use href="#i-search"/></svg><input id="aiSessionSearch" type="search" placeholder="搜索会话" autocomplete="off" aria-label="搜索会话"></div>
-<div class="ai-session-content"><button type="button" id="aiSessionNew" class="ai-session-create"><svg><use href="#i-edit"/></svg>新建对话</button><div id="aiSessionList" class="ai-session-list"></div></div>
-<div class="ai-session-footer"><p>会话按工作区隔离，仅保存在本机。</p><button type="button" id="aiSessionExit"><svg><use href="#i-back"/></svg>返回 Easybook</button></div>
+<dialog id="aiSessionDialog" class="ai-session-dialog" aria-labelledby="aiSessionTitle">
+<div class="ai-session-top"><nav class="ai-session-nav"><h2 id="aiSessionTitle">Easybook AI</h2><button type="button" id="aiSessionSearchToggle" aria-label="搜索会话" aria-controls="aiSessionSearchBox" aria-expanded="false"><svg><use href="#i-search"/></svg></button><button type="button" id="aiSessionClose" aria-label="关闭会话列表"><svg><use href="#i-back"/></svg></button></nav>
+<div id="aiSessionSearchBox" class="ai-session-search" hidden><svg aria-hidden="true"><use href="#i-search"/></svg><input id="aiSessionSearch" type="search" placeholder="搜索会话" autocomplete="off" aria-label="搜索会话"></div>
+<button type="button" id="aiSessionNew" class="ai-session-create"><svg><use href="#i-edit"/></svg>新建对话</button></div>
+<div class="ai-session-content"><div id="aiSessionList" class="ai-session-list"></div></div>
+<div class="ai-session-footer"><button type="button" id="aiSessionExit"><svg><use href="#i-back"/></svg>返回 Easybook</button></div>
 </dialog>
 <dialog id="aiHubModelDialog" class="ui-material ai-model-dialog" aria-labelledby="aiHubModelTitle"><div class="sync-panel-grabber" aria-hidden="true"></div><nav class="ai-model-nav"><button type="button" id="aiHubModelClose">关闭</button><h2 id="aiHubModelTitle">对话模型</h2><span id="aiHubModelCount"></span></nav><div class="ai-model-content"><label class="ai-model-search"><svg aria-hidden="true"><use href="#i-search"/></svg><input id="aiHubModelSearch" type="search" autocomplete="off" placeholder="搜索对话模型" aria-label="搜索对话模型"></label><div id="aiHubModelOptions" class="ai-model-options" role="radiogroup" aria-label="对话模型列表"></div><button type="button" id="aiHubLocalManage" class="ai-local-manage" hidden>下载或管理设备端 AI 模型</button></div></dialog>
 <dialog id="aiRenameDialog" class="ui-material" aria-labelledby="aiRenameTitle"><form method="dialog" id="aiRenameForm"><h2 id="aiRenameTitle">重命名会话</h2><input id="aiRenameInput" maxlength="80" autocomplete="off" required><div class="dialog-actions"><button value="cancel">取消</button><button class="primary" id="aiRenameSave" value="default">保存</button></div></form></dialog>
@@ -1168,7 +1178,7 @@ function localAiPrepareApproval(action){
  if(action.arguments.folder_id&&!activeFolders().some(folder=>folder.id===action.arguments.folder_id))throw Error('目标文件夹不存在');
  return {local:true,id:uuid(),tool:action.name,arguments:action.arguments,workspace:localSpace,mutation:note?.mutation||'',expiresAt:Date.now()+300000};
 }
-async function aiLocalGenerate(model,messages,progress,{mode='conversation'}={}){
+async function aiLocalGenerate(model,messages,progress,{mode='conversation',onTool=()=>{}}={}){
  const protocol=window.EasybookLocalAiProtocol,used=[],toolResults=[];
  for(let round=0;round<5;round++){
   const prompt=protocol.localAiPrompt(messages,{mode,memory:aiMemory(),toolResults});
@@ -1176,8 +1186,15 @@ async function aiLocalGenerate(model,messages,progress,{mode='conversation'}={})
   const output=data.message.content,action=protocol.parseLocalAiAction(output);
   if(!action){progress?.(output);return {message:{content:output},tools:used}}
   const checked=protocol.validateLocalAiAction(action,mode);
-  if(checked.write){const approval=localAiPrepareApproval(checked);progress?.('');return {message:{content:'已准备 **'+checked.name+'** 操作，请核对参数并确认。确认之前不会更改笔记。'},tools:used,approval}}
-  const result=localAiReadTool(checked.name,checked.arguments);used.push({name:checked.name,ok:!result.error});
+  onTool({type:'tool_start',name:checked.name});
+  if(checked.write){
+   try{const approval=localAiPrepareApproval(checked);onTool({type:'tool_end',name:checked.name,status:'approval'});progress?.('');return {message:{content:'已准备 **'+checked.name+'** 操作，请核对参数并确认。确认之前不会更改笔记。'},tools:used,approval}}
+   catch(error){onTool({type:'tool_end',name:checked.name,status:'failed'});throw error}
+  }
+  let result;
+  try{result=localAiReadTool(checked.name,checked.arguments);onTool({type:'tool_end',name:checked.name,status:result.error?'failed':'done'})}
+  catch(error){onTool({type:'tool_end',name:checked.name,status:'failed'});throw error}
+  used.push({name:checked.name,ok:!result.error});
   toolResults.push({name:checked.name,result});progress?.('');
  }
  throw Error('本地模型工具调用次数已达上限，请缩小问题范围后重试');
@@ -1252,18 +1269,19 @@ window.easybookByokEvent=event=>{
  const pending=aiNativeStreams.get(event?.id);if(!pending)return;
  if(event.type==='delta'){pending.progress(event.text||'');return}
  if(event.type==='reset'){pending.reset();return}
+ if(event.type==='tool_start'||event.type==='tool_end'){pending.onTool(event);return}
  aiNativeStreams.delete(event.id);
  if(event.type==='done')pending.resolve(event.result);
  else pending.reject(Error(aiErrorMessage(event.error||'ai_unavailable')));
 };
-async function aiStreamRequest(body,{progress=()=>{},reset=()=>{},signal}={}){
+async function aiStreamRequest(body,{progress=()=>{},reset=()=>{},onTool=()=>{},signal}={}){
  if(native){
   const id=uuid();
   return new Promise((resolve,reject)=>{
    if(signal?.aborted){reject(new DOMException('已停止生成','AbortError'));return}
    const abort=()=>{aiNativeStreams.delete(id);void native.call('ai.stream.cancel',{id}).catch(()=>{});reject(new DOMException('已停止生成','AbortError'))};
    const settle=callback=>value=>{signal?.removeEventListener('abort',abort);callback(value)};
-   aiNativeStreams.set(id,{progress,reset,resolve:settle(resolve),reject:settle(reject)});
+   aiNativeStreams.set(id,{progress,reset,onTool,resolve:settle(resolve),reject:settle(reject)});
    signal?.addEventListener('abort',abort,{once:true});
    void native.call('ai.stream.start',{id,...(workspaceCurrent?{workspace:workspaceCurrent}:{}),...body}).catch(error=>{const pending=aiNativeStreams.get(id);if(pending){aiNativeStreams.delete(id);pending.reject(error)}});
   });
@@ -1276,7 +1294,7 @@ async function aiStreamRequest(body,{progress=()=>{},reset=()=>{},signal}={}){
  if(!response.ok){const error=await response.json().catch(()=>({}));throw Error(aiErrorMessage(error.error))}
  if(!response.headers.get('Content-Type')?.includes('text/event-stream'))return response.json();
  const reader=response.body.getReader(),decoder=new TextDecoder();let buffer='',finished=false,result;
- const event=raw=>{const lines=raw.split(/\r?\n/),type=lines.find(line=>line.startsWith('event:'))?.slice(6).trim(),value=lines.filter(line=>line.startsWith('data:')).map(line=>line.slice(5).trimStart()).join('\n');if(!value)return;const data=JSON.parse(value);if(type==='delta')progress(data.text||'');else if(type==='reset')reset();else if(type==='done'){result=data;finished=true}else if(type==='error')throw Error(aiErrorMessage(data.error))};
+ const event=raw=>{const lines=raw.split(/\r?\n/),type=lines.find(line=>line.startsWith('event:'))?.slice(6).trim(),value=lines.filter(line=>line.startsWith('data:')).map(line=>line.slice(5).trimStart()).join('\n');if(!value)return;const data=JSON.parse(value);if(type==='delta')progress(data.text||'');else if(type==='reset')reset();else if(type==='tool_start'||type==='tool_end')onTool({type,...data});else if(type==='done'){result=data;finished=true}else if(type==='error')throw Error(aiErrorMessage(data.error))};
  try{
   for(;;){const {value,done}=await reader.read();if(done)break;buffer+=decoder.decode(value,{stream:true});let boundary;while((boundary=buffer.search(/\r?\n\r?\n/))!==-1){const separator=buffer.slice(boundary).match(/^\r?\n\r?\n/)[0];event(buffer.slice(0,boundary));buffer=buffer.slice(boundary+separator.length)}if(buffer.length>131072)throw Error('AI 数据流异常')}
   buffer+=decoder.decode();if(buffer.trim())event(buffer);
@@ -1386,6 +1404,27 @@ function saveAiHubSessions(){try{localStorage.setItem(aiHubStorageKey(),JSON.str
 function currentAiHubSession(){return aiHubSessions.find(session=>session.id===aiHubCurrent)}
 function newAiHubSession(save=true){const profile=activeAiProfile(),session={id:uuid(),title:'新会话',createdAt:Date.now(),updatedAt:Date.now(),profileId:profile?.id||'',model:profile?.model||'',messages:[]};aiHubSessions.unshift(session);aiHubCurrent=session.id;if(save)saveAiHubSessions();renderAiHub();return session}
 const aiHubWelcome=()=>'<div class="ai-hub-welcome"><span class="ai-hub-mark" aria-hidden="true"><svg><use href="#i-spark"/></svg></span><h2>今天想做些什么？</h2><div class="ai-hub-suggestions"><button type="button" data-ai-suggestion="总结当前工作区最近的内容，并列出重点">总结最近内容<small>提炼重点与待办事项</small></button><button type="button" data-ai-suggestion="帮我整理一个清晰、可执行的计划">制定计划<small>把想法拆成下一步行动</small></button></div></div>';
+function aiToolActivityHTML(message){
+ const entries=Array.isArray(message.toolEvents)?message.toolEvents:[];
+ if(!entries.length)return message.tools?.length?'<small>使用工具：'+esc(message.tools.join('、'))+'</small>':'';
+ const running=entries.some(item=>item.status==='running'),pending=entries.some(item=>item.status==='approval');
+ const label=running?'正在执行':pending?'等待确认':'执行记录';
+ return '<section class="ai-tool-activity" aria-label="工具调用记录"><div class="ai-tool-activity-title"><code>call_tools</code><span>'+label+'</span></div>'+entries.map(item=>{
+  const status=['running','done','failed','approval','stopped'].includes(item.status)?item.status:'failed';
+  const symbol=status==='done'?'✓':status==='failed'?'!':status==='approval'?'⏳':status==='stopped'?'—':'';
+  const stateText={running:'正在调用…',done:'已完成',failed:'失败',approval:'待确认',stopped:'已停止'}[status];
+  return '<div class="ai-tool-step" data-status="'+status+'"><span class="ai-tool-indicator" aria-hidden="true">'+symbol+'</span><strong>'+esc(item.name)+'</strong><small>'+stateText+'</small></div>';
+ }).join('')+'</section>';
+}
+function recordAiToolEvent(message,event){
+ if(!event||!['tool_start','tool_end'].includes(event.type)||typeof event.name!=='string')return;
+ const name=event.name.slice(0,80);if(!name)return;
+ if(!Array.isArray(message.toolEvents))message.toolEvents=[];
+ if(event.type==='tool_start'){message.toolEvents.push({name,status:'running'});return}
+ const entry=[...message.toolEvents].reverse().find(item=>item.name===name&&item.status==='running');
+ const status=['done','failed','approval'].includes(event.status)?event.status:'failed';
+ if(entry)entry.status=status;else message.toolEvents.push({name,status});
+}
 function renderAiHub(){
  const session=currentAiHubSession();if(!session)return;
  const mode=session.mode==='agent'?'agent':'conversation';
@@ -1394,7 +1433,7 @@ function renderAiHub(){
  $('aiHubConversation').setAttribute('aria-pressed',String(mode==='conversation'));
  $('aiHubAgent').setAttribute('aria-pressed',String(mode==='agent'));
  $('aiHubHint').textContent=session.profileId==='__local__'?(mode==='agent'?'端侧离线 Agent · 本机工具可用 · 写入需确认':'端侧离线对话 · 可读取本机笔记')+' · 会话保存在本机':mode==='agent'?'Agent 写入前须逐项确认 · 会话仅保存在本机':'对话模式仅可读取工作区 · 会话仅保存在本机';
- const messages=session.messages.length?session.messages.map(message=>'<div class="ai-message '+(message.role==='user'?'user':'assistant')+'">'+(message.role==='assistant'?aiMarkdownHTML(message.content):esc(message.content))+(message.tools?.length?'<small>使用工具：'+esc(message.tools.join('、'))+'</small>':'')+'</div>').join(''):aiHubWelcome();
+ const messages=session.messages.length?session.messages.map(message=>'<div class="ai-message '+(message.role==='user'?'user':'assistant')+'">'+(message.role==='assistant'?(message.content?aiMarkdownHTML(message.content):message.streaming&&!message.toolEvents?.length?'<span class="ai-thinking">正在思考</span>':'')+aiToolActivityHTML(message):esc(message.content))+'</div>').join(''):aiHubWelcome();
  const pending=session.pendingApproval;
  const approval=pending?'<div class="ai-approval-card"><strong>Agent 请求执行：'+esc(pending.tool)+'</strong><small>请核对操作和参数。未确认前不会写入工作区。</small><pre>'+esc(JSON.stringify(pending.arguments,null,2))+'</pre><div class="ai-approval-actions"><button type="button" data-ai-reject>取消</button><button type="button" data-ai-approve>确认执行</button></div></div>':'';
  $('aiHubMessages').innerHTML=messages+approval;
@@ -1533,20 +1572,23 @@ async function sendAiHubMessage(content){
   const payload=compactAiMessages(session.messages.map(({role,content})=>({role,content})));
   if(localModel){
    if(attachments.length)payload[payload.length-1].content+='\n\n'+attachments.map(file=>'附件 '+file.name+'：\n'+file.text).join('\n\n');
-   partial={role:'assistant',content:''};session.messages.push(partial);
-   const data=await aiLocalGenerate(session.model,payload,text=>{partial.content=text;refresh()},{mode:session.mode==='agent'?'agent':'conversation'});
+   partial={role:'assistant',content:'',streaming:true,toolEvents:[]};session.messages.push(partial);refresh();
+   const data=await aiLocalGenerate(session.model,payload,text=>{partial.content=text;refresh()},{mode:session.mode==='agent'?'agent':'conversation',onTool:event=>{recordAiToolEvent(partial,event);refresh()}});
    if(data.approval)session.pendingApproval=data.approval;
    partial.content=data.message.content;partial.tools=(data.tools||[]).map(tool=>tool.name);
   }else{
-   partial={role:'assistant',content:''};session.messages.push(partial);aiHubStreamAbort=new AbortController();
-   const data=await aiStreamRequest({messages:payload,mode:session.mode==='agent'?'agent':'conversation',attachments},{signal:aiHubStreamAbort.signal,progress:text=>{partial.content+=text;refresh()},reset:()=>{partial.content='';refresh()}});
+   partial={role:'assistant',content:'',streaming:true,toolEvents:[]};session.messages.push(partial);refresh();aiHubStreamAbort=new AbortController();
+   const data=await aiStreamRequest({messages:payload,mode:session.mode==='agent'?'agent':'conversation',attachments},{signal:aiHubStreamAbort.signal,progress:text=>{partial.content+=text;refresh()},reset:()=>{partial.content='';refresh()},onTool:event=>{recordAiToolEvent(partial,event);refresh()}});
    if(data.approval)session.pendingApproval=data.approval;
    partial.content=data.message?.content||'已完成';partial.tools=(data.tools||[]).map(tool=>tool.name);
   }
+  partial.streaming=false;
+  for(const item of partial.toolEvents||[])if(item.status==='running')item.status='stopped';
+  if(!partial.toolEvents?.length&&partial.tools?.length)partial.toolEvents=partial.tools.map(name=>({name,status:'done'}));
   if(frame)cancelAnimationFrame(frame);clearAiHubFiles();session.updatedAt=Date.now();saveAiHubSessions();renderAiHub();$('aiHubMessages').lastElementChild?.scrollIntoView({behavior:'smooth',block:'nearest'});
  }catch(error){
   if(frame)cancelAnimationFrame(frame);
-  if(partial){if(partial.content.trim()){partial.content+='\n\n*'+(error.name==='AbortError'?'已停止生成':'生成中断')+'*';saveAiHubSessions();renderAiHub()}else{const index=session.messages.indexOf(partial);if(index>=0)session.messages.splice(index,1)}}
+  if(partial){partial.streaming=false;for(const item of partial.toolEvents||[])if(item.status==='running')item.status=error.name==='AbortError'?'stopped':'failed';if(partial.content.trim()||partial.toolEvents?.length){partial.content+=(partial.content?'\n\n':'')+'*'+(error.name==='AbortError'?'已停止生成':'生成中断')+'*';saveAiHubSessions();renderAiHub()}else{const index=session.messages.indexOf(partial);if(index>=0)session.messages.splice(index,1)}}
   if(sent&&session.messages.at(-1)===sent){session.messages.pop();saveAiHubSessions();renderAiHub();$('aiHubPrompt').value=content;$('aiHubPrompt').dispatchEvent(new Event('input'))}
   if(error.name!=='AbortError')toast(error.message);
  }finally{aiHubStreamAbort=null;setAiHubBusy(false)}
@@ -1602,8 +1644,10 @@ $('aiHubNew').onclick=()=>{newAiHubSession();clearAiHubFiles();$('aiHubPrompt').
 $('aiHubConversation').onclick=()=>setAiHubMode('conversation');
 $('aiHubAgent').onclick=()=>setAiHubMode('agent');
 $('aiHubSessions').onclick=()=>{$('aiHubPrompt').blur();renderAiHubSessions();$('aiSessionDialog').showModal()};
+$('aiSessionSearchToggle').onclick=()=>{const box=$('aiSessionSearchBox'),expanded=box.hidden;box.hidden=!expanded;$('aiSessionSearchToggle').setAttribute('aria-expanded',String(expanded));if(expanded)$('aiSessionSearch').focus();else{$('aiSessionSearch').value='';renderAiHubSessions()}};
 $('aiSessionSearch').oninput=renderAiHubSessions;
 $('aiSessionClose').onclick=()=>$('aiSessionDialog').close();
+$('aiSessionDialog').addEventListener('close',()=>{$('aiSessionSearchBox').hidden=true;$('aiSessionSearchToggle').setAttribute('aria-expanded','false');$('aiSessionSearch').value=''});
 $('aiSessionExit').onclick=()=>{$('aiSessionDialog').close();switchTab('folders')};
 $('aiSessionNew').onclick=()=>{newAiHubSession();$('aiSessionDialog').close();$('aiHubPrompt').focus()};
 $('aiSessionList').onclick=event=>{
