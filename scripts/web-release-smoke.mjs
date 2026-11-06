@@ -7,6 +7,9 @@ try{
  const context=await browser.newContext({serviceWorkers:'block'});
  // A fresh, random synthetic workspace. Never attach to user browser data.
  const page=await context.newPage();const errors=[];
+ // Keep the release contract deterministic now that the UI follows the host
+ // locale by default; English switching is covered by i18n-test.mjs.
+ await page.addInitScript(()=>localStorage.setItem('easybook-language','zh-CN'));
  page.on('pageerror',e=>errors.push(e.message));
  page.on('response',r=>{if(r.url()===origin+'/editor.js'&&r.status()!==200)errors.push('editor HTTP '+r.status())});
  const response=await page.goto(origin+'/',{waitUntil:'domcontentloaded',timeout:45000});
