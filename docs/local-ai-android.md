@@ -5,9 +5,18 @@ The local inference implementation is separate from the Easybook BYOK/account AP
 ## Integration
 
 - `LocalAiModels`: fixed allowlist of model downloads, Android DownloadManager, size/free-space checks, SHA-256 integrity verification, file deletion. Weights are stored in Android app-specific external files storage (`models/`), never in the APK.
-- `LocalAiEngine`: LiteRT-LM 0.18.0, CPU backend, one background inference executor, bounded text prompt, streamed text and stop support.
+- `LocalAiRuntime`: separately delivered LiteRT-LM 0.18.0 ARM64 native runtime, served as an asset of the *same official GitHub Release as the APK*. The native `.so` is excluded from the base APK; its SHA-256 and size are pinned in the Android client. The user explicitly installs or deletes it through AI settings, independently of model downloads.
+- `LocalAiEngine`: LiteRT-LM 0.18.0 Java API remains in the APK; the native runtime is preloaded from a verified read-only app-private file on the inference executor before SDK initialization. CPU backend, one background inference executor, bounded text prompt, streamed text and stop support.
 - `SecurityManager`: explicit `ai.local.*` bridge allowlist. `MainActivity`: generation callback is scoped to the current WebView document generation.
-- `index.html`: on-demand downloads in AI settings; installed models appear in both the global chat model picker and the current-note writing panel. The BYOK selection remains independent.
+- `index.html`: independent Runtime and model on-demand downloads in AI settings; installed models appear in both the global chat model picker and the current-note writing panel. The BYOK selection remains independent.
+
+## Runtime delivery and safety
+
+- Release builds expose a `LOCAL_AI_RUNTIME_TAG` tied to the current `v<version>-build<GitHub Actions run number>` tag. The same release must contain `Easybook-LiteRT-LM-arm64-v8a.so` alongside the APK. Debug/non-published builds intentionally do not offer runtime downloads.
+- CI extracts the native library from the *pinned* Google Maven AAR, checks the exact SHA-256, verifies it is absent from the APK, and uploads it as a separate Release asset. The downloaded binary is never taken from a mutable `latest` URL.
+- Android DownloadManager downloads into an app-specific temporary location, then the app checks the pinned SHA-256 and byte count, copies into internal storage, fsyncs, makes the file read-only, and finally atomically renames it. The hash is checked again before `System.load(absolutePath)`.
+- Android's executable-file and dynamic-code-loading policies vary by OS release and target SDK. **A real Android 14–16 ARM64 device must verify that the downloaded read-only `.so` can be mapped** before treating this distribution mechanism as production-ready. If blocked, do not lower targetSdk or bypass SELinux; use an Android-supported dynamic feature distribution path or an ABI-specific APK.
+- Removing the native Runtime does not delete model weights, AI conversations, or BYOK credentials. Once loaded, the native mapping remains in process memory until app restart.
 
 ## Model artifacts
 
@@ -27,5 +36,5 @@ Upstream files: [Qwen3](https://huggingface.co/litert-community/Qwen3-0.6B/blob/
 - Text attachments can be passed as prompt text; image/audio understanding and autonomous local tool calling are not exposed yet. The local Agent view remains a text assistant and cannot modify notes.
 - Android system speech recognition is a separate capability; it may use a network recognizer depending on device configuration.
 - Model updates currently require refreshing the pinned catalog through an app update. Independent signed catalog updates are follow-up work.
-- The LiteRT runtime itself adds size to the Android APK even though model weights are strictly opt-in.
+- LiteRT's Java API and Kotlin dependencies still add some APK bytes, but the approximately 21–26 MB native binaries are now omitted from the base APK.
 - Before publishing an Android release, compile against Android 35 and refresh Android transitive dependency licenses (`npm run licenses:android`), then test on a real arm64 device with ample disk and RAM.

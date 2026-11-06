@@ -22,7 +22,14 @@ android {
     compileSdk 35
     buildFeatures { buildConfig true }
     defaultConfig { buildConfigField 'String', 'SOURCE_SHA', '"' + (System.getenv('GITHUB_SHA') ?: 'local') + '"' }
-    defaultConfig { applicationId 'com.feoearth.easybook.notes'; minSdk 26; targetSdk 35; versionCode 89; versionName '0.8.21'; testInstrumentationRunner 'com.feoearth.easybook.PhaseTwoInstrumentation' }
+    defaultConfig { applicationId 'com.feoearth.easybook.notes'; minSdk 26; targetSdk 35; versionCode 90; versionName '0.8.22'; testInstrumentationRunner 'com.feoearth.easybook.PhaseTwoInstrumentation' }
+    // The LiteRT-LM Java API stays in classes.dex; its native runtime is a verified,
+    // optional Release asset installed only on explicit user request.
+    defaultConfig {
+        def runNumber = System.getenv('GITHUB_RUN_NUMBER')
+        buildConfigField 'String', 'LOCAL_AI_RUNTIME_TAG', '"' + (runNumber ? ('v' + versionName + '-build' + runNumber) : '') + '"'
+    }
+    packaging { jniLibs { excludes += ['**/liblitertlm_jni.so'] } }
     signingConfigs {
         debug {
             storeFile file(System.getenv('EASYBOOK_DEBUG_STORE') ?: "${System.properties['user.home']}/.easybook-signing/development.keystore")

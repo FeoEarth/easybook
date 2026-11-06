@@ -17,6 +17,8 @@ import java.util.function.Consumer;
 
 /** Single-owner on-device inference, isolated from Easybook's sync/database executor. */
 final class LocalAiEngine {
+    private final LocalAiRuntime runtime;
+    LocalAiEngine(LocalAiRuntime runtime){this.runtime=runtime;}
     private final ExecutorService executor=Executors.newSingleThreadExecutor();
     private final AtomicBoolean busy=new AtomicBoolean();
     private volatile Conversation processing;
@@ -27,6 +29,7 @@ final class LocalAiEngine {
         if(!busy.compareAndSet(false,true))throw new IllegalStateException("本地 AI 正在生成，请稍后重试");
         executor.execute(()->{
             try{
+                runtime.load();
                 if(engine==null||!loaded.equals(model)){
                     release();
                     // The Engine takes seconds to initialize. Never touch the UI thread.
