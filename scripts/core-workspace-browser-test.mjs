@@ -26,7 +26,11 @@ try{
  if(await p1.locator('#back').isVisible())await p1.locator('#back').click();
  else await p1.locator('#folders [data-tab=all]').click();
  await settings(p1,'sync');await p1.locator('#activityEntry').click();await p1.locator('#syncNow').click();await p1.waitForTimeout(2000);
- const c2=await context();await c2.addInitScript(value=>localStorage.setItem('easybook-key',value),k);const p2=await ready(c2);await p2.getByText('匿名跨设备验收',{exact:true}).waitFor({timeout:20000});await p2.getByText('匿名跨设备验收',{exact:true}).click();await p2.waitForFunction(()=>document.querySelector('[data-type=image] img')?.src.startsWith('blob:'));assert.ok(objects.size>=2,'real chunk and manifest uploaded');
+ const remote=await req('/api/notes?cursor=0',{headers:{Authorization:'Bearer '+k}}),remoteBody=await remote.json();
+ assert.equal(remote.status,200);assert.ok(remoteBody.notes?.some(note=>note.title==='匿名跨设备验收'),'first device uploaded the note before testing another device');
+ const c2=await context();await c2.addInitScript(value=>localStorage.setItem('easybook-key',value),k);const p2=await ready(c2);
+ await p2.getByText('匿名跨设备验收',{exact:true}).waitFor({timeout:20000});
+ await p2.getByText('匿名跨设备验收',{exact:true}).click();await p2.waitForFunction(()=>document.querySelector('[data-type=image] img')?.src.startsWith('blob:'));assert.ok(objects.size>=2,'real chunk and manifest uploaded');
  // Signed-out users can switch among personal workspaces stored on this device.
  await settings(p1);await p1.locator('#workspaceCreate').click();
  await p1.locator('#workspaceName').fill('第二个本地工作区');

@@ -755,7 +755,16 @@ async function retryNativeWorkspaceRegistration(){
 }
 if(native&&identityV2&&navigator.onLine)await retryNativeWorkspaceRegistration();
 async function registerWebWorkspace(credential,workspace){const r=await fetch(API+'/api/workspaces',{method:'POST',credentials:'omit',headers:{'Content-Type':'application/json'},body:JSON.stringify({name:workspace.name,workspaceId:workspace.id,bootstrapKey:credential})});if(!r.ok)throw Error('工作区注册失败（'+r.status+'）');const registered=(await r.json()).workspace;await webStore.bindWorkspace(credential,registered);return registered}
-if(!native&&identityV2&&!key.startsWith('account:')){let local=await webStore.workspaceForCredential(key);if(!local){local={id:randomKey(),name:'我的工作区',mode:'personal',role:'manager',pendingRegistration:true};await webStore.bindWorkspace(key,local)}if(navigator.onLine){try{await webStore.bindWorkspace(key,await workspaceIdentity(key))}catch{try{await registerWebWorkspace(key,local)}catch{/* Pending registration remains local and retries during sync. */}}}}
+if(!native&&identityV2&&!key.startsWith('account:')){
+ let local=await webStore.workspaceForCredential(key);
+ if(navigator.onLine&&(!local||local.pendingRegistration)){
+  // A credential copied from another device already identifies its remote
+  // workspace. Resolve it before inventing a different local workspace ID.
+  try{const remote=await workspaceIdentity(key);await webStore.bindWorkspace(key,remote);local=remote}catch{}
+ }
+ if(!local){local={id:randomKey(),name:'我的工作区',mode:'personal',role:'manager',pendingRegistration:true};await webStore.bindWorkspace(key,local)}
+ if(navigator.onLine&&local.pendingRegistration){try{await registerWebWorkspace(key,local)}catch{/* Keep offline data and retry registration during sync. */}}
+}
 let localSpace=native?key:await webStore.namespace(key);
 let webData=native?null:await webStore.load(key),inflight=webData?.inflight||{},pullCursor=webData?.cursor||0,noteBases=webData?.bases||{},conflicts=native?(boot.conflictRecords||[]):(webData?.conflicts||[]);
 for(const n of webData?.notes||[])RichNotes.validate(n.document);
@@ -1718,10 +1727,15 @@ function hideWorkspaceNameEditor(){if(workspacePending)return;workspaceEditorMod
 async function workspaceAction(action){
  if(workspacePending)return;
  try{
-  if(busy||moveBusy)throw Error('请等待当前同步或保存完成');
   const name=$('workspaceName').value.trim();
   if(['create','rename'].includes(action)&&(!name||name.length>60))throw Error('请输入 1–60 个字符的工作区名称');
   workspacePending=true;renderWorkspaceChoices();
+  if(busy||moveBusy){
+   $('workspaceStatus').textContent='正在完成当前同步，随后继续工作区操作…';
+   const deadline=Date.now()+20000;
+   while((busy||moveBusy)&&Date.now()<deadline)await new Promise(resolve=>setTimeout(resolve,120));
+   if(busy||moveBusy)throw Error('同步尚未完成，请稍后重试，工作区数据已保留');
+  }
   rich.flushInput();persistNow();await flushLocal();
   if(native){
    const session=await native.call('account.status');
@@ -1732,11 +1746,23 @@ async function workspaceAction(action){
    if(action==='create'){location.reload();return}
    await refreshWorkspaces();return;
   }
-  const session=await browserAccount();
   if(action==='create'){
-   const result=await webStore.createLocalWorkspace(name);let target=result.workspace;
-   if(navigator.onLine)try{target=await registerWebWorkspace(result.key,result.workspace)}catch{toast('工作区已在本机创建，联网后将自动注册')}
-   await selectWebWorkspace(result.key,target);
+   let signedIn=false;
+   if(navigator.onLine)try{signedIn=!!(await browserAccount()).signedIn}catch{}
+   if(signedIn){
+    // A signed-in browser creates an account-owned workspace, matching the
+    // native flow. An anonymous bootstrap key cannot grant member access.
+    const {workspace,key:personalKey}=await workspaceRequest('',{name});
+    if(!/^[a-f0-9]{64}$/.test(personalKey||''))throw Error('新工作区同步密钥不可用');
+    // Keep the personal key encrypted in the local vault so it can be copied
+    // and rotated even when this workspace also belongs to the account.
+    await selectWebWorkspace(personalKey,workspace);
+   }else{
+    // Anonymous and offline users retain their local-first workspace.
+    const result=await webStore.createLocalWorkspace(name);let target=result.workspace;
+    if(navigator.onLine)try{target=await registerWebWorkspace(result.key,result.workspace)}catch{toast('工作区已在本机创建，联网后将自动注册')}
+    await selectWebWorkspace(result.key,target);
+   }
   }else{const w=key.startsWith('account:')?{id:key.slice(8)}:await workspaceIdentity(key);if(action==='rename'){
    await workspaceRequest('/'+w.id,{name},key.startsWith('account:'));
    $('workspaceNameEditor').hidden=true;workspaceEditorMode='';await refreshWorkspaces();toast('工作区名称已更新');
