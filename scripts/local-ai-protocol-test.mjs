@@ -1,0 +1,21 @@
+import assert from 'node:assert/strict';
+import {parseLocalAiAction,validateLocalAiAction,localAiPrompt} from '../shared/local-ai-protocol.mjs';
+
+const action='<easybook_tool_call>{"name":"notes_search","arguments":{"query":"例子"}}</easybook_tool_call>';
+assert.deepEqual(parseLocalAiAction(action),{name:'notes_search',arguments:{query:'例子'}});
+assert.equal(validateLocalAiAction(parseLocalAiAction(action)).write,false);
+assert.equal(parseLocalAiAction('我可以帮你搜索笔记。'),null);
+assert.equal(parseLocalAiAction('普通回复\n'+action),null);
+assert.equal(parseLocalAiAction('```markdown\n'+action+'\n```'),null);
+assert.deepEqual(parseLocalAiAction('```json\n{"tool":"folders_list","parameters":{}}\n```'),{name:'folders_list',arguments:{}});
+assert.throws(()=>validateLocalAiAction({name:'notes_create',arguments:{title:'笔记'}},'conversation'),/对话模式/);
+assert.throws(()=>validateLocalAiAction({name:'notes_delete',arguments:{id:'a'}},'agent'),/不支持/);
+assert.throws(()=>validateLocalAiAction({name:'notes_search',arguments:{query:'a',secret:'x'}}),/未授权参数/);
+assert.throws(()=>validateLocalAiAction({name:'notes_get',arguments:{id:'bad'}}),/ID 无效/);
+assert.throws(()=>validateLocalAiAction({name:'notes_update',arguments:{id:'0c128b87-3b33-4e74-b89a-adf1c398d165',title:'X'}},'agent'),/缺少工具参数/);
+assert.equal(validateLocalAiAction({name:'notes_pin',arguments:{id:'0c128b87-3b33-4e74-b89a-adf1c398d165',version:0,pinned:true}},'agent').write,true);
+assert.equal(validateLocalAiAction({name:'notes_append',arguments:{id:'0c128b87-3b33-4e74-b89a-adf1c398d165',version:2,text:'## 续写'}},'agent').write,true);
+const prompt=localAiPrompt([{role:'user',content:'查找笔记并制作表格'}],{mode:'agent',toolResults:[{name:'notes_search',result:{notes:[]}}]});
+assert.match(prompt,/notes_search/);assert.match(prompt,/notes_create/);assert.match(prompt,/确认前/);assert.match(prompt,/表格/);assert.match(prompt,/工具 notes_search 返回/);
+assert.doesNotMatch(localAiPrompt([{role:'user',content:'你好'}]),/Agent 模式可提议写入工具/);
+console.log('Local AI protocol: OK');

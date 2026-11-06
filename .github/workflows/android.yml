@@ -95,6 +95,8 @@ jobs:
           node-version: '24'
           cache: npm
       - run: npm ci
+      - name: On-device AI tool safety protocol
+        run: node scripts/local-ai-protocol-test.mjs
       - name: Focused folder navigation regression
         run: node scripts/folder-navigation-test.mjs
       - name: Attachment protocol static checks
