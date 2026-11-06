@@ -1727,10 +1727,15 @@ function hideWorkspaceNameEditor(){if(workspacePending)return;workspaceEditorMod
 async function workspaceAction(action){
  if(workspacePending)return;
  try{
-  if(busy||moveBusy)throw Error('请等待当前同步或保存完成');
   const name=$('workspaceName').value.trim();
   if(['create','rename'].includes(action)&&(!name||name.length>60))throw Error('请输入 1–60 个字符的工作区名称');
   workspacePending=true;renderWorkspaceChoices();
+  if(busy||moveBusy){
+   $('workspaceStatus').textContent='正在完成当前同步，随后继续工作区操作…';
+   const deadline=Date.now()+20000;
+   while((busy||moveBusy)&&Date.now()<deadline)await new Promise(resolve=>setTimeout(resolve,120));
+   if(busy||moveBusy)throw Error('同步尚未完成，请稍后重试，工作区数据已保留');
+  }
   rich.flushInput();persistNow();await flushLocal();
   if(native){
    const session=await native.call('account.status');
