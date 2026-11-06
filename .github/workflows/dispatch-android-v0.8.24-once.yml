@@ -11,7 +11,7 @@ permissions:
 
 jobs:
   dispatch:
-    if: github.event.head_commit.message == 'chore(release): dispatch Android 0.8.24'
+    if: "github.event.head_commit.message == 'chore(release): dispatch Android 0.8.24'"
     runs-on: ubuntu-latest
     steps:
       - name: Request signed Android release from main
