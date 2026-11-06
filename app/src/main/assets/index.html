@@ -1128,9 +1128,16 @@ async function refreshAiLocal(){
 }
 function renderAiLocal(){
  if(!aiLocalStatus)return;
- const {models=[],available=false,ramBytes=0,freeBytes=0,errors={}}=aiLocalStatus;
+ const {models=[],available=false,ramBytes=0,freeBytes=0,errors={},runtime={}}=aiLocalStatus;
  const gib=bytes=>(bytes/1073741824).toFixed(1)+' GB';
- $('aiLocalModels').innerHTML=models.map(model=>{
+ const runtimeProgress=runtime.totalBytes>0?Math.min(100,Math.round((runtime.bytes||0)/runtime.totalBytes*100)):0;
+ const runtimeIndicator=runtime.installed?'已安装':runtime.state==='downloading'?'下载中 '+(runtime.totalBytes>0?runtimeProgress+'%':'…'):runtime.state==='verifying'?'正在校验 SHA-256':runtime.state==='failed'?'安装失败':'未安装';
+ const runtimeCard='<div class="ai-local-card"><div class="ai-local-card-header"><strong>本地 AI 运行组件</strong><small>'+runtimeIndicator+'</small></div>'+
+  '<small>'+esc(runtime.version||'LiteRT-LM')+' · ARM64 · 约 21 MB · 首次使用时安装</small>'+
+  (runtime.state==='downloading'?'<progress class="ai-local-progress" max="100" value="'+runtimeProgress+'"></progress>':'')+
+  '<div class="ai-local-card-actions">'+(runtime.installed?'<button data-runtime-action="delete">卸载组件</button>':runtime.state==='downloading'?'<button data-runtime-action="cancel">取消下载</button>':runtime.state==='verifying'?'':'<button data-runtime-action="install" '+(!runtime.supported?'disabled':'')+'>安装运行组件</button>')+'</div>'+
+  (runtime.error?'<small>'+esc(runtime.error)+'</small>':'')+(runtime.restartRequired?'<small>请重启应用以完全卸载运行组件</small>':'')+'</div>';
+ $('aiLocalModels').innerHTML=runtimeCard+models.map(model=>{
   const state=model.state,installed=state==='installed',downloading=state==='downloading',verifying=state==='verifying';
   const progress=model.totalBytes>0?Math.min(100,Math.round((model.bytes||0)/model.totalBytes*100)):0;
   const indicator=installed?'已安装':downloading?'下载中 '+(model.totalBytes>0?progress+'%':'…'):verifying?'正在校验 SHA-256':state==='failed'?'下载失败':'未安装';
@@ -1139,9 +1146,16 @@ function renderAiLocal(){
     '<div class="ai-local-card-actions">'+(installed?'<button data-local-action="delete" data-local-model="'+model.id+'">删除模型</button>':downloading?'<button data-local-action="cancel" data-local-model="'+model.id+'">取消下载</button>':verifying?'':'<button data-local-action="install" data-local-model="'+model.id+'" '+(!available?'disabled':'')+'>下载模型</button>')+'</div>'+
     (errors[model.id]?'<small>'+esc(errors[model.id])+'</small>':'')+'</div>';
  }).join('');
- $('aiLocalNote').textContent=available?'设备内存 '+gib(ramBytes)+' · 模型存储可用 '+gib(freeBytes)+'。下载使用 WLAN，安装后离线运行。模型按需下载，不会切换现有 BYOK。':'当前设备不支持本地模型推理（需要 Android ARM64 及可用模型存储）。';
+ $('aiLocalNote').textContent=available?'设备内存 '+gib(ramBytes)+' · 模型存储可用 '+gib(freeBytes)+'。运行组件与模型分别按需下载（默认仅 WLAN），安装后离线推理；不影响 BYOK。':'当前设备不支持本地模型推理（需要 Android ARM64 及可用模型存储）。';
 }
 $('aiLocalModels').onclick=async event=>{
+ const runtimeButton=event.target.closest('[data-runtime-action]');
+ if(runtimeButton){
+  const action=runtimeButton.dataset.runtimeAction;
+  const execute=async()=>{runtimeButton.disabled=true;try{await native.call('ai.local.runtime.'+action);await refreshAiLocal();if(action==='delete')toast('运行组件已移除；重启应用后完全卸载')}catch(error){toast(error.message);runtimeButton.disabled=false}};
+  if(action==='delete')return confirmAction('卸载本地 AI 运行组件？','模型文件和 BYOK 配置均会保留。重新使用端侧 AI 时需要再次下载运行组件。',execute);
+  return execute();
+ }
  const button=event.target.closest('[data-local-action]');if(!button)return;
  const model=button.dataset.localModel,action=button.dataset.localAction;
  if(action==='delete')return confirmAction('删除本地 AI 模型？','只释放设备上的模型文件，不影响任何笔记、会话或 API 配置。',async()=>{try{await native.call('ai.local.delete',{model});await refreshAiLocal();toast('模型已删除')}catch(error){toast(error.message)}});
@@ -1149,7 +1163,7 @@ $('aiLocalModels').onclick=async event=>{
  try{await native.call(action==='cancel'?'ai.local.download.cancel':'ai.local.install',{model});await refreshAiLocal()}
  catch(error){toast(error.message);button.disabled=false}
 };
-setInterval(()=>{if(tab==='ai'&&aiLocalStatus?.models?.some(model=>['downloading','verifying'].includes(model.state)))void refreshAiLocal()},2500);
+setInterval(()=>{if(tab==='ai'&&(['downloading','verifying'].includes(aiLocalStatus?.runtime?.state)||aiLocalStatus?.models?.some(model=>['downloading','verifying'].includes(model.state))))void refreshAiLocal()},2500);
 const aiErrorMessage=code=>({account_required:'请先登录 Easybook 账户',reauthentication_required:'请先重新验证身份，再更新密钥',credential_vault_unavailable:'AI 凭据保险库尚未配置',credential_unavailable:'无法解密已保存的密钥，请重新保存',invalid_provider:'请完整填写自定义提供商信息',invalid_provider_url:'Base URL 必须是公开的 HTTPS 地址',provider_key_rejected:'API 密钥被提供商拒绝',provider_error:'AI 提供商暂时不可用',model_discovery_failed:'无法从提供商获取模型列表',ai_not_configured:'请先保存 BYOK 密钥',workspace_access_denied:'当前账户无权访问此工作区',workspace_required:'请先选择账户中的工作区',agent_turn_limit:'Agent 工具调用次数已达上限'}[code]||code||'AI 请求失败');
 async function aiRequest(path,{method='GET',body}={}){
  if(native){const operation=path==='config'?(method==='GET'?'ai.config':'ai.credential'):path==='models'?'ai.models':path==='select'?'ai.select':path==='execute'?'ai.execute':'ai.chat';return native.call(operation,{method,...((path==='chat'||path==='execute')&&workspaceCurrent?{workspace:workspaceCurrent}:{}),...(body||{})})}

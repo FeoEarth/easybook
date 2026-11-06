@@ -34,6 +34,7 @@ public class MainActivity extends Activity {
     private SecurityManager security;
     private NativeAccount nativeAccount;
     private LocalAiModels localAiModels;
+    private LocalAiRuntime localAiRuntime;
     private LocalAiEngine localAiEngine;
     private AppUpdateManager appUpdater;
     private WebOtaManager webOta;
@@ -66,7 +67,8 @@ public class MainActivity extends Activity {
         super.onCreate(state);
         webOta=new WebOtaManager(this);
         localAiModels=new LocalAiModels(this);
-        localAiEngine=new LocalAiEngine();
+        localAiRuntime=new LocalAiRuntime(this);
+        localAiEngine=new LocalAiEngine(localAiRuntime);
         repository=NoteRepository.get(this);SyncPolicy.initialize(this);
         nativeAccount=new NativeAccount(this,repository,io);nativeAccount.handle(getIntent());
         security=new SecurityManager(this,repository,io);
@@ -289,7 +291,13 @@ public class MainActivity extends Activity {
             }
             case "conflict.resolve":repository.resolveConflict(repository.activeSpace(),bounded(args,"id",36),bounded(args,"choice",16));return repository.snapshot(repository.activeSpace());
             case "account.manage":return nativeAccount.manage(args);
-            case "ai.local.status":return localAiModels.status().put("errors",localAiModels.errors());
+            case "ai.local.status":return localAiModels.status().put("errors",localAiModels.errors()).put("runtime",localAiRuntime.status());
+            case "ai.local.runtime.install":return localAiRuntime.install();
+            case "ai.local.runtime.cancel":localAiRuntime.cancel();return localAiRuntime.status();
+            case "ai.local.runtime.delete":{
+                if(localAiEngine.busy())throw new IllegalStateException("请等待本地 AI 生成结束");
+                localAiEngine.unload();localAiRuntime.delete();return localAiRuntime.status();
+            }
             case "ai.local.install":return localAiModels.install(bounded(args,"model",40));
             case "ai.local.download.cancel":localAiModels.cancel(bounded(args,"model",40));return localAiModels.status();
             case "ai.local.delete":{
@@ -300,6 +308,7 @@ public class MainActivity extends Activity {
                 String requestId=bounded(args,"id",70),model=bounded(args,"model",40),prompt=bounded(args,"prompt",16000);
                 if(!requestId.matches("[a-f0-9-]{20,70}")||prompt.trim().isEmpty())throw new IllegalArgumentException("Invalid local AI request");
                 File verified=localAiModels.installedPath(model);
+                if(!localAiRuntime.installed())throw new IllegalStateException("请先在 AI 设置中安装本地推理运行组件");
                 localAiEngine.generate(requestId,model,verified,prompt,event->runOnUiThread(()->{
                     if(!destroyed&&ready&&generation==documentGeneration&&LOCAL.equals(web.getUrl()))
                         web.evaluateJavascript("window.easybookLocalAiEvent&&window.easybookLocalAiEvent("+event.toString()+")",null);
@@ -554,7 +563,7 @@ public class MainActivity extends Activity {
     }
     @Override protected void onResume(){super.onResume();if(nativeAccount!=null)nativeAccount.resume();}
     @Override protected void onPause() { if(localAiEngine!=null)localAiEngine.cancel();if(security!=null)security.dismissConnection(); if(nativeGlass!=null)nativeGlass.dismiss(true);web.evaluateJavascript("window.EasybookVideo?.pauseAll();window.persistNow && window.persistNow()", null); super.onPause(); }
-    @Override protected void onDestroy() { hideVideoFullscreen(); if(nativeAccount!=null){nativeAccount.cancel();nativeAccount.shutdownAiStream();} if(localAiEngine!=null)localAiEngine.shutdown();if(localAiModels!=null)localAiModels.shutdown(); if(security!=null)security.dismissConnection(); if(connectivity!=null&&networkCallback!=null)connectivity.unregisterNetworkCallback(networkCallback); if(nativeGlass!=null){nativeGlass.clearFormatFrame();nativeGlass.dismiss(true);}ready=false; destroyed=true;if(WebViewFeature.isFeatureSupported(WebViewFeature.WEB_MESSAGE_LISTENER))WebViewCompat.removeWebMessageListener(web,"EasybookNative");web.destroy();if(appUpdater!=null)appUpdater.shutdown();io.shutdown();super.onDestroy(); }
+    @Override protected void onDestroy() { hideVideoFullscreen(); if(nativeAccount!=null){nativeAccount.cancel();nativeAccount.shutdownAiStream();} if(localAiEngine!=null)localAiEngine.shutdown();if(localAiModels!=null)localAiModels.shutdown();if(localAiRuntime!=null)localAiRuntime.shutdown(); if(security!=null)security.dismissConnection(); if(connectivity!=null&&networkCallback!=null)connectivity.unregisterNetworkCallback(networkCallback); if(nativeGlass!=null){nativeGlass.clearFormatFrame();nativeGlass.dismiss(true);}ready=false; destroyed=true;if(WebViewFeature.isFeatureSupported(WebViewFeature.WEB_MESSAGE_LISTENER))WebViewCompat.removeWebMessageListener(web,"EasybookNative");web.destroy();if(appUpdater!=null)appUpdater.shutdown();io.shutdown();super.onDestroy(); }
 }
 
 

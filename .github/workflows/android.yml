@@ -146,6 +146,21 @@ jobs:
       - name: Verify Passkey signing association
         if: steps.signing_key.outcome == 'success'
         run: node scripts/check-android-identity.mjs app/build/outputs/apk/release/app-release.apk
+      - name: Verify LiteRT native runtime is absent from base APK
+        run: |
+          if unzip -Z1 app/build/outputs/apk/release/app-release.apk | grep -E '^lib/[^/]+/liblitertlm_jni\.so$'; then
+            echo '::error::LiteRT JNI library unexpectedly packaged in base APK'
+            exit 1
+          fi
+      - name: Package optional LiteRT-LM ARM64 runtime
+        if: steps.signing_key.outcome == 'success'
+        shell: bash
+        run: |
+          set -euo pipefail
+          AAR=$(find "${GRADLE_USER_HOME:-$HOME/.gradle}/caches/modules-2/files-2.1/com.google.ai.edge.litertlm/litertlm-android/0.18.0" -name 'litertlm-android-0.18.0.aar' -type f -print -quit)
+          test -n "$AAR"
+          unzip -p "$AAR" jni/arm64-v8a/liblitertlm_jni.so > Easybook-LiteRT-LM-arm64-v8a.so
+          echo '4a94a3f955ad7c58cbcdfc5cb4ff566187bb9e8c5bc2c4056b4e226646c7e8fd  Easybook-LiteRT-LM-arm64-v8a.so' | sha256sum -c -
       - name: Read version from Android Gradle release configuration
         id: apk_version
         if: steps.signing_key.outcome == 'success'
@@ -162,13 +177,14 @@ jobs:
         if: steps.signing_key.outcome == 'success'
         run: |
           cp app/build/outputs/apk/release/app-release.apk 'Easybook-${{ steps.apk_version.outputs.name }}.apk'
-          sha256sum 'Easybook-${{ steps.apk_version.outputs.name }}.apk' > SHA256SUMS.txt
+          sha256sum 'Easybook-${{ steps.apk_version.outputs.name }}.apk' Easybook-LiteRT-LM-arm64-v8a.so > SHA256SUMS.txt
       - uses: actions/upload-artifact@v4
         if: steps.signing_key.outcome == 'success'
         with:
           name: Easybook-APK
           path: |
             Easybook-${{ steps.apk_version.outputs.name }}.apk
+            Easybook-LiteRT-LM-arm64-v8a.so
             SHA256SUMS.txt
       - name: Remove temporary private signing key
         if: always() && steps.signing_key.outcome == 'success'
@@ -202,6 +218,7 @@ jobs:
             '' \
             "- Android 8.0 及以上：\`Easybook-${VERSION}.apk\`" \
             '- `SHA256SUMS.txt`：安装包完整性校验值' \
+            '- `Easybook-LiteRT-LM-arm64-v8a.so`：可选本地 AI 运行组件，应用内按需下载' \
             '' \
             '## 发布信息' \
             '' \
@@ -217,7 +234,7 @@ jobs:
             '## 验证说明' \
             '' \
             '已完成编译、签名和自动化检查。自动化检查不等同于 Android 通行密钥实机登录及生产备份恢复验收。')
-          gh release create "$TAG" "Easybook-${VERSION}.apk" SHA256SUMS.txt --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" --title "Easybook ${VERSION} · build ${GITHUB_RUN_NUMBER}" --notes "$NOTES" --generate-notes
+          gh release create "$TAG" "Easybook-${VERSION}.apk" Easybook-LiteRT-LM-arm64-v8a.so SHA256SUMS.txt --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" --title "Easybook ${VERSION} · build ${GITHUB_RUN_NUMBER}" --notes "$NOTES" --generate-notes
 
 
 
