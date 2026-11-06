@@ -19,6 +19,7 @@ import {attestMcpWorkspace} from './mcp-pairing.mjs';
 import {management} from './management.mjs';
 import {notes} from './notes.mjs';
 import html from './ui.mjs';
+import brandIcons from './brand-icons.mjs';
 import pdfStatic from './pdf-static.mjs';
 import nativeGlassStatic from './native-glass-static.mjs';
 import editor from './editor.mjs';
@@ -44,6 +45,16 @@ export default {
  async scheduled(controller,env){if(await runSecurityAdmin(env))return;const results=await Promise.allSettled([cleanupUploads(env,10),runAttachmentPurges(env,10),runWorkspacePurges(env,5),maintainIdentity(env)]);if(results.some(r=>r.status==='rejected'))throw Error('Scheduled maintenance incomplete')},
  async fetch(request, env) {
   const url = new URL(request.url);
+  if((request.method==='GET'||request.method==='HEAD')&&Object.hasOwn(brandIcons,url.pathname)){
+   const base64=brandIcons[url.pathname];
+   const bytes=Uint8Array.from(atob(base64),c=>c.charCodeAt(0));
+   const type=url.pathname.endsWith('.ico')?'image/x-icon':'image/png';
+   return new Response(request.method==='HEAD'?null:bytes,{headers:{'Content-Type':type,'Cache-Control':'public, max-age=86400','X-Content-Type-Options':'nosniff'}});
+  }
+  if((request.method==='GET'||request.method==='HEAD')&&url.pathname==='/manifest.webmanifest'){
+   const manifest={name:'Easybook',short_name:'Easybook',start_url:'/',scope:'/',display:'standalone',background_color:'#f2f2f7',theme_color:'#f2f2f7',icons:[{src:'/icon-192.png',sizes:'192x192',type:'image/png'},{src:'/icon-512.png',sizes:'512x512',type:'image/png'}]};
+   return new Response(request.method==='HEAD'?null:JSON.stringify(manifest),{headers:{'Content-Type':'application/manifest+json; charset=utf-8','Cache-Control':'public, max-age=3600','X-Content-Type-Options':'nosniff'}});
+  }
   if(request.method==='GET'&&url.pathname==='/android/version-policy.json')return Response.json(androidVersionPolicy(env),{headers:{'Cache-Control':'no-store','X-Content-Type-Options':'nosniff'}});
   if(request.method==='GET'&&url.pathname==='/ota/manifest.json')return Response.json(await otaManifest(url.searchParams.get('v')==='2'),{headers:{'Cache-Control':'no-store','X-Content-Type-Options':'nosniff'}});
   // OTA resources are checksum-verified bytes, not browser documents: prevent
