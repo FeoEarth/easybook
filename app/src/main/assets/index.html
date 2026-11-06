@@ -755,7 +755,16 @@ async function retryNativeWorkspaceRegistration(){
 }
 if(native&&identityV2&&navigator.onLine)await retryNativeWorkspaceRegistration();
 async function registerWebWorkspace(credential,workspace){const r=await fetch(API+'/api/workspaces',{method:'POST',credentials:'omit',headers:{'Content-Type':'application/json'},body:JSON.stringify({name:workspace.name,workspaceId:workspace.id,bootstrapKey:credential})});if(!r.ok)throw Error('工作区注册失败（'+r.status+'）');const registered=(await r.json()).workspace;await webStore.bindWorkspace(credential,registered);return registered}
-if(!native&&identityV2&&!key.startsWith('account:')){let local=await webStore.workspaceForCredential(key);if(!local){local={id:randomKey(),name:'我的工作区',mode:'personal',role:'manager',pendingRegistration:true};await webStore.bindWorkspace(key,local)}if(navigator.onLine){try{await webStore.bindWorkspace(key,await workspaceIdentity(key))}catch{try{await registerWebWorkspace(key,local)}catch{/* Pending registration remains local and retries during sync. */}}}}
+if(!native&&identityV2&&!key.startsWith('account:')){
+ let local=await webStore.workspaceForCredential(key);
+ if(navigator.onLine&&(!local||local.pendingRegistration)){
+  // A credential copied from another device already identifies its remote
+  // workspace. Resolve it before inventing a different local workspace ID.
+  try{const remote=await workspaceIdentity(key);await webStore.bindWorkspace(key,remote);local=remote}catch{}
+ }
+ if(!local){local={id:randomKey(),name:'我的工作区',mode:'personal',role:'manager',pendingRegistration:true};await webStore.bindWorkspace(key,local)}
+ if(navigator.onLine&&local.pendingRegistration){try{await registerWebWorkspace(key,local)}catch{/* Keep offline data and retry registration during sync. */}}
+}
 let localSpace=native?key:await webStore.namespace(key);
 let webData=native?null:await webStore.load(key),inflight=webData?.inflight||{},pullCursor=webData?.cursor||0,noteBases=webData?.bases||{},conflicts=native?(boot.conflictRecords||[]):(webData?.conflicts||[]);
 for(const n of webData?.notes||[])RichNotes.validate(n.document);

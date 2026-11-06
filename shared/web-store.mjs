@@ -32,7 +32,33 @@ export class WebStore {
   if(isPersonalKey){const vault=await this.vaultKey(),iv=crypto.getRandomValues(new Uint8Array(12));sealed={iv,data:await crypto.subtle.encrypt({name:'AES-GCM',iv,additionalData:new TextEncoder().encode('easybook-personal-key-v1:'+workspace.id)},vault,new TextEncoder().encode(key))}}
   return new Promise((resolve,reject)=>{const t=this.db.transaction(['spaces','bindings','workspaces','vault'],'readwrite'),spaces=t.objectStore('spaces'),bindings=t.objectStore('bindings'),registry=t.objectStore('workspaces'),vault=t.objectStore('vault');let result,error;
    const abort=message=>{error=Error(message);t.abort()};
-   const b=bindings.get(digest);b.onsuccess=()=>{if(b.result&&b.result.workspaceId!==workspace.id){abort('Credential workspace identity changed');return}const source=b.result?.localNamespace||fallback,w=registry.get(workspace.id);w.onsuccess=()=>{const target=w.result&&!w.result.catalogOnly?w.result.localNamespace:source;if(target!==source){const pending=spaces.get(source);pending.onsuccess=()=>{const value=pending.result;if(value&&(value.notes?.length||value.folders?.length||Object.keys(value.inflight||{}).length||value.cursor||value.management?.pending?.length)){abort('This key has separate offline data; export it before reconnecting');return}finish(target)}}else finish(target)};function finish(localNamespace){result={id:workspace.id,name:workspace.name,mode:workspace.mode,role:workspace.role||'manager',localNamespace,...(workspace.pendingRegistration?{pendingRegistration:true}:{})};registry.put(result);bindings.put({workspaceId:workspace.id,localNamespace},digest);if(sealed)vault.put(sealed,'personal-key:'+workspace.id);else if(workspace.mode==='shared')vault.delete('personal-key:'+workspace.id)}};
+   const hasOfflineData=value=>!!(value&&(value.notes?.length||value.folders?.length||Object.keys(value.inflight||{}).length||value.cursor||value.management?.pending?.length));
+   const b=bindings.get(digest);b.onsuccess=()=>{
+    const source=b.result?.localNamespace||fallback;
+    if(b.result&&b.result.workspaceId!==workspace.id){
+     // Older clients created a random pending workspace before looking up a
+     // supplied sync key. Reconcile only that empty placeholder; never move
+     // offline notes or silently reinterpret an established binding.
+     const previous=registry.get(b.result.workspaceId);
+     previous.onsuccess=()=>{
+      if(!previous.result?.pendingRegistration||previous.result.localNamespace!==source){abort('Credential workspace identity changed');return}
+      const pending=spaces.get(source);pending.onsuccess=()=>{
+       if(hasOfflineData(pending.result)){abort('This key has separate offline data; export it before reconnecting');return}
+       registry.delete(b.result.workspaceId);bindSource(source);
+      };
+     };
+     return;
+    }
+    bindSource(source);
+   };
+   function bindSource(source){
+    const w=registry.get(workspace.id);
+    w.onsuccess=()=>{const target=w.result&&!w.result.catalogOnly?w.result.localNamespace:source;
+     if(target!==source){const pending=spaces.get(source);pending.onsuccess=()=>{if(hasOfflineData(pending.result)){abort('This key has separate offline data; export it before reconnecting');return}finish(target)}}
+     else finish(target);
+    };
+   }
+   function finish(localNamespace){result={id:workspace.id,name:workspace.name,mode:workspace.mode,role:workspace.role||'manager',localNamespace,...(workspace.pendingRegistration?{pendingRegistration:true}:{})};registry.put(result);bindings.put({workspaceId:workspace.id,localNamespace},digest);if(sealed)vault.put(sealed,'personal-key:'+workspace.id);else if(workspace.mode==='shared')vault.delete('personal-key:'+workspace.id)}
    t.oncomplete=()=>resolve(result);t.onerror=t.onabort=()=>reject(error||t.error||Error('Workspace binding failed'));
   })
  }

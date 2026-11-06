@@ -22,6 +22,19 @@ await migrated.save(rotatedKey,{...original,notes:[{id:'note',title:'after rotat
 assert.equal((await migrated.load(oldKey)).notes[0].title,'after rotation');
 assert.deepEqual(await migrated.listWorkspaces(),[workspace],'public list omits the local credential-bearing address');
 await assert.rejects(()=>migrated.bindWorkspace(rotatedKey,{...workspace,id:'2'.repeat(64)}),/identity changed/);
+// A legacy first-run bug bound an imported key to a random, unregistered
+// placeholder. Reconcile only when its local data is empty.
+const incomingKey='e'.repeat(64),placeholder={id:'5'.repeat(64),name:'占位空间',mode:'personal',pendingRegistration:true},actual={id:'6'.repeat(64),name:'已连接空间',mode:'personal',role:'manager'};
+await migrated.load(incomingKey);await migrated.bindWorkspace(incomingKey,placeholder);
+await migrated.save(incomingKey,{notes:[],folders:[],inflight:{},cursor:0});
+await migrated.bindWorkspace(incomingKey,actual);
+assert.equal((await migrated.workspaceForCredential(incomingKey)).id,actual.id);
+assert.equal((await migrated.listWorkspaces()).some(w=>w.id===placeholder.id),false,'empty placeholder no longer appears in workspace picker');
+const conflictingKey='f'.repeat(64),conflictPlaceholder={...placeholder,id:'7'.repeat(64)};
+await migrated.load(conflictingKey);await migrated.bindWorkspace(conflictingKey,conflictPlaceholder);
+await migrated.save(conflictingKey,{notes:[{id:'offline-note',dirty:true}],folders:[],inflight:{},cursor:0});
+await assert.rejects(()=>migrated.bindWorkspace(conflictingKey,actual),/separate offline data/);
+assert.equal((await migrated.load(conflictingKey)).notes[0].id,'offline-note','offline notes cannot be rebound to a different workspace');
 const otherKey='c'.repeat(64);await migrated.load(otherKey);await migrated.save(otherKey,{notes:[{id:'separate',dirty:true}],folders:[],inflight:{},cursor:0});
 await assert.rejects(()=>migrated.bindWorkspace(otherKey,workspace),/separate offline data/);
 assert.equal((await migrated.load(otherKey)).notes[0].id,'separate','conflicting local data is retained');
