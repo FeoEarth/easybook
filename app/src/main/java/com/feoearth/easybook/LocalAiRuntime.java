@@ -60,6 +60,8 @@ final class LocalAiRuntime {
                 int state=c.getInt(c.getColumnIndexOrThrow(DownloadManager.COLUMN_STATUS));
                 if(state==DownloadManager.STATUS_SUCCESSFUL){verifyAsync();return result.put("state","verifying");}
                 if(state==DownloadManager.STATUS_FAILED)return result.put("state","failed").put("error","下载失败（"+c.getInt(c.getColumnIndexOrThrow(DownloadManager.COLUMN_REASON))+"）");
+                if(state==DownloadManager.STATUS_PAUSED&&c.getInt(c.getColumnIndexOrThrow(DownloadManager.COLUMN_REASON))==DownloadManager.PAUSED_QUEUED_FOR_WIFI)
+                    return result.put("state","wifiOnly");
                 return result.put("state","downloading")
                     .put("bytes",c.getLong(c.getColumnIndexOrThrow(DownloadManager.COLUMN_BYTES_DOWNLOADED_SO_FAR)))
                     .put("totalBytes",c.getLong(c.getColumnIndexOrThrow(DownloadManager.COLUMN_TOTAL_SIZE_BYTES)));
@@ -75,7 +77,11 @@ final class LocalAiRuntime {
         if(verifying.get())return status();
         long existing=downloadId();
         if(existing>=0)try(Cursor c=downloads.query(new DownloadManager.Query().setFilterById(existing))){
-            if(c!=null&&c.moveToFirst()&&c.getInt(c.getColumnIndexOrThrow(DownloadManager.COLUMN_STATUS))!=DownloadManager.STATUS_FAILED)return status();
+            if(c!=null&&c.moveToFirst()){
+                int state=c.getInt(c.getColumnIndexOrThrow(DownloadManager.COLUMN_STATUS));
+                boolean wifiOnly=state==DownloadManager.STATUS_PAUSED&&c.getInt(c.getColumnIndexOrThrow(DownloadManager.COLUMN_REASON))==DownloadManager.PAUSED_QUEUED_FOR_WIFI;
+                if(state!=DownloadManager.STATUS_FAILED&&!wifiOnly)return status();
+            }
         }
         if(new StatFs(directory.getPath()).getAvailableBytes()<BYTES*3)throw new IOException("存储空间不足，请至少预留 65 MB");
         cancel();
@@ -83,7 +89,8 @@ final class LocalAiRuntime {
         DownloadManager.Request request=new DownloadManager.Request(Uri.parse(url));
         request.setTitle("Easybook · 本地 AI 运行组件").setDescription("LiteRT-LM 0.18.0 · ARM64")
             .setNotificationVisibility(DownloadManager.Request.VISIBILITY_VISIBLE_NOTIFY_COMPLETED)
-            .setAllowedOverMetered(false).setAllowedOverRoaming(false)
+            // Explicit user action permits cellular/metered downloads; roaming stays blocked.
+            .setAllowedOverMetered(true).setAllowedOverRoaming(false)
             .setDestinationUri(Uri.fromFile(temporary));
         prefs.edit().putLong("download",downloads.enqueue(request)).remove("failure").apply();
         return status();

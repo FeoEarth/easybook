@@ -3,6 +3,7 @@ package com.feoearth.easybook;
 import android.app.ActivityManager;
 import android.app.DownloadManager;
 import android.content.Context;
+import android.net.ConnectivityManager;
 import android.content.SharedPreferences;
 import android.database.Cursor;
 import android.net.Uri;
@@ -63,6 +64,8 @@ final class LocalAiModels {
                 int status=cursor.getInt(cursor.getColumnIndexOrThrow(DownloadManager.COLUMN_STATUS));
                 if(status==DownloadManager.STATUS_SUCCESSFUL){verifyAsync(model);return item.put("state","verifying");}
                 if(status==DownloadManager.STATUS_FAILED)return item.put("state","failed").put("reason",cursor.getInt(cursor.getColumnIndexOrThrow(DownloadManager.COLUMN_REASON)));
+                if(status==DownloadManager.STATUS_PAUSED&&cursor.getInt(cursor.getColumnIndexOrThrow(DownloadManager.COLUMN_REASON))==DownloadManager.PAUSED_QUEUED_FOR_WIFI)
+                    return item.put("state","wifiOnly");
                 return item.put("state","downloading")
                     .put("bytes",cursor.getLong(cursor.getColumnIndexOrThrow(DownloadManager.COLUMN_BYTES_DOWNLOADED_SO_FAR)))
                     .put("totalBytes",cursor.getLong(cursor.getColumnIndexOrThrow(DownloadManager.COLUMN_TOTAL_SIZE_BYTES)));
@@ -74,20 +77,28 @@ final class LocalAiModels {
         ActivityManager.MemoryInfo memory=new ActivityManager.MemoryInfo();
         ((ActivityManager)context.getSystemService(Context.ACTIVITY_SERVICE)).getMemoryInfo(memory);
         boolean arm64=false;for(String abi:Build.SUPPORTED_64_BIT_ABIS)if("arm64-v8a".equals(abi))arm64=true;
-        JSONObject result=new JSONObject().put("available",arm64&&directory!=null).put("ramBytes",memory.totalMem).put("freeBytes",directory==null?0:new StatFs(directory.getParent()).getAvailableBytes());
+        ConnectivityManager connectivity=(ConnectivityManager)context.getSystemService(Context.CONNECTIVITY_SERVICE);
+        JSONObject result=new JSONObject().put("available",arm64&&directory!=null).put("ramBytes",memory.totalMem)
+            .put("freeBytes",directory==null?0:new StatFs(directory.getParent()).getAvailableBytes())
+            .put("meteredNetwork",connectivity!=null&&connectivity.isActiveNetworkMetered()).put("cellularDownloads",true);
         JSONArray models=new JSONArray();for(Model model:CATALOG)models.put(state(model));return result.put("models",models);
     }
     JSONObject install(String id)throws Exception{
         Model model=find(id);if(directory==null||!directory.isDirectory()&&!directory.mkdirs())throw new IOException("无法创建模型存储目录");
         if(installed(id))return status();
         long current=downloadId(model);
-        if(current>=0){try(Cursor cursor=downloads.query(new DownloadManager.Query().setFilterById(current))){if(cursor!=null&&cursor.moveToFirst()){int status=cursor.getInt(cursor.getColumnIndexOrThrow(DownloadManager.COLUMN_STATUS));if(status!=DownloadManager.STATUS_FAILED)return status();}}}
+        if(current>=0){try(Cursor cursor=downloads.query(new DownloadManager.Query().setFilterById(current))){if(cursor!=null&&cursor.moveToFirst()){
+            int status=cursor.getInt(cursor.getColumnIndexOrThrow(DownloadManager.COLUMN_STATUS));
+            boolean wifiOnly=status==DownloadManager.STATUS_PAUSED&&cursor.getInt(cursor.getColumnIndexOrThrow(DownloadManager.COLUMN_REASON))==DownloadManager.PAUSED_QUEUED_FOR_WIFI;
+            if(status!=DownloadManager.STATUS_FAILED&&!wifiOnly)return status();
+        }}}
         if(new StatFs(directory.getPath()).getAvailableBytes()<model.estimatedBytes+512L*1024*1024)throw new IOException("可用空间不足，请预留模型大小加 512 MB");
         cancel(id);
         DownloadManager.Request request=new DownloadManager.Request(Uri.parse(model.url()));
         request.setTitle("Easybook · "+model.title).setDescription("离线 AI 模型，仅在用户确认后下载")
             .setNotificationVisibility(DownloadManager.Request.VISIBILITY_VISIBLE_NOTIFY_COMPLETED)
-            .setAllowedOverMetered(false).setAllowedOverRoaming(false)
+            // Explicit user action permits cellular/metered downloads; roaming stays blocked.
+            .setAllowedOverMetered(true).setAllowedOverRoaming(false)
             .setDestinationUri(Uri.fromFile(partial(model)));
         prefs.edit().putLong("download:"+id,downloads.enqueue(request)).remove("failure:"+id).apply();
         return status();
