@@ -581,7 +581,8 @@ body.keyboard .ai-hub-welcome{display:none}body.keyboard .ai-hub>.ai-messages{pa
 @media(max-width:370px){.ai-hub-composer .ai-compose{gap:1px}.ai-hub-composer .ai-hub-attach,.ai-hub-composer .ai-hub-voice{width:34px;padding:6px}.ai-hub-composer textarea{font-size:14px}}
 @media(prefers-reduced-motion:reduce){.ai-hub-composer .ai-hub-voice[aria-pressed=true]{animation:none}}
 .ai-local-card{padding:16px 0;display:grid;gap:10px;min-width:0;border-bottom:1px solid var(--line)}.ai-local-card:last-child{border-bottom:0}.ai-local-card-header{display:flex;align-items:flex-start;justify-content:space-between;gap:10px;min-width:0}.ai-local-card-header strong{flex:1;min-width:0;font-size:15px;line-height:1.4;font-weight:600;overflow-wrap:anywhere}.ai-local-card small{font-size:12px;line-height:1.5;color:var(--muted);overflow-wrap:anywhere}.ai-local-state{flex:none;max-width:46%;padding:4px 9px;border-radius:999px;background:var(--control-fill);color:var(--muted);font-size:11px;line-height:1.4;text-align:center;overflow-wrap:anywhere}.ai-local-state[data-state=installed]{color:var(--green)}.ai-local-state[data-state=failed]{color:var(--danger)}.ai-local-state[data-state=downloading],.ai-local-state[data-state=verifying]{color:var(--accent)}.ai-local-transfer{display:flex;justify-content:space-between;gap:8px;flex-wrap:wrap;font-variant-numeric:tabular-nums}.ai-local-transfer small:last-child{margin-left:auto}.ai-local-card-actions{display:flex;gap:8px;flex-wrap:wrap}.ai-local-card-actions button,.ai-local-manage{min-height:44px;border:0;border-radius:13px;padding:10px 14px;background:var(--control-fill);color:var(--ink);font-size:14px;font-weight:600}.ai-local-card-actions button[data-local-action=install],.ai-local-card-actions button[data-runtime-action=install]{background:var(--accent);color:white}.ai-local-card-actions button[data-local-action=delete],.ai-local-card-actions button[data-runtime-action=delete]{color:var(--danger)}.ai-local-card-actions button:disabled{opacity:.45}.ai-local-card-actions button:focus-visible,.ai-local-manage:focus-visible{outline:2px solid var(--accent);outline-offset:2px}.ai-local-progress{display:block;width:100%;height:5px;border:0;border-radius:99px;overflow:hidden;accent-color:var(--accent)}.ai-local-warning{color:var(--danger)!important}#aiLocalNote{padding:0 14px 12px;font-size:12px;line-height:1.6;color:var(--muted)}.ai-local-manage{display:block;width:100%;text-align:left;margin-top:10px}@media(max-width:380px){.ai-local-card-header{flex-wrap:wrap}.ai-local-state{max-width:100%}.ai-local-card-actions button{flex:1;min-width:120px}}
-.ai-message.assistant{min-width:0;max-width:100%;white-space:normal;overflow-x:auto;user-select:text}
+.ai-message.assistant{min-width:0;max-width:100%;flex-shrink:0;white-space:normal;overflow:visible;user-select:text}
+.ai-message.assistant .ai-table-scroll{max-width:100%;min-width:0;overflow-x:auto;overflow-y:hidden;overscroll-behavior-x:contain;-webkit-overflow-scrolling:touch}
 .ai-message.assistant table{width:max-content;min-width:100%;max-width:none;margin:10px 0;border-collapse:separate;border-spacing:0;border:1px solid var(--border);border-radius:10px;font-size:13px;line-height:1.5;white-space:normal;overflow:hidden}
 .ai-message.assistant :is(th,td){min-width:75px;max-width:350px;padding:9px 12px;border-right:1px solid var(--border);border-bottom:1px solid var(--border);text-align:left;vertical-align:top;overflow-wrap:break-word}
 .ai-message.assistant th{background:var(--control-fill);font-weight:650}
@@ -1283,9 +1284,18 @@ async function aiStreamRequest(body,{progress=()=>{},reset=()=>{},signal}={}){
  if(!finished)throw Error('AI 回复意外中断，请重试');return result;
 }
 function aiMemory(){try{return localStorage.getItem(aiMemoryKey)||''}catch{return ''}}
+function aiMarkdownHTML(content){
+ const host=document.createElement('div');host.innerHTML=RichNotes.markdownHTML(content);
+ host.querySelectorAll('table').forEach(table=>{
+  const scroller=document.createElement('div');scroller.className='ai-table-scroll';
+  scroller.tabIndex=0;scroller.setAttribute('role','region');scroller.setAttribute('aria-label','表格（可横向滚动）');
+  table.replaceWith(scroller);scroller.append(table);
+ });
+ return host.innerHTML;
+}
 function updateAiContextStatus(){const turns=aiConversation.filter(message=>message.role==='user').length;$('aiContextStatus').textContent=(turns?turns+' 轮对话':'尚未开始对话')+' · '+(aiContextCompressed?'已智能压缩':'完整上下文')}
 function renderAiMessages(){
- $('aiMessages').innerHTML=aiConversation.length?aiConversation.map((m,index)=>'<div class="ai-message '+m.role+'">'+(m.role==='assistant'?RichNotes.markdownHTML(m.content):esc(m.content))+(m.tools?.length?'<small>使用工具：'+esc(m.tools.join('、'))+'</small>':'')+(m.role==='assistant'&&!m.streaming?'<div class="ai-message-actions"><button type="button" data-ai-apply="'+index+'">替换当前笔记</button></div>':'')+'</div>').join(''):'<p class="ai-empty">让 AI 针对当前笔记进行总结、整理、润色，或输入你的要求。Agent 能力复用 Easybook MCP。</p>';
+ $('aiMessages').innerHTML=aiConversation.length?aiConversation.map((m,index)=>'<div class="ai-message '+m.role+'">'+(m.role==='assistant'?aiMarkdownHTML(m.content):esc(m.content))+(m.tools?.length?'<small>使用工具：'+esc(m.tools.join('、'))+'</small>':'')+(m.role==='assistant'&&!m.streaming?'<div class="ai-message-actions"><button type="button" data-ai-apply="'+index+'">替换当前笔记</button></div>':'')+'</div>').join(''):'<p class="ai-empty">让 AI 针对当前笔记进行总结、整理、润色，或输入你的要求。Agent 能力复用 Easybook MCP。</p>';
  updateAiContextStatus();
 }
 function invalidateAiConfig(){aiConfigured=null;aiConfigPromise=null}
@@ -1384,7 +1394,7 @@ function renderAiHub(){
  $('aiHubConversation').setAttribute('aria-pressed',String(mode==='conversation'));
  $('aiHubAgent').setAttribute('aria-pressed',String(mode==='agent'));
  $('aiHubHint').textContent=session.profileId==='__local__'?(mode==='agent'?'端侧离线 Agent · 本机工具可用 · 写入需确认':'端侧离线对话 · 可读取本机笔记')+' · 会话保存在本机':mode==='agent'?'Agent 写入前须逐项确认 · 会话仅保存在本机':'对话模式仅可读取工作区 · 会话仅保存在本机';
- const messages=session.messages.length?session.messages.map(message=>'<div class="ai-message '+(message.role==='user'?'user':'assistant')+'">'+(message.role==='assistant'?RichNotes.markdownHTML(message.content):esc(message.content))+(message.tools?.length?'<small>使用工具：'+esc(message.tools.join('、'))+'</small>':'')+'</div>').join(''):aiHubWelcome();
+ const messages=session.messages.length?session.messages.map(message=>'<div class="ai-message '+(message.role==='user'?'user':'assistant')+'">'+(message.role==='assistant'?aiMarkdownHTML(message.content):esc(message.content))+(message.tools?.length?'<small>使用工具：'+esc(message.tools.join('、'))+'</small>':'')+'</div>').join(''):aiHubWelcome();
  const pending=session.pendingApproval;
  const approval=pending?'<div class="ai-approval-card"><strong>Agent 请求执行：'+esc(pending.tool)+'</strong><small>请核对操作和参数。未确认前不会写入工作区。</small><pre>'+esc(JSON.stringify(pending.arguments,null,2))+'</pre><div class="ai-approval-actions"><button type="button" data-ai-reject>取消</button><button type="button" data-ai-approve>确认执行</button></div></div>':'';
  $('aiHubMessages').innerHTML=messages+approval;
