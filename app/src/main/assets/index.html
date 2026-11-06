@@ -1752,8 +1752,11 @@ async function workspaceAction(action){
    if(signedIn){
     // A signed-in browser creates an account-owned workspace, matching the
     // native flow. An anonymous bootstrap key cannot grant member access.
-    const {workspace}=await workspaceRequest('',{name});
-    await selectWebWorkspace('account:'+workspace.id,workspace);
+    const {workspace,key:personalKey}=await workspaceRequest('',{name});
+    if(!/^[a-f0-9]{64}$/.test(personalKey||''))throw Error('新工作区同步密钥不可用');
+    // Keep the personal key encrypted in the local vault so it can be copied
+    // and rotated even when this workspace also belongs to the account.
+    await selectWebWorkspace(personalKey,workspace);
    }else{
     // Anonymous and offline users retain their local-first workspace.
     const result=await webStore.createLocalWorkspace(name);let target=result.workspace;
