@@ -56,8 +56,19 @@ const streamedTool=async()=>streamResponse([
  {choices:[{delta:{tool_calls:[{index:0,function:{arguments:'审批测试"}'}}]}}]}
 ].map(item=>'data: '+JSON.stringify(item)+'\n\n').join('')+'data: [DONE]\n\n');
 streamEvents=await readEvents(await aiAPI(request('/api/ai/chat','POST',{mode:'agent',messages:[{role:'user',content:'创建'}],stream:true}),env,principal,{workspaceId:workspace,fetcher:streamedTool}));
-assert.deepEqual(streamEvents.map(event=>event.type),['reset','done']);assert.equal(streamEvents.at(-1).data.approval.tool,'notes_create');
+assert.deepEqual(streamEvents.map(event=>event.type),['reset','tool_start','tool_end','done']);
+assert.equal(streamEvents[1].data.name,'notes_create');assert.equal(streamEvents[2].data.status,'approval');
+assert.equal(streamEvents.at(-1).data.approval.tool,'notes_create');
 assert.equal(sqlite.prepare('SELECT COUNT(*) n FROM ai_agent_approvals WHERE id=? AND consumed_at IS NULL').get(streamEvents.at(-1).data.approval.id).n,1);
+let readToolTurn=0;
+const streamedReadTool=async()=>{
+ if(readToolTurn++>0)return Response.json({choices:[{message:{role:'assistant',content:'检索结束'}}]});
+ return streamResponse('data: '+JSON.stringify({choices:[{delta:{tool_calls:[{index:0,id:'read-1',function:{name:'notes_list',arguments:'{}'}}]}}]})+'\n\n'+'data: [DONE]\n\n');
+};
+streamEvents=await readEvents(await aiAPI(request('/api/ai/chat','POST',{mode:'conversation',messages:[{role:'user',content:'列出笔记'}],stream:true}),env,principal,{workspaceId:workspace,fetcher:streamedReadTool}));
+assert.deepEqual(streamEvents.map(event=>event.type),['reset','tool_start','tool_end','done']);
+assert.equal(streamEvents[1].data.name,'notes_list');assert.equal(streamEvents[2].data.status,'done');
+assert.equal(streamEvents.at(-1).data.message.content,'检索结束');
 await aiAPI(request('/api/ai/config','PUT',{label:'Claude Stream',provider:'anthropic',model:'claude-test',apiKey:secret}),env,principal);
 const streamedAnthropic=async(url,init)=>{assert.equal(JSON.parse(init.body).stream,true);return streamResponse('event: content_block_delta\ndata: '+JSON.stringify({type:'content_block_delta',index:0,delta:{type:'text_delta',text:'逐字'}})+'\n\n'+'event: content_block_delta\ndata: '+JSON.stringify({type:'content_block_delta',index:0,delta:{type:'text_delta',text:'输出'}})+'\n\n')};
 streamEvents=await readEvents(await aiAPI(request('/api/ai/chat','POST',{messages:[{role:'user',content:'测试'}],stream:true}),env,principal,{workspaceId:workspace,fetcher:streamedAnthropic}));

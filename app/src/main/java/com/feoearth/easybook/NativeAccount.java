@@ -262,9 +262,13 @@ final class NativeAccount {
                             if(!data.isEmpty()){
                                 JSONObject payload=new JSONObject(data),event=new JSONObject().put("id",id).put("type",type);
                                 if(type.equals("delta"))event.put("text",payload.optString("text"));
+                                else if(type.equals("tool_start")||type.equals("tool_end")){
+                                    event.put("name",payload.optString("name").substring(0,Math.min(80,payload.optString("name").length())));
+                                    if(type.equals("tool_end"))event.put("status",payload.optString("status"));
+                                }
                                 else if(type.equals("done")){event.put("result",payload);done=true;}
                                 else if(type.equals("error")){event.put("error",payload.optString("error","ai_unavailable"));done=true;}
-                                if(type.equals("delta")||type.equals("reset")||done)emit.accept(event);
+                                if(type.equals("delta")||type.equals("reset")||type.equals("tool_start")||type.equals("tool_end")||done)emit.accept(event);
                                 if(done)return;
                             }
                             type="";data="";continue;

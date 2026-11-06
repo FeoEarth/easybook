@@ -191,12 +191,16 @@ export async function aiAPI(request,env,principal,{workspaceId,fetcher=fetch}={}
     await env.DB.prepare('DELETE FROM ai_agent_approvals WHERE expires_at<?').bind(Date.now()-86400000).run();
     const id=crypto.randomUUID(),expiresAt=Date.now()+300000;
     await env.DB.prepare('INSERT INTO ai_agent_approvals(id,account_id,workspace_id,tool_name,tool_args,expires_at) VALUES(?,?,?,?,?,?)').bind(id,principal.accountId,workspaceId,name,serialized,expiresAt).run();
+    emit('tool_start',{name});
+    emit('tool_end',{name,status:'approval'});
     return {message:{role:'assistant',content:'Agent 已准备 '+name+' 操作，正在等待你核对参数并确认。未确认前不会修改工作区。'},tools:used,approval:{id,tool:name,arguments:args,expiresAt}};
    }
    for(const call of calls.slice(0,6)){
     const name=call?.function?.name;let args,result;
+    emit('tool_start',{name:typeof name==='string'?name:'unknown'});
     try{args=JSON.parse(call?.function?.arguments||'{}');result=await callTool({env,workspace:workspaceId,client:'easybook-agent:'+principal.accountId,scopes},name,args)}
     catch(error){result={error:{code:error.code||'TOOL_ERROR',message:error.code?error.message:'Tool failed'}}}
+    emit('tool_end',{name:typeof name==='string'?name:'unknown',status:result?.error?'failed':'done'});
     used.push({name,ok:!result?.error});conversation.push({role:'tool',tool_call_id:call.id,content:JSON.stringify(result).slice(0,180000)});
    }
   }
