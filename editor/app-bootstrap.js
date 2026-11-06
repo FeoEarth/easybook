@@ -6,5 +6,8 @@ window.EasybookSyncPolicy=policy;
 import * as attachments from '../shared/attachments.mjs';
 window.EasybookAttachments=attachments;
 
+import * as localAiProtocol from '../shared/local-ai-protocol.mjs';
+window.EasybookLocalAiProtocol=localAiProtocol;
+
 import {createVideoPlayer,mediaMime} from './video-player.js';
 window.EasybookVideo={create:createVideoPlayer,mime:mediaMime,pauseAll:()=>document.querySelectorAll('video').forEach(v=>v.pause())};
