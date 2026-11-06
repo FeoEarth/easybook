@@ -52,6 +52,9 @@ final class FormatGlassFrame {
     }
     void update(JSONObject args){
         if(!args.optBoolean("visible")){clear();state=null;return;}
+        // The focused search input belongs to the main WebView. Hiding only the
+        // projected controls leaves an opaque glass lens over the keyboard UI.
+        if(dock&&"DockSearch".equals(dockPrefix)&&args.optBoolean("focused")){clear();state=null;return;}
         if(broken||!root.isHardwareAccelerated()||((PowerManager)activity.getSystemService(Activity.POWER_SERVICE)).isPowerSaveMode()){clear();if(valid.getAsBoolean())web.evaluateJavascript("window.easybook"+prefix()+"SurfaceFallback&&window.easybook"+prefix()+"SurfaceFallback()",null);return;}
         boolean newDark=args.optBoolean("dark");
         if(glass!=null&&dark!=newDark)dispose();
@@ -79,7 +82,6 @@ final class FormatGlassFrame {
             }catch(Exception|LinkageError error){fail();return;}
         }
         if(!attached){attached=true;glass.setVisibility(View.INVISIBLE);if(move||sync){moveShield=new FrameLayout(activity);moveShield.setClickable(true);moveShield.setOnClickListener(v->{if(valid.getAsBoolean())web.evaluateJavascript(sync?"window.easybookSyncSurfaceClose&&window.easybookSyncSurfaceClose()":"document.getElementById('moveCancel').click()",null);});root.addView(moveShield,new FrameLayout.LayoutParams(-1,-1));}root.addView(glass,new FrameLayout.LayoutParams(1,1));}
-        if(dock&&"DockSearch".equals(dockPrefix)&&controls!=null){boolean focused=args.optBoolean("focused");controls.setVisibility(focused?View.INVISIBLE:View.VISIBLE);controls.setImportantForAccessibility(focused?View.IMPORTANT_FOR_ACCESSIBILITY_NO_HIDE_DESCENDANTS:View.IMPORTANT_FOR_ACCESSIBILITY_AUTO);}
         applyGeometry();if(loaded)render(args.has("content"));changed.run();
     }
     private void applyGeometry(){

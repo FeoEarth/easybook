@@ -98,7 +98,7 @@ jobs:
       - name: On-device AI tool safety protocol
         run: node scripts/local-ai-protocol-test.mjs
       - name: Focused folder navigation regression
-        run: node scripts/folder-navigation-test.mjs
+        run: node scripts/folder-navigation-test.mjs && node scripts/native-dock-focus-test.mjs
       - name: Attachment protocol static checks
         run: node --check shared/attachments.mjs && node --check worker/attachments.mjs && node --check app/src/main/assets/pdf/reader.mjs && node --check app/src/main/assets/pdf/glass.mjs
       - name: Build editor and focused table integrity
