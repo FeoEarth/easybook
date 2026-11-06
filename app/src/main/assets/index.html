@@ -656,7 +656,7 @@ body.keyboard .ai-hub-welcome{display:none}body.keyboard .ai-hub>.ai-messages{pa
 <section id="aiSettings" class="sync-page ai-page" aria-labelledby="aiPageTitle" hidden>
 <nav class="sync-nav ui-nav"><button id="aiBack" class="sync-back"><svg aria-hidden="true"><use href="#i-back"/></svg><span>设置</span></button></nav>
 <div class="sync-content"><h1 id="aiPageTitle" tabindex="-1">AI 模型与 BYOK</h1>
-<div id="aiLocalSection" hidden><div class="settings-label">设备端 AI · 可选下载</div><div class="settings-group" id="aiLocalModels"><p class="ai-note">正在检测设备与本地模型…</p></div><p id="aiLocalNote" role="status">模型仅在你主动选择后下载；安装后不需要账户、API Key 或联网。移动网络默认不下载。</p></div>
+<div id="aiLocalSection" hidden><div class="settings-label">设备端 AI · 可选下载</div><div class="settings-group" id="aiLocalModels"><p class="ai-note">正在检测设备与本地模型…</p></div><p id="aiLocalNote" role="status">支持 Wi-Fi 和蜂窝网络主动下载；使用蜂窝网络可能产生流量费用，漫游下载仍受限制。</p></div>
 <div id="aiSetup"><div class="settings-label">提供商配置</div><form id="aiConfigForm">
 <div class="settings-group ai-fields">
 <label class="settings-row"><span class="row-text"><strong>已保存的 API 密钥</strong><select id="aiProfile" class="ai-input"><option value="">新建配置</option></select></span><button type="button" id="aiNew">新增</button></label>
@@ -1131,37 +1131,39 @@ function renderAiLocal(){
  const {models=[],available=false,ramBytes=0,freeBytes=0,errors={},runtime={}}=aiLocalStatus;
  const gib=bytes=>(bytes/1073741824).toFixed(1)+' GB';
  const runtimeProgress=runtime.totalBytes>0?Math.min(100,Math.round((runtime.bytes||0)/runtime.totalBytes*100)):0;
- const runtimeIndicator=runtime.installed?'已安装':runtime.state==='downloading'?'下载中 '+(runtime.totalBytes>0?runtimeProgress+'%':'…'):runtime.state==='verifying'?'正在校验 SHA-256':runtime.state==='failed'?'安装失败':'未安装';
+ const runtimeIndicator=runtime.installed?'已安装':runtime.state==='downloading'?'下载中 '+(runtime.totalBytes>0?runtimeProgress+'%':'…'):runtime.state==='verifying'?'正在校验 SHA-256':runtime.state==='wifiOnly'?'等待 Wi-Fi':'failed'===runtime.state?'安装失败':'未安装';
  const runtimeCard='<div class="ai-local-card"><div class="ai-local-card-header"><strong>本地 AI 运行组件</strong><small>'+runtimeIndicator+'</small></div>'+
   '<small>'+esc(runtime.version||'LiteRT-LM')+' · ARM64 · 约 21 MB · 首次使用时安装</small>'+
   (runtime.state==='downloading'?'<progress class="ai-local-progress" max="100" value="'+runtimeProgress+'"></progress>':'')+
-  '<div class="ai-local-card-actions">'+(runtime.installed?'<button data-runtime-action="delete">卸载组件</button>':runtime.state==='downloading'?'<button data-runtime-action="cancel">取消下载</button>':runtime.state==='verifying'?'':'<button data-runtime-action="install" '+(!runtime.supported?'disabled':'')+'>安装运行组件</button>')+'</div>'+
+  '<div class="ai-local-card-actions">'+(runtime.installed?'<button data-runtime-action="delete">卸载组件</button>':runtime.state==='downloading'?'<button data-runtime-action="cancel">取消下载</button>':runtime.state==='verifying'?'':'<button data-runtime-action="install" '+(!runtime.supported?'disabled':'')+'>'+(runtime.state==='wifiOnly'?'改用当前网络下载':'安装运行组件')+'</button>')+'</div>'+
   (runtime.error?'<small>'+esc(runtime.error)+'</small>':'')+(runtime.restartRequired?'<small>请重启应用以完全卸载运行组件</small>':'')+'</div>';
  $('aiLocalModels').innerHTML=runtimeCard+models.map(model=>{
   const state=model.state,installed=state==='installed',downloading=state==='downloading',verifying=state==='verifying';
   const progress=model.totalBytes>0?Math.min(100,Math.round((model.bytes||0)/model.totalBytes*100)):0;
-  const indicator=installed?'已安装':downloading?'下载中 '+(model.totalBytes>0?progress+'%':'…'):verifying?'正在校验 SHA-256':state==='failed'?'下载失败':'未安装';
+  const indicator=installed?'已安装':downloading?'下载中 '+(model.totalBytes>0?progress+'%':'…'):verifying?'正在校验 SHA-256':state==='wifiOnly'?'等待 Wi-Fi':state==='failed'?'下载失败':'未安装';
   return '<div class="ai-local-card"><div class="ai-local-card-header"><strong>'+esc(model.title)+'</strong><small>'+indicator+'</small></div><small>'+esc(model.description)+(ramBytes<model.recommendedRam?' · 此设备内存可能不足':'')+'</small>'+
     (downloading?'<progress class="ai-local-progress" max="100" value="'+progress+'"></progress>':'')+
-    '<div class="ai-local-card-actions">'+(installed?'<button data-local-action="delete" data-local-model="'+model.id+'">删除模型</button>':downloading?'<button data-local-action="cancel" data-local-model="'+model.id+'">取消下载</button>':verifying?'':'<button data-local-action="install" data-local-model="'+model.id+'" '+(!available?'disabled':'')+'>下载模型</button>')+'</div>'+
+    '<div class="ai-local-card-actions">'+(installed?'<button data-local-action="delete" data-local-model="'+model.id+'">删除模型</button>':downloading?'<button data-local-action="cancel" data-local-model="'+model.id+'">取消下载</button>':verifying?'':'<button data-local-action="install" data-local-model="'+model.id+'" '+(!available?'disabled':'')+'>'+(state==='wifiOnly'?'改用当前网络下载':'下载模型')+'</button>')+'</div>'+
     (errors[model.id]?'<small>'+esc(errors[model.id])+'</small>':'')+'</div>';
  }).join('');
- $('aiLocalNote').textContent=available?'设备内存 '+gib(ramBytes)+' · 模型存储可用 '+gib(freeBytes)+'。运行组件与模型分别按需下载（默认仅 WLAN），安装后离线推理；不影响 BYOK。':'当前设备不支持本地模型推理（需要 Android ARM64 及可用模型存储）。';
+ $('aiLocalNote').textContent=available?'设备内存 '+gib(ramBytes)+' · 模型存储可用 '+gib(freeBytes)+'。'+(aiLocalStatus.cellularDownloads?'运行组件与模型支持 Wi-Fi 和蜂窝网络主动下载；计费网络需确认，漫游下载仍受限制。':'当前 APK 仅支持 Wi-Fi 下载本地 AI；请更新 Android App 以使用蜂窝网络。')+' 安装后离线运行，不影响 BYOK。':'当前设备不支持本地模型推理（需要 Android ARM64 及可用模型存储）。';
 }
+const aiDownloadSize=bytes=>bytes>=1073741824?(bytes/1073741824).toFixed(2)+' GB':Math.ceil(bytes/1048576)+' MB';
 $('aiLocalModels').onclick=async event=>{
  const runtimeButton=event.target.closest('[data-runtime-action]');
  if(runtimeButton){
   const action=runtimeButton.dataset.runtimeAction;
   const execute=async()=>{runtimeButton.disabled=true;try{await native.call('ai.local.runtime.'+action);await refreshAiLocal();if(action==='delete')toast('运行组件已移除；重启应用后完全卸载')}catch(error){toast(error.message);runtimeButton.disabled=false}};
   if(action==='delete')return confirmAction('卸载本地 AI 运行组件？','模型文件和 BYOK 配置均会保留。重新使用端侧 AI 时需要再次下载运行组件。',execute);
+  if(action==='install'&&aiLocalStatus?.meteredNetwork)return confirmAction('使用蜂窝网络下载运行组件？','预计下载 '+aiDownloadSize(aiLocalStatus.runtime?.estimatedBytes||22155680)+'，可能产生移动数据费用。继续下载？',execute);
   return execute();
  }
  const button=event.target.closest('[data-local-action]');if(!button)return;
  const model=button.dataset.localModel,action=button.dataset.localAction;
  if(action==='delete')return confirmAction('删除本地 AI 模型？','只释放设备上的模型文件，不影响任何笔记、会话或 API 配置。',async()=>{try{await native.call('ai.local.delete',{model});await refreshAiLocal();toast('模型已删除')}catch(error){toast(error.message)}});
- button.disabled=true;
- try{await native.call(action==='cancel'?'ai.local.download.cancel':'ai.local.install',{model});await refreshAiLocal()}
- catch(error){toast(error.message);button.disabled=false}
+ const execute=async()=>{button.disabled=true;try{await native.call(action==='cancel'?'ai.local.download.cancel':'ai.local.install',{model});await refreshAiLocal()}catch(error){toast(error.message);button.disabled=false}};
+ if(action==='install'&&aiLocalStatus?.meteredNetwork){const item=aiLocalStatus.models?.find(item=>item.id===model);return confirmAction('使用蜂窝网络下载模型？','「'+(item?.title||'本地模型')+'」预计下载 '+aiDownloadSize(item?.estimatedBytes||0)+'，可能产生较多移动数据费用。继续下载？',execute)}
+ return execute();
 };
 setInterval(()=>{if(tab==='ai'&&(['downloading','verifying'].includes(aiLocalStatus?.runtime?.state)||aiLocalStatus?.models?.some(model=>['downloading','verifying'].includes(model.state))))void refreshAiLocal()},2500);
 const aiErrorMessage=code=>({account_required:'请先登录 Easybook 账户',reauthentication_required:'请先重新验证身份，再更新密钥',credential_vault_unavailable:'AI 凭据保险库尚未配置',credential_unavailable:'无法解密已保存的密钥，请重新保存',invalid_provider:'请完整填写自定义提供商信息',invalid_provider_url:'Base URL 必须是公开的 HTTPS 地址',provider_key_rejected:'API 密钥被提供商拒绝',provider_error:'AI 提供商暂时不可用',model_discovery_failed:'无法从提供商获取模型列表',ai_not_configured:'请先保存 BYOK 密钥',workspace_access_denied:'当前账户无权访问此工作区',workspace_required:'请先选择账户中的工作区',agent_turn_limit:'Agent 工具调用次数已达上限'}[code]||code||'AI 请求失败');
