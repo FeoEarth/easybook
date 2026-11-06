@@ -222,7 +222,7 @@ body[data-page=mcp] .app{padding-bottom:max(32px,env(safe-area-inset-bottom))}
 body[data-page=ai] .topbar,body[data-page=ai] .dock-wrap{display:none}body[data-page=ai] .app{padding-bottom:max(24px,env(safe-area-inset-bottom))}
 #aiSettings{padding:0;--sync-tint:var(--accent)}#aiSettings .sync-nav{padding-inline:max(12px,env(safe-area-inset-left));margin:0}
 #aiSettings .sync-content{padding:0 max(20px,env(safe-area-inset-right)) max(28px,env(safe-area-inset-bottom)) max(20px,env(safe-area-inset-left));max-width:680px}
-#aiSettings h1{margin:8px 0 24px;font-size:clamp(28px,8.5vw,34px);line-height:1.18;letter-spacing:-1px;white-space:nowrap}
+#aiSettings h1{margin:8px 0 24px;font-size:clamp(28px,8.5vw,34px);line-height:1.18;letter-spacing:-1px;overflow-wrap:anywhere}
 #aiSettings .settings-label{font-size:13px;margin:25px 16px 8px;padding:0;letter-spacing:.1px}
 #aiSettings .settings-group{padding:0 16px;margin:0 0 18px;border-radius:var(--radius-group);background:var(--paper);overflow:hidden}
 #aiSettings .settings-row{position:relative;align-items:center;gap:12px;min-height:68px;padding:11px 0;border:0}
@@ -580,7 +580,7 @@ body.keyboard .ai-hub-welcome{display:none}body.keyboard .ai-hub>.ai-messages{pa
 @keyframes ai-listening{from{opacity:.7}to{opacity:1}}
 @media(max-width:370px){.ai-hub-composer .ai-compose{gap:1px}.ai-hub-composer .ai-hub-attach,.ai-hub-composer .ai-hub-voice{width:34px;padding:6px}.ai-hub-composer textarea{font-size:14px}}
 @media(prefers-reduced-motion:reduce){.ai-hub-composer .ai-hub-voice[aria-pressed=true]{animation:none}}
-.ai-local-card{padding:14px 16px;display:grid;gap:9px;border-bottom:1px solid var(--separator,rgba(128,128,128,.14))}.ai-local-card:last-child{border-bottom:0}.ai-local-card-header{display:flex;align-items:center;justify-content:space-between;gap:12px}.ai-local-card strong{font-size:15px}.ai-local-card small{font-size:12px;color:var(--secondary,#888)}.ai-local-card-actions{display:flex;gap:8px;flex-wrap:wrap}.ai-local-card-actions button,.ai-local-manage{border:0;border-radius:12px;padding:8px 14px;background:var(--glass-fill,rgba(128,128,128,.13));color:inherit;font-weight:600}.ai-local-card-actions button:disabled{opacity:.45}.ai-local-progress{width:100%;height:4px;accent-color:var(--accent,#d7a23e)}#aiLocalNote{padding:8px 14px;font-size:12px;line-height:1.5;color:var(--secondary,#888)}.ai-local-manage{display:block;width:100%;text-align:left;margin-top:10px}
+.ai-local-card{padding:16px 0;display:grid;gap:10px;min-width:0;border-bottom:1px solid var(--line)}.ai-local-card:last-child{border-bottom:0}.ai-local-card-header{display:flex;align-items:flex-start;justify-content:space-between;gap:10px;min-width:0}.ai-local-card-header strong{flex:1;min-width:0;font-size:15px;line-height:1.4;font-weight:600;overflow-wrap:anywhere}.ai-local-card small{font-size:12px;line-height:1.5;color:var(--muted);overflow-wrap:anywhere}.ai-local-state{flex:none;max-width:46%;padding:4px 9px;border-radius:999px;background:var(--control-fill);color:var(--muted);font-size:11px;line-height:1.4;text-align:center;overflow-wrap:anywhere}.ai-local-state[data-state=installed]{color:var(--green)}.ai-local-state[data-state=failed]{color:var(--danger)}.ai-local-state[data-state=downloading],.ai-local-state[data-state=verifying]{color:var(--accent)}.ai-local-transfer{display:flex;justify-content:space-between;gap:8px;flex-wrap:wrap;font-variant-numeric:tabular-nums}.ai-local-transfer small:last-child{margin-left:auto}.ai-local-card-actions{display:flex;gap:8px;flex-wrap:wrap}.ai-local-card-actions button,.ai-local-manage{min-height:44px;border:0;border-radius:13px;padding:10px 14px;background:var(--control-fill);color:var(--ink);font-size:14px;font-weight:600}.ai-local-card-actions button[data-local-action=install],.ai-local-card-actions button[data-runtime-action=install]{background:var(--accent);color:white}.ai-local-card-actions button[data-local-action=delete],.ai-local-card-actions button[data-runtime-action=delete]{color:var(--danger)}.ai-local-card-actions button:disabled{opacity:.45}.ai-local-card-actions button:focus-visible,.ai-local-manage:focus-visible{outline:2px solid var(--accent);outline-offset:2px}.ai-local-progress{display:block;width:100%;height:5px;border:0;border-radius:99px;overflow:hidden;accent-color:var(--accent)}.ai-local-warning{color:var(--danger)!important}#aiLocalNote{padding:0 14px 12px;font-size:12px;line-height:1.6;color:var(--muted)}.ai-local-manage{display:block;width:100%;text-align:left;margin-top:10px}@media(max-width:380px){.ai-local-card-header{flex-wrap:wrap}.ai-local-state{max-width:100%}.ai-local-card-actions button{flex:1;min-width:120px}}
 </style></head><body>
 <svg xmlns="http://www.w3.org/2000/svg" style="position:absolute;width:0;height:0;overflow:hidden" aria-hidden="true"><defs>
 <symbol id="i-spark" viewBox="0 0 24 24"><path d="M12 2c.8 5.3 3.7 8.2 9 9-5.3.8-8.2 3.7-9 9-.8-5.3-3.7-8.2-9-9 5.3-.8 8.2-3.7 9-9Z"/><path d="M19 2c.2 1.8 1.2 2.8 3 3-1.8.2-2.8 1.2-3 3-.2-1.8-1.2-2.8-3-3 1.8-.2 2.8-1.2 3-3Z"/></symbol>
@@ -1130,25 +1130,33 @@ function renderAiLocal(){
  if(!aiLocalStatus)return;
  const {models=[],available=false,ramBytes=0,freeBytes=0,errors={},runtime={}}=aiLocalStatus;
  const gib=bytes=>(bytes/1073741824).toFixed(1)+' GB';
- const runtimeProgress=runtime.totalBytes>0?Math.min(100,Math.round((runtime.bytes||0)/runtime.totalBytes*100)):0;
- const runtimeIndicator=runtime.installed?'已安装':runtime.state==='downloading'?'下载中 '+(runtime.totalBytes>0?runtimeProgress+'%':'…'):runtime.state==='verifying'?'正在校验 SHA-256':runtime.state==='wifiOnly'?'等待 Wi-Fi':'failed'===runtime.state?'安装失败':'未安装';
- const runtimeCard='<div class="ai-local-card"><div class="ai-local-card-header"><strong>本地 AI 运行组件</strong><small>'+runtimeIndicator+'</small></div>'+
-  '<small>'+esc(runtime.version||'LiteRT-LM')+' · ARM64 · 约 21 MB · 首次使用时安装</small>'+
-  (runtime.state==='downloading'?'<progress class="ai-local-progress" max="100" value="'+runtimeProgress+'"></progress>':'')+
-  '<div class="ai-local-card-actions">'+(runtime.installed?'<button data-runtime-action="delete">卸载组件</button>':runtime.state==='downloading'?'<button data-runtime-action="cancel">取消下载</button>':runtime.state==='verifying'?'':'<button data-runtime-action="install" '+(!runtime.supported?'disabled':'')+'>'+(runtime.state==='wifiOnly'?'改用当前网络下载':'安装运行组件')+'</button>')+'</div>'+
-  (runtime.error?'<small>'+esc(runtime.error)+'</small>':'')+(runtime.restartRequired?'<small>请重启应用以完全卸载运行组件</small>':'')+'</div>';
+ const stateText=(state,installed)=>installed?'已安装':({downloading:'下载中',verifying:'校验中',wifiOnly:'等待 Wi-Fi',failed:'下载失败',missing:'未安装'})[state]||'未安装';
+ const badge=(state,label)=>'<span class="ai-local-state" data-state="'+esc(state||'missing')+'">'+esc(label)+'</span>';
+ const progress=item=>{
+  if(item.state!=='downloading')return '';
+  const bytes=Math.max(0,item.bytes||0),total=item.totalBytes>0?item.totalBytes:item.estimatedBytes||0;
+  const percent=total>0?Math.min(100,Math.round(bytes/total*100)):0;
+  return '<div class="ai-local-transfer"><small>'+aiDownloadSize(bytes)+' / '+(total>0?aiDownloadSize(total):'计算中')+'</small><small>'+(item.totalBytes>0?percent+'%':'正在获取文件大小')+'</small></div>'+
+   (item.totalBytes>0?'<progress class="ai-local-progress" max="100" value="'+percent+'" aria-label="下载进度 '+percent+'%"></progress>':'<progress class="ai-local-progress" aria-label="正在下载"></progress>');
+ };
+ const failureReason=item=>item.state==='failed'&&item.reason?({1006:'设备存储空间不足',1007:'下载目录不可用',1008:'下载中断，无法续传',1009:'目标文件已存在'})[item.reason]||('下载服务错误代码：'+item.reason):'';
+ const runtimeState=runtime.installed?'installed':runtime.state;
+ const runtimeCard='<div class="ai-local-card"><div class="ai-local-card-header"><strong>本地 AI 运行组件</strong>'+badge(runtimeState,runtime.supported===false?'设备不兼容':stateText(runtimeState,runtime.installed))+'</div>'+
+  '<small>'+esc(runtime.version||'LiteRT-LM')+' · ARM64 · '+aiDownloadSize(runtime.estimatedBytes||22155680)+' · 首次使用时安装</small>'+
+  progress(runtime)+
+  '<div class="ai-local-card-actions">'+(runtime.installed?'<button data-runtime-action="delete">卸载组件</button>':runtime.state==='downloading'?'<button data-runtime-action="cancel">取消下载</button>':runtime.state==='verifying'?'':'<button data-runtime-action="install" '+(!runtime.supported?'disabled':'')+'>'+(runtime.state==='wifiOnly'?'改用当前网络下载':runtime.state==='failed'?'重试安装':'安装运行组件')+'</button>')+'</div>'+
+  (runtime.error?'<small class="ai-local-warning" role="status">'+esc(runtime.error)+'</small>':'')+(runtime.restartRequired?'<small>请重启应用以完全卸载运行组件</small>':'')+'</div>';
  $('aiLocalModels').innerHTML=runtimeCard+models.map(model=>{
   const state=model.state,installed=state==='installed',downloading=state==='downloading',verifying=state==='verifying';
-  const progress=model.totalBytes>0?Math.min(100,Math.round((model.bytes||0)/model.totalBytes*100)):0;
-  const indicator=installed?'已安装':downloading?'下载中 '+(model.totalBytes>0?progress+'%':'…'):verifying?'正在校验 SHA-256':state==='wifiOnly'?'等待 Wi-Fi':state==='failed'?'下载失败':'未安装';
-  return '<div class="ai-local-card"><div class="ai-local-card-header"><strong>'+esc(model.title)+'</strong><small>'+indicator+'</small></div><small>'+esc(model.description)+(ramBytes<model.recommendedRam?' · 此设备内存可能不足':'')+'</small>'+
-    (downloading?'<progress class="ai-local-progress" max="100" value="'+progress+'"></progress>':'')+
-    '<div class="ai-local-card-actions">'+(installed?'<button data-local-action="delete" data-local-model="'+model.id+'">删除模型</button>':downloading?'<button data-local-action="cancel" data-local-model="'+model.id+'">取消下载</button>':verifying?'':'<button data-local-action="install" data-local-model="'+model.id+'" '+(!available?'disabled':'')+'>'+(state==='wifiOnly'?'改用当前网络下载':'下载模型')+'</button>')+'</div>'+
-    (errors[model.id]?'<small>'+esc(errors[model.id])+'</small>':'')+'</div>';
+  const modelId=esc(model.id);
+  return '<div class="ai-local-card"><div class="ai-local-card-header"><strong>'+esc(model.title)+'</strong>'+badge(state,stateText(state,installed))+'</div><small>'+esc(model.description)+(ramBytes<model.recommendedRam?' · 当前设备内存低于推荐值':'')+'</small>'+
+    progress(model)+
+    '<div class="ai-local-card-actions">'+(installed?'<button data-local-action="delete" data-local-model="'+modelId+'">删除模型</button>':downloading?'<button data-local-action="cancel" data-local-model="'+modelId+'">取消下载</button>':verifying?'':'<button data-local-action="install" data-local-model="'+modelId+'" '+(!available?'disabled':'')+'>'+(state==='wifiOnly'?'改用当前网络下载':state==='failed'?'重试下载':'下载模型 · '+aiDownloadSize(model.estimatedBytes||0))+'</button>')+'</div>'+
+    ((errors[model.id]||failureReason(model))?'<small class="ai-local-warning" role="status">'+esc(errors[model.id]||failureReason(model))+'</small>':'')+'</div>';
  }).join('');
  $('aiLocalNote').textContent=available?'设备内存 '+gib(ramBytes)+' · 模型存储可用 '+gib(freeBytes)+'。'+(aiLocalStatus.cellularDownloads?'运行组件与模型支持 Wi-Fi 和蜂窝网络主动下载；计费网络需确认，漫游下载仍受限制。':'当前 APK 仅支持 Wi-Fi 下载本地 AI；请更新 Android App 以使用蜂窝网络。')+' 安装后离线运行，不影响 BYOK。':'当前设备不支持本地模型推理（需要 Android ARM64 及可用模型存储）。';
 }
-const aiDownloadSize=bytes=>bytes>=1073741824?(bytes/1073741824).toFixed(2)+' GB':Math.ceil(bytes/1048576)+' MB';
+const aiDownloadSize=bytes=>bytes>=1073741824?(bytes/1073741824).toFixed(2)+' GB':bytes>=1048576?(bytes/1048576).toFixed(1)+' MB':bytes>0?Math.ceil(bytes/1024)+' KB':'0 MB';
 $('aiLocalModels').onclick=async event=>{
  const runtimeButton=event.target.closest('[data-runtime-action]');
  if(runtimeButton){
