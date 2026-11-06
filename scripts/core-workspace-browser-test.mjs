@@ -21,7 +21,11 @@ try{
  const c1=await context(),p1=await ready(c1);assert.equal(await p1.locator('#folders').isVisible(),true,'tablet home keeps the folder sidebar visible');assert.equal(await p1.locator('#home').isVisible(),true,'tablet home keeps the notes visible');const k=await readKey(p1);assert.equal(await p1.evaluate(()=>localStorage.getItem('easybook-key')),null,'no plaintext active credential');await leaveSettings(p1);await p1.locator('[data-tab=all]').click();await p1.waitForTimeout(800);
  await p1.getByRole('button',{name:'新建笔记',exact:true}).click();await p1.locator('#title').fill('匿名跨设备验收');await p1.locator('#title').dispatchEvent('input');
  await p1.locator('#attachmentButton').click();await p1.locator('[data-content-action=media]').click();await p1.locator('#mediaFile').setInputFiles({name:'acceptance.png',mimeType:'image/png',buffer:Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jA1cAAAAASUVORK5CYII=','base64')});await p1.locator('[data-type=image] img').waitFor();await p1.waitForTimeout(800);await p1.evaluate(()=>window.persistNow());
- await p1.locator('#back').click();await settings(p1,'sync');await p1.locator('#activityEntry').click();await p1.locator('#syncNow').click();await p1.waitForTimeout(2000);
+ // On tablet the editor back button is intentionally hidden; use the visible
+ // sidebar navigation instead of clicking a mobile-only control.
+ if(await p1.locator('#back').isVisible())await p1.locator('#back').click();
+ else await p1.locator('#folders [data-tab=all]').click();
+ await settings(p1,'sync');await p1.locator('#activityEntry').click();await p1.locator('#syncNow').click();await p1.waitForTimeout(2000);
  const c2=await context();await c2.addInitScript(value=>localStorage.setItem('easybook-key',value),k);const p2=await ready(c2);await p2.getByText('匿名跨设备验收',{exact:true}).waitFor({timeout:20000});await p2.getByText('匿名跨设备验收',{exact:true}).click();await p2.waitForFunction(()=>document.querySelector('[data-type=image] img')?.src.startsWith('blob:'));assert.ok(objects.size>=2,'real chunk and manifest uploaded');
  // Signed-out users can switch among personal workspaces stored on this device.
  await settings(p1);await p1.locator('#workspaceCreate').click();
