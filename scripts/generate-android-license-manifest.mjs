@@ -112,7 +112,8 @@ for(const artifact of resolved.values()){
     license_url:termsUrl,source_pom:sourceUrl(artifact),
     license_file:sdk?null:'third_party/pdfjs/LICENSE',
     note:sdk?'Proprietary Google Android SDK terms (not an OSI-approved open-source license).':
-      guavaPlaceholder?'Google Guava listenablefuture 1.0 empty compatibility artifact; POM omits license metadata. Apache-2.0 per upstream Guava.':''});
+      guavaPlaceholder?'Google Guava listenablefuture 1.0 empty compatibility artifact; POM omits license metadata. Apache-2.0 per upstream Guava.':
+      id==='com.google.ai.edge.litertlm:litertlm-android:0.18.0'?'LiteRT-LM Java API is included in the APK; liblitertlm_jni.so is excluded from the base APK. The optional ARM64 native runtime is distributed separately as Easybook-LiteRT-LM-arm64-v8a.so, extracted unchanged from litertlm-android-0.18.0.aar at jni/arm64-v8a/liblitertlm_jni.so (SHA-256: 4a94a3f955ad7c58cbcdfc5cb4ff566187bb9e8c5bc2c4056b4e226646c7e8fd). Model weights are separate downloads with their own license terms.':''});
 }
 const rows=[...seen.values()].sort((a,b)=>a.name.localeCompare(b.name)||a.version.localeCompare(b.version));
 const result=JSON.stringify({generated_from:'Gradle :app:releaseRuntimeClasspath',modules:rows},null,2)+'\n';

@@ -395,7 +395,7 @@
       "license_url": "https://www.apache.org/licenses/LICENSE-2.0",
       "source_pom": "https://dl.google.com/dl/android/maven2/com/google/ai/edge/litertlm/litertlm-android/0.18.0/litertlm-android-0.18.0.pom",
       "license_file": "third_party/pdfjs/LICENSE",
-      "note": "LiteRT-LM on-device model inference runtime; the optional model weights are downloaded separately."
+      "note": "LiteRT-LM Java API is included in the APK; liblitertlm_jni.so is excluded from the base APK. The optional ARM64 native runtime is distributed separately as Easybook-LiteRT-LM-arm64-v8a.so, extracted unchanged from litertlm-android-0.18.0.aar at jni/arm64-v8a/liblitertlm_jni.so (SHA-256: 4a94a3f955ad7c58cbcdfc5cb4ff566187bb9e8c5bc2c4056b4e226646c7e8fd). Model weights are separate downloads with their own license terms."
     },
     {
       "name": "com.google.android.gms:play-services-auth",

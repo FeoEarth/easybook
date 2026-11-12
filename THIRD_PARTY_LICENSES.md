@@ -2,16 +2,17 @@
 
 > **Generated file / 自动生成文件。** Run `npm ci --omit=dev --ignore-scripts` in both the repository root and `mcp-oauth/`, then run `node scripts/generate-third-party-licenses.mjs`. Do not hand-edit this file.
 
-This inventory covers the locked production npm graphs for the Web editor/PDF build and OAuth Worker, the QWEA0 port, PDF.js embedded font/CMap/decoder assets, and the **resolved Android release runtime dependency graph** (including transitive AAR/JAR artifacts). SPDX entries describe each **third-party component**; Easybook itself remains AGPL-3.0-only. Identical full open-source license texts are printed once and referenced by SHA-256.
+This inventory covers the locked production npm graphs for the Web editor/PDF build and OAuth Worker, the separately vendored OAuth QR encoder, the QWEA0 port, PDF.js embedded font/CMap/decoder assets, and the **resolved Android release runtime dependency graph** (including transitive AAR/JAR artifacts). SPDX entries describe each **third-party component**; Easybook itself remains AGPL-3.0-only. Identical full open-source license texts are printed once and referenced by SHA-256.
 
 **Coverage boundary:** development/test and platform-specific optional npm packages are excluded; esbuild is listed but marked build-only. The Android `releaseRuntimeClasspath` is resolved by Gradle, but final APK byte-for-byte contents are not yet audited. Proprietary Google Play Services modules are **not open-source**: their Maven POMs point to the Android SDK License terms, which are linked rather than reproduced as an open-source license text. The Liberation font uses its own GPL-2.0-based agreement with exceptions, identified with a local `LicenseRef` rather than inaccurately described as Apache-2.0.
 
-Entries: 151 (56 npm main, 27 npm OAuth, 9 embedded PDF resources, 58 resolved Android runtime modules, one native glass port).
+Entries: 152 (56 npm main, 27 npm OAuth, 1 vendored OAuth component, 9 embedded PDF resources, 58 resolved Android runtime modules, one native glass port).
 
 ## Audit inputs / 审计输入
 
 - `package-lock.json`: Web editor, Worker-shared code and PDF build production dependency graph.
 - `mcp-oauth/package-lock.json`: OAuth Worker production dependency graph.
+- `mcp-oauth/src/vendor/NOTICE.md`, `qrcode-generator.mjs` and `qrcode-generator.LICENSE`: source-pinned OAuth QR encoder, ESM adaptation and complete MIT text.
 - `third_party/android/runtime-dependencies.json`: exact Gradle `releaseRuntimeClasspath` snapshot.
 - `node_modules/pdfjs-dist/{cmaps,standard_fonts,wasm}`: embedded PDF resource license set, checked against an explicit allowlist.
 - `third_party/qwea0-liquid-glass/`: pinned native shader attribution and MIT text.
@@ -111,6 +112,7 @@ Entries: 151 (56 npm main, 27 npm OAuth, 9 embedded PDF resources, 58 resolved A
 | asn1js | 3.1.0 | OAuth Worker | `BSD-3-Clause` | Copyright (c) 2014, GMO GlobalSign | [ebe5d98519](#license-text-ebe5d98519d0dfcb) |
 | pvtsutils | 1.3.6 | OAuth Worker | `MIT` | Copyright (c) 2017-2024 Peculiar Ventures, LLC | [c620c1d08a](#license-text-c620c1d08a47c93c) |
 | pvutils | 1.2.0 | OAuth Worker | `MIT` | Copyright (c) 2016-2019, Peculiar Ventures | [15c88630f1](#license-text-15c88630f1e778db) |
+| qrcode-generator (vendored) | source-ea91d7118a53 | OAuth Worker | `MIT` | Copyright (c) 2009 Kazuhiko Arase | [3a850fa5f0](#license-text-3a850fa5f08101db) |
 | reflect-metadata | 0.2.2 | OAuth Worker | `Apache-2.0` | Ron Buckton · http://github.com/rbuckton | [a5e9f9b157](#license-text-a5e9f9b1575301c7) |
 | tslib | 1.14.1 | OAuth Worker | `0BSD` | Copyright (c) Microsoft Corporation. | [5989359645](#license-text-5989359645911c04) |
 | tslib | 2.8.1 | OAuth Worker | `0BSD` | Copyright (c) Microsoft Corporation. | [5989359645](#license-text-5989359645911c04) |
@@ -176,7 +178,7 @@ Entries: 151 (56 npm main, 27 npm OAuth, 9 embedded PDF resources, 58 resolved A
 
 - **QWEA0/Liquid-Glass-Android (ported shader)@16afe4d8b5d08a370d3f8c50b08d7f5c6eb5da4d**: Java/AGSL port; the separate MIT license is also packaged at native-glass/LICENSE.txt.
 - **pdfjs-dist/standard_fonts/LICENSE_LIBERATION@6.4.299**: Custom GPL-2.0-based font agreement with additional exceptions; see original text.
-- **com.google.ai.edge.litertlm:litertlm-android@0.18.0**: LiteRT-LM on-device model inference runtime; the optional model weights are downloaded separately.
+- **com.google.ai.edge.litertlm:litertlm-android@0.18.0**: LiteRT-LM Java API is included in the APK; liblitertlm_jni.so is excluded from the base APK. The optional ARM64 native runtime is distributed separately as Easybook-LiteRT-LM-arm64-v8a.so, extracted unchanged from litertlm-android-0.18.0.aar at jni/arm64-v8a/liblitertlm_jni.so (SHA-256: 4a94a3f955ad7c58cbcdfc5cb4ff566187bb9e8c5bc2c4056b4e226646c7e8fd). Model weights are separate downloads with their own license terms.
 - **com.google.android.gms:play-services-auth@21.1.1**: Proprietary Google Android SDK terms (not an OSI-approved open-source license).
 - **com.google.android.gms:play-services-auth-api-phone@18.0.2**: Proprietary Google Android SDK terms (not an OSI-approved open-source license).
 - **com.google.android.gms:play-services-auth-base@18.0.10**: Proprietary Google Android SDK terms (not an OSI-approved open-source license).
@@ -188,6 +190,7 @@ Entries: 151 (56 npm main, 27 npm OAuth, 9 embedded PDF resources, 58 resolved A
 - **com.google.android.gms:play-services-tasks@18.2.0**: Proprietary Google Android SDK terms (not an OSI-approved open-source license).
 - **com.google.android.libraries.identity.googleid:googleid@1.1.0**: Proprietary Google Android SDK terms (not an OSI-approved open-source license).
 - **com.google.guava:listenablefuture@1.0**: Google Guava listenablefuture 1.0 empty compatibility artifact; POM omits license metadata. Apache-2.0 per upstream Guava.
+- **qrcode-generator (vendored)@source-ea91d7118a53**: ESM adaptation used by QR sign-in. The retained upstream source does not state a release version; the version column is a source fingerprint. Source: mcp-oauth/src/vendor/qrcode-generator.mjs; SHA-256: ea91d7118a5395289170da848b7c6758b996163bfbccf312591ab65a4911b7c0. See mcp-oauth/src/vendor/NOTICE.md.
 - **esbuild@0.28.2**: Build tool; not embedded in the application runtime.
 
 Source coordinates for each npm package are pinned by `package-lock.json` and `mcp-oauth/package-lock.json`; Android coordinates and license statements come from the exact Gradle release runtime graph and each artifact’s published Maven POM. PDF.js embedded resource names correspond exactly to the directories copied by `scripts/prepare-pdf.mjs`. The upstream open-source license in each section below is reproduced verbatim apart from normalizing line endings and a final newline.
@@ -561,6 +564,36 @@ NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE
 LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION 
 OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION 
 WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+~~~~
+
+### License text 3a850fa5f08101db
+
+SHA-256: `3a850fa5f08101db6f40676c2786e10bd2cd5fff7b12ffdf1e0c434d4e49d90c`
+
+Source files: `mcp-oauth/src/vendor/qrcode-generator.LICENSE`
+
+~~~~text
+MIT License
+
+Copyright (c) 2009 Kazuhiko Arase
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
 ~~~~
 
 ### License text 3d5d1b1150b1fc25

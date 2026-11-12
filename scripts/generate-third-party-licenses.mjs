@@ -74,6 +74,18 @@ function collectNpm(directory,scope){
 
 collectNpm('','Web editor / PDF build');
 collectNpm('mcp-oauth','OAuth Worker');
+const oauthNpmCount=records.filter(record=>record.scope==='OAuth Worker').length;
+
+// This QR encoder is vendored source, so npm lockfile traversal cannot find it.
+const qrSource='mcp-oauth/src/vendor/qrcode-generator.mjs';
+const qrSourceHash='ea91d7118a5395289170da848b7c6758b996163bfbccf312591ab65a4911b7c0';
+if(hash(readFileSync(path.join(root,qrSource)))!==qrSourceHash)
+  throw Error('Vendored QR source changed; review its provenance and update the pinned source hash and NOTICE.md.');
+add({name:'qrcode-generator (vendored)',version:'source-'+qrSourceHash.slice(0,12),
+  scope:'OAuth Worker',spdx:'MIT',holder:'Copyright (c) 2009 Kazuhiko Arase',
+  source:'mcp-oauth/src/vendor/NOTICE.md',files:['mcp-oauth/src/vendor/qrcode-generator.LICENSE'],
+  note:`ESM adaptation used by QR sign-in. The retained upstream source does not state a release version; the version column is a source fingerprint. Source: ${qrSource}; SHA-256: ${qrSourceHash}. See mcp-oauth/src/vendor/NOTICE.md.`});
+const oauthVendorCount=records.filter(record=>record.scope==='OAuth Worker').length-oauthNpmCount;
 
 const androidManifest=JSON.parse(read('third_party/android/runtime-dependencies.json'));
 if(androidManifest.generated_from!=='Gradle :app:releaseRuntimeClasspath'||!androidManifest.modules?.length)
@@ -129,16 +141,17 @@ sections.push('# THIRD_PARTY_LICENSES — 第三方生产组件与许可证清�
 sections.push('');
 sections.push('> **Generated file / 自动生成文件。** Run `npm ci --omit=dev --ignore-scripts` in both the repository root and `mcp-oauth/`, then run `node scripts/generate-third-party-licenses.mjs`. Do not hand-edit this file.');
 sections.push('');
-sections.push('This inventory covers the locked production npm graphs for the Web editor/PDF build and OAuth Worker, the QWEA0 port, PDF.js embedded font/CMap/decoder assets, and the **resolved Android release runtime dependency graph** (including transitive AAR/JAR artifacts). SPDX entries describe each **third-party component**; Easybook itself remains AGPL-3.0-only. Identical full open-source license texts are printed once and referenced by SHA-256.');
+sections.push('This inventory covers the locked production npm graphs for the Web editor/PDF build and OAuth Worker, the separately vendored OAuth QR encoder, the QWEA0 port, PDF.js embedded font/CMap/decoder assets, and the **resolved Android release runtime dependency graph** (including transitive AAR/JAR artifacts). SPDX entries describe each **third-party component**; Easybook itself remains AGPL-3.0-only. Identical full open-source license texts are printed once and referenced by SHA-256.');
 sections.push('');
 sections.push('**Coverage boundary:** development/test and platform-specific optional npm packages are excluded; esbuild is listed but marked build-only. The Android `releaseRuntimeClasspath` is resolved by Gradle, but final APK byte-for-byte contents are not yet audited. Proprietary Google Play Services modules are **not open-source**: their Maven POMs point to the Android SDK License terms, which are linked rather than reproduced as an open-source license text. The Liberation font uses its own GPL-2.0-based agreement with exceptions, identified with a local `LicenseRef` rather than inaccurately described as Apache-2.0.');
 sections.push('');
-sections.push(`Entries: ${records.length} (${records.filter(x=>x.scope==='Web editor / PDF build').length} npm main, ${records.filter(x=>x.scope==='OAuth Worker').length} npm OAuth, ${records.filter(x=>x.scope==='Android APK / Web PDF assets').length} embedded PDF resources, ${android.length} resolved Android runtime modules, one native glass port).`);
+sections.push(`Entries: ${records.length} (${records.filter(x=>x.scope==='Web editor / PDF build').length} npm main, ${oauthNpmCount} npm OAuth, ${oauthVendorCount} vendored OAuth component, ${records.filter(x=>x.scope==='Android APK / Web PDF assets').length} embedded PDF resources, ${android.length} resolved Android runtime modules, one native glass port).`);
 sections.push('');
 sections.push('## Audit inputs / 审计输入');
 sections.push('');
 sections.push('- `package-lock.json`: Web editor, Worker-shared code and PDF build production dependency graph.');
 sections.push('- `mcp-oauth/package-lock.json`: OAuth Worker production dependency graph.');
+sections.push('- `mcp-oauth/src/vendor/NOTICE.md`, `qrcode-generator.mjs` and `qrcode-generator.LICENSE`: source-pinned OAuth QR encoder, ESM adaptation and complete MIT text.');
 sections.push('- `third_party/android/runtime-dependencies.json`: exact Gradle `releaseRuntimeClasspath` snapshot.');
 sections.push('- `node_modules/pdfjs-dist/{cmaps,standard_fonts,wasm}`: embedded PDF resource license set, checked against an explicit allowlist.');
 sections.push('- `third_party/qwea0-liquid-glass/`: pinned native shader attribution and MIT text.');

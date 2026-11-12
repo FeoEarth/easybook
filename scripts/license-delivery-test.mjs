@@ -9,9 +9,16 @@ const read=file=>readFileSync(path.join(root,file),'utf8');
 const notice=read('THIRD_PARTY_LICENSES.md');
 const bundled=read('app/src/main/assets/pdf/THIRD_PARTY_LICENSES.md');
 assert.equal(bundled,notice,'Android/Web bundled license notices must match the generated inventory');
+assert.equal(read('app/src/main/assets/pdf/THIRD_PARTY_NOTICES.md'),read('THIRD_PARTY_NOTICES.md'),
+  'Android/Web bundled attribution summary must match the repository notice');
+assert.equal(read('app/src/main/assets/pdf/EASYBOOK_LICENSE.txt'),read('LICENSE'),
+  'Android/Web bundled project license must match the repository license');
 assert.match(notice,/Entries: \d+ \(/);
 assert.match(notice,/## Audit inputs \/ 审计输入/);
 assert.match(notice,/## Complete license texts/);
+assert.match(notice,/\| qrcode-generator \(vendored\) \|/,'The non-npm QR encoder must be in the component inventory');
+assert.match(notice,/Copyright \(c\) 2009 Kazuhiko Arase/,'The QR encoder copyright must be retained');
+assert.match(notice,/Easybook-LiteRT-LM-arm64-v8a\.so/,'The separately distributed native runtime must be identified');
 
 const rootPackage=JSON.parse(read('package.json'));
 const oauthPackage=JSON.parse(read('mcp-oauth/package.json'));
