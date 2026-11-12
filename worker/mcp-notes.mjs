@@ -3,6 +3,8 @@ import {validateDocument,emptyDocument,plainText} from '../shared/document.mjs';
 import {fail,nodeText,walk,at,splice} from './mcp-common.mjs';
 export const columns='id,title,document,icon,pinned,favorite,deleted,purged,version,mutation,updated,folder_id';
 export const meta='id,title,icon,pinned,favorite,deleted,version,updated,folder_id';
+// JSON escapes keep query text reversible while btoa only accepts Latin1.
+const encodeCursor=value=>btoa(JSON.stringify(value).replace(/[\u0080-\uffff]/g,c=>'\\u'+c.charCodeAt(0).toString(16).padStart(4,'0')));
 export const textDocument=text=>({schemaVersion:1,doc:{type:'doc',content:text.split('\n').map(t=>({type:'paragraph',...(t?{content:[{type:'text',text:t}]}:{})}))}});
 export async function get(ctx,id,deleted=false){const n=await ctx.env.DB.prepare(`SELECT ${columns} FROM notes_json WHERE workspace=? AND id=? AND purged=0 ${deleted?'':'AND deleted=0'}`).bind(ctx.workspace,id).first();if(!n)fail('NOT_FOUND','Note not found');n.document=validateDocument(JSON.parse(n.document));return n;}
 export async function folderExists(ctx,id){if(id&&!await ctx.env.DB.prepare('SELECT id FROM folders WHERE workspace=? AND id=? AND deleted=0').bind(ctx.workspace,id).first())fail('NOT_FOUND','Folder not found');}
@@ -24,7 +26,7 @@ export async function list(ctx,a={},search=false){
  const limit=a.limit||20;const rows=(await ctx.env.DB.prepare(`SELECT ${meta} FROM notes_json WHERE ${clauses.join(' AND ')} ORDER BY updated ${asc?'ASC':'DESC'},id ${asc?'ASC':'DESC'} LIMIT ?`).bind(...params,limit+1).all()).results;
  const more=rows.length>limit;rows.length=Math.min(rows.length,limit);const last=rows.at(-1);
  const output=[];if(a.format&&a.format!=='metadata'&&limit>5)fail('INVALID_ARGUMENT','Use limit<=5 for list body output');for(const n of rows)output.push(a.format&&a.format!=='metadata'?present(await get(ctx,n.id,!!a.deleted),a):summary(n,a.fields));
- return {notes:output,next_cursor:more?btoa(JSON.stringify([last.updated,last.id,JSON.stringify([a.folder_id??null,a.deleted||false,a.query??null,asc])])):null};
+ return {notes:output,next_cursor:more?encodeCursor([last.updated,last.id,JSON.stringify([a.folder_id??null,a.deleted||false,a.query??null,asc])]):null};
 }
 export async function noteTool(ctx,name,a){
  if(name==='notes_list'||name==='notes_search')return list(ctx,a,name==='notes_search');

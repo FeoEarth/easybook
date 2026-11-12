@@ -18,6 +18,7 @@ import {download} from './mcp-attachments.mjs';
 import {attestMcpWorkspace} from './mcp-pairing.mjs';
 import {management} from './management.mjs';
 import {notes} from './notes.mjs';
+import {ensureFolderRevisionSchema,advanceFolderRevision} from './folder-revisions.mjs';
 import html from './ui.mjs';
 import brandIcons from './brand-icons.mjs';
 import pdfStatic from './pdf-static.mjs';
@@ -28,8 +29,6 @@ import {attachments} from './attachments.mjs';
 import {androidVersionPolicy} from './android-version-policy.mjs';
 const headers = {'Access-Control-Allow-Origin':'*','Access-Control-Allow-Headers':'Authorization, Content-Type','Access-Control-Allow-Methods':'GET, PUT, OPTIONS','Cache-Control':'no-store','X-Content-Type-Options':'nosniff'};
 const json = (data, status=200) => Response.json(data, {status, headers});
-const folderSchemas=new WeakMap();
-function ensureFolderRevisionSchema(env){let ready=folderSchemas.get(env.DB);if(!ready){ready=env.DB.batch([env.DB.prepare("CREATE TABLE IF NOT EXISTS folder_revisions(workspace TEXT NOT NULL,folder_id TEXT NOT NULL,version INTEGER NOT NULL DEFAULT 1 CHECK(version>0),mutation TEXT NOT NULL DEFAULT '',PRIMARY KEY(workspace,folder_id))"),env.DB.prepare('CREATE TABLE IF NOT EXISTS folder_receipts(workspace TEXT NOT NULL,mutation TEXT NOT NULL,folder_id TEXT NOT NULL,response TEXT NOT NULL,PRIMARY KEY(workspace,mutation))')]).catch(error=>{folderSchemas.delete(env.DB);throw error});folderSchemas.set(env.DB,ready)}return ready}
 // Android OTA publishes Web UI and updater presentation only. Native bridge,
 // installation, and glass implementation stay bundled in the signed APK.
 async function otaManifest(v2=false) {
@@ -161,7 +160,11 @@ export default {
      if(folder?.mutation===n.mutation){await env.DB.prepare('INSERT INTO folder_receipts(workspace,mutation,folder_id,response) VALUES(?,?,?,?) ON CONFLICT(workspace,mutation) DO NOTHING').bind(workspace,n.mutation,folderId,JSON.stringify(folder)).run();return json({folder})}
      return json({error:'Conflict',folder},409);
     }
-    await env.DB.prepare('INSERT INTO folders(workspace,id,name,updated,deleted) VALUES(?,?,?,?,?) ON CONFLICT(workspace,id) DO UPDATE SET name=CASE WHEN folders.deleted=0 AND excluded.updated>folders.updated THEN excluded.name ELSE folders.name END,updated=MAX(folders.updated,excluded.updated),deleted=MAX(folders.deleted,excluded.deleted)').bind(workspace,folderId,n.name.trim(),n.updated??Date.now(),n.deleted||0).run();
+    await env.DB.batch([
+     env.DB.prepare("INSERT OR IGNORE INTO folder_revisions(workspace,folder_id,version,mutation) SELECT workspace,id,1,'' FROM folders WHERE workspace=? AND id=?").bind(workspace,folderId),
+     env.DB.prepare('INSERT INTO folders(workspace,id,name,updated,deleted) VALUES(?,?,?,?,?) ON CONFLICT(workspace,id) DO UPDATE SET name=CASE WHEN folders.deleted=0 AND excluded.updated>folders.updated THEN excluded.name ELSE folders.name END,updated=MAX(folders.updated,excluded.updated),deleted=MAX(folders.deleted,excluded.deleted) WHERE excluded.updated>folders.updated OR excluded.deleted>folders.deleted').bind(workspace,folderId,n.name.trim(),n.updated??Date.now(),n.deleted||0),
+     advanceFolderRevision(env,workspace,folderId,1)
+    ]);
     const folder=await env.DB.prepare("SELECT f.id,f.name,f.updated,f.deleted,COALESCE(r.version,1) version,COALESCE(r.mutation,'') mutation FROM folders f LEFT JOIN folder_revisions r ON r.workspace=f.workspace AND r.folder_id=f.id WHERE f.workspace=? AND f.id=?").bind(workspace,folderId).first();return json({folder,legacy:true});
    }
    return json({error:'Not found'},404);
