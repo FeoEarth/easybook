@@ -1,6 +1,6 @@
 <!doctype html>
 <html lang="zh-CN"><head><meta name="easybook-identity" content="legacy"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><meta name="color-scheme" content="light dark">
-<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self' 'unsafe-inline' 'wasm-unsafe-eval' https://challenges.cloudflare.com; worker-src 'self'; style-src 'self' 'unsafe-inline'; font-src 'self' data: blob:; connect-src 'self' https://easybook.loonxy.com https://easybook-sync.1902521952.workers.dev https://easybook-mcp-oauth.1902521952.workers.dev https://challenges.cloudflare.com; img-src 'self' data: blob:; media-src blob: https://appassets.androidplatform.net/attachment/; frame-src blob: https://challenges.cloudflare.com; object-src blob:; base-uri 'none'; form-action 'none'">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self' 'unsafe-inline' 'wasm-unsafe-eval' https://challenges.cloudflare.com; worker-src 'self'; style-src 'self' 'unsafe-inline'; font-src 'self' data: blob:; connect-src 'self' https://easybook.loonxy.com https://easybook-sync.1902521952.workers.dev https://easybook-mcp-oauth.1902521952.workers.dev https://challenges.cloudflare.com https://raw.githubusercontent.com/FeoEarth/easybook/main/THIRD_PARTY_NOTICES.md https://raw.githubusercontent.com/FeoEarth/easybook/main/THIRD_PARTY_LICENSES.md; img-src 'self' data: blob:; media-src blob: https://appassets.androidplatform.net/attachment/; frame-src blob: https://challenges.cloudflare.com; object-src blob:; base-uri 'none'; form-action 'none'">
 <title>Easybook</title>
 <link rel="icon" type="image/png" sizes="64x64" href="/favicon-light.png" media="(prefers-color-scheme: light)">
 <link rel="icon" type="image/png" sizes="64x64" href="/favicon-dark.png" media="(prefers-color-scheme: dark)">
@@ -2279,8 +2279,8 @@ let lastNetworkWake=0,networkResumePromise=null;async function resumeAfterNetwor
 navigator.connection?.addEventListener('change',window.easybookNetworkChanged);
 renderSyncPolicy();
 
-// About and legal documents are bundled in Android's offline assets and deployed
-// as Web static assets. Keep them visible without requiring an Easybook account.
+// Third-party notices refresh from GitHub; bundled/static copies remain the
+// offline fallback. Legal documents do not require an Easybook account.
 const legalAnchor=$('settings').querySelector('.workspace-card');
 $('appVersion').textContent='Easybook 0.8.25';
 const legalLabel=document.createElement('div');legalLabel.className='settings-label';legalLabel.textContent='关于';
@@ -2319,31 +2319,42 @@ document.body.insertAdjacentHTML('beforeend','<dialog id="aboutDialog" class="ui
 $('aboutDialog').querySelector('strong').textContent=$('appVersion').textContent;
 $('aboutClose').onclick=()=>$('aboutDialog').close();
 $('aboutEntry').onclick=()=>$('aboutDialog').showModal();
-$('legalDocumentClose').onclick=()=>$('legalDocumentDialog').close();
-const legalCache=new Map();
+const onlineLegalDocuments={
+ '/pdf/THIRD_PARTY_NOTICES.md':'https://raw.githubusercontent.com/FeoEarth/easybook/main/THIRD_PARTY_NOTICES.md',
+ '/pdf/THIRD_PARTY_LICENSES.md':'https://raw.githubusercontent.com/FeoEarth/easybook/main/THIRD_PARTY_LICENSES.md'
+};
+let legalRequest=0,noticeRequest=0;
+$('legalDocumentClose').onclick=()=>{++legalRequest;$('legalDocumentDialog').close()};
+async function fetchLegalText(url,validate){
+ const controller=new AbortController(),timer=setTimeout(()=>controller.abort(),4000);
+ try{
+  const response=await fetch(url,{signal:controller.signal,credentials:'omit',cache:'no-store',redirect:'error',referrerPolicy:'no-referrer'});
+  if(!response.ok)throw Error('HTTP '+response.status);
+  const text=await response.text();if(!validate(text))throw Error('内容不完整');return text;
+ }finally{clearTimeout(timer)}
+}
+async function loadLegalText(url,validate){
+ const remote=onlineLegalDocuments[url];
+ if(remote)try{return await fetchLegalText(remote,validate)}catch{}
+ return fetchLegalText(url,validate);
+}
 async function openLegalDocument(title,url,validate){
- const dlg=$('legalDocumentDialog'),content=$('legalDocumentText');$('legalDocumentTitle').textContent=title;dlg.showModal();
- if(legalCache.has(url)){content.textContent=legalCache.get(url);return}
+ const request=++legalRequest,dlg=$('legalDocumentDialog'),content=$('legalDocumentText');$('legalDocumentTitle').textContent=title;dlg.showModal();
  content.textContent='正在载入…';
- try{const response=await fetch(url);if(!response.ok)throw Error('HTTP '+response.status);const text=await response.text();if(!validate(text))throw Error('内容不完整');legalCache.set(url,text);content.textContent=text}
- catch(error){content.textContent='内容暂时无法读取，请稍后重试。\n'+String(error.message||error)}
+ try{const text=await loadLegalText(url,validate);if(request===legalRequest&&dlg.open)content.textContent=text}
+ catch(error){if(request===legalRequest&&dlg.open)content.textContent='内容暂时无法读取，请稍后重试。\n'+String(error.message||error)}
 }
 $('projectLicenseEntry').onclick=()=>openLegalDocument('Easybook 开源许可证','/pdf/EASYBOOK_LICENSE.txt',text=>text.includes('GNU AFFERO GENERAL PUBLIC LICENSE'));
 $('thirdPartyNoticesEntry').onclick=()=>openLegalDocument('第三方归属说明','/pdf/THIRD_PARTY_NOTICES.md',text=>text.startsWith('# Third-party components'));
-let noticeCache='';
-$('thirdPartyLicensesClose').onclick=()=>$('thirdPartyLicensesDialog').close();
+$('thirdPartyLicensesClose').onclick=()=>{++noticeRequest;$('thirdPartyLicensesDialog').close()};
 $('thirdPartyLicensesEntry').onclick=async()=>{
- const dlg=$('thirdPartyLicensesDialog'),content=$('thirdPartyLicensesText');
+ const request=++noticeRequest,dlg=$('thirdPartyLicensesDialog'),content=$('thirdPartyLicensesText');
  dlg.showModal();
- if(noticeCache){content.textContent=noticeCache;return}
  content.textContent='正在载入许可证…';
  try{
-  const response=await fetch('/pdf/THIRD_PARTY_LICENSES.md');
-  if(!response.ok)throw Error('HTTP '+response.status);
-  noticeCache=await response.text();
-  if(!noticeCache.startsWith('# THIRD_PARTY_LICENSES'))throw Error('许可证内容不完整');
-  content.textContent=noticeCache;
- }catch(error){content.textContent='许可证暂时无法读取，请稍后重试。\n'+String(error.message||error)}
+  const text=await loadLegalText('/pdf/THIRD_PARTY_LICENSES.md',text=>text.startsWith('# THIRD_PARTY_LICENSES'));
+  if(request===noticeRequest&&dlg.open)content.textContent=text;
+ }catch(error){if(request===noticeRequest&&dlg.open)content.textContent='许可证暂时无法读取，请稍后重试。\n'+String(error.message||error)}
 };
 
 if(native){$('pairKey').remove();$('pairDialog').remove();$('join')?.remove();}switchTab('all');if(identityV2)void refreshWorkspaces();if(history.state?.easybookSync)showSyncPage(false);if(history.state?.easybookMcp&&!native)showMcpPage(false);if(history.state?.easybookAccount&&native)showAccountPage(false);if(window.NativeStore)void window.NativeStore.call('ui.ready');void sync(false,'resume');scheduleRemote();setInterval(()=>{if(tab==='sync'&&!document.hidden)void refreshNativeActivity()},2000);window.addEventListener('online',()=>void resumeAfterNetwork());window.addEventListener('offline',()=>{activity.pause();status('离线 · 已存本机','offline')});document.addEventListener('visibilitychange',()=>{rich.flushInput();persistNow();if(!document.hidden){void resumeAfterNetwork()}else clearTimeout(remoteTimer)});window.addEventListener('pagehide',()=>{rich.flushInput();persistNow()});

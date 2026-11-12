@@ -156,6 +156,9 @@ public class MainActivity extends Activity {
         web.setWebViewClient(new WebViewClient() {
             @Override public WebResourceResponse shouldInterceptRequest(WebView v, WebResourceRequest r) {
                 Uri u = r.getUrl();
+                if(!r.isForMainFrame()&&"GET".equals(r.getMethod())&&
+                    ("https://raw.githubusercontent.com/FeoEarth/easybook/main/THIRD_PARTY_NOTICES.md".equals(u.toString())||
+                     "https://raw.githubusercontent.com/FeoEarth/easybook/main/THIRD_PARTY_LICENSES.md".equals(u.toString())))return null;
                 if ("https://appassets.androidplatform.net/editor.js".equals(u.toString())) {try{return new WebResourceResponse("application/javascript","UTF-8",new ByteArrayInputStream(readWebAsset("editor.js").getBytes(StandardCharsets.UTF_8)));}catch(IOException e){return new WebResourceResponse("text/plain","UTF-8",new ByteArrayInputStream(new byte[0]));}}
                 if("https".equals(u.getScheme())&&"appassets.androidplatform.net".equals(u.getHost())&&u.getPath()!=null&&u.getPath().matches("/attachment/[a-f0-9]{64}")){
                     try{

@@ -18,8 +18,18 @@ In released Android/Web builds, the full inventory is available from
 (**Settings → About Easybook → Third-party Components & Licenses**).
 The attribution summary is the adjacent **第三方归属说明** entry. Android packages an offline copy;
 the Web Worker serves the same generated text through its static asset binding
-at `/pdf/THIRD_PARTY_LICENSES.md`. Run `npm run licenses:delivery:check`
-to verify that the distributed copy matches the repository inventory.
+at `/pdf/THIRD_PARTY_LICENSES.md`.
+
+Opening either third-party document first requests its latest text from
+`https://raw.githubusercontent.com/FeoEarth/easybook/main/`. If the request fails,
+times out, or returns an invalid document, the app uses the bundled/static copy.
+Each opening refreshes the online text. The online inventory follows repository
+`main`; the bundled snapshot records the build shipped with the app. The
+Easybook project license continues to use the bundled text.
+
+Once this reader is installed, later third-party notice edits only need to be
+committed to GitHub. Run `npm run licenses:delivery:check` when preparing a build
+to verify that its offline snapshot matches the repository inventory.
 
 The offline editor bundle is built from the exact versions in `package-lock.json`.
 The OAuth Worker uses the independently locked production graph in
