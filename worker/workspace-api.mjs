@@ -1,5 +1,7 @@
 import {deleteWorkspace} from './workspace-delete.mjs';
 import {nativeSession} from '../mcp-oauth/src/native-sessions.mjs';
+import {webSession} from '../mcp-oauth/src/web-sessions.mjs';
+import {isWebClientOriginAllowed} from './server-config.mjs';
 import {session,csrf,rateLimit,readCookie,ACCOUNT_COOKIE} from '../mcp-oauth/src/accounts.mjs';
 import {boundedJSON,object} from './mcp-common.mjs';
 import {verifyWorkspaceCreation} from './turnstile.mjs';
@@ -16,6 +18,10 @@ const bearer=request=>request.headers.get('Authorization')?.match(/^Bearer ([a-f
 async function inputBody(request){const value=await boundedJSON(request,4096);if(!object(value))problem('invalid_request',400);return value;}
 
 export async function workspacePrincipal(request,env,{mutation=false,allowAnonymous=false}={}){
+ if(request.headers.get('Authorization')?.startsWith('Easybook-Web ')){
+  const s=await webSession(request,env);if(!s)problem('web_session_expired',401);
+  return {kind:'account',accountId:s.account_id,sessionId:s.id,authenticatedAt:s.authenticated_at,webClientOrigin:s.client_origin};
+ }
  if(request.headers.get('Authorization')?.startsWith('Easybook-Session ')){
   if(request.headers.has('Origin'))problem('native_origin_not_allowed',403);
   const s=await nativeSession(request,env);if(!s)problem('account_session_expired',401);
@@ -44,10 +50,14 @@ export async function workspaceAPI(request,env){
  if(path!=='/api/workspaces'&&!path.startsWith('/api/workspaces/'))return null;
  try{
   if(path==='/api/workspaces/session'&&request.method==='GET'){
+   if(request.headers.has('Authorization')){
+    const current=await webSession(request,env);if(!current)problem('web_session_expired',401);
+    return reply({signedIn:true,name:current.display_name,account:{id:current.account_id,name:current.display_name},recently_authenticated:Date.now()-current.authenticated_at<=300000});
+   }
    const current=await session(request,env);return reply({signedIn:!!current,...(current?{name:current.display_name,csrf:await csrf(request,current)}:{})});
   }
   const mutation=!['GET','HEAD'].includes(request.method);
-  if(mutation&&request.headers.get('Origin')&&request.headers.get('Origin')!==url.origin)problem('origin_not_allowed',403);
+  if(mutation&&request.headers.get('Origin')&&request.headers.get('Origin')!==url.origin&&!isWebClientOriginAllowed(env,request.headers.get('Origin')))problem('origin_not_allowed',403);
   if(mutation&&!['POST','PATCH','DELETE'].includes(request.method))problem('method_not_allowed',405);
   const principal=await workspacePrincipal(request,env,{mutation,allowAnonymous:path==='/api/workspaces'&&request.method==='POST'});
   if(path==='/api/workspaces/invitations'&&request.method==='GET')return reply(await inboxInvitations(env,principal));

@@ -1,7 +1,7 @@
 import {accountAllowed,sessionAllowed,revoked,reserveRevocations,finishRevocations} from '../../worker/security-checkpoint.mjs';
 import {modernWorkspaces,workspacePolicy} from '../../worker/oauth-workspace-policy.mjs';
 import {requestedScopes,readOnlyConsentNotice} from './requested-scopes.mjs';
-import {githubCallback,identityEnabled} from '../../worker/identity-origin.mjs';
+import {githubCallback,identityEnabled,identityHttpsAllowed} from '../../worker/identity-origin.mjs';
 import {hash, READ, WRITE} from '../../worker/mcp-common.mjs';
 import {verifyWorkspaceAssertion} from './pairing.mjs';
 import {escape,oauthAppearance,htmlHeaders} from './appearance.mjs';
@@ -24,7 +24,7 @@ export const json=(data,status=200)=>Response.json(data,{status,headers:noStore}
 // Native browser forms need a non-null same-origin Origin. Keep redirects/JSON
 // on no-referrer so OAuth response URLs still do not leak to other sites.
 export function page(title,content,headers={}){
- const root=['账户与安全','登录 Easybook'].includes(title),backHref=root?'https://easybook.loonxy.com/':'/account',backLabel=root?'Easybook':'Easybook 账户';
+ const root=['账户与安全','登录 Easybook'].includes(title),backHref=root?'/':'/account',backLabel=root?'Easybook':'Easybook 账户';
  return new Response(`<!doctype html><html lang="zh-CN"><meta charset="utf-8"><title>${escape(title)} · Easybook</title>${oauthAppearance}${accountSettingsStyle}<style>.group{background:var(--paper);border-radius:20px;padding:4px 16px;margin:20px 0}.row{padding:14px 0;border-bottom:1px solid var(--line)}.row:last-child{border:0}h2{font-size:13px;line-height:1.5;color:var(--muted);font-weight:500;margin:28px 16px 8px}.group{margin:0 0 20px}label{display:block;padding:12px 0;line-height:1.5}input,select{font:inherit;max-width:100%;accent-color:var(--accent)}input:not([type=checkbox]),select{display:block;width:100%;min-height:44px;margin-top:8px;padding:10px 12px;border:0;border-radius:10px;background:var(--bg);color:var(--ink);outline-offset:3px}input[type=checkbox]{width:18px;height:18px;vertical-align:middle;margin-right:8px}select{appearance:none;background-image:none}form{display:block;margin:18px 0;padding:16px;gap:0}.row form{margin:10px 0 0;padding:0;background:none;border-radius:0}form button{margin:8px 4px;min-height:44px}.row form button{margin:0;padding-left:0;background:none;color:var(--danger)}a.link{background:none;color:var(--accent);padding-left:0}small{display:block;color:var(--muted);font-size:13px}code{font-size:13px;word-break:break-all}.danger{color:var(--danger)}</style><body><a class="link" href="${backHref}">‹ ${backLabel}</a><h1>${escape(title)}</h1>${content}</body></html>`,{headers:{...htmlHeaders,...noStore,'Referrer-Policy':'same-origin',...headers}});
 }
 export function reauthenticationPage(message='此操作需要最近五分钟内重新验证身份。',returnPath='/account'){
@@ -36,7 +36,13 @@ export async function sessionToken(token,env){
  if(!/^[a-f0-9]{64}$/.test(token||''))return null;
  const current=await env.DB.prepare('SELECT s.*,a.display_name FROM account_sessions s JOIN accounts a ON a.id=s.account_id WHERE s.token_hash=? AND s.revoked_at IS NULL AND s.expires_at>? AND a.deleted_at IS NULL AND NOT EXISTS(SELECT 1 FROM account_session_passkeys sp JOIN account_passkeys pk ON pk.id=sp.credential_id WHERE sp.session_id=s.id AND pk.revoked_at IS NOT NULL)').bind(await hash(token),Date.now()).first();return current&&await sessionAllowed(env,current)?current:null;
 }
-export async function session(request,env){const current=await sessionToken(readCookie(request,ACCOUNT_COOKIE),env);if(current&&identityEnabled(env)&&await env.DB.prepare('SELECT session_id FROM account_native_sessions WHERE session_id=?').bind(current.id).first())return null;return current}
+export async function session(request,env){
+ if(!identityHttpsAllowed(request,env))return null;
+ const current=await sessionToken(readCookie(request,ACCOUNT_COOKIE),env);
+ if(current&&identityEnabled(env)&&await env.DB.prepare('SELECT session_id FROM account_native_sessions WHERE session_id=?').bind(current.id).first())return null;
+ if(current&&await env.DB.prepare("SELECT 1 FROM sqlite_master WHERE type='table' AND name='account_web_sessions'").first()&&await env.DB.prepare('SELECT session_id FROM account_web_sessions WHERE session_id=?').bind(current.id).first())return null;
+ return current;
+}
 export async function csrf(request,s){return hash(readCookie(request,ACCOUNT_COOKIE)+'|'+s.id);}
 export async function boundedText(request,max=16384){
  const reader=request.body?.getReader();if(!reader)return '';let size=0;const parts=[];
@@ -56,8 +62,9 @@ export async function rateLimit(request,env,kind,limit=30){
  const row=await env.DB.prepare('INSERT INTO account_rate_limits(bucket,count,expires_at) VALUES(?,1,?) ON CONFLICT(bucket) DO UPDATE SET count=count+1 RETURNING count').bind(bucket,Date.now()+120000).first();
  if(row.count>limit)throw new Response('Too many requests',{status:429,headers:{...noStore,'Retry-After':'60'}});
 }
-export function safeReturn(value){return typeof value==='string'&&value.length<=6000&&(value==='/account'||value==='/account?connect=1'||value==='/account/delete'||/^\/\?workspaceInvite=[a-f0-9]{64}$/.test(value)||/^\/account\/handoff\?flow=[a-f0-9]{64}&state=[a-f0-9]{64}$/.test(value)||/^\/account\/qr\/approve\?id=[a-f0-9]{64}$/.test(value)||/^\/account\/operations\/[a-f0-9-]{36}$/.test(value)||value.startsWith('/oauth/authorize?'))?value:'/account';}
+export function safeReturn(value){return typeof value==='string'&&value.length<=6000&&(value==='/account'||value==='/account?connect=1'||value==='/account/delete'||/^\/\?workspaceInvite=[a-f0-9]{64}$/.test(value)||/^\/account\/handoff\?flow=[a-f0-9]{64}&state=[a-f0-9]{64}$/.test(value)||/^\/account\/web\/authorize\?flow=[a-f0-9]{64}&state=[a-f0-9]{64}$/.test(value)||/^\/account\/qr\/approve\?id=[a-f0-9]{64}$/.test(value)||/^\/account\/operations\/[a-f0-9-]{36}$/.test(value)||value.startsWith('/oauth/authorize?'))?value:'/account';}
 export async function startLogin(request,env,linkSession=null){
+ if(!identityHttpsAllowed(request,env))return json({error:'account_https_required'},403);
  await rateLimit(request,env,'login',10);
  const state='account_'+random(),browser=random();
  const returnPath=linkSession?'/account?identity-link=github':safeReturn(new URL(request.url).searchParams.get('return'));
@@ -67,6 +74,7 @@ export async function startLogin(request,env,linkSession=null){
  return redirect(url.href,[cookie(LOGIN_COOKIE,browser,300)]);
 }
 export async function finishLogin(request,env,fetcher=fetch){
+ if(!identityHttpsAllowed(request,env))return json({error:'account_https_required'},403);
  const url=new URL(request.url),browser=readCookie(request,LOGIN_COOKIE),state=url.searchParams.get('state');
  if(!browser||!state||state.length>100)return json({error:'Login expired'},400);
  const proof=await env.DB.prepare('DELETE FROM account_login_states WHERE state_hash=? AND browser_hash=? AND expires_at>? RETURNING return_path').bind(await hash(state),await hash(browser),Date.now()).first();
@@ -101,6 +109,7 @@ export async function finishLogin(request,env,fetcher=fetch){
  return redirect(proof.return_path,[established.cookie,cookie(LOGIN_COOKIE,'',0)]);
 }
 export async function createSession(request,env,accountId,credentialId=null,authenticatedAt=Date.now()){
+ if(!identityHttpsAllowed(request,env))throw json({error:'account_https_required'},403);
  if(!await accountAllowed(env,accountId)||await revoked(env,'passkey',credentialId))throw json({error:'identity_revoked'},403);
  const token=random(),id=crypto.randomUUID(),now=Date.now();
  const statements=[env.DB.prepare('INSERT INTO account_sessions(id,token_hash,account_id,created_at,expires_at,authenticated_at,device) VALUES(?,?,?,?,?,?,?)').bind(id,await hash(token),accountId,now,now+7*86400000,authenticatedAt,(request.headers.get('User-Agent')||'Browser').slice(0,180))];
@@ -109,6 +118,7 @@ export async function createSession(request,env,accountId,credentialId=null,auth
 }
 export async function accountRoutes(request,env){
  const url=new URL(request.url),path=url.pathname;
+ if((path.startsWith('/account')||path==='/callback'&&url.searchParams.get('state')?.startsWith('account_')||['/oauth/grants','/oauth/clients'].includes(path))&&!identityHttpsAllowed(request,env))return json({error:'account_https_required'},403);
  if(path==='/account/login'&&request.method==='GET')return startLogin(request,env);
  if(path==='/callback'&&url.searchParams.get('state')?.startsWith('account_'))return finishLogin(request,env);
  if(!path.startsWith('/account')&&!['/oauth/grants','/oauth/clients'].includes(path))return null;
@@ -179,11 +189,12 @@ export async function accountRoutes(request,env){
   env.DB.prepare('SELECT id,client_id,workspace_id,scopes FROM oauth_grants WHERE account_id=? AND revoked_at IS NULL ORDER BY created_at DESC LIMIT 100').bind(s.account_id).all()
  ]);
  const challenge=random();await env.DB.prepare('INSERT INTO account_workspace_claims(challenge_hash,account_id,session_id,expires_at) VALUES(?,?,?,?)').bind(await hash(challenge),s.account_id,s.id,Date.now()+300000).run();
- const connect=`<p>在已连接工作区的 Easybook Web 打开“账户连接”，由现有设备证明工作区访问权。</p><a href="https://easybook.loonxy.com/account/connect" target="_blank" rel="noopener">打开工作区连接</a>`;
+ const connect=`<p>在已连接工作区的 Easybook Web 打开“账户连接”，由现有设备证明工作区访问权。</p><a href="/account/connect" target="_blank" rel="noopener">打开工作区连接</a>`;
  return page('账户与安全',`<p>${escape(s.display_name)}<small>账户 ID：${escape(s.account_id)}</small></p><form method="post" action="/account/profile">${hidden}<label>账户名称 <input name="name" value="${escape(s.display_name)}" maxlength="100" required></label><button>保存</button></form><h2>工作区</h2><div class="group">${workspaces.results.map(w=>`<div class="row"><code>${escape(w.workspace_id)}</code><small>${escape(w.role)}</small></div>`).join('')||'<p>尚未关联工作区</p>'}</div>${connect}<form method="post" action="/account/workspaces/claim" id="claim">${hidden}<input type="hidden" name="challenge" value="${challenge}"><label>设备生成的工作区证明 <input name="assertion" maxlength="8192" required></label><button>关联工作区</button><small>本页挑战码：<code>${challenge}</code>。仅凭同步密钥的可信设备生成证明。若该工作区已有其他所有者，认领会被拒绝。</small></form><h2>登录方式</h2><div class="group"><a class="link" href="/account/passkeys">通行密钥与独立登录 ›</a></div><h2>已登录设备</h2><div class="group">${devices.results.map(d=>`<div class="row">${escape(d.device)}<small>${d.id===s.id?'当前设备 · ':''}${escape(new Date(d.created_at).toISOString())}</small><form method="post" action="/account/sessions/revoke">${hidden}<input type="hidden" name="id" value="${escape(d.id)}"><button class="danger">退出此设备</button></form></div>`).join('')}</div><h2>已授权应用</h2><div class="group">${grants.results.map(g=>`<div class="row"><code>${escape(g.client_id)}</code><small>工作区 ${escape(g.workspace_id.slice(0,12))}</small><p>${escape(JSON.parse(g.scopes).map(x=>labels[x]||x).join('、'))}</p><form method="post" action="/oauth/grants">${hidden}<input type="hidden" name="id" value="${escape(g.id)}"><button class="danger">撤销授权</button></form></div>`).join('')||'<p>暂无新账户授权</p>'}</div><p>旧 GitHub OAuth 与配对授权继续可用；不会自动成为账户工作区。已有数据和同步密钥保持独立。</p><form method="post" action="/account/logout">${hidden}<button>退出登录</button></form><form method="post" action="/account/delete">${hidden}<button class="danger">删除账户…</button></form>`);
 }
 
 export async function accountAuthorize(request,env){
+ if(!identityHttpsAllowed(request,env))return json({error:'account_https_required'},403);
  if(modernWorkspaces(env)){const {workspaceAuthorize}=await import('./workspace-consent.mjs');return workspaceAuthorize(request,env);}
  const oauth=env.OAUTH_PROVIDER,s=await session(request,env),url=new URL(request.url);
  if(!s)return redirect('/account/login?return='+encodeURIComponent(safeReturn(url.pathname+url.search)));

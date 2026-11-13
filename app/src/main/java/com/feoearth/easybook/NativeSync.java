@@ -1,7 +1,7 @@
 package com.feoearth.easybook;
 
 import org.json.*;
-import javax.net.ssl.HttpsURLConnection;
+import java.net.HttpURLConnection;
 import java.net.URL;
 import java.io.*;
 import java.nio.charset.StandardCharsets;
@@ -13,32 +13,41 @@ public final class NativeSync {
     public static final class HttpsTransport implements Transport {
         static final class HttpFailure extends IOException {final int status;HttpFailure(int value){super("Sync HTTP "+value);status=value;}}
         interface Progress {void update(long loaded,long total);}
-        String accountToken,workspaceId;Progress progress;long deadline=Long.MAX_VALUE;private final DataProtection protection;
+        String accountToken,workspaceId;Progress progress;long deadline=Long.MAX_VALUE;private final DataProtection protection;private NoteRepository repository;
         public HttpsTransport(DataProtection p){protection=p;}
+        public HttpsTransport(NoteRepository db,DataProtection p){protection=p;repository=db;}
+        private void bind(NoteRepository db){if(repository!=null&&repository!=db)throw new IllegalArgumentException("Transport belongs to another server session");repository=db;}
+        private void check()throws IOException{if(repository!=null)repository.assertActiveProfile();if(Thread.currentThread().isInterrupted()||System.nanoTime()>deadline)throw new InterruptedIOException("Sync cancelled or deadline reached");}
         public JSONObject request(String path,JSONObject body,String key)throws Exception{
-            if(Thread.currentThread().isInterrupted()||System.nanoTime()>deadline)throw new java.io.InterruptedIOException("Sync cancelled or deadline reached");
+            check();if(repository!=null&&repository.profile().httpKeyOnly&&accountToken!=null)throw new SecurityException("Accounts require HTTPS");
             if(!path.equals("/api/workspaces")&&!path.matches("/api/notes\\?cursor=[0-9]{1,15}&scope=(?:none|[a-f0-9%,-]+)")&&!path.equals("/api/management")&&!path.matches("/api/attachments/[a-f0-9]{64}(\\?part=[0-9]{1,2})?")&&!path.matches("/api/(notes|folders)(/[a-f0-9-]{36})?(\\?(after=[a-f0-9-]{36}|cursor=[0-9]{1,15}))?"))throw new IllegalArgumentException("Invalid API path");
-            HttpsURLConnection c=(HttpsURLConnection)new URL(NativeTransport.origin(false)+path).openConnection();c.setInstanceFollowRedirects(false);c.setConnectTimeout(12000);c.setReadTimeout(15000);c.setRequestMethod(body==null?"GET":"PUT");c.setRequestProperty("Authorization",accountToken==null?"Bearer "+key:"Easybook-Session "+accountToken);if(accountToken!=null)c.setRequestProperty("X-Easybook-Workspace",workspaceId);c.setRequestProperty("Content-Type","application/json");
-            try{if(body!=null){byte[] b=protection.encodeTransport(body.toString()).getBytes(StandardCharsets.UTF_8);c.setDoOutput(true);c.setFixedLengthStreamingMode(b.length);try(OutputStream out=c.getOutputStream()){for(int pos=0;pos<b.length;pos+=8192){int count=Math.min(8192,b.length-pos);out.write(b,pos,count);if(progress!=null)progress.update(pos+count,b.length);}}}
+            HttpURLConnection c=repository==null?(HttpURLConnection)new URL(NativeTransport.origin(false)+path).openConnection():NativeTransport.open(repository,path,false);c.setInstanceFollowRedirects(false);c.setConnectTimeout(12000);c.setReadTimeout(15000);c.setRequestMethod(body==null?"GET":"PUT");c.setRequestProperty("Authorization",accountToken==null?"Bearer "+key:"Easybook-Session "+accountToken);if(accountToken!=null)c.setRequestProperty("X-Easybook-Workspace",workspaceId);c.setRequestProperty("Content-Type","application/json");
+            try{check();if(body!=null){byte[] b=protection.encodeTransport(body.toString()).getBytes(StandardCharsets.UTF_8);c.setDoOutput(true);c.setFixedLengthStreamingMode(b.length);try(OutputStream out=c.getOutputStream()){for(int pos=0;pos<b.length;pos+=8192){check();int count=Math.min(8192,b.length-pos);out.write(b,pos,count);if(progress!=null)progress.update(pos+count,b.length);}}}
                 int status=c.getResponseCode();if(status!=200&&status!=409&&!(path.equals("/api/management")&&body!=null&&(status==400||status==413||status==422)))throw new HttpFailure(status);
                 try(InputStream in=status>=400?c.getErrorStream():c.getInputStream();ByteArrayOutputStream out=new ByteArrayOutputStream()){
-                    if(in==null)throw new IOException("Missing response");byte[] b=new byte[8192];int n;while((n=in.read(b))!=-1){if(out.size()+n>32*1024*1024)throw new IOException("Response too large");out.write(b,0,n);if(progress!=null&&body==null)progress.update(out.size(),c.getContentLengthLong());}if(Thread.currentThread().isInterrupted()||System.nanoTime()>deadline)throw new java.io.InterruptedIOException("Sync cancelled or deadline reached");return new JSONObject(protection.decodeTransport(out.toString("UTF-8"))).put("httpStatus",status);
+                    if(in==null)throw new IOException("Missing response");byte[] b=new byte[8192];int n;while((n=in.read(b))!=-1){check();if(out.size()+n>32*1024*1024)throw new IOException("Response too large");out.write(b,0,n);if(progress!=null&&body==null)progress.update(out.size(),c.getContentLengthLong());}check();return new JSONObject(protection.decodeTransport(out.toString("UTF-8"))).put("httpStatus",status);
                 }
-            }finally{c.disconnect();}
+            }finally{c.disconnect();if(repository!=null)NativeTransport.release(repository,c);}
         }
     }
     static JSONObject lookupWorkspace(String credential)throws Exception{
-        try{JSONObject response=new HttpsTransport(new DataProtection.Plaintext()).request("/api/workspaces",null,credential);JSONArray entries=response.getJSONArray("workspaces");if(entries.length()!=1)throw new SecurityException("Invalid workspace identity");JSONObject identity=entries.getJSONObject(0);if(!identity.optString("id").matches("[a-f0-9]{64}")||!identity.optString("mode").equals("personal"))throw new SecurityException("Invalid key workspace");return identity;}
+        return lookupWorkspace(null,credential);
+    }
+    static JSONObject lookupWorkspace(NoteRepository db,String credential)throws Exception{
+        try{JSONObject response=(db==null?new HttpsTransport(new DataProtection.Plaintext()):new HttpsTransport(db,new DataProtection.Plaintext())).request("/api/workspaces",null,credential);JSONArray entries=response.getJSONArray("workspaces");if(entries.length()!=1)throw new SecurityException("Invalid workspace identity");JSONObject identity=entries.getJSONObject(0);if(!identity.optString("id").matches("[a-f0-9]{64}")||!identity.optString("mode").equals("personal"))throw new SecurityException("Invalid key workspace");return identity;}
         catch(HttpsTransport.HttpFailure e){if(e.status==404)return null;throw e;}
     }
-    private final NoteRepository db;private final Transport transport;
-    public NativeSync(NoteRepository db,Transport transport){this.db=db;this.transport=transport;}
+    private static final class GuardedTransport implements Transport {final NoteRepository db;final Transport actual;GuardedTransport(NoteRepository db,Transport actual){this.db=db;this.actual=actual;}public JSONObject request(String path,JSONObject body,String key)throws Exception{db.assertActiveProfile();JSONObject response=actual.request(path,body,key);db.assertActiveProfile();return response;}}
+    static HttpsTransport http(Transport transport){Transport actual=transport instanceof GuardedTransport?((GuardedTransport)transport).actual:transport;return actual instanceof HttpsTransport?(HttpsTransport)actual:null;}
+    private final NoteRepository db;private final Transport transport,underlying;
+    public NativeSync(NoteRepository db,Transport transport){this.db=db;this.underlying=transport;if(transport instanceof HttpsTransport)((HttpsTransport)transport).bind(db);this.transport=new GuardedTransport(db,transport);}
     public JSONObject run(String key)throws Exception{return run(key,false);}
     private static final Set<String> RUNNING=new HashSet<>();
-    public static boolean isRunning(String key){synchronized(RUNNING){return RUNNING.contains(NoteRepository.spaceId(key));}}
-    static JSONObject configure(NoteRepository db,String key,JSONObject policy)throws Exception{synchronized(RUNNING){if(isRunning(key))throw new IllegalStateException("Sync running");return SyncPolicy.save(db,key,policy);}}
+    public static boolean isRunning(String key){synchronized(RUNNING){String prefix=ServerProfiles.OFFICIAL+":"+NoteRepository.spaceId(key)+":";for(String running:RUNNING)if(running.startsWith(prefix))return true;return false;}}
+    public static boolean isRunning(NoteRepository db,String key){synchronized(RUNNING){return RUNNING.contains(db.profileId()+":"+NoteRepository.spaceId(key)+":"+db.profileEpoch());}}
+    static JSONObject configure(NoteRepository db,String key,JSONObject policy)throws Exception{synchronized(RUNNING){db.assertActiveProfile();if(isRunning(db,key))throw new IllegalStateException("Sync running");return SyncPolicy.save(db,key,policy);}}
     public JSONObject run(String key,boolean manual)throws Exception{
-        String ref=NoteRepository.spaceId(key),runtime="sync-runtime:"+ref;JSONObject state;
+        db.assertActiveProfile();String ref=db.profileId()+":"+NoteRepository.spaceId(key)+":"+db.profileEpoch(),runtime="sync-runtime:"+NoteRepository.spaceId(key);JSONObject state;
         synchronized(RUNNING){
             if(RUNNING.contains(ref))return db.snapshot(key).put("coalesced",true);
             JSONObject policy=SyncPolicy.read(db,key);state=new JSONObject(db.setting(runtime,"{}"));
@@ -47,9 +56,9 @@ public final class NativeSync {
             if(!manual&&System.currentTimeMillis()-state.optLong("finished")<2000)return db.snapshot(key).put("coalesced",true);RUNNING.add(ref);
         }
         SyncJournal journal=new SyncJournal(db,key);
-        try{if(transport instanceof HttpsTransport){HttpsTransport http=(HttpsTransport)transport;String id=db.setting("account-workspace:"+key,"");if(!id.isEmpty()){http.accountToken=NativeAccount.token(db);http.workspaceId=id;}else{WorkspaceClient.ensure(db);}}state.put("state","running").put("started",System.currentTimeMillis());db.setSetting(runtime,state.toString());if(transport instanceof HttpsTransport)((HttpsTransport)transport).deadline=System.nanoTime()+1800000000000L;if(manual)db.retryPlacements(key);JSONObject result=runInternal(key,journal);journal.finishRunning("done");state.put("state","idle").put("failures",0).put("retryAt",0).put("success",System.currentTimeMillis());return result;}
-        catch(Exception e){journal.failRunning();int count=state.optInt("failures")+1;state.put("state","retry").put("failures",count).put("retryAt",System.currentTimeMillis()+Math.min(21600000,15000L*(1L<<Math.min(10,count))));throw e;}
-        finally{try{state.put("finished",System.currentTimeMillis());db.setSetting(runtime,state.toString());}finally{synchronized(RUNNING){RUNNING.remove(ref);}}}
+        try{if(underlying instanceof HttpsTransport){HttpsTransport http=(HttpsTransport)underlying;String id=db.setting("account-workspace:"+key,"");if(!id.isEmpty()){if(db.profile().httpKeyOnly)throw new SecurityException("Accounts require HTTPS");http.accountToken=NativeAccount.token(db);http.workspaceId=id;}else{WorkspaceClient.ensure(db);}}state.put("state","running").put("started",System.currentTimeMillis());db.setSetting(runtime,state.toString());if(underlying instanceof HttpsTransport)((HttpsTransport)underlying).deadline=System.nanoTime()+1800000000000L;if(manual)db.retryPlacements(key);JSONObject result=runInternal(key,journal);journal.finishRunning("done");state.put("state","idle").put("failures",0).put("retryAt",0).put("success",System.currentTimeMillis());return result;}
+        catch(Exception e){if(db.isActiveProfile()){journal.failRunning();int count=state.optInt("failures")+1;state.put("state","retry").put("failures",count).put("retryAt",System.currentTimeMillis()+Math.min(21600000,15000L*(1L<<Math.min(10,count))));}throw e;}
+        finally{try{if(db.isActiveProfile()){state.put("finished",System.currentTimeMillis());db.setSetting(runtime,state.toString());}}finally{synchronized(RUNNING){RUNNING.remove(ref);}}}
     }
     private JSONObject runInternal(String key,SyncJournal journal)throws Exception{
         JSONObject policy=SyncPolicy.read(db,key),origins=new JSONObject(db.setting("sync-origins:"+NoteRepository.spaceId(key),"{}"));

@@ -64,7 +64,8 @@ class NativeHtmlHarness {
 
 const app=new JSDOM(html,{url:'https://appassets.androidplatform.net/',runScripts:'outside-only',pretendToBeVisual:true}),window=app.window;
 const key='space:'+'a'.repeat(64),workspace={id:'a'.repeat(64),name:'Native workspace',mode:'personal',role:'manager'};
-const state={key,notes:[],folders:[],management:{},syncPolicy:{autoChange:false,interval:0}},messages=[],errors=[];let bootstrap;
+const official={id:'official',origin:'https://easybook.loonxy.com',name:'Easybook',builtin:true,httpKeyOnly:false,verified:true,epoch:1};
+const servers=[official],state={key,localSpace:key,server:official,notes:[],folders:[],management:{},syncPolicy:{autoChange:false,interval:0}},messages=[],errors=[];let bootstrap,commitGate,releaseCommits,selectedServer='official';
 try{
  window.TextEncoder=TextEncoder;window.scrollTo=window.scrollBy=()=>{};
  Object.defineProperty(window,'crypto',{value:crypto});Object.defineProperty(window.navigator,'onLine',{value:false});
@@ -76,10 +77,15 @@ try{
  window.EasybookNative={postMessage(raw){
   const message=JSON.parse(raw);messages.push(message);
   if(message.method==='bootstrap'){bootstrap=message;return}
-  queueMicrotask(()=>{
+  queueMicrotask(async()=>{
+   if(message.method==='commit'&&commitGate)await commitGate;
    try{
     let result={};const {method,args}=message;
-    if(method==='search')result={notes:copy(state.notes)};
+    if(method==='server.list')result={servers:copy(servers),active:selectedServer,epoch:1};
+    else if(method==='server.add'){const server={id:'c'.repeat(64),origin:args.origin,name:args.name,builtin:false,httpKeyOnly:false,verified:false,epoch:1};servers.push(server);result={server:copy(server)}}
+    else if(method==='server.test'){const server=servers.find(server=>server.id===args.id);server.verified=true;result={server:copy(server),protocolVersion:1,capabilities:{sync:true,keySync:true,accounts:true}}}
+    else if(method==='server.select'){assert.equal(servers.find(server=>server.id===args.id)?.verified,true,'only tested profiles are selected');selectedServer=args.id;result={selected:true,serverChanged:true,server:copy(servers.find(server=>server.id===args.id))}}
+    else if(method==='search')result={notes:copy(state.notes)};
     else if(method==='workspace.action')result={current:workspace.id,workspaces:[workspace]};
     else if(method==='account.status')result={signedIn:false};
     else if(method==='sync.activity')result={tasks:[]};
@@ -112,7 +118,35 @@ try{
  assert.equal(state.notes.length,1,'New Note is committed through the real bridge');
  assert.equal(state.notes[0].title,'原生点击已恢复');
  assert.equal(window.RichNotes.plain(state.notes[0].document),'保存','localization preserves the saved user text');
+ get('serverEntry').click();
+ await waitFor(()=>!!get('serverList').querySelector('[data-server-use="official"]'),'server settings load profiles through the native bridge');
+ assert.ok(get('serverCurrentSummary').textContent.includes(official.origin),'the active business origin is visible');
+ get('serverName').value='Private notes';get('serverOrigin').value='https://notes.example.com:8443';
+ await get('serverForm').onsubmit(new window.Event('submit',{cancelable:true}));
+ const custom=servers.find(server=>!server.builtin),use=get('serverList').querySelector('[data-server-use="'+custom.id+'"]');
+ assert.ok(custom.verified&&use,'the add flow probes a saved server before offering it for use');
+ assert.equal(selectedServer,'official','adding and probing preserve the active server');
+ assert.deepEqual(messages.filter(message=>message.method==='server.add').at(-1).args,{origin:custom.origin,name:'Private notes',acknowledgeHttp:false});
+ get('serverDialog').close();
+ // Hold a real commit reply while requesting a switch from an unsaved editor.
+ // The server selection must wait for both that commit and the newer edits.
+ commitGate=new Promise(resolve=>{releaseCommits=resolve});
+ get('newTop').click();get('title').value='切服前的未完成编辑';get('title').dispatchEvent(new window.Event('input'));
+ window.easybookRich.editor.commands.insertContent('保留此内容');
+ get('serverEntry').click();
+ await waitFor(()=>get('serverDialog').open,'the server picker remains available with editor changes pending');
+ const pendingSwitchStart=messages.length;
+ get('serverList').querySelector('[data-server-use="'+custom.id+'"]').click();
+ await new Promise(resolve=>setTimeout(resolve,25));
+ assert.equal(messages.slice(pendingSwitchStart).some(message=>message.method==='server.select'),false,'server.select waits for pending native writes');
+ assert.equal(get('title').readOnly,true,'the editor stops accepting input while switching');
+ releaseCommits();commitGate=null;
+ await waitFor(()=>selectedServer===custom.id,'the native server selection runs after a successful flush');
+ const savedBeforeSwitch=state.notes.find(note=>note.title==='切服前的未完成编辑');
+ assert.ok(savedBeforeSwitch,'the current title is committed before switching');
+ assert.equal(window.RichNotes.plain(savedBeforeSwitch.document),'保留此内容','the current document is committed before switching');
+ assert.ok(messages.findLastIndex(message=>message.method==='commit')<messages.findLastIndex(message=>message.method==='server.select'),'the selection request follows the final commit');
  assert.equal(new Set(messages.map(message=>message.id)).size,messages.length,'all real app request IDs remain unique');
  assert.deepEqual(errors,[]);
 }finally{window.easybookRich?.editor.destroy();window.close()}
-console.log('PASS native bootstrap: actual Java HTML injection, idempotent bridge, continuous request IDs, duplicate replies, delayed bootstrap across i18n, and native New Note/input/save.');
+console.log('PASS native bootstrap: actual Java HTML injection, idempotent bridge, continuous request IDs, duplicate replies, delayed bootstrap across i18n, native New Note/input/save, server add/probe, and switch waiting for pending editor commits.');

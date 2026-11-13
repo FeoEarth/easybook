@@ -25,6 +25,7 @@ final class SyncPolicy {
  static String query(JSONObject p){if(p.optBoolean("all",true))return "";JSONArray a=p.optJSONArray("roots");List<String> ids=new ArrayList<>();if(a!=null)for(int i=0;i<a.length();i++){String id=a.optString(i);ids.add(id.isEmpty()?"0":id);}return "&scope="+(ids.isEmpty()?"none":String.join(",",ids));}
  static boolean network(JSONObject p){if(context==null)return p.optString("network","any").equals("any");ConnectivityManager cm=(ConnectivityManager)context.getSystemService(Context.CONNECTIVITY_SERVICE);NetworkCapabilities caps=cm.getNetworkCapabilities(cm.getActiveNetwork());if(caps==null||!caps.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET))return false;String n=p.optString("network","any");return n.equals("any")||n.equals("wifi")&&caps.hasTransport(NetworkCapabilities.TRANSPORT_WIFI)||n.equals("unmetered")&&caps.hasCapability(NetworkCapabilities.NET_CAPABILITY_NOT_METERED);}
  static JSONObject save(NoteRepository db,String key,JSONObject raw)throws Exception{
+  db.assertActiveProfile();
   JSONObject p=clean(raw);
   synchronized(db){
    JSONObject old=read(db,key);android.database.sqlite.SQLiteDatabase sql=db.getWritableDatabase();sql.beginTransaction();
@@ -43,6 +44,6 @@ final class SyncPolicy {
    return "BACKGROUND_SCHEDULE_FAILED";
   }
  }
- static void schedule(JSONObject p){if(context==null)return;JobScheduler jobs=(JobScheduler)context.getSystemService(Context.JOB_SCHEDULER_SERVICE);long interval=p.optLong("interval");if(p.optBoolean("paused")||interval==0){jobs.cancel(8030);return;}JobInfo.Builder b=new JobInfo.Builder(8030,new ComponentName(context,SyncJobService.class)).setPeriodic(Math.max(900000,interval)).setRequiredNetworkType(p.optString("network").equals("unmetered")?JobInfo.NETWORK_TYPE_UNMETERED:JobInfo.NETWORK_TYPE_ANY).setBackoffCriteria(30000,JobInfo.BACKOFF_POLICY_EXPONENTIAL);if(jobs.schedule(b.build())!=JobScheduler.RESULT_SUCCESS)throw new IllegalStateException("Background schedule rejected");}
+ static void schedule(JSONObject p){if(context==null)return;JobScheduler jobs=(JobScheduler)context.getSystemService(Context.JOB_SCHEDULER_SERVICE);long interval=p.optLong("interval");if(p.optBoolean("paused")||interval==0){jobs.cancel(8030);return;}ServerProfiles.Profile profile=ServerProfiles.get(context).active();android.os.PersistableBundle extras=new android.os.PersistableBundle();extras.putString("profileId",profile.id);extras.putLong("profileEpoch",profile.epoch);JobInfo.Builder b=new JobInfo.Builder(8030,new ComponentName(context,SyncJobService.class)).setExtras(extras).setPeriodic(Math.max(900000,interval)).setRequiredNetworkType(p.optString("network").equals("unmetered")?JobInfo.NETWORK_TYPE_UNMETERED:JobInfo.NETWORK_TYPE_ANY).setBackoffCriteria(30000,JobInfo.BACKOFF_POLICY_EXPONENTIAL);if(jobs.schedule(b.build())!=JobScheduler.RESULT_SUCCESS)throw new IllegalStateException("Background schedule rejected");}
 }
 

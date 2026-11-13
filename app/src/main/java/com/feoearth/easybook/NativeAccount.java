@@ -9,8 +9,7 @@ import androidx.credentials.*;
 import androidx.credentials.exceptions.GetCredentialException;
 import androidx.credentials.exceptions.CreateCredentialException;
 import org.json.*;
-import javax.net.ssl.HttpsURLConnection;
-import java.net.URL;
+import java.net.HttpURLConnection;
 import java.io.*;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
@@ -30,57 +29,54 @@ final class NativeAccount {
     private static final ExecutorService revocations=java.util.concurrent.Executors.newSingleThreadExecutor();
     private final ExecutorService aiStreams=Executors.newSingleThreadExecutor();
     private String aiStreamId;
-    private HttpsURLConnection aiStreamConnection;
+    private HttpURLConnection aiStreamConnection;
     private volatile boolean starting;
+    private volatile boolean switching;
+    private void requireActive(){db.assertActiveProfile();if(switching)throw new SecurityException("Server changed");}
+    private String origin(){requireActive();if(db.profile().httpKeyOnly)throw new SecurityException("HTTP server supports existing-key sync only");return db.profile().origin;}
+    private boolean sameOrigin(Uri uri){try{return ServerAccountUrls.sameOrigin(origin(),uri.toString());}catch(Exception error){return false;}}
     private volatile String feedback="",stage="账户验证";
     private void stage(String value){stage=value;feedback=value+"…";changed();}
     private void report(Exception error){String detail=error instanceof HttpFailure?" [HTTP "+((HttpFailure)error).status+(((HttpFailure)error).code.isEmpty()?"":" / "+((HttpFailure)error).code)+"]":"";message(stage+"："+failureMessage(error)+detail);}
-    private void changed(){if(activity instanceof MainActivity)((MainActivity)activity).accountChanged();}
-    private synchronized boolean startOperation(){if(starting)return false;starting=true;feedback="正在准备账户验证…";changed();return true;}
+    private void changed(){if(db.isActiveProfile()&&!switching&&activity instanceof MainActivity)((MainActivity)activity).accountChanged();}
+    private synchronized boolean startOperation(){if(starting||switching||!db.isActiveProfile())return false;starting=true;feedback="正在准备账户验证…";changed();return true;}
     private void finishOperation(){starting=false;cancellation=null;changed();}
     private volatile CancellationSignal cancellation;
     static final class HttpFailure extends IOException {final int status;final boolean challenge;final String code;HttpFailure(int value,boolean challenged,String code){super("Account HTTP "+value);status=value;challenge=challenged;this.code=code;}}
     NativeAccount(Activity activity,NoteRepository db,ExecutorService io){this.activity=activity;this.db=db;this.io=io;revocations.execute(this::retryLogout);}
-    private JSONObject read(String name)throws Exception{String value=db.setting(name,"");return value.isEmpty()?null:new JSONObject(db.vault.open(value,name));}
-    static String token(NoteRepository db)throws Exception{String raw=db.setting(SESSION,"");if(raw.isEmpty())throw new CredentialVault.KeyUnavailable();JSONObject s=new JSONObject(db.vault.open(raw,SESSION));if(s.getLong("expires")<=System.currentTimeMillis())throw new CredentialVault.KeyUnavailable();return s.getString("token");}
-    private void write(String name,JSONObject value)throws Exception{String sealed=db.vault.seal(value.toString(),name);if(!value.toString().equals(db.vault.open(sealed,name)))throw new SecurityException("Account persistence verification failed");db.setSetting(name,sealed);}
-    JSONObject publicStatus()throws Exception{return status().put("busy",starting).put("feedback",feedback).put("build",BuildConfig.VERSION_CODE).put("source",BuildConfig.SOURCE_SHA);}
-    private JSONObject status()throws Exception{try{JSONObject value=read(SESSION);if(value==null)return new JSONObject().put("signedIn",false);return new JSONObject().put("signedIn",value.getLong("expires")>System.currentTimeMillis()).put("sessionId",value.getString("sessionId")).put("expiresAt",value.getLong("expires"));}catch(Exception e){return new JSONObject().put("signedIn",false).put("reauthenticationRequired",true);}}
-    private static String serverError(HttpsURLConnection connection){try(InputStream in=connection.getErrorStream();ByteArrayOutputStream out=new ByteArrayOutputStream()){if(in==null)return "";byte[] bytes=new byte[1024];int n;while((n=in.read(bytes))!=-1){if(out.size()+n>4096)return "";out.write(bytes,0,n);}String code=new JSONObject(out.toString("UTF-8")).optString("error");return code.matches("[A-Za-z_]{1,80}")?code:"";}catch(Exception ignored){return "";}}
-    private static JSONObject request(String path,JSONObject body,String token)throws Exception{
+    private JSONObject read(String name)throws Exception{requireActive();String value=db.setting(name,"");return value.isEmpty()?null:new JSONObject(db.vault.open(value,db.credentialPurpose(name)));}
+    static String token(NoteRepository db)throws Exception{db.assertActiveProfile();if(db.profile().httpKeyOnly)throw new CredentialVault.KeyUnavailable();String raw=db.setting(SESSION,"");if(raw.isEmpty())throw new CredentialVault.KeyUnavailable();JSONObject s=new JSONObject(db.vault.open(raw,db.credentialPurpose(SESSION)));if(s.getLong("expires")<=System.currentTimeMillis())throw new CredentialVault.KeyUnavailable();return s.getString("token");}
+    private void write(String name,JSONObject value)throws Exception{requireActive();String sealed=db.vault.seal(value.toString(),db.credentialPurpose(name));if(!value.toString().equals(db.vault.open(sealed,db.credentialPurpose(name))))throw new SecurityException("Account persistence verification failed");db.setSetting(name,sealed);}
+    JSONObject publicStatus()throws Exception{return status().put("accountAvailable",!db.profile().httpKeyOnly).put("browserPasskey",!db.profile().builtin).put("busy",starting).put("feedback",feedback).put("build",BuildConfig.VERSION_CODE).put("source",BuildConfig.SOURCE_SHA);}
+    private JSONObject status()throws Exception{if(db.profile().httpKeyOnly)return new JSONObject().put("signedIn",false);try{JSONObject value=read(SESSION);if(value==null)return new JSONObject().put("signedIn",false);return new JSONObject().put("signedIn",value.getLong("expires")>System.currentTimeMillis()).put("sessionId",value.getString("sessionId")).put("expiresAt",value.getLong("expires"));}catch(Exception e){return new JSONObject().put("signedIn",false).put("reauthenticationRequired",true);}}
+    private static String serverError(HttpURLConnection connection){try(InputStream in=connection.getErrorStream();ByteArrayOutputStream out=new ByteArrayOutputStream()){if(in==null)return "";byte[] bytes=new byte[1024];int n;while((n=in.read(bytes))!=-1){if(out.size()+n>4096)return "";out.write(bytes,0,n);}String code=new JSONObject(out.toString("UTF-8")).optString("error");return code.matches("[A-Za-z_]{1,80}")?code:"";}catch(Exception ignored){return "";}}
+    private JSONObject request(String path,JSONObject body,String token)throws Exception{
         if(!java.util.Arrays.asList("/account/native/ai","/account/native/manage","/account/native/poll","/account/native/start","/account/native/token","/account/native/session","/account/native/logout","/account/native/sessions","/account/native/sessions/revoke","/account/native/qr/start","/account/native/qr/status","/account/native/qr/redeem","/account/native/qr/approve","/account/native/passkeys/login/options","/account/native/passkeys/login/verify","/account/native/passkeys/register/options","/account/native/passkeys/register/verify").contains(path))throw new SecurityException("Account path denied");
-        String endpoint=NativeTransport.origin(true);HttpsURLConnection connection=(HttpsURLConnection)new URL(endpoint+path).openConnection();connection.setInstanceFollowRedirects(false);connection.setConnectTimeout(12000);connection.setReadTimeout(15000);connection.setRequestMethod(body==null?"GET":"POST");connection.setRequestProperty("X-Easybook-Native","1");connection.setRequestProperty("Content-Type","application/json");if(token!=null)connection.setRequestProperty("Authorization","Easybook-Session "+token);
+        requireActive();String endpoint=NativeTransport.origin(db,true);HttpURLConnection connection=NativeTransport.open(db,path,true);connection.setInstanceFollowRedirects(false);connection.setConnectTimeout(12000);connection.setReadTimeout(15000);connection.setRequestMethod(body==null?"GET":"POST");connection.setRequestProperty("X-Easybook-Native","1");connection.setRequestProperty("Content-Type","application/json");if(token!=null)connection.setRequestProperty("Authorization","Easybook-Session "+token);
         try{if(body!=null){byte[] bytes=body.toString().getBytes(StandardCharsets.UTF_8);connection.setDoOutput(true);connection.setFixedLengthStreamingMode(bytes.length);try(OutputStream out=connection.getOutputStream()){out.write(bytes);}}
             int status=connection.getResponseCode();if(status!=200&&!(path.equals("/account/native/poll")&&status==202))throw new HttpFailure(status,"challenge".equals(connection.getHeaderField("cf-mitigated")),serverError(connection));
-            try(InputStream in=connection.getInputStream();ByteArrayOutputStream out=new ByteArrayOutputStream()){byte[] buffer=new byte[2048];int n;while((n=in.read(buffer))!=-1){if(out.size()+n>((path.equals("/account/native/manage")||path.equals("/account/native/ai"))?4194304:path.contains("/passkeys/")?65536:16384))throw new IOException("Account response too large");out.write(buffer,0,n);}return new JSONObject(out.toString("UTF-8"));}
-        }catch(IOException error){if(!(error instanceof HttpFailure)||((HttpFailure)error).challenge)NativeTransport.reject(true,endpoint);throw error;}finally{connection.disconnect();}
+            try(InputStream in=connection.getInputStream();ByteArrayOutputStream out=new ByteArrayOutputStream()){byte[] buffer=new byte[2048];int n;while((n=in.read(buffer))!=-1){if(out.size()+n>((path.equals("/account/native/manage")||path.equals("/account/native/ai"))?4194304:path.contains("/passkeys/")?65536:16384))throw new IOException("Account response too large");out.write(buffer,0,n);}requireActive();return new JSONObject(out.toString("UTF-8"));}
+        }catch(IOException error){if(!(error instanceof HttpFailure)||((HttpFailure)error).challenge)NativeTransport.reject(db,true,endpoint);throw error;}finally{connection.disconnect();NativeTransport.release(db,connection);}
     }
-    void open(){try{if(publicStatus().optBoolean("signedIn")){browse(ORIGIN+"/account");return;}}catch(Exception ignored){}activity.runOnUiThread(()->{if(activity.isDestroyed())return;new android.app.AlertDialog.Builder(activity).setTitle("登录 Easybook").setItems(new String[]{"使用通行密钥","使用 GitHub","展示登录二维码"},(d,choice)->{if(choice==0)passkey(false,"");else if(choice==1)begin();else beginQr();}).setNegativeButton("取消",null).show();});}
+    void open(){if(db.profile().httpKeyOnly){message("此 HTTP 服务器仅支持使用已有密钥同步");return;}try{if(publicStatus().optBoolean("signedIn")){browse(origin()+"/account");return;}}catch(Exception ignored){}if(!db.profile().builtin){beginBrowser();return;}activity.runOnUiThread(()->{if(activity.isDestroyed()||!db.isActiveProfile()||switching)return;new android.app.AlertDialog.Builder(activity).setTitle("登录 Easybook").setItems(new String[]{"使用通行密钥","使用 GitHub","展示登录二维码"},(d,choice)->{if(choice==0)passkey(false,"");else if(choice==1)begin();else beginQr();}).setNegativeButton("取消",null).show();});}
     /** Only the canonical, single-parameter Easybook approval URL may be scanned. */
-    static String qrChallengeId(String raw){
-        if(raw==null||raw.length()>512)return null;
-        try{
-            Uri link=Uri.parse(raw);
-            if(!"https".equals(link.getScheme())||!"easybook.loonxy.com".equals(link.getHost())||link.getPort()!=-1||link.getUserInfo()!=null||link.getFragment()!=null||!"/account/qr/approve".equals(link.getPath())||link.getQueryParameterNames().size()!=1||!link.getQueryParameterNames().contains("id")||link.getQueryParameters("id").size()!=1)return null;
-            String id=link.getQueryParameter("id");
-            return id!=null&&id.matches("[a-f0-9]{64}")?id:null;
-        }catch(Exception error){return null;}
-    }
+    static String qrChallengeId(String raw){return qrChallengeId(raw,ORIGIN);}
+    static String qrChallengeId(String raw,String serverOrigin){return ServerAccountUrls.qrChallengeId(raw,serverOrigin==null?ORIGIN:serverOrigin);}
     void scanQr(){
         try{token(db);}catch(Exception error){message("请先登录 Easybook，再扫描其他设备的登录二维码");return;}
-        activity.runOnUiThread(()->{if(!activity.isDestroyed())activity.startActivityForResult(new Intent(activity,QrScanActivity.class),85);});
+        activity.runOnUiThread(()->{if(!activity.isDestroyed()&&db.isActiveProfile()&&!switching)activity.startActivityForResult(new Intent(activity,QrScanActivity.class).putExtra(QrScanActivity.EXTRA_SERVER_ORIGIN,db.profile().origin),85);});
     }
     void approveScannedQr(String id){
-        if(id!=null&&id.matches("[a-f0-9]{64}"))handleQrApproval(Uri.parse("easybook://account/qr/approve?id="+id));
+        if(id!=null&&id.matches("[a-f0-9]{64}")){Uri.Builder link=Uri.parse("easybook://account/qr/approve?id="+id).buildUpon();if(!db.profile().builtin)link.appendQueryParameter("server",origin());handleQrApproval(link.build());}
     }
-    void begin(){begin(true);}
+    void begin(){begin(db.profile().builtin);}
     void beginBrowser(){begin(false);}
     private void begin(boolean github){if(!startOperation())return;io.execute(()->{try{
         String verifier=NoteRepository.newKey(),state=NoteRepository.newKey();String challenge=android.util.Base64.encodeToString(MessageDigest.getInstance("SHA-256").digest(verifier.getBytes(StandardCharsets.UTF_8)),android.util.Base64.URL_SAFE|android.util.Base64.NO_WRAP|android.util.Base64.NO_PADDING);
         stage("读取登录入口");JSONObject response=request("/account/native/start",new JSONObject().put("challenge",challenge).put("state",state).put("provider",github?"github":(Object)null),null);String flow=response.getString("flow"),destination=response.getString("authorization_url");Uri uri=Uri.parse(destination);
-        if(!flow.matches("[a-f0-9]{64}")||!"https".equals(uri.getScheme())||!"easybook.loonxy.com".equals(uri.getHost())||uri.getPort()!=-1||uri.getUserInfo()!=null||!(github?"/account/login":"/account/handoff").equals(uri.getPath()))throw new SecurityException("Invalid authorization destination");
+        if(!flow.matches("[a-f0-9]{64}")||!sameOrigin(uri)||!(github?"/account/login":"/account/handoff").equals(uri.getPath()))throw new SecurityException("Invalid authorization destination");
         Uri handoff=github?Uri.parse(uri.getQueryParameter("return")==null?"":uri.getQueryParameter("return")):Uri.parse(uri.getPath()+"?"+uri.getEncodedQuery());if(handoff.isAbsolute()||!"/account/handoff".equals(handoff.getPath())||!flow.equals(handoff.getQueryParameter("flow"))||!state.equals(handoff.getQueryParameter("state")))throw new SecurityException("Invalid login return path");
-        if(activity.isDestroyed())return;write(PENDING,new JSONObject().put("kind","browser").put("flow",flow).put("state",state).put("verifier",verifier).put("expires",System.currentTimeMillis()+480000));feedback="请在系统浏览器中完成登录，再返回 Easybook";browse(destination);
+        if(activity.isDestroyed()||!db.isActiveProfile()||switching)return;requireActive();write(PENDING,new JSONObject().put("kind","browser").put("flow",flow).put("state",state).put("verifier",verifier).put("expires",System.currentTimeMillis()+480000));feedback="请在系统浏览器中完成登录，再返回 Easybook";browse(destination);
     }catch(Exception e){report(e);}finally{finishOperation();}});}
     boolean handle(Intent intent){if(intent==null||!Intent.ACTION_VIEW.equals(intent.getAction()))return false;Uri uri=intent.getData();if(uri!=null&&"easybook".equals(uri.getScheme())&&"account".equals(uri.getHost())&&"/qr/approve".equals(uri.getPath()))return handleQrApproval(uri);if(uri==null||!"easybook".equals(uri.getScheme())||!"account".equals(uri.getHost())||!"/callback".equals(uri.getPath())||uri.getUserInfo()!=null||uri.getPort()!=-1||uri.getFragment()!=null)return false;
         final boolean denied="access_denied".equals(uri.getQueryParameter("error"));
@@ -91,7 +87,7 @@ final class NativeAccount {
         io.execute(()->{try{JSONObject pending=read(PENDING);if(pending==null&&publicStatus().optBoolean("signedIn"))return;if(pending==null||!pending.optString("kind","browser").equals("browser")||pending.getLong("expires")<System.currentTimeMillis()||!same(flow,pending.getString("flow"))||!same(state,pending.getString("state"))){message("登录回调已过期或不匹配，请返回原登录流程");return;}
             if(denied){db.setSetting(PENDING,"");finishOperation();message("已取消浏览器登录");return;}
             stage("交换登录会话");JSONObject response=request("/account/native/token",new JSONObject().put("flow",flow).put("code",code).put("state",state).put("verifier",pending.getString("verifier")),null);
-            synchronized(db){JSONObject active=read(PENDING);if(activity.isDestroyed()||active==null||!same(flow,active.getString("flow"))||!same(state,active.getString("state")))return;storeSession(response);db.setSetting(PENDING,"");}message("Easybook 账户已登录；工作区密钥保持独立");
+            synchronized(db){JSONObject active=read(PENDING);if(activity.isDestroyed()||!db.isActiveProfile()||switching||active==null||!same(flow,active.getString("flow"))||!same(state,active.getString("state")))return;storeSession(response);db.setSetting(PENDING,"");}message("Easybook 账户已登录；工作区密钥保持独立");
         }catch(Exception e){report(e);}});return true;
     }
     /** Login QR contains only a short-lived approval URL; PKCE proof stays sealed locally. */
@@ -104,7 +100,7 @@ final class NativeAccount {
             JSONObject response=request("/account/native/qr/start",new JSONObject().put("challenge",challenge).put("state",state),null);
             String id=response.getString("id"),url=response.getString("confirm_url");
             Uri link=Uri.parse(url);
-            if(!id.equals(qrChallengeId(url))||response.getInt("expires_in")!=120)throw new SecurityException("Invalid QR sign in response");
+            if(!id.equals(qrChallengeId(url,origin()))||response.getInt("expires_in")!=120)throw new SecurityException("Invalid QR sign in response");
             android.graphics.Bitmap image=qrBitmap(response.getJSONArray("qr_rows"));
             write(PENDING,new JSONObject().put("kind","qr").put("id",id).put("verifier",verifier).put("state",state).put("expires",System.currentTimeMillis()+120000));
             activity.runOnUiThread(()->showQrDialog(image,id));
@@ -125,7 +121,7 @@ final class NativeAccount {
         return image;
     }
     private void showQrDialog(android.graphics.Bitmap bitmap,String id){
-        if(activity.isDestroyed())return;
+        if(activity.isDestroyed()||!db.isActiveProfile()||switching)return;
         android.widget.LinearLayout layout=new android.widget.LinearLayout(activity);layout.setOrientation(android.widget.LinearLayout.VERTICAL);
         int inset=(int)(20*activity.getResources().getDisplayMetrics().density);
         layout.setPadding(inset,inset,inset,inset);
@@ -139,7 +135,7 @@ final class NativeAccount {
         final android.os.Handler handler=new android.os.Handler(android.os.Looper.getMainLooper());
         final Runnable[] polling=new Runnable[1];
         polling[0]=()->{
-            if(!dialog.isShowing()||activity.isDestroyed())return;
+            if(!dialog.isShowing()||activity.isDestroyed()||!db.isActiveProfile()||switching)return;
             io.execute(()->{boolean again=true;try{
                 JSONObject pending=read(PENDING);
                 if(pending==null||!"qr".equals(pending.optString("kind"))||!id.equals(pending.optString("id")))return;
@@ -152,15 +148,15 @@ final class NativeAccount {
                     again=false;activity.runOnUiThread(()->{dialog.dismiss();message("扫码登录成功，工作区密钥保持独立");});return;
                 }
                 if(!"pending".equals(status.optString("status"))){again=false;activity.runOnUiThread(()->{dialog.dismiss();message("扫码请求已失效或被取消");});}
-            }catch(Exception e){report(e);}finally{if(again)activity.runOnUiThread(()->{if(dialog.isShowing())handler.postDelayed(polling[0],3000);});}});
+            }catch(Exception e){report(e);}finally{if(again)activity.runOnUiThread(()->{if(dialog.isShowing()&&db.isActiveProfile()&&!switching)handler.postDelayed(polling[0],3000);});}});
         };
         handler.postDelayed(polling[0],1000);
     }
     private boolean handleQrApproval(Uri uri){
-        if(uri.getUserInfo()!=null||uri.getPort()!=-1||uri.getFragment()!=null||uri.getQueryParameterNames().size()!=1||uri.getQueryParameters("id").size()!=1)return true;
+        if(!ServerAccountUrls.qrApprovalMatches(uri.toString(),db.profile().origin,db.profile().builtin)||db.profile().httpKeyOnly||!db.isActiveProfile()||switching)return true;
         final String id=uri.getQueryParameter("id");
         if(id==null||!id.matches("[a-f0-9]{64}"))return true;
-        activity.runOnUiThread(()->{if(activity.isDestroyed())return;
+        activity.runOnUiThread(()->{if(activity.isDestroyed()||!db.isActiveProfile()||switching)return;
             new android.app.AlertDialog.Builder(activity).setTitle("确认其他设备登录")
                 .setMessage("只允许你本人发起的扫码登录。批准后，另一台设备将拥有独立账户会话，但不会获得工作区同步密钥。")
                 .setNegativeButton("拒绝",(d,w)->submitQrApproval(id,"deny"))
@@ -183,11 +179,14 @@ final class NativeAccount {
         feedback=result.optString("status").equals("approved")?"浏览器已确认，请点击浏览器页面中的「返回 Easybook」完成登录":"请先在浏览器中确认登录，再返回 App";changed();
     }catch(HttpFailure e){if(e.code.equals("handoff_expired"))try{db.setSetting(PENDING,"");}catch(Exception ignored){}report(e);}catch(Exception e){report(e);}});}
     private void storeSession(JSONObject response)throws Exception{
+        requireActive();
         String token=response.getString("token"),sessionId=response.getString("session_id");long seconds=response.getLong("expires_in");if(!token.matches("[a-f0-9]{64}")||!sessionId.matches("[a-f0-9-]{36}")||seconds<=0||seconds>604800)throw new SecurityException("Invalid account session");
         write(SESSION,new JSONObject().put("token",token).put("sessionId",sessionId).put("expires",System.currentTimeMillis()+seconds*1000));
     }
     void cancel(){CancellationSignal pending=cancellation;if(pending!=null)pending.cancel();}
+    void cancelForServerSwitch(){cancel();cancelAiStream(null);try{db.setSetting(PENDING,"");}catch(Exception ignored){}switching=true;starting=false;}
     void passkey(boolean register,String name){
+        if(!db.profile().builtin){if(register)try{browse(origin()+"/account");}catch(Exception e){report(e);}else beginBrowser();return;}
         if(!startOperation())return;io.execute(()->{try{
             db.setSetting(PENDING,"");String verifier=NoteRepository.newKey(),state=NoteRepository.newKey();String challenge=android.util.Base64.encodeToString(MessageDigest.getInstance("SHA-256").digest(verifier.getBytes(StandardCharsets.UTF_8)),android.util.Base64.URL_SAFE|android.util.Base64.NO_WRAP|android.util.Base64.NO_PADDING);
             JSONObject stored=register?read(SESSION):null;final String token=stored!=null&&stored.getLong("expires")>System.currentTimeMillis()?stored.getString("token"):null;
@@ -207,9 +206,9 @@ final class NativeAccount {
             }catch(Exception error){finishOperation();message("系统通行密钥服务不可用，请更新系统凭据服务或使用 GitHub 登录");}});
         }catch(Exception error){finishOperation();report(error);}});
     }
-    private void completePasskey(String kind,String flow,String state,String verifier,String response,String token){if(activity.isDestroyed()||io.isShutdown()){starting=false;return;}io.execute(()->{try{
+    private void completePasskey(String kind,String flow,String state,String verifier,String response,String token){if(activity.isDestroyed()||!db.isActiveProfile()||switching||io.isShutdown()){starting=false;return;}io.execute(()->{try{
         JSONObject pending=read(PENDING);if(pending==null||!pending.optString("kind").equals("passkey")||!same(flow,pending.getString("flow"))||!same(state,pending.getString("state"))||pending.getLong("expires")<System.currentTimeMillis())return;
-        stage("服务器验证通行密钥");JSONObject result=request("/account/native/passkeys/"+kind+"/verify",new JSONObject().put("flow",flow).put("state",state).put("verifier",verifier).put("response",new JSONObject(response)),token);synchronized(db){JSONObject active=read(PENDING);if(activity.isDestroyed()||active==null||!same(flow,active.getString("flow"))||!same(state,active.getString("state")))return;storeSession(result);db.setSetting(PENDING,"");}message("通行密钥验证成功，账户已登录");
+        stage("服务器验证通行密钥");JSONObject result=request("/account/native/passkeys/"+kind+"/verify",new JSONObject().put("flow",flow).put("state",state).put("verifier",verifier).put("response",new JSONObject(response)),token);synchronized(db){JSONObject active=read(PENDING);if(activity.isDestroyed()||!db.isActiveProfile()||switching||active==null||!same(flow,active.getString("flow"))||!same(state,active.getString("state")))return;storeSession(result);db.setSetting(PENDING,"");}message("通行密钥验证成功，账户已登录");
     }catch(Exception error){report(error);}finally{finishOperation();}});}
     private String workspaceProof(String id)throws Exception{
         if(!id.matches("[a-f0-9]{64}"))throw new SecurityException("Invalid workspace");
@@ -218,7 +217,7 @@ final class NativeAccount {
         }
     }
     JSONObject manage(JSONObject args)throws Exception{
-        String action=args.getString("action");if(action.equals("deletion")){browse(ORIGIN+"/account/delete");return new JSONObject().put("externalBrowser",true);}
+        String action=args.getString("action");if(action.equals("deletion")){browse(origin()+"/account/delete");return new JSONObject().put("externalBrowser",true);}
         if(!java.util.Arrays.asList("history","grants","approvals","approve","cancel","revoke","revoke-workspace","deletion-preview","delete-account").contains(action))throw new SecurityException("Management action denied");
         if(action.equals("delete-account")){JSONArray choices=args.getJSONArray("choices");for(int i=0;i<choices.length();i++){JSONObject choice=choices.getJSONObject(i);if(choice.optString("action").equals("keep"))choice.put("key",workspaceProof(choice.getString("id")));}}
         JSONObject result=request("/account/native/manage",args,token(db));
@@ -240,10 +239,10 @@ final class NativeAccount {
         String session=token(db);
         aiStreamId=id;
         aiStreams.execute(()->{
-            HttpsURLConnection connection=null;
+            HttpURLConnection connection=null;
             try{
-                String endpoint=NativeTransport.origin(true);
-                connection=(HttpsURLConnection)new URL(endpoint+"/account/native/ai").openConnection();
+                requireActive();
+                connection=NativeTransport.open(db,"/account/native/ai",true);
                 connection.setInstanceFollowRedirects(false);connection.setConnectTimeout(12000);connection.setReadTimeout(125000);connection.setRequestMethod("POST");
                 connection.setRequestProperty("X-Easybook-Native","1");connection.setRequestProperty("Content-Type","application/json");connection.setRequestProperty("Accept","text/event-stream");
                 connection.setRequestProperty("Authorization","Easybook-Session "+session);
@@ -256,7 +255,7 @@ final class NativeAccount {
                 try(BufferedReader lines=new BufferedReader(new InputStreamReader(connection.getInputStream(),StandardCharsets.UTF_8))){
                     String line,type="",data="";int chars=0;boolean done=false;
                     while((line=lines.readLine())!=null){
-                        if(!id.equals(currentAiStreamId()))return;
+                        if(!id.equals(currentAiStreamId())||!db.isActiveProfile()||switching)return;
                         chars+=line.length();if(chars>4*1024*1024)throw new IOException("AI response too large");
                         if(line.isEmpty()){
                             if(!data.isEmpty()){
@@ -279,13 +278,13 @@ final class NativeAccount {
                     if(!done)throw new IOException("AI stream interrupted");
                 }
             }catch(Exception error){
-                if(id.equals(currentAiStreamId())){
+                if(id.equals(currentAiStreamId())&&db.isActiveProfile()&&!switching){
                     String code=error instanceof HttpFailure&& !((HttpFailure)error).code.isEmpty()?((HttpFailure)error).code:"ai_unavailable";
                     try{emit.accept(new JSONObject().put("id",id).put("type","error").put("error",code));}catch(JSONException ignored){}
                 }
             }finally{
                 synchronized(this){if(id.equals(aiStreamId)){aiStreamId=null;aiStreamConnection=null;}}
-                if(connection!=null)connection.disconnect();
+                if(connection!=null){connection.disconnect();NativeTransport.release(db,connection);}
             }
         });
     }
@@ -309,7 +308,7 @@ final class NativeAccount {
         finishOperation();message("此设备账户已退出；服务器会话撤销正在后台重试");revocations.execute(this::retryLogout);
     }catch(Exception e){finishOperation();message("本机会话清理未完成，请重试");}});}
     private static boolean same(String a,String b){return MessageDigest.isEqual(a.getBytes(StandardCharsets.UTF_8),b.getBytes(StandardCharsets.UTF_8));}
-    private void browse(String url){activity.runOnUiThread(()->{if(activity.isDestroyed())return;try{activity.startActivity(new Intent(Intent.ACTION_VIEW,Uri.parse(url)).addCategory(Intent.CATEGORY_BROWSABLE));}catch(ActivityNotFoundException e){message("未找到可用的系统浏览器");}});}
+    private void browse(String url){if(!sameOrigin(Uri.parse(url)))throw new SecurityException("Account origin denied");activity.runOnUiThread(()->{if(activity.isDestroyed()||!db.isActiveProfile()||switching)return;try{activity.startActivity(new Intent(Intent.ACTION_VIEW,Uri.parse(url)).addCategory(Intent.CATEGORY_BROWSABLE));}catch(ActivityNotFoundException e){message("未找到可用的系统浏览器");}});}
     static String credentialMessage(String type,boolean register){
         if(type.contains("CANCELLATION")||type.contains("USER_CANCELED"))return "已取消通行密钥验证，可以重新选择登录方式";
         if(type.contains("NO_CREDENTIAL"))return "没有可用的通行密钥，请确认已启用保存该密钥的密码管理器；旧域名密钥请使用浏览器登录并重新添加";
@@ -339,7 +338,7 @@ final class NativeAccount {
         if(error instanceof CredentialVault.KeyUnavailable)return "无法读取安全凭据，请重新登录";
         return "账户验证未完成，请重新开始";
     }
-    private void message(String text){feedback=text;activity.runOnUiThread(()->{if(!activity.isDestroyed()){Toast.makeText(activity,text,Toast.LENGTH_LONG).show();if(activity instanceof MainActivity)((MainActivity)activity).accountChanged();}});}
+    private void message(String text){if(switching||!db.isActiveProfile())return;feedback=text;activity.runOnUiThread(()->{if(!activity.isDestroyed()&&db.isActiveProfile()&&!switching){Toast.makeText(activity,text,Toast.LENGTH_LONG).show();if(activity instanceof MainActivity)((MainActivity)activity).accountChanged();}});}
 }
 
 

@@ -1,5 +1,5 @@
 import {hash} from '../../worker/mcp-common.mjs';
-import {IDENTITY_ORIGIN,identityEnabled} from '../../worker/identity-origin.mjs';
+import {publicOrigin,hasLegacyIdentity,identityEnabled,identityHttpsAllowed} from '../../worker/identity-origin.mjs';
 import {session,csrf,requireForm,rateLimit,random,json,page,redirect,createSession,cookie,readCookie} from './accounts.mjs';
 import {nativeSession,nativeBody,s256} from './native-sessions.mjs';
 import {sessionAllowed} from '../../worker/security-checkpoint.mjs';
@@ -8,7 +8,7 @@ import {escape} from './appearance.mjs';
 import qrcode from './vendor/qrcode-generator.mjs';
 
 const fail=(code,status=400)=>json({error:code},status);
-const webPost=request=>request.method==='POST'&&request.headers.get('Origin')===IDENTITY_ORIGIN&&request.headers.get('Content-Type')?.split(';')[0].trim().toLowerCase()==='application/json';
+const webPost=(request,env)=>request.method==='POST'&&request.headers.get('Origin')===publicOrigin(env)&&request.headers.get('Content-Type')?.split(';')[0].trim().toLowerCase()==='application/json';
 const postBody=async request=>{
  const contentType=request.headers.get('Content-Type')?.split(';')[0].trim().toLowerCase();
  if(contentType!=='application/json'||Number(request.headers.get('Content-Length')||0)>4096)throw fail('invalid_body',400);
@@ -32,8 +32,9 @@ async function approve(env,id,approver,decision){
 }
 const qrRows=url=>{const image=qrcode(0,'M');image.addData(url);image.make();const n=image.getModuleCount();return Array.from({length:n},(_,y)=>Array.from({length:n},(_,x)=>image.isDark(y,x)?'1':'0').join(''));};
 const QR_COOKIE='__Host-easybook-qr-login';
-function qrPage(id,entry){
- const url=IDENTITY_ORIGIN+'/account/qr/approve?id='+id;
+const appQrLink=(id,env)=>'easybook://account/qr/approve?'+new URLSearchParams({id,...(!hasLegacyIdentity(env)?{server:publicOrigin(env)}:{})});
+function qrPage(id,entry,env){
+ const url=publicOrigin(env)+'/account/qr/approve?id='+id;
  const image=qrcode(0,'M');image.addData(url);image.make();
  const svg=image.createSvgTag({cellSize:5,margin:20,scalable:true});
  return page('使用二维码登录','<p>在已经登录 Easybook 的手机、电脑或平板上扫描二维码，确认后即可登录此设备。</p><div style="max-width:290px;margin:24px auto;padding:14px;background:white;border-radius:22px">'+svg+'</div><p>二维码有效期约 '+Math.max(0,Math.ceil((entry.expires_at-Date.now())/1000))+' 秒，确认页面会显示待登录设备类型。</p><p><a class="link" href="'+escape(url)+'">也可以在其他已登录设备打开授权链接</a></p><p>请勿批准任何不是你本人发起的登录请求。</p>',{'Refresh':'3; url=/account/qr/wait'});
@@ -49,7 +50,7 @@ async function browserWait(request,env){
   const set=redeemed.headers.get('Set-Cookie');
   return redirect('/account',[set,cookie(QR_COOKIE,'',0)]);
  }
- if(phase==='pending')return qrPage(id,pending);
+ if(phase==='pending')return qrPage(id,pending,env);
  return redirect('/account/qr',[cookie(QR_COOKIE,'',0)]);
 }
 async function redeemQr(request,env,entry,input,native){
@@ -74,7 +75,7 @@ async function scanPage(request,env){
  const nonce=random();
  const content=`<p>用本设备扫描另一台设备显示的 Easybook 登录二维码。批准前请核对请求是否由你本人发起；不会传输工作区同步密钥。</p>
  <div class="group" style="overflow:hidden;padding:16px"><video id="qr-camera" autoplay playsinline muted hidden style="width:100%;max-height:400px;object-fit:cover;border-radius:16px;background:#101014"></video><button type="button" id="qr-camera-start">打开相机扫描</button><p id="qr-camera-status" role="status">如浏览器不支持扫码，可使用系统相机打开二维码，或在下方粘贴授权链接。</p></div>
- <form id="qr-manual"><label style="width:100%">授权链接<input id="qr-url" type="url" autocomplete="off" inputmode="url" placeholder="https://easybook.loonxy.com/account/qr/approve?id=…" required></label><button>核对登录请求</button></form>`;
+ <form id="qr-manual"><label style="width:100%">授权链接<input id="qr-url" type="url" autocomplete="off" inputmode="url" placeholder="${escape(publicOrigin(env))}/account/qr/approve?id=…" required></label><button>核对登录请求</button></form>`;
  const source=`(()=>{const video=document.getElementById('qr-camera'),start=document.getElementById('qr-camera-start'),status=document.getElementById('qr-camera-status'),input=document.getElementById('qr-url');let stream=null,active=false;const stop=()=>{active=false;if(stream){stream.getTracks().forEach(t=>t.stop());stream=null}};const parse=raw=>{try{if(typeof raw!=='string'||raw.length>512)return null;const u=new URL(raw);if(u.origin!==location.origin||u.pathname!=='/account/qr/approve'||u.hash||[...u.searchParams.keys()].length!==1||u.searchParams.getAll('id').length!==1||!/^[a-f0-9]{64}$/.test(u.searchParams.get('id')||''))return null;return u.pathname+u.search}catch{return null}};const navigate=raw=>{const url=parse(raw);if(!url){status.textContent='不是有效的 Easybook 登录二维码，请重试';return false}stop();location.assign(url);return true};document.getElementById('qr-manual').addEventListener('submit',e=>{e.preventDefault();navigate(input.value.trim())});window.addEventListener('pagehide',stop);start.addEventListener('click',async()=>{if(!('BarcodeDetector'in window)||!navigator.mediaDevices?.getUserMedia){status.textContent='此浏览器不支持内置二维码扫描，请使用系统相机打开二维码或粘贴授权链接。';return}start.disabled=true;try{const formats=await BarcodeDetector.getSupportedFormats();if(!formats.includes('qr_code'))throw Error('unsupported');const detector=new BarcodeDetector({formats:['qr_code']});stream=await navigator.mediaDevices.getUserMedia({video:{facingMode:'environment'},audio:false});video.srcObject=stream;video.hidden=false;await video.play();active=true;status.textContent='将二维码放入取景框';const poll=async()=>{if(!active)return;try{const codes=await detector.detect(video);for(const item of codes){if(navigate(item.rawValue))return}}catch{}if(active)setTimeout(poll,180)};void poll()}catch{stop();status.textContent='无法启动相机，请检查相机权限；也可使用系统相机或粘贴授权链接。';start.disabled=false}})})();`;
  const response=page('扫描登录二维码',content);
  const html=(await response.text()).replace('</body>',`<script nonce="${nonce}">${source}</script></body>`);
@@ -86,7 +87,8 @@ async function scanPage(request,env){
 export async function qrLoginRoutes(request,env){
  const url=new URL(request.url),path=url.pathname;
  if(path!=='/account/qr'&&!path.startsWith('/account/qr/')&&!path.startsWith('/account/native/qr/'))return null;
- if(!identityEnabled(env)||url.origin!==IDENTITY_ORIGIN)return fail('not_available',404);
+ if(!identityHttpsAllowed(request,env))return fail('account_https_required',403);
+ if(!identityEnabled(env)||url.origin!==publicOrigin(env))return fail('not_available',404);
  if(path==='/account/qr/scan'&&request.method==='GET')return scanPage(request,env);
  if(path==='/account/qr'&&request.method==='GET'){
   await rateLimit(request,env,'qr-browser-start',10);
@@ -95,7 +97,7 @@ export async function qrLoginRoutes(request,env){
   const id=random(),state=random(),verifier=random(),challenge=await s256(verifier),state_hash=await hash(state);
   await createQrChallenge(env.DB,await hash(id),{challenge,state,state_hash},'web');
   const entry=await lookup(env,id);
-  const response=qrPage(id,entry);response.headers.set('Set-Cookie',cookie(QR_COOKIE,id+'.'+state+'.'+verifier,120));return response;
+  const response=qrPage(id,entry,env);response.headers.set('Set-Cookie',cookie(QR_COOKIE,id+'.'+state+'.'+verifier,120));return response;
  }
  if(path==='/account/qr/wait'&&request.method==='GET')return browserWait(request,env);
  const native=path.startsWith('/account/native/qr/');
@@ -104,8 +106,8 @@ export async function qrLoginRoutes(request,env){
   const id=url.searchParams.get('id'),entry=await lookup(env,id);
   if(qrState(entry)!=='pending')return page('二维码已失效','<p>请在发起设备重新生成登录二维码。</p>');
   const current=await session(request,env);
-  if(!current)return page('确认其他设备登录','<p>请先登录本设备的 Easybook 账户，或使用已登录的 Android App 确认请求。</p><a class="link" href="easybook://account/qr/approve?id='+id+'">使用 Easybook App 确认</a><p><a class="link" href="/account/passkeys?return='+encodeURIComponent(path+'?id='+id)+'">使用通行密钥登录</a></p>');
-  const appLink='easybook://account/qr/approve?id='+id;
+  if(!current)return page('确认其他设备登录','<p>请先登录本设备的 Easybook 账户，或使用已登录的 Android App 确认请求。</p><a class="link" href="'+escape(appQrLink(id,env))+'">使用 Easybook App 确认</a><p><a class="link" href="/account/passkeys?return='+encodeURIComponent(path+'?id='+id)+'">使用通行密钥登录</a></p>');
+  const appLink=appQrLink(id,env);
   const hidden='<input type="hidden" name="id" value="'+escape(id)+'"><input type="hidden" name="csrf" value="'+await csrf(request,current)+'">';
   return page('确认扫码登录','<p>另一个 '+(entry.initiator_kind==='android'?'Android':'Web')+' 设备请求登录 Easybook。仅在你本人发起操作时确认；扫码不会传输工作区同步密钥。</p><p>当前账户：<strong>'+escape(current.display_name)+'</strong></p><p><a class="link" href="'+escape(appLink)+'">在 Easybook Android App 中确认</a></p><form method="post" action="/account/qr/approve">'+hidden+'<button name="decision" value="allow">确认登录</button><button name="decision" value="deny">拒绝</button></form>');
  }
@@ -119,7 +121,7 @@ export async function qrLoginRoutes(request,env){
   const answer=await approve(env,form.get('id'),current,form.get('decision'));
   return answer.status===200?page('扫码确认完成','<p>请求已处理。请返回发起登录的设备。</p>'):answer;
  }else{
-  if(!webPost(request))return fail('invalid_origin_or_content_type',403);
+  if(!webPost(request,env))return fail('invalid_origin_or_content_type',403);
   input=await postBody(request);
  }
  if(action==='approve'){
@@ -130,7 +132,7 @@ export async function qrLoginRoutes(request,env){
   if(!validateQrRequest(input))return fail('invalid_challenge');
   const id=random(),state_hash=await hash(input.state);
   await createQrChallenge(env.DB,await hash(id),{...input,state_hash},native?'android':'web');
-  const confirm_url=IDENTITY_ORIGIN+'/account/qr/approve?id='+id;
+  const confirm_url=publicOrigin(env)+'/account/qr/approve?id='+id;
   return json(native?{id,confirm_url,qr_rows:qrRows(confirm_url),expires_in:QR_TTL_MS/1000}:{id,confirm_url,expires_in:QR_TTL_MS/1000});
  }
  const entry=await lookup(env,input?.id);

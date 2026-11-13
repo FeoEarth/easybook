@@ -1,7 +1,7 @@
 package com.feoearth.easybook;
 
 import org.json.JSONObject;
-import javax.net.ssl.HttpsURLConnection;
+import java.net.HttpURLConnection;
 import java.net.URL;
 import java.io.*;
 import java.nio.charset.StandardCharsets;
@@ -18,9 +18,12 @@ final class NativeMcpPairing {
         if(!done.optBoolean("paired"))throw new IOException("客户端授权响应无效");
     }
     static final class HttpsTransport implements Transport {
+        private final NoteRepository db;
+        HttpsTransport(){db=null;}
+        HttpsTransport(NoteRepository db){this.db=db;}
         public JSONObject post(boolean complete,JSONObject body,String credential)throws Exception{
             String endpoint=complete?"https://easybook-mcp-oauth.1902521952.workers.dev/pairing/complete":"https://easybook-sync.1902521952.workers.dev/api/mcp/attest";
-            HttpsURLConnection c=(HttpsURLConnection)new URL(endpoint).openConnection();
+            HttpURLConnection c=db==null?(HttpURLConnection)new URL(endpoint).openConnection():NativeTransport.openOfficial(db,complete?NativeAccount.IDENTITY_API:NativeAccount.SYNC_API,complete?"/pairing/complete":"/api/mcp/attest");
             c.setInstanceFollowRedirects(false);c.setConnectTimeout(12000);c.setReadTimeout(15000);c.setRequestMethod("POST");c.setRequestProperty("Content-Type","application/json");
             if(!complete)c.setRequestProperty("Authorization","Bearer "+credential);
             c.setDoOutput(true);byte[] bytes=body.toString().getBytes(StandardCharsets.UTF_8);c.setFixedLengthStreamingMode(bytes.length);
@@ -29,9 +32,9 @@ final class NativeMcpPairing {
                 int status=c.getResponseCode();
                 if(status!=200){if(status==409)throw new IOException("配对码已过期或已使用，请获取新码");if(status==401||status==403)throw new IOException("工作区验证失败，请检查设备连接及配对码");throw new IOException("配对服务暂不可用（HTTP "+status+"）");}
                 try(InputStream in=c.getInputStream();ByteArrayOutputStream out=new ByteArrayOutputStream()){
-                    byte[] buffer=new byte[1024];int n;while((n=in.read(buffer))!=-1){if(out.size()+n>16384)throw new IOException("配对响应过大");out.write(buffer,0,n);}return new JSONObject(out.toString("UTF-8"));
+                    byte[] buffer=new byte[1024];int n;while((n=in.read(buffer))!=-1){if(out.size()+n>16384)throw new IOException("配对响应过大");out.write(buffer,0,n);}if(db!=null)db.assertActiveProfile();return new JSONObject(out.toString("UTF-8"));
                 }
-            }finally{c.disconnect();}
+            }finally{c.disconnect();if(db!=null)NativeTransport.release(db,c);}
         }
     }
 }

@@ -21,6 +21,10 @@ public final class SecurityManager {
         Set<String> fields;
         switch(method){
             case "bootstrap":if(initialized==generation)throw new SecurityException("Already initialized");fields=fields("legacy");break;
+            case "server.add":fields=fields("origin","name","acknowledgeHttp");break;
+            case "server.test":case "server.remove":case "server.select":fields=fields("id");break;
+            case "server.rename":fields=fields("id","name");break;
+            case "server.list":fields=Collections.emptySet();break;
             case "commit":fields=fields("key","changes");break;
             case "search":fields=fields("key","query","category","everywhere");break;
             case "sync.activity":fields=fields("key","action","policy","ids");break;
@@ -61,6 +65,7 @@ public final class SecurityManager {
             case "account.qr.show":case "account.qr.scan":case "account.devices":case "account.browser":case "account.resume":case "account.login":case "account.status":case "account.logout":case "snapshot":case "security.pair":case "security.account":case "security.mcp":case "security.status":case "migration.status":case "migration.retry":case "migration.rollback":case "migration.cleaned":case "ui.ready":case "device.haptic":case "device.exportNotes":case "device.importNotes":fields=Collections.emptySet();break;
             default:throw new SecurityException("Operation denied");
         }
+        if(method.equals("server.add")&&args.has("acknowledgeHttp")&&!(args.get("acknowledgeHttp") instanceof Boolean))throw new SecurityException("Invalid HTTP acknowledgement");
         Iterator<String> names=args.keys();while(names.hasNext())if(!fields.contains(names.next()))throw new SecurityException("Unexpected parameter");
         if(method.equals("workspace.action")){
             String action=args.optString("action","");
@@ -82,17 +87,17 @@ public final class SecurityManager {
     void pairing(Runnable changed){activity.runOnUiThread(()->{
         if(connectionSheet!=null)return;
         connectionSheet=new ConnectionSheet(activity,dark, k->io.execute(()->{
-            try{boolean rotate=false;try{db.vault.seal("check","health");}catch(Exception e){rotate=true;}db.pairWorkspace(k,NativeSync.lookupWorkspace(k),rotate);activity.runOnUiThread(()->{if(activity.isDestroyed())return;dismissConnection();changed.run();});}
+            try{boolean rotate=false;try{db.vault.seal("check","health");}catch(Exception e){rotate=true;}JSONObject identity=NativeSync.lookupWorkspace(db,k);if(!db.profile().builtin&&identity==null)throw new java.io.IOException("请使用此服务器上已有工作区的有效密钥");db.assertActiveProfile();db.pairWorkspace(k,identity,rotate);activity.runOnUiThread(()->{if(activity.isDestroyed()||!db.isActiveProfile())return;dismissConnection();changed.run();});}
             catch(Exception e){activity.runOnUiThread(()->{if(connectionSheet!=null)connectionSheet.error("连接未完成，本机笔记已保留，请重试");});}
         }),this::showCredential,()->connectionSheet=null);
         connectionSheet.show();
     });}
-    void mcpPairing(){activity.runOnUiThread(()->{
+    void mcpPairing(){if(!db.profile().builtin){activity.runOnUiThread(()->Toast.makeText(activity,"自定义服务器暂不支持官方 MCP 客户端配对",Toast.LENGTH_LONG).show());return;}activity.runOnUiThread(()->{
         if(connectionSheet!=null)return;
         final long generation=++mcpGeneration;
         connectionSheet=new ConnectionSheet(activity,dark,challenge->io.execute(()->{
-            try{String workspace=db.activeSpace();String credential=db.credential(workspace);NativeMcpPairing.pair(challenge,credential,new NativeMcpPairing.HttpsTransport());activity.runOnUiThread(()->{if(!activity.isDestroyed()&&generation==mcpGeneration&&connectionSheet!=null)connectionSheet.mcpSuccess();});}
-            catch(Exception e){String message=e instanceof java.net.SocketTimeoutException?"连接超时，请检查网络并重试":e instanceof CredentialVault.KeyUnavailable?"本机凭据不可用，请先重新连接设备":e instanceof java.io.IOException?e.getMessage():"配对未完成，请检查设备连接或获取新配对码";activity.runOnUiThread(()->{if(!activity.isDestroyed()&&generation==mcpGeneration&&connectionSheet!=null)connectionSheet.error(message);});}
+            try{String workspace=db.activeSpace();String credential=db.credential(workspace);NativeMcpPairing.pair(challenge,credential,new NativeMcpPairing.HttpsTransport(db));activity.runOnUiThread(()->{if(!activity.isDestroyed()&&db.isActiveProfile()&&generation==mcpGeneration&&connectionSheet!=null)connectionSheet.mcpSuccess();});}
+            catch(Exception e){String message=e instanceof java.net.SocketTimeoutException?"连接超时，请检查网络并重试":e instanceof CredentialVault.KeyUnavailable?"本机凭据不可用，请先重新连接设备":e instanceof java.io.IOException?e.getMessage():"配对未完成，请检查设备连接或获取新配对码";activity.runOnUiThread(()->{if(!activity.isDestroyed()&&db.isActiveProfile()&&generation==mcpGeneration&&connectionSheet!=null)connectionSheet.error(message);});}
         }),()->{},()->{connectionSheet=null;mcpGeneration++;});connectionSheet.useMcp();connectionSheet.show();
     });}
     private void showCredential(){io.execute(()->{
@@ -102,7 +107,7 @@ public final class SecurityManager {
             // personal workspace may still have its original device-local key.
             if(!db.setting("account-placeholder:"+space,"").isEmpty())throw new SecurityException("no_local_key");
             String key=db.credential(space);
-            JSONObject verified=NativeSync.lookupWorkspace(key);
+            JSONObject verified=NativeSync.lookupWorkspace(db,key);
             if(verified==null||!"personal".equals(verified.optString("mode")))throw new SecurityException("shared_or_revoked");
             String linked=db.setting("account-workspace:"+space,"");
             if(!linked.isEmpty()&&!linked.equals(verified.optString("id")))throw new SecurityException("workspace_key_mismatch");

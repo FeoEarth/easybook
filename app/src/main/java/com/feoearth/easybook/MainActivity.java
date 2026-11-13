@@ -33,6 +33,8 @@ public class MainActivity extends Activity {
     private NoteRepository repository;
     private SecurityManager security;
     private NativeAccount nativeAccount;
+    private NativeServerController nativeServers;
+    private volatile boolean serverSwitching;
     private LocalAiModels localAiModels;
     private LocalAiRuntime localAiRuntime;
     private LocalAiEngine localAiEngine;
@@ -40,10 +42,11 @@ public class MainActivity extends Activity {
     private WebOtaManager webOta;
     private static final ExecutorService syncIo=Executors.newSingleThreadExecutor();
     private String pendingExport;
-    private String attachmentSpace,attachmentNote,attachmentExportName;private long attachmentGeneration;private File attachmentExport;private boolean aiPickerOpen;
+    private String attachmentSpace,attachmentNote,attachmentExportName;private long attachmentGeneration;private File attachmentExport;private boolean aiPickerOpen,aiSpeechOpen;
     private final ExecutorService io = Executors.newSingleThreadExecutor();
     private static String operationErrorCode(Exception e){
         if(e instanceof WebOtaManager.OtaException)return ((WebOtaManager.OtaException)e).code;
+        if(e instanceof NativeServerController.Failure)return "SERVER_FAILED";
         if(e instanceof CredentialVault.KeyUnavailable)return "CREDENTIAL_UNAVAILABLE";
         if(e instanceof android.database.sqlite.SQLiteFullException)return "STORAGE_FULL";
         if(e instanceof android.database.sqlite.SQLiteDatabaseLockedException)return "STORAGE_BUSY";
@@ -51,7 +54,7 @@ public class MainActivity extends Activity {
         return "OPERATION_FAILED";
     }
     private static String operationErrorMessage(Exception e){
-        if(e instanceof WebOtaManager.OtaException)return e.getMessage();
+        if(e instanceof WebOtaManager.OtaException||e instanceof NativeServerController.Failure)return e.getMessage();
         if(e instanceof NativeAccount.HttpFailure)return NativeAccount.failureMessage(e);
         switch(operationErrorCode(e)){
             case "STORAGE_FULL":return "本机存储空间不足，请释放空间后重试";
@@ -60,7 +63,7 @@ public class MainActivity extends Activity {
             default:return "操作未完成，数据已保留；可重试或导出备份";
         }
     }
-    void accountChanged(){runOnUiThread(()->{if(!destroyed&&ready&&web!=null&&LOCAL.equals(web.getUrl()))web.evaluateJavascript("window.easybookAccountChanged&&window.easybookAccountChanged()",null);});}
+    void accountChanged(){runOnUiThread(()->{if(!destroyed&&!serverSwitching&&repository.isActiveProfile()&&ready&&web!=null&&LOCAL.equals(web.getUrl()))web.evaluateJavascript("window.easybookAccountChanged&&window.easybookAccountChanged()",null);});}
     private static final String LOCAL = "https://appassets.androidplatform.net/index.html";
     private boolean darkAppearance(){String mode=getPreferences(MODE_PRIVATE).getString("themeMode","auto");return "dark".equals(mode)||(!"light".equals(mode)&&(getResources().getConfiguration().uiMode&Configuration.UI_MODE_NIGHT_MASK)==Configuration.UI_MODE_NIGHT_YES);}
     @Override public void onCreate(Bundle state) {
@@ -69,7 +72,7 @@ public class MainActivity extends Activity {
         localAiModels=new LocalAiModels(this);
         localAiRuntime=new LocalAiRuntime(this);
         localAiEngine=new LocalAiEngine(localAiRuntime);
-        repository=NoteRepository.get(this);SyncPolicy.initialize(this);
+        repository=NoteRepository.get(this);nativeServers=new NativeServerController(this);SyncPolicy.initialize(this);
         nativeAccount=new NativeAccount(this,repository,io);nativeAccount.handle(getIntent());
         security=new SecurityManager(this,repository,io);
         appUpdater=new AppUpdateManager(this,event->runOnUiThread(()->{
@@ -149,13 +152,15 @@ public class MainActivity extends Activity {
             if(text==null||text.length()>16*1024*1024)return;
             try{JSONObject envelope=new JSONObject(text);String requestId=envelope.getString("id"),method=envelope.getString("method");JSONObject args=envelope.optJSONObject("args");if(args==null)args=new JSONObject();final JSONObject input=args;final long generation=documentGeneration;
                 if(!requestId.matches("[a-zA-Z0-9-]{1,80}"))return;
-                Runnable operation=()->{try{if(destroyed||generation!=documentGeneration)throw new SecurityException();security.authorize(method,input,generation);JSONObject output=dispatch(method,input,generation);respond(reply,generation,new JSONObject().put("id",requestId).put("ok",true).put("result",output));}catch(Exception e){try{respond(reply,generation,new JSONObject().put("id",requestId).put("ok",false).put("error",operationErrorMessage(e)).put("code",operationErrorCode(e)));}catch(Exception ignored){}}};
+                Runnable operation=()->{try{if(destroyed||serverSwitching||generation!=documentGeneration)throw new SecurityException();repository.assertActiveProfile();security.authorize(method,input,generation);JSONObject output=dispatch(method,input,generation);respond(reply,generation,new JSONObject().put("id",requestId).put("ok",true).put("result",output));}catch(Exception e){try{respond(reply,generation,new JSONObject().put("id",requestId).put("ok",false).put("error",operationErrorMessage(e)).put("code",operationErrorCode(e)));}catch(Exception ignored){}}};
                 if(method.equals("sync")||method.equals("attachment.get")||method.equals("attachment.open")||method.equals("attachment.share")||method.equals("attachment.export"))syncIo.execute(operation);else io.execute(operation);
             }catch(Exception ignored){}
         });
         web.setWebViewClient(new WebViewClient() {
             @Override public WebResourceResponse shouldInterceptRequest(WebView v, WebResourceRequest r) {
                 Uri u = r.getUrl();
+                if(!repository.isActiveProfile())return new WebResourceResponse("text/plain","UTF-8",new ByteArrayInputStream(new byte[0]));
+                if(!repository.profile().httpKeyOnly&&!r.isForMainFrame()&&"GET".equals(r.getMethod())&&"https".equals(u.getScheme())&&"challenges.cloudflare.com".equals(u.getHost())&&(u.getPort()==-1||u.getPort()==443)&&u.getUserInfo()==null)return null;
                 if(!r.isForMainFrame()&&"GET".equals(r.getMethod())&&
                     ("https://raw.githubusercontent.com/FeoEarth/easybook/main/THIRD_PARTY_NOTICES.md".equals(u.toString())||
                      "https://raw.githubusercontent.com/FeoEarth/easybook/main/THIRD_PARTY_LICENSES.md".equals(u.toString())))return null;
@@ -204,7 +209,7 @@ public class MainActivity extends Activity {
 
                 return new WebResourceResponse("text/plain", "UTF-8", new ByteArrayInputStream(new byte[0]));
             }
-            @Override public boolean shouldOverrideUrlLoading(WebView v, WebResourceRequest r) { return !r.isForMainFrame() || !LOCAL.equals(r.getUrl().toString()); }
+            @Override public boolean shouldOverrideUrlLoading(WebView v, WebResourceRequest r) { Uri uri=r.getUrl();if(!repository.profile().httpKeyOnly&&!r.isForMainFrame()&&"GET".equals(r.getMethod())&&"https".equals(uri.getScheme())&&"challenges.cloudflare.com".equals(uri.getHost())&&(uri.getPort()==-1||uri.getPort()==443)&&uri.getUserInfo()==null)return false;return !r.isForMainFrame() || !LOCAL.equals(uri.toString()); }
             @Override public void onPageStarted(WebView v,String url,android.graphics.Bitmap icon){if(localAiEngine!=null)localAiEngine.cancel();if(nativeAccount!=null)nativeAccount.cancelAiStream(null);ready=false;updateUiReady=false;documentGeneration++;if(nativeGlass!=null){nativeGlass.clearFormatFrame();nativeGlass.dismiss(true);}}
         });
         web.loadUrl(LOCAL);
@@ -220,19 +225,38 @@ public class MainActivity extends Activity {
         // remains available as a separate script, without any remote fetch.
         return "<script>"+updated+"</script><script>setTimeout(function(){if(!window.easybookUpdateUiReady){var entry=document.getElementById('appUpdateEntry');if(entry)entry.removeAttribute('data-native-updater-ready');var dialog=document.getElementById('appUpdateDialog');if(dialog)dialog.remove();"+bundled+"}},1800);</script>";
     }
-    private void respond(JavaScriptReplyProxy reply,long generation,JSONObject value){runOnUiThread(()->{if(!destroyed&&generation==documentGeneration&&LOCAL.equals(web.getUrl()))try{reply.postMessage(value.toString());}catch(IllegalStateException ignored){}});}
+    private void respond(JavaScriptReplyProxy reply,long generation,JSONObject value){runOnUiThread(()->{if(!destroyed&&(!serverSwitching||value.optJSONObject("result")!=null&&value.optJSONObject("result").optBoolean("serverChanged"))&&generation==documentGeneration&&LOCAL.equals(web.getUrl()))try{reply.postMessage(value.toString());}catch(IllegalStateException ignored){}});}
     private String bounded(JSONObject args,String name,int max)throws Exception{if(!(args.get(name) instanceof String))throw new IllegalArgumentException();String s=args.getString(name);if(s.length()>max)throw new IllegalArgumentException("Value too large");return s;}
     private void openAppRelease(){runOnUiThread(()->{try{startActivity(new Intent(Intent.ACTION_VIEW,Uri.parse("https://github.com/FeoEarth/easybook/releases/latest")));}catch(ActivityNotFoundException e){notifyJs("无法打开下载页面");}});}
+    private JSONObject serverSnapshot(JSONObject snapshot)throws Exception{
+        String key=snapshot.optString("key",repository.activeSpace());
+        return snapshot.put("server",repository.profile().toJSON()).put("localSpace",repository.profile().builtin?key:repository.profileId()+":"+key);
+    }
+    private JSONObject selectServer(String id,long generation)throws Exception{
+        ServerProfiles.Profile target=ServerProfiles.get(this).profile(id);
+        if(target.id.equals(repository.profileId()))return new JSONObject().put("selected",true).put("server",target.toJSON()).put("serverChanged",false);
+        if(!target.verified)throw new NativeServerController.Failure("请先测试服务器连接，再切换");
+        serverSwitching=true;
+        try{
+            ServerProfiles.Profile selected=nativeServers.select(id);
+            nativeAccount.cancelForServerSwitch();localAiEngine.cancel();
+            runOnUiThread(()->{security.dismissConnection();if(nativeGlass!=null)nativeGlass.dismiss(true);});
+            attachmentSpace=null;attachmentNote=null;aiPickerOpen=false;aiSpeechOpen=false;
+            runOnUiThread(()->{if(!destroyed&&generation==documentGeneration&&web!=null)web.postDelayed(()->{if(!destroyed&&generation==documentGeneration)recreate();},180);});
+            return new JSONObject().put("selected",true).put("serverChanged",true).put("server",selected.toJSON());
+        }catch(Exception e){serverSwitching=false;throw e;}
+    }
     private JSONObject dispatch(String method,JSONObject args,long generation)throws Exception {
+        if(method.startsWith("server."))return method.equals("server.select")?selectServer(args.getString("id"),generation):nativeServers.perform(method,args);
         String active=(method.equals("commit")||method.equals("search")||method.equals("snapshot")||method.equals("sync.activity")||method.equals("sync")||method.equals("device.exportNotes"))?repository.activeSpace():"";
         if(method.startsWith("ui.glass.")&&getPreferences(MODE_PRIVATE).getBoolean("fastMode",false))return new JSONObject().put("accepted",false);
         switch(method){
             case "bootstrap":{
-                repository.secureCredentials();JSONObject report=new JSONObject().put("state","not-needed");repository.secureCredentials();repository.ensureLocalWorkspace();security.initialized(generation);new SyncJournal(repository,repository.activeSpace()).recover();SyncPolicy.scheduleSafely(SyncPolicy.read(repository,repository.activeSpace()));return repository.snapshot(repository.activeSpace()).put("syncPolicy",SyncPolicy.read(repository,repository.activeSpace())).put("migration",report).put("security",repository.securityStatus());
+                repository.secureCredentials();JSONObject report=new JSONObject().put("state","not-needed");repository.secureCredentials();repository.ensureLocalWorkspace();security.initialized(generation);new SyncJournal(repository,repository.activeSpace()).recover();SyncPolicy.scheduleSafely(SyncPolicy.read(repository,repository.activeSpace()));return serverSnapshot(repository.snapshot(repository.activeSpace())).put("syncPolicy",SyncPolicy.read(repository,repository.activeSpace())).put("migration",report).put("security",repository.securityStatus());
             }
             case "commit":{String k=args.getString("key");if(!k.equals(active))throw new IllegalStateException("Workspace changed");return repository.commit(k,args.getJSONObject("changes"));}
             case "search":{if(!args.getString("key").equals(active))throw new IllegalStateException("Workspace changed");return new JSONObject().put("notes",repository.search(active,bounded(args,"query",2000),bounded(args,"category",80),args.optBoolean("everywhere")));}
-            case "snapshot":return repository.snapshot(active);
+            case "snapshot":return serverSnapshot(repository.snapshot(active));
             case "sync.activity":{
                 if(!args.getString("key").equals(active))throw new SecurityException();SyncJournal journal=new SyncJournal(repository,active);String action=args.optString("action", "read");
                 if(action.equals("configure")){
@@ -246,9 +270,9 @@ public class MainActivity extends Activity {
                 }
                 else if(action.equals("delete")||action.equals("clear")){JSONArray ids=args.optJSONArray("ids");if(ids!=null){if(ids.length()>500)throw new IllegalArgumentException();for(int i=0;i<ids.length();i++)if(ids.getString(i).length()>512)throw new IllegalArgumentException();}journal.delete(ids,action.equals("clear"));}
                 else if(!action.equals("read"))throw new IllegalArgumentException();
-                return new JSONObject().put("tasks",journal.tasks()).put("policy",SyncPolicy.read(repository,active)).put("running",NativeSync.isRunning(active)).put("runtime",new JSONObject(repository.setting("sync-runtime:"+NoteRepository.spaceId(active),"{}")));
+                return new JSONObject().put("tasks",journal.tasks()).put("policy",SyncPolicy.read(repository,active)).put("running",NativeSync.isRunning(repository,active)).put("runtime",new JSONObject(repository.setting("sync-runtime:"+NoteRepository.spaceId(active),"{}")));
             }
-            case "sync":{if(!repository.securityStatus().getBoolean("paired"))throw new CredentialVault.KeyUnavailable();String k=args.getString("key");if(!k.equals(active))throw new IllegalStateException("Workspace changed");return new NativeSync(repository,new NativeSync.HttpsTransport(new DataProtection.Plaintext())).run(k,args.optBoolean("manual"));}
+            case "sync":{if(!repository.securityStatus().getBoolean("paired"))throw new CredentialVault.KeyUnavailable();String k=args.getString("key");if(!k.equals(active))throw new IllegalStateException("Workspace changed");return new NativeSync(repository,new NativeSync.HttpsTransport(repository,new DataProtection.Plaintext())).run(k,args.optBoolean("manual"));}
             case "attachment.pick":{String space=repository.activeSpace(),noteId=bounded(args,"noteId",36),kind=bounded(args,"kind",10);if(!kind.matches("media|files"))throw new IllegalArgumentException();if(repository.row(space,"note",noteId)==null)throw new SecurityException();runOnUiThread(()->{if(destroyed||generation!=documentGeneration)return;if(attachmentSpace!=null){notifyJs("请先完成当前选择");return;}attachmentSpace=space;attachmentNote=noteId;attachmentGeneration=generation;try{Intent picker;if(kind.equals("media")&&android.os.Build.VERSION.SDK_INT>=33){picker=new Intent(android.provider.MediaStore.ACTION_PICK_IMAGES);picker.putExtra(android.provider.MediaStore.EXTRA_PICK_IMAGES_MAX,android.provider.MediaStore.getPickImagesMaxLimit());}else picker=documentPicker(kind);try{startActivityForResult(picker,83);}catch(ActivityNotFoundException e){startActivityForResult(documentPicker(kind),83);}}catch(Exception e){attachmentSpace=null;attachmentNote=null;notifyJs("无法打开系统选择器，请稍后重试");pickerFinished(generation);}});return new JSONObject().put("picker",true);}
             case "ui.performance":{if(!(args.get("enabled") instanceof Boolean))throw new IllegalArgumentException();boolean enabled=args.getBoolean("enabled");if(!getPreferences(MODE_PRIVATE).edit().putBoolean("fastMode",enabled).commit())throw new IOException("Preference not saved");runOnUiThread(()->{if(nativeGlass!=null){nativeGlass.dismiss(true);nativeGlass.clearFormatFrame();}});return new JSONObject().put("enabled",enabled);}
             case "device.update":{String action=bounded(args,"action",8);
@@ -287,12 +311,12 @@ public class MainActivity extends Activity {
             case "account.status":return nativeAccount.publicStatus();
             case "workspace.action":{
                 String action=bounded(args,"action",16);
-                if(NativeSync.isRunning(repository.activeSpace())&&!action.equals("list")&&!action.equals("listCached"))throw new IllegalStateException("Sync running");
+                if(NativeSync.isRunning(repository,repository.activeSpace())&&!action.equals("list")&&!action.equals("listCached"))throw new IllegalStateException("Sync running");
                 JSONObject result=WorkspaceClient.perform(repository,action,args);
                 if(action.equals("select")||action.equals("create")||action.equals("rotate")||action.equals("mode"))runOnUiThread(()->{if(!destroyed&&generation==documentGeneration)web.reload();});
                 return result;
             }
-            case "conflict.resolve":repository.resolveConflict(repository.activeSpace(),bounded(args,"id",36),bounded(args,"choice",16));return repository.snapshot(repository.activeSpace());
+            case "conflict.resolve":repository.resolveConflict(repository.activeSpace(),bounded(args,"id",36),bounded(args,"choice",16));return serverSnapshot(repository.snapshot(repository.activeSpace()));
             case "account.manage":return nativeAccount.manage(args);
             case "ai.local.status":return localAiModels.status().put("errors",localAiModels.errors()).put("runtime",localAiRuntime.status());
             case "ai.local.runtime.install":return localAiRuntime.install();
@@ -313,7 +337,7 @@ public class MainActivity extends Activity {
                 File verified=localAiModels.installedPath(model);
                 if(!localAiRuntime.installed())throw new IllegalStateException("请先在 AI 设置中安装本地推理运行组件");
                 localAiEngine.generate(requestId,model,verified,prompt,event->runOnUiThread(()->{
-                    if(!destroyed&&ready&&generation==documentGeneration&&LOCAL.equals(web.getUrl()))
+                    if(!destroyed&&!serverSwitching&&repository.isActiveProfile()&&ready&&generation==documentGeneration&&LOCAL.equals(web.getUrl()))
                         web.evaluateJavascript("window.easybookLocalAiEvent&&window.easybookLocalAiEvent("+event.toString()+")",null);
                 }));
                 return new JSONObject().put("accepted",true);
@@ -328,7 +352,7 @@ public class MainActivity extends Activity {
                 String id=bounded(args,"id",70);
                 if(!id.matches("[a-f0-9-]{20,70}"))throw new IllegalArgumentException("Invalid AI stream ID");
                 nativeAccount.startAiStream(new JSONObject(args.toString()).put("action","chat").put("stream",true),event->runOnUiThread(()->{
-                    if(!destroyed&&ready&&generation==documentGeneration&&LOCAL.equals(web.getUrl()))
+                    if(!destroyed&&!serverSwitching&&repository.isActiveProfile()&&ready&&generation==documentGeneration&&LOCAL.equals(web.getUrl()))
                         web.evaluateJavascript("window.easybookByokEvent&&window.easybookByokEvent("+event.toString()+")",null);
                 }));
                 return new JSONObject().put("accepted",true);
@@ -349,7 +373,7 @@ public class MainActivity extends Activity {
                     intent.putExtra(android.speech.RecognizerIntent.EXTRA_LANGUAGE_MODEL,android.speech.RecognizerIntent.LANGUAGE_MODEL_FREE_FORM);
                     intent.putExtra(android.speech.RecognizerIntent.EXTRA_PROMPT,"向 Easybook AI 语音输入");
                     intent.putExtra(android.speech.RecognizerIntent.EXTRA_LANGUAGE,java.util.Locale.getDefault().toLanguageTag());
-                    try{startActivityForResult(intent,87);}catch(ActivityNotFoundException e){notifyJs("没有可用的系统语音识别服务");}
+                    try{aiSpeechOpen=true;startActivityForResult(intent,87);}catch(ActivityNotFoundException e){aiSpeechOpen=false;notifyJs("没有可用的系统语音识别服务");}
                 });return new JSONObject().put("started",true);
             }
             case "account.devices":return nativeAccount.devices();
@@ -487,9 +511,9 @@ public class MainActivity extends Activity {
     private void notifyJs(String text) { web.evaluateJavascript("window.showNativeMessage && window.showNativeMessage("+JSONObject.quote(text)+")",null); }
     @Override protected void onActivityResult(int request, int result, Intent data) {
         super.onActivityResult(request, result, data);
-        if(request==85){if(result==RESULT_OK&&data!=null&&nativeAccount!=null)nativeAccount.approveScannedQr(data.getStringExtra(QrScanActivity.EXTRA_CHALLENGE_ID));return;}
-        if(request==87){if(result==RESULT_OK&&data!=null){java.util.ArrayList<String> texts=data.getStringArrayListExtra(android.speech.RecognizerIntent.EXTRA_RESULTS);if(texts!=null&&!texts.isEmpty()&&texts.get(0)!=null)web.evaluateJavascript("window.receiveAiTranscript&&window.receiveAiTranscript("+JSONObject.quote(texts.get(0))+")",null);}return;}
-        if(request==86){aiPickerOpen=false;if(result!=RESULT_OK||data==null||data.getData()==null)return;final Uri aiUri=data.getData();final long aiGeneration=documentGeneration;
+        if(request==85){if(result==RESULT_OK&&data!=null&&nativeAccount!=null&&repository.profile().origin.equals(data.getStringExtra(QrScanActivity.EXTRA_SERVER_ORIGIN)))nativeAccount.approveScannedQr(data.getStringExtra(QrScanActivity.EXTRA_CHALLENGE_ID));return;}
+        if(request==87){if(!aiSpeechOpen)return;aiSpeechOpen=false;if(result==RESULT_OK&&data!=null){java.util.ArrayList<String> texts=data.getStringArrayListExtra(android.speech.RecognizerIntent.EXTRA_RESULTS);if(texts!=null&&!texts.isEmpty()&&texts.get(0)!=null)web.evaluateJavascript("window.receiveAiTranscript&&window.receiveAiTranscript("+JSONObject.quote(texts.get(0))+")",null);}return;}
+        if(request==86){boolean pendingPicker=aiPickerOpen;aiPickerOpen=false;if(!pendingPicker)return;if(result!=RESULT_OK||data==null||data.getData()==null)return;final Uri aiUri=data.getData();final long aiGeneration=documentGeneration;
             io.execute(()->{try{JSONObject file=readAiFile(aiUri);runOnUiThread(()->{if(!destroyed&&aiGeneration==documentGeneration)web.evaluateJavascript("window.receiveAiFile&&window.receiveAiFile("+file.toString()+")",null);});}
                 catch(Exception e){runOnUiThread(()->notifyJs("AI 附件无法读取或超过限制；请尝试较小文件"));}});
             return;

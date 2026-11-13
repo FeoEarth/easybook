@@ -17,7 +17,7 @@ final class AttachmentStore {
  static String hex(byte[] bytes){StringBuilder s=new StringBuilder();for(byte b:bytes)s.append(String.format(Locale.ROOT,"%02x",b&255));return s.toString();}
  static String digest(byte[] bytes)throws Exception{return hex(MessageDigest.getInstance("SHA-256").digest(bytes));}
  static String digest(File f)throws Exception{MessageDigest d=MessageDigest.getInstance("SHA-256");try(InputStream in=new FileInputStream(f)){byte[] b=new byte[65536];int n;while((n=in.read(b))!=-1){if(Thread.currentThread().isInterrupted())throw new InterruptedIOException();d.update(b,0,n);}}return hex(d.digest());}
- File file(String key,String id){NoteRepository.key(key);validId(id);return new File(new File(context.getFilesDir(),"attachments/"+NoteRepository.spaceId(key)),id);}
+ File file(String key,String id){NoteRepository.key(key);validId(id);return new File(new File(context.getFilesDir(),(db.profile().builtin?"attachments/":"servers/"+db.profileId()+"/attachments/")+NoteRepository.spaceId(key)),id);}
  static long copy(InputStream in,OutputStream out,long limit)throws IOException{byte[] b=new byte[65536];long size=0;int n;while((n=in.read(b))!=-1){if(Thread.currentThread().isInterrupted())throw new InterruptedIOException();size+=n;if(size>limit)throw new IOException("Attachment size limit exceeded");out.write(b,0,n);}return size;}
  // Retained for old JSON backup imports only, never used by the new picker or sync.
  static byte[] read(InputStream in)throws Exception{try(ByteArrayOutputStream out=new ByteArrayOutputStream()){copy(in,out,5*1024*1024);return out.toByteArray();}}
@@ -34,7 +34,7 @@ final class AttachmentStore {
  JSONObject payload(String key,String id)throws Exception{JSONObject meta=db.row(key,"attachment",id);if(meta==null)throw new IOException("Attachment missing");try(InputStream in=new FileInputStream(file(key,id))){byte[] bytes=read(in);if(!digest(bytes).equals(id))throw new IOException("Attachment corrupted");return new JSONObject(meta.toString()).put("data",Base64.encodeToString(bytes,Base64.NO_WRAP));}}
  JSONObject accept(String key,String id,JSONObject remote)throws Exception{validId(id);byte[] bytes=Base64.decode(remote.getString("data"),Base64.NO_WRAP);return saveStream(key,remote.getString("name"),remote.getString("mime"),new ByteArrayInputStream(bytes),false,id,remote.getLong("size"));}
  JSONObject get(String key,String id)throws Exception{
-  JSONObject meta=db.row(key,"attachment",id);if(meta==null||!file(key,id).isFile()&&!meta.optBoolean("localOnly"))meta=download(key,id,new NativeSync.HttpsTransport(new DataProtection.Plaintext()),db.credential(key));
+  JSONObject meta=db.row(key,"attachment",id);if(meta==null||!file(key,id).isFile()&&!meta.optBoolean("localOnly")){NativeSync.HttpsTransport transport=new NativeSync.HttpsTransport(db,new DataProtection.Plaintext());String workspace=db.setting("account-workspace:"+key,"");if(!workspace.isEmpty()){if(db.profile().httpKeyOnly)throw new SecurityException("Accounts require HTTPS");transport.accountToken=NativeAccount.token(db);transport.workspaceId=workspace;}meta=download(key,id,transport,db.credential(key));}
   if(meta==null)throw new IOException("Attachment missing");boolean available=file(key,id).isFile();return new JSONObject(meta.toString()).put("available",available).put("url",available?"https://appassets.androidplatform.net/attachment/"+id:"");
  }
  JSONObject prepare(String key,JSONObject meta)throws Exception{

@@ -5,6 +5,7 @@ import {validateDocument} from '../shared/document.mjs';
 import {canonical,hash,fail} from './mcp-common.mjs';
 import {workspacePolicy} from './oauth-workspace-policy.mjs';
 import {atomicNoteBatch} from './mcp-atomic-notes.mjs';
+import {publicOrigin} from './identity-origin.mjs';
 const scopes={notes_batch_move:'notes.write',notes_batch_update:'notes.write',notes_batch_delete:'notes.delete',notes_permanent_delete:'notes.delete',notes_overwrite:'notes.write',folders_clear:'notes.delete',attachments_permanent_delete:'attachments.write'};
 export const operationScope=tool=>scopes[tool];
 function assertion(env,sql,params){return env.DB.prepare('INSERT INTO workspace_tx_assertions(id,valid) SELECT ?,EXISTS('+sql+')').bind(crypto.randomUUID(),...params)}
@@ -38,7 +39,7 @@ export async function prepareAccountOperation(env,{policyId,accountId,clientId,w
  guards.push(assertion(env,'SELECT 1 WHERE (SELECT COUNT(*) FROM account_operation_approvals WHERE account_id=? AND status=\'pending\' AND expires_at>?)<10',[accountId,now]));
  guards.push(env.DB.prepare("INSERT INTO account_operation_approvals(id,account_id,policy_id,client_id,workspace_id,scope,tool,payload,payload_hash,created_at,expires_at,status) VALUES(?,?,?,?,?,?,?,?,?,?,?,'pending')").bind(row.id,accountId,policyId,clientId,workspaceId,scope,tool,JSON.stringify(payload),await hash(canonical({tool,arguments:payload})),now,now+600000),env.DB.prepare('DELETE FROM workspace_tx_assertions'));
  try{await env.DB.batch(guards)}catch(error){if(/constraint/i.test(error.message))fail('AUTHORIZATION_CHANGED','Authorization changed or too many pending approvals');throw error}
- return {approval_id:row.id,approval_url:'https://easybook.loonxy.com/account/operations/'+row.id,expires_at:now+600000,status:'pending',instructions:'由发起此 OAuth 授权的账户本人登录 Easybook 审批。批准后服务端自动执行；AI 只能查询状态，不得重新提交执行。'};
+ return {approval_id:row.id,approval_url:publicOrigin(env)+'/account/operations/'+row.id,expires_at:now+600000,status:'pending',instructions:'由发起此 OAuth 授权的账户本人登录 Easybook 审批。批准后服务端自动执行；AI 只能查询状态，不得重新提交执行。'};
 }
 export async function operationStatus(env,id,{accountId,policyId,clientId}){
  const row=await env.DB.prepare('SELECT id,account_id,policy_id,client_id,status,result,expires_at FROM account_operation_approvals WHERE id=? AND account_id=? AND policy_id=? AND client_id=?').bind(id,accountId,policyId,clientId).first();

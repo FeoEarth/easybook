@@ -11,7 +11,7 @@ const factory=new IDBFactory(),oldKey='a'.repeat(64),rotatedKey='b'.repeat(64),w
 const oldDB=await new Promise((resolve,reject)=>{const r=factory.open('easybook-json-v1',1);r.onupgradeneeded=()=>r.result.createObjectStore('spaces');r.onsuccess=()=>resolve(r.result);r.onerror=()=>reject(r.error)});
 const original={notes:[{id:'note',title:'offline',dirty:true}],folders:[{id:'folder'}],inflight:{note:{mutation:'frozen'}},cursor:27,revision:5,management:{pending:[{id:'move'}]}};
 await new Promise((resolve,reject)=>{const t=oldDB.transaction('spaces','readwrite');t.objectStore('spaces').put(original,oldKey);t.oncomplete=resolve;t.onabort=()=>reject(t.error)});oldDB.close();
-const migrated=new WebStore(factory);await migrated.open();assert.equal(migrated.db.version,3);
+const migrated=new WebStore(factory);await migrated.open();assert.equal(migrated.db.version,4);
 assert.deepEqual(await migrated.load(oldKey),original);
 await migrated.bindWorkspace(oldKey,workspace);await migrated.bindWorkspace(oldKey,workspace);
 assert.equal(await migrated.namespace(oldKey),oldKey,'legacy attachment/cache namespace stays in place');
@@ -57,3 +57,13 @@ console.log('PASS workspace storage: v1 upgrade, personal/shared catalog cache, 
 
 
 const vault=new WebStore(new IDBFactory());await vault.open();const secret=await vault.activeCredential();assert.match(secret,/^[a-f0-9]{64}$/);assert.equal(await vault.activeCredential(),secret);assert.equal((await vault.vaultKey()).extractable,false);assert.ok(!JSON.stringify(await vault.vaultGet('active')).includes(secret));assert.equal(await vault.namespace(secret),'local:'+await vault.fingerprint(secret));await vault.setActiveCredential('account:'+'2'.repeat(64));assert.equal(await vault.activeCredential(),'account:'+'2'.repeat(64));vault.db.close();console.log('PASS Web credential vault: nonextractable AES-GCM key, encrypted active credential, stable recovery, public account selector and no raw-key namespace for new data');
+
+// A clean stale tab may flush without writing its old view over newer content.
+const cleanFactory=new IDBFactory(),first=new WebStore(cleanFactory),second=new WebStore(cleanFactory);
+await first.open();await second.open();const empty={notes:[],folders:[],inflight:{},cursor:0};
+await first.load('clean');await first.save('clean',empty);await second.load('clean');
+await first.save('clean',{...empty,notes:[{title:'newer'}]});
+await second.save('clean',empty);
+await assert.rejects(()=>second.save('clean',{...empty,notes:[{title:'stale edit'}]}));
+assert.equal((await first.load('clean')).notes[0].title,'newer');first.db.close();second.db.close();
+console.log('PASS unchanged stale-tab flush preserves newer content while stale edits still fail CAS');
