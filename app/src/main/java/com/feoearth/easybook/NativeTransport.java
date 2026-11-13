@@ -2,13 +2,41 @@ package com.feoearth.easybook;
 
 import java.io.*;
 import java.net.URL;
+import java.net.HttpURLConnection;
+import java.util.*;
 import java.nio.charset.StandardCharsets;
 import javax.net.ssl.HttpsURLConnection;
 import org.json.JSONObject;
 
-/** Select only fixed first-party HTTPS origins using a credential-free probe.
- * Never replay a token exchange or write merely because its response was lost. */
+/** A request remains bound to its captured server. Only the built-in profile may
+ * use the existing first-party fallback, selected by a credential-free probe. */
 final class NativeTransport {
+ private static final Map<String,Set<HttpURLConnection>> connections=new HashMap<>();
+ static String origin(NoteRepository db,boolean account)throws IOException{
+  db.assertActiveProfile();if(account&&db.profile().httpKeyOnly)throw new IOException("Accounts require HTTPS");
+  String value=db.profile().builtin?origin(account):db.profile().origin;db.assertActiveProfile();return value;
+ }
+ static void reject(NoteRepository db,boolean account,String failed){if(db.profile().builtin)reject(account,failed);}
+ static HttpURLConnection open(NoteRepository db,String path,boolean account)throws IOException{
+  String value=origin(db,account);HttpURLConnection c=openAt(value,path);register(db,c);
+  try{db.assertActiveProfile();return c;}catch(RuntimeException stale){c.disconnect();throw stale;}
+ }
+ static HttpURLConnection openOfficial(NoteRepository db,String fixedOrigin,String path)throws IOException{
+  db.assertActiveProfile();if(!db.profile().builtin||!fixedOrigin.equals(NativeAccount.ORIGIN)&&!fixedOrigin.equals(NativeAccount.IDENTITY_API)&&!fixedOrigin.equals(NativeAccount.SYNC_API))throw new IOException("Official service required");
+  HttpURLConnection c=openAt(fixedOrigin,path);register(db,c);try{db.assertActiveProfile();return c;}catch(RuntimeException stale){c.disconnect();throw stale;}
+ }
+ static HttpURLConnection openProbe(ServerProfiles.Profile profile,String path)throws IOException{return openAt(profile.origin,path);}
+ private static HttpURLConnection openAt(String origin,String path)throws IOException{
+  if(path==null||!path.startsWith("/")||path.startsWith("//")||path.indexOf('#')>=0||path.indexOf('\\')>=0||path.indexOf('\r')>=0||path.indexOf('\n')>=0)throw new IOException("Invalid server path");
+  ServerAddress.checkHttpHost(origin);
+  HttpURLConnection c=(HttpURLConnection)new URL(origin+path).openConnection();c.setInstanceFollowRedirects(false);return c;
+ }
+ private static String session(String profileId,long epoch){return profileId+":"+epoch;}
+ private static synchronized void register(NoteRepository db,HttpURLConnection connection){connections.computeIfAbsent(session(db.profileId(),db.profileEpoch()),k->Collections.newSetFromMap(new WeakHashMap<>())).add(connection);}
+ static void cancel(NoteRepository db){cancel(db.profileId(),db.profileEpoch());}
+ static void cancel(String profileId,long epoch){List<HttpURLConnection> pending;synchronized(NativeTransport.class){Set<HttpURLConnection> entries=connections.remove(session(profileId,epoch));pending=entries==null?Collections.emptyList():new ArrayList<>(entries);}for(HttpURLConnection c:pending)if(c!=null)c.disconnect();}
+ static void cancel(String profileId){List<HttpURLConnection> pending=new ArrayList<>();synchronized(NativeTransport.class){Iterator<Map.Entry<String,Set<HttpURLConnection>>> it=connections.entrySet().iterator();while(it.hasNext()){Map.Entry<String,Set<HttpURLConnection>> entry=it.next();if(entry.getKey().startsWith(profileId+":")){pending.addAll(entry.getValue());it.remove();}}}for(HttpURLConnection c:pending)if(c!=null)c.disconnect();}
+ static synchronized void release(NoteRepository db,HttpURLConnection connection){String key=session(db.profileId(),db.profileEpoch());Set<HttpURLConnection> entries=connections.get(key);if(entries!=null){entries.remove(connection);if(entries.isEmpty())connections.remove(key);}}
  interface Probe { boolean available(String origin,boolean account); }
  static String select(boolean account,Probe probe)throws IOException{
   String primary=NativeAccount.ORIGIN,secondary=account?NativeAccount.IDENTITY_API:NativeAccount.SYNC_API;

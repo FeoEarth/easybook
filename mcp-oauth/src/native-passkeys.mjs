@@ -1,11 +1,11 @@
 import {Buffer} from 'node:buffer';
 import {generateRegistrationOptions,verifyRegistrationResponse,generateAuthenticationOptions,verifyAuthenticationResponse} from '@simplewebauthn/server';
-import {IDENTITY_ORIGIN,identityEnabled} from '../../worker/identity-origin.mjs';
+import {publicOrigin,identityEnabled,identityHttpsAllowed} from '../../worker/identity-origin.mjs';
 import {ANDROID_TRUSTED_APP_ORIGINS} from '../../worker/android-identity.mjs';
 import {hash,object} from '../../worker/mcp-common.mjs';
 import {json,random,rateLimit,createSession} from './accounts.mjs';
 import {nativeBody,nativeSession,s256} from './native-sessions.mjs';
-const rpID=new URL(IDENTITY_ORIGIN).hostname,algorithms=[-7,-257],HEX=/^[a-f0-9]{64}$/;
+const algorithms=[-7,-257],HEX=/^[a-f0-9]{64}$/;
 const failure=()=>json({error:'passkey_verification_failed'},400);
 async function issued(request,env,account,credential){
  const established=await createSession(request,env,account,credential);
@@ -14,8 +14,10 @@ async function issued(request,env,account,credential){
 }
 export async function nativePasskeyRoutes(request,env){
  const url=new URL(request.url),match=url.pathname.match(/^\/account\/native\/passkeys\/(login|register)\/(options|verify)$/);if(!match)return null;
+ if(!identityHttpsAllowed(request,env))return json({error:'account_https_required'},403);
  if(!identityEnabled(env))return json({error:'not_available'},404);
- if(url.origin!==IDENTITY_ORIGIN)return json({error:'identity_origin_required'},403);
+ const origin=publicOrigin(env),rpID=new URL(origin).hostname;
+ if(url.origin!==origin)return json({error:'identity_origin_required'},403);
  if(request.method!=='POST')return json({error:'method_not_allowed'},405);
  await rateLimit(request,env,'native-passkey',30);
  const input=await nativeBody(request,65536),[,kind,action]=match;

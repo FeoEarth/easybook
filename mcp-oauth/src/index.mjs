@@ -1,6 +1,8 @@
 import {requireRestoreAccess} from '../../worker/security-checkpoint.mjs';
 import {modernWorkspaces,V2_SCOPES} from '../../worker/oauth-workspace-policy.mjs';
-import {IDENTITY_ORIGIN,LEGACY_IDENTITY_ORIGIN,identityEnabled} from '../../worker/identity-origin.mjs';
+import {IDENTITY_ORIGIN,LEGACY_IDENTITY_ORIGIN,identityEnabled,publicOrigin,hasLegacyIdentity,identityHttpsAllowed} from '../../worker/identity-origin.mjs';
+import {validateServerConfig} from '../../worker/server-config.mjs';
+import {webAccountRoutes} from './web-sessions.mjs';
 import {nativeAccountRoutes} from './native-sessions.mjs';
 import {grantClient} from '../../worker/account-grants.mjs';
 import OAuthProvider, {OAuthError} from '@cloudflare/workers-oauth-provider';
@@ -16,11 +18,12 @@ import { verifyWorkspaceAssertion } from './pairing.mjs';
 import {aiAPI} from '../../worker/ai.mjs';
 
 import {escape,oauthAppearance,htmlHeaders} from './appearance.mjs';
-const pairingWebOrigins = new Set(['https://easybook-sync.1902521952.workers.dev','https://easybook.loonxy.com']);
+const pairingWebOrigins = env=>new Set([...validateServerConfig(env).webClientOrigins,...(hasLegacyIdentity(env)?['https://easybook-sync.1902521952.workers.dev']:[])]);
 const oauthHandler = {
  async fetch(request,env) {
   const url = new URL(request.url);
   const oauth = env.OAUTH_PROVIDER;
+  const web=await webAccountRoutes(request,env);if(web)return web;
   if(url.pathname==='/account/native/ai'&&request.method==='POST'){
    const {nativeSession}=await import('./native-sessions.mjs');const current=await nativeSession(request,env);if(!current)return Response.json({error:'unauthorized'},{status:401});
    let input;try{input=await boundedJSON(request,1600000)}catch{return Response.json({error:'invalid_request'},{status:400})}if(!object(input))return Response.json({error:'invalid_request'},{status:400});
@@ -34,7 +37,7 @@ const oauthHandler = {
    else return Response.json({error:'invalid_request'},{status:400});
    const headers={'Content-Type':'application/json'};return aiAPI(new Request(new URL(target,request.url),{method,headers,body,signal:request.signal}),env,principal,{workspaceId:input.workspace||''});
   }
-  if(identityEnabled(env)&&url.origin===LEGACY_IDENTITY_ORIGIN&&((url.pathname==='/callback'&&url.searchParams.get('state')?.startsWith('account_'))||url.pathname==='/account/login'))return new Response(null,{status:303,headers:{Location:IDENTITY_ORIGIN+url.pathname+url.search,'Cache-Control':'no-store','Referrer-Policy':'no-referrer'}});
+  if(identityEnabled(env)&&hasLegacyIdentity(env)&&url.origin===LEGACY_IDENTITY_ORIGIN&&((url.pathname==='/callback'&&url.searchParams.get('state')?.startsWith('account_'))||url.pathname==='/account/login'))return new Response(null,{status:303,headers:{Location:publicOrigin(env)+url.pathname+url.search,'Cache-Control':'no-store','Referrer-Policy':'no-referrer'}});
   if(modernWorkspaces(env)&&(url.pathname==='/pairing/complete'||url.pathname==='/callback'&&!url.searchParams.get('state')?.startsWith('account_')))return new Response('Legacy authorization retired; authorize your Easybook account',{status:410});
   if(url.pathname.startsWith('/account/native/passkeys/')){const {nativePasskeyRoutes}=await import('./native-passkeys.mjs');return nativePasskeyRoutes(request,env);}
   if(url.pathname==='/oauth/workspace-grants'){const {session,requireForm,redirect,json}=await import('./accounts.mjs');const s=await session(request,env);if(!s)return json({error:'unauthorized'},401);if(request.method!=='POST')return json({error:'method_not_allowed'},405);const form=await requireForm(request,s);const {revokeWorkspaceGrant}=await import('../../worker/grant-revocation.mjs');if(!await revokeWorkspaceGrant(env,s.account_id,form.get('id'),form.get('workspace')))return json({error:'not_found'},404);return redirect('/account');}
@@ -52,12 +55,12 @@ const oauthHandler = {
   if(url.pathname==='/health/mcp'&&request.method==='GET')return mcpHealth(env);
   if(url.pathname==='/pairing/complete' && request.method==='OPTIONS'){
    const origin=request.headers.get('Origin');
-   if(!pairingWebOrigins.has(origin))return new Response(null,{status:403});
+   if(!pairingWebOrigins(env).has(origin))return new Response(null,{status:403});
    return new Response(null,{status:204,headers:{'Access-Control-Allow-Origin':origin,'Access-Control-Allow-Methods':'POST, OPTIONS','Access-Control-Allow-Headers':'Content-Type','Access-Control-Max-Age':'600','Vary':'Origin'}});
   }
   if(url.pathname==='/pairing/complete' && request.method==='POST'){
    const origin=request.headers.get('Origin');
-   if(origin&&!pairingWebOrigins.has(origin))return new Response('Origin not allowed',{status:403});
+   if(origin&&!pairingWebOrigins(env).has(origin))return new Response('Origin not allowed',{status:403});
    const cors=origin?{'Access-Control-Allow-Origin':origin,'Vary':'Origin'}:{};
    const fail=(error,status)=>Response.json({error},{status,headers:{...cors,'Cache-Control':'no-store'}});
    if(!env.MCP_PAIRING_SIGNING_KEY)return fail('Pairing unavailable',503);
@@ -76,7 +79,7 @@ const oauthHandler = {
     env.DB.prepare('UPDATE mcp_pairing_challenges SET consumed_at=? WHERE challenge_hash=? AND consumed_at IS NULL AND expires_at>? RETURNING github_user_id,oauth_client_id').bind(now,hash,now)
    ]);
    if(!results[2].results?.length)return fail('Pairing challenge expired',409);
-   return Response.json({paired:true},{headers:{'Cache-Control':'no-store',...(pairingWebOrigins.has(origin)?{'Access-Control-Allow-Origin':origin,'Vary':'Origin'}:{})}});
+   return Response.json({paired:true},{headers:{'Cache-Control':'no-store',...(pairingWebOrigins(env).has(origin)?{'Access-Control-Allow-Origin':origin,'Vary':'Origin'}:{})}});
    } catch(error) {console.error(JSON.stringify({event:'mcp_pairing_failed',name:error?.name}));return fail('Pairing temporarily unavailable',503)}
   }
   if(modernWorkspaces(env)&&url.pathname==='/authorize')return request.method==='GET'?new Response(null,{status:303,headers:{Location:'/oauth/authorize'+url.search,'Cache-Control':'no-store'}}):new Response('Reauthorize with an Easybook account',{status:410});
@@ -306,18 +309,23 @@ export default {async fetch(request,env,ctx){
  try {
   await requireRestoreAccess(env);
   let requestUrl=new URL(request.url);
+  validateServerConfig(env);
+  if(!identityHttpsAllowed(request,env))return Response.json({error:'account_https_required'},{status:403,headers:{'Cache-Control':'no-store'}});
+  if(!hasLegacyIdentity(env)&&requestUrl.origin!==publicOrigin(env))return Response.json({error:'identity_origin_required'},{status:403,headers:{'Cache-Control':'no-store'}});
   if(requestUrl.pathname==='/.well-known/oauth-protected-resource'){requestUrl.pathname+='\/mcp';request=new Request(requestUrl,request);}
   const path=requestUrl.pathname;
+  const web=await webAccountRoutes(request,env);if(web)return web;
   // Fixed first-party native API transport. Do not redirect POSTs or proxy OAuth
   // endpoints: browser login/consent and the WebAuthn RP remain canonical.
-  if(identityEnabled(env)&&(requestUrl.origin===LEGACY_IDENTITY_ORIGIN||/^https:\/\/[a-f0-9]{8}-easybook-mcp-oauth\.1902521952\.workers\.dev$/.test(requestUrl.origin))&&path.startsWith('/account/native/')){
+  if(identityEnabled(env)&&hasLegacyIdentity(env)&&(requestUrl.origin===LEGACY_IDENTITY_ORIGIN||/^https:\/\/[a-f0-9]{8}-easybook-mcp-oauth\.1902521952\.workers\.dev$/.test(requestUrl.origin))&&path.startsWith('/account/native/')){
    if(request.headers.has('Origin')||request.headers.get('X-Easybook-Native')!=='1')return Response.json({error:'native_request_required'},{status:403,headers:{'Cache-Control':'no-store'}});
-   return await oauthHandler.fetch(new Request(IDENTITY_ORIGIN+path+requestUrl.search,request),env);
+   return await oauthHandler.fetch(new Request(publicOrigin(env)+path+requestUrl.search,request),env);
   }
 
-  if(modernWorkspaces(env)&&requestUrl.origin===LEGACY_IDENTITY_ORIGIN){if(path.startsWith('/.well-known/oauth-')||path==='/oauth/authorize'||path==='/authorize')return new Response(null,{status:303,headers:{Location:IDENTITY_ORIGIN+path+requestUrl.search,'Cache-Control':'no-store','Referrer-Policy':'no-referrer'}});if(['/register','/token','/oauth/token'].includes(path))return Response.json({error:'legacy_issuer_retired',authorization_server:IDENTITY_ORIGIN},{status:410,headers:{'Cache-Control':'no-store'}});}
+  if(modernWorkspaces(env)&&hasLegacyIdentity(env)&&requestUrl.origin===LEGACY_IDENTITY_ORIGIN){if(path.startsWith('/.well-known/oauth-')||path==='/oauth/authorize'||path==='/authorize')return new Response(null,{status:303,headers:{Location:publicOrigin(env)+path+requestUrl.search,'Cache-Control':'no-store','Referrer-Policy':'no-referrer'}});if(['/register','/token','/oauth/token'].includes(path))return Response.json({error:'legacy_issuer_retired',authorization_server:publicOrigin(env)},{status:410,headers:{'Cache-Control':'no-store'}});}
   if(['/token','/oauth/token','/oauth/revoke','/register'].includes(path))await rateLimit(request,env,'oauth',60);
-  return await guardTokens(request,env,ctx,identityEnabled(env)&&new URL(request.url).origin===IDENTITY_ORIGIN?canonicalProvider:provider);
+  const active=identityEnabled(env)&&new URL(request.url).origin===publicOrigin(env)?(hasLegacyIdentity(env)?canonicalProvider:new OAuthProvider({...providerOptions,resourceMetadata:{resource:publicOrigin(env)+'/mcp'},authorizeEndpoint:'/oauth/authorize',scopesSupported:['mcp:read',...V2_SCOPES]})):provider;
+  return await guardTokens(request,env,ctx,active);
  }catch(error){if(error instanceof Response)return error;console.error(JSON.stringify({event:'account_oauth_failed',name:error?.name}));return new Response('Authorization temporarily unavailable',{status:503,headers:{'Cache-Control':'no-store'}});}
 }};
 

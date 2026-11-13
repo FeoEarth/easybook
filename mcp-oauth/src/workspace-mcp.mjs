@@ -5,6 +5,7 @@ import {workspacePolicy,selectPolicyWorkspace} from '../../worker/oauth-workspac
 import {createWorkspace,renameWorkspace} from '../../worker/workspace-identity.mjs';
 import {grantClient} from '../../worker/account-grants.mjs';
 import {mcp} from '../../worker/mcp.mjs';
+import {publicOrigin} from '../../worker/identity-origin.mjs';
 const workspaceId={type:'string',pattern:'^[a-f0-9]{64}$'};
 const tools=[
  {name:'operations_get_status',description:'查询本次 OAuth 授权发起的审批执行状态；不能批准或重新执行',inputSchema:schema({approval_id:{type:'string',pattern:'^[a-f0-9-]{36}$'}},['approval_id'])},
@@ -81,7 +82,7 @@ export async function workspaceMcp(request,env,ctx){
 
  }
  const headers=new Headers(request.headers);headers.delete('Origin');headers.set('Authorization','Bearer internal-oauth-bridge');
- const response=await mcp(new Request(request,{headers,body:JSON.stringify(msg)}),{...env,MCP_ACCESS_TOKEN:'internal-oauth-bridge'},selected?.id||'0'.repeat(64),{client:grantClient(policy.id),scopes:selected?.scopes||[],uploadOrigin:'https://easybook.loonxy.com'});
+ const response=await mcp(new Request(request,{headers,body:JSON.stringify(msg)}),{...env,MCP_ACCESS_TOKEN:'internal-oauth-bridge'},selected?.id||'0'.repeat(64),{client:grantClient(policy.id),scopes:selected?.scopes||[],uploadOrigin:publicOrigin(env)});
  if(msg.method==='tools/list'&&response.ok){const value=await response.json();if(value.result?.tools){value.result.tools=value.result.tools.filter(t=>t.name!=='access_request_permissions');value.result.tools=value.result.tools.map(t=>{if(!operationScope(t.name))return t;const inputSchema=structuredClone(t.inputSchema);delete inputSchema.properties.confirmation_id;inputSchema.required=inputSchema.required.filter(k=>k!=='confirmation_id');if(inputSchema.properties.items)inputSchema.properties.items.maxItems=100;return {...t,description:t.description+'；必须由账户本人审批后服务端执行，AI 仅查询状态',inputSchema}});value.result.tools=value.result.tools.map(t=>({...t,description:t.description+'；内容操作可显式指定已授权 workspace_id',inputSchema:{...t.inputSchema,properties:{...t.inputSchema.properties,workspace_id:workspaceId},required:[...new Set([...(t.inputSchema.required||[]),...(policy.workspaces.length>1?['workspace_id']:[])])]}}));value.result.tools.push(...tools.map(t=>['workspaces_rename','revoke_workspace_access'].includes(t.name)?{...t,inputSchema:{...t.inputSchema,required:[...t.inputSchema.required,...(policy.workspaces.length>1?['workspace_id']:[])]}}:t))}return Response.json(value,{headers:{'Cache-Control':'no-store'}})}
  if(['resources/list','resources/templates/list','resources/read'].includes(msg.method)&&response.ok){const value=await response.json();if(value.result?.resources)value.result.resources=value.result.resources.flatMap(r=>policy.workspaces.map(w=>({...r,uri:r.uri+'?workspace_id='+w.id,name:w.name+' · '+r.name})));if(value.result?.resourceTemplates)value.result.resourceTemplates=value.result.resourceTemplates.map(r=>({...r,uriTemplate:r.uriTemplate+'?workspace_id={workspace_id}'}));if(originalUri&&value.result?.contents)value.result.contents=value.result.contents.map(c=>({...c,uri:originalUri}));return Response.json(value,{headers:{'Cache-Control':'no-store'}})}
  return response;

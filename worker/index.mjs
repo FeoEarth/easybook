@@ -1,3 +1,5 @@
+import {publicOrigin} from './server-config.mjs';
+import {serveWithServerPolicy,serverDocument,allowConnect,selectedConnectOrigin} from './server-client.mjs';
 import {runSecurityAdmin} from './security-admin.mjs';
 import {runWorkspacePurges} from './workspace-purge.mjs';
 import {requireRestoreAccess} from './security-checkpoint.mjs';
@@ -35,12 +37,12 @@ async function otaManifest(v2=false) {
  const digest=async value=>Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256',new TextEncoder().encode(value)))).map(v=>v.toString(16).padStart(2,'0')).join('');
  const [htmlHash,editorHash]=await Promise.all([digest(html),digest(editor)]);
  const files=[{name:'index.html',url:'/ota/index.html',sha256:htmlHash},{name:'editor.js',url:'/ota/editor.js',sha256:editorHash}];
- if(!v2)return {schema:1,revision:htmlHash.slice(0,16)+'-'+editorHash.slice(0,16),minNativeVersionCode:68,files};
+ if(!v2)return {schema:1,revision:htmlHash.slice(0,16)+'-'+editorHash.slice(0,16),minNativeVersionCode:102,files};
  const updateHash=await digest(nativeUpdate);
  files.push({name:'native_update.js',url:'/ota/native_update.js',sha256:updateHash});
- return {schema:2,revision:htmlHash.slice(0,16)+'-'+editorHash.slice(0,16)+'-'+updateHash.slice(0,16),minNativeVersionCode:74,files};
+ return {schema:2,revision:htmlHash.slice(0,16)+'-'+editorHash.slice(0,16)+'-'+updateHash.slice(0,16),minNativeVersionCode:102,files};
 }
-export default {
+const worker = {
  async scheduled(controller,env){if(await runSecurityAdmin(env))return;const results=await Promise.allSettled([cleanupUploads(env,10),runAttachmentPurges(env,10),runWorkspacePurges(env,5),maintainIdentity(env)]);if(results.some(r=>r.status==='rejected'))throw Error('Scheduled maintenance incomplete')},
  async fetch(request, env) {
   const url = new URL(request.url);
@@ -60,10 +62,10 @@ export default {
   // intermediary HTML/JS rewriting or stale transformed representations.
   if(request.method==='GET'&&(url.pathname==='/ota/index.html'||url.pathname==='/ota/editor.js'||url.pathname==='/ota/native_update.js'))return new Response(url.pathname==='/ota/index.html'?html:url.pathname==='/ota/editor.js'?editor:nativeUpdate,{headers:{'Content-Type':'application/octet-stream','Cache-Control':'no-store, no-transform','X-Content-Type-Options':'nosniff'}});
   if(url.pathname.startsWith('/api/')||identityPath(url.pathname)){try{await requireRestoreAccess(env)}catch{return json({error:'Security recovery in progress'},503)}}
-  if(url.pathname==='/.well-known/assetlinks.json'&&identityEnabled(env)&&url.origin===IDENTITY_ORIGIN&&request.method==='GET')return Response.json(androidAssetLinks,{headers:{'Cache-Control':'public, max-age=3600','X-Content-Type-Options':'nosniff'}});
+  if(url.pathname==='/.well-known/assetlinks.json'&&identityEnabled(env)&&url.origin===IDENTITY_ORIGIN&&publicOrigin(env)===IDENTITY_ORIGIN&&request.method==='GET')return Response.json(androidAssetLinks,{headers:{'Cache-Control':'public, max-age=3600','X-Content-Type-Options':'nosniff'}});
   // Deliberately unset on production until the coordinated identity cutover.
   const identityV2=env.WORKSPACE_IDENTITY_V2==='true';
-  if(identityEnabled(env)&&url.origin===IDENTITY_ORIGIN&&identityPath(url.pathname)){if(!env.IDENTITY_SERVICE)return json({error:'Identity service unavailable'},503);return env.IDENTITY_SERVICE.fetch(request);}
+  if(identityEnabled(env)&&url.origin===publicOrigin(env)&&identityPath(url.pathname)){if(!env.IDENTITY_SERVICE)return json({error:'Identity service unavailable'},503);return env.IDENTITY_SERVICE.fetch(request);}
   if(url.pathname==='/api/turnstile'&&['GET','OPTIONS'].includes(request.method))return turnstileConfig(env,request);
   if(identityV2&&url.pathname.startsWith('/api/workspaces'))return workspaceAPI(request,env);
   if(identityV2&&url.pathname.startsWith('/api/ai/')){
@@ -102,7 +104,7 @@ export default {
   }
   if(url.pathname === '/editor.js' && request.method === 'GET')return new Response(editor,{headers:{'Content-Type':'application/javascript; charset=utf-8','X-Content-Type-Options':'nosniff','Cache-Control':'no-cache'}});
   if(url.pathname === '/health'){try{await requireRestoreAccess(env);return json({ok:true,app:'Easybook',version:'0.8.4',commit:env.RELEASE_SHA||'',schemaVersion:identityV2?16:1,workspaceIdentityV2:identityV2,canonicalIdentity:identityEnabled(env),securityCheckpoint:env.SECURITY_CHECKPOINT_V2==='true'})}catch{return json({ok:false,error:'Security recovery in progress'},503)}}
-  if(url.pathname === '/' && request.method === 'GET') return new Response(identityV2?html.replace('name="easybook-identity" content="legacy"','name="easybook-identity" content="v2"'):html,{headers:{'Content-Type':'text/html; charset=utf-8','X-Content-Type-Options':'nosniff','Referrer-Policy':'no-referrer','Cache-Control':'no-cache','X-Frame-Options':'DENY','Content-Security-Policy':"default-src 'none'; script-src 'self' 'unsafe-inline' 'wasm-unsafe-eval' https://challenges.cloudflare.com; worker-src 'self'; style-src 'self' 'unsafe-inline'; font-src 'self' data: blob:; connect-src 'self' https://easybook.loonxy.com https://easybook-sync.1902521952.workers.dev https://easybook-mcp-oauth.1902521952.workers.dev https://challenges.cloudflare.com https://raw.githubusercontent.com/FeoEarth/easybook/main/THIRD_PARTY_NOTICES.md https://raw.githubusercontent.com/FeoEarth/easybook/main/THIRD_PARTY_LICENSES.md; img-src 'self' data: blob:; media-src blob: https://appassets.androidplatform.net/attachment/; frame-src blob: https://challenges.cloudflare.com; object-src blob:; base-uri 'none'; form-action 'none'; frame-ancestors 'none'"}});
+  if(url.pathname === '/' && request.method === 'GET') return new Response(serverDocument(identityV2?html.replace('name="easybook-identity" content="legacy"','name="easybook-identity" content="v2"'):html,url),{headers:{'Content-Type':'text/html; charset=utf-8','X-Content-Type-Options':'nosniff','Referrer-Policy':'no-referrer','Cache-Control':'no-cache','X-Frame-Options':'DENY','Content-Security-Policy':allowConnect("default-src 'none'; script-src 'self' 'unsafe-inline' 'wasm-unsafe-eval' https://challenges.cloudflare.com; worker-src 'self'; style-src 'self' 'unsafe-inline'; font-src 'self' data: blob:; connect-src 'self' https://easybook.loonxy.com https://easybook-sync.1902521952.workers.dev https://easybook-mcp-oauth.1902521952.workers.dev https://challenges.cloudflare.com https://raw.githubusercontent.com/FeoEarth/easybook/main/THIRD_PARTY_NOTICES.md https://raw.githubusercontent.com/FeoEarth/easybook/main/THIRD_PARTY_LICENSES.md; img-src 'self' data: blob:; media-src blob: https://appassets.androidplatform.net/attachment/; frame-src blob: https://challenges.cloudflare.com; object-src blob:; base-uri 'none'; form-action 'none'; frame-ancestors 'none'",selectedConnectOrigin(url))}});
   if(!url.pathname.startsWith('/api/')) return json({error:'Not found'},404);
   const token = (request.headers.get('Authorization')||'').replace(/^Bearer /,'');
   if(!identityV2&&!/^[a-f0-9]{64}$/.test(token)) {
@@ -180,3 +182,5 @@ export default {
 
 
 
+
+export default {scheduled:worker.scheduled,fetch:(request,env)=>serveWithServerPolicy(request,env,(r,e)=>worker.fetch(r,e))};

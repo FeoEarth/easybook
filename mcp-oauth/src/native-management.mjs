@@ -2,7 +2,7 @@ import {deletionPreview,deleteAccount} from '../../worker/account-deletion.mjs';
 import {revokeWorkspaceGrant} from '../../worker/grant-revocation.mjs';
 import {nativeBody,nativeSession} from './native-sessions.mjs';
 import {json,rateLimit} from './accounts.mjs';
-import {identityEnabled,IDENTITY_ORIGIN} from '../../worker/identity-origin.mjs';
+import {identityEnabled,publicOrigin,identityHttpsAllowed} from '../../worker/identity-origin.mjs';
 import {modernWorkspaces,accountPolicies} from '../../worker/oauth-workspace-policy.mjs';
 import {auditHistory} from '../../worker/account-history.mjs';
 import {executeAccountOperation} from '../../worker/account-operations.mjs';
@@ -10,7 +10,7 @@ import {reserveRevocations,finishRevocations} from '../../worker/security-checkp
 const uuid=/^[a-f0-9-]{36}$/;
 export async function nativeManagementRoutes(request,env){
  const url=new URL(request.url);if(url.pathname!=='/account/native/manage')return null;
- if(!identityEnabled(env)||!modernWorkspaces(env)||url.origin!==IDENTITY_ORIGIN)return json({error:'not_available'},404);
+ if(!identityEnabled(env)||!modernWorkspaces(env)||!identityHttpsAllowed(request,env)||url.origin!==publicOrigin(env))return json({error:'not_available'},404);
  if(request.method!=='POST')return json({error:'method_not_allowed'},405);
  try{
   const input=await nativeBody(request,65536),s=await nativeSession(request,env);if(!s)return json({error:'unauthorized'},401);

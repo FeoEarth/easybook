@@ -20,6 +20,7 @@ import java.util.Collections;
 
 /** Camera scanning is local; only a strictly validated Easybook challenge ID leaves this screen. */
 public final class QrScanActivity extends Activity {
+    static final String EXTRA_SERVER_ORIGIN = "easybook.qr.serverOrigin";
     static final String EXTRA_CHALLENGE_ID = "easybook.qr.challengeId";
     private DecoratedBarcodeView camera;
     private TextView feedback;
@@ -82,14 +83,14 @@ public final class QrScanActivity extends Activity {
         camera.decodeContinuous(new BarcodeCallback() {
             @Override public void barcodeResult(BarcodeResult result) {
                 if (complete || result == null) return;
-                String id = NativeAccount.qrChallengeId(result.getText());
+                String id = NativeAccount.qrChallengeId(result.getText(),getIntent().getStringExtra(EXTRA_SERVER_ORIGIN));
                 if (id == null) {
                     feedback.setText("不是有效的 Easybook 登录二维码，请重新对准");
                     return;
                 }
                 complete = true;
                 camera.pause();
-                setResult(RESULT_OK, new Intent().putExtra(EXTRA_CHALLENGE_ID, id));
+                setResult(RESULT_OK, new Intent().putExtra(EXTRA_CHALLENGE_ID, id).putExtra(EXTRA_SERVER_ORIGIN,getIntent().getStringExtra(EXTRA_SERVER_ORIGIN)==null?NativeAccount.ORIGIN:getIntent().getStringExtra(EXTRA_SERVER_ORIGIN)));
                 finish();
             }
         });
