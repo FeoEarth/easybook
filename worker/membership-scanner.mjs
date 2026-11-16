@@ -1,4 +1,5 @@
-import {configuration,addMonths} from './membership.mjs';
+import {configuration} from './membership.mjs';
+import {creditTransfer} from './membership-ledger.mjs';
 import {requireRestoreAccess} from './security-checkpoint.mjs';
 const topic='0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef';
 async function rpc(c,method,params,fetcher){
@@ -16,27 +17,7 @@ async function rpc(c,method,params,fetcher){
  throw lastError;
 }
 const hex=n=>'0x'+n.toString(16);
-export async function settle(env,c,log){
- if(log.removed||log.address?.toLowerCase()!==c.token.toLowerCase()||log.topics?.[0]!==topic||log.topics.length!==3||!/^0x[0-9a-fA-F]{64}$/.test(log.data))return;
- const address='0x'+log.topics[2].slice(-40).toLowerCase(),order=await env.DB.prepare('SELECT * FROM membership_orders WHERE chain_id=? AND address=? AND token=?').bind(c.chainId,address,c.token.toLowerCase()).first();if(!order)return;
- const amount=BigInt(log.data).toString(),tx=log.transactionHash,index=Number(BigInt(log.logIndex)),now=Date.now();
- for(let attempt=0;attempt<5;attempt++){
- const m=await env.DB.prepare('SELECT * FROM account_memberships WHERE account_id=?').bind(order.account_id).first();
- const expires=order.months?addMonths(Math.max(now,m?.expires_at||0),order.months):0;
- const status=amount!==order.amount?'amount_mismatch':order.settled_at?'duplicate_payment':m?.permanent?'already_permanent':'paid';
- const live=await env.DB.prepare('SELECT 1 FROM accounts WHERE id=? AND deleted_at IS NULL').bind(order.account_id).first();const result=live?status:'account_unavailable';
- // A failed CHECK rolls back the batch; retry with the new account state.
- const record=env.DB.prepare('INSERT OR IGNORE INTO membership_receipts(chain_id,tx,log_index,order_id,amount,block,status,created_at) VALUES(?,?,?,?,?,?,?,?)').bind(c.chainId,tx,index,order.id,amount,Number(BigInt(log.blockNumber)),result,now);
- if(result!=='paid'){await record.run();return}
- try{await env.DB.batch([
- env.DB.prepare('INSERT INTO membership_assertions(id,valid) SELECT ?, (NOT EXISTS(SELECT 1 FROM account_memberships WHERE account_id=? AND (permanent<>? OR expires_at<>?))) AND NOT EXISTS(SELECT 1 FROM membership_receipts WHERE chain_id=? AND tx=? AND log_index=?) AND EXISTS(SELECT 1 FROM membership_orders WHERE id=? AND settled_at IS NULL) AND EXISTS(SELECT 1 FROM accounts WHERE id=? AND deleted_at IS NULL)').bind(tx+':'+index,order.account_id,m?.permanent||0,m?.expires_at||0,c.chainId,tx,index,order.id,order.account_id),record,
- env.DB.prepare('INSERT INTO account_memberships VALUES(?,?,?) ON CONFLICT(account_id) DO UPDATE SET permanent=excluded.permanent,expires_at=excluded.expires_at').bind(order.account_id,order.months?0:1,expires),
- env.DB.prepare('INSERT INTO membership_changes VALUES(?,?,?,?,?)').bind(order.id,order.account_id,order.months?0:1,expires,now),
- env.DB.prepare('UPDATE membership_orders SET settled_at=? WHERE id=?').bind(now,order.id),
- env.DB.prepare('DELETE FROM membership_assertions WHERE id=?').bind(tx+':'+index)
- ]);return}catch(e){const seen=await env.DB.prepare('SELECT 1 FROM membership_receipts WHERE chain_id=? AND tx=? AND log_index=?').bind(c.chainId,tx,index).first();if(seen)return;const updated=await env.DB.prepare('SELECT settled_at FROM membership_orders WHERE id=?').bind(order.id).first();order.settled_at=updated?.settled_at;if(attempt===4)throw e}
- }
-}
+export const settle=creditTransfer;
 // Finalized eth_getLogs contains only successful canonical transaction logs.
 // Address batches and durable windows bound RPC work without scanning the entire token.
 export async function scanMembership(env,{fetcher=fetch}={}){
@@ -56,12 +37,12 @@ export async function scanMembership(env,{fetcher=fetch}={}){
  const cursor=await env.DB.prepare('SELECT block FROM membership_cursors WHERE chain_id=?').bind(c.chainId).first();
  const from=cursor?cursor.block+1:c.startBlock;
  if(from>head){await heartbeat(env,c.chainId,head);return}
- const snapshot=await env.DB.prepare('SELECT COALESCE(MAX(a.id),0) id FROM membership_addresses a JOIN membership_orders o ON o.id=a.order_id WHERE o.chain_id=?').bind(c.chainId).first();
+ const snapshot=await env.DB.prepare('SELECT COALESCE(MAX(id),0) id FROM membership_address_owners').first();
  await env.DB.prepare('INSERT OR IGNORE INTO membership_scan_windows VALUES(?,?,?,0,?)').bind(c.chainId,from,snapshot.id===0?head:Math.min(head,from+99),snapshot.id).run();
  window=await env.DB.prepare('SELECT * FROM membership_scan_windows WHERE chain_id=?').bind(c.chainId).first();
  }
  if(window.to_block>head)throw Error('Finalized height regressed');
- const rows=(await env.DB.prepare('SELECT a.id,o.address FROM membership_addresses a JOIN membership_orders o ON o.id=a.order_id WHERE o.chain_id=? AND a.id>? AND a.id<=? ORDER BY a.id LIMIT 64').bind(c.chainId,window.last_address_id,window.snapshot_id).all()).results;
+ const rows=(await env.DB.prepare('SELECT id,address FROM membership_address_owners WHERE id>? AND id<=? ORDER BY id LIMIT 64').bind(window.last_address_id,window.snapshot_id).all()).results;
  if(rows.length){
  const recipients=rows.map(r=>'0x'+r.address.slice(2).padStart(64,'0'));
  const logs=await call('eth_getLogs',[{address:c.token,topics:[topic,null,recipients],fromBlock:hex(window.from_block),toBlock:hex(window.to_block)}]);

@@ -18,7 +18,7 @@
     "test:media": "node scripts/media-sync-test.mjs && node scripts/attachment-test.mjs",
     "test:sync-ui": "node scripts/sync-page-test.mjs",
     "build:pdf": "node scripts/prepare-pdf.mjs",
-    "test:membership": "node scripts/membership-test.mjs && node scripts/membership-flow-test.mjs && node scripts/membership-scanner-test.mjs && node scripts/membership-ui-test.mjs",
+    "test:membership": "node scripts/membership-ledger-test.mjs && node scripts/membership-ui-test.mjs",
     "membership:demo": "node scripts/membership-demo.mjs",
     "membership:config": "node scripts/membership-local-config.mjs",
     "membership:probe": "node --use-env-proxy scripts/membership-probe-rpc.mjs"

@@ -17,7 +17,7 @@ const server=createServer(async(req,res)=>{
  if(path==='/')response=new Response(null,{status:302,headers:{Location:'/membership','Set-Cookie':f.cookie+'; Secure; HttpOnly; SameSite=Strict; Path=/'}});
  else if(path==='/__simulate'&&req.method==='POST'){
  if(req.headers.origin!==origin||!req.headers.cookie?.split(';').map(x=>x.trim()).includes(f.cookie)||req.headers['x-easybook-csrf']!==f.csrf)response=Response.json({error:'forbidden'},{status:403});
- else{const data=JSON.parse(body),order=f.sql.prepare('SELECT * FROM membership_orders WHERE id=? AND account_id=?').get(data.orderId,f.account);if(!order)response=Response.json({error:'not_found'},{status:404});else{f.inject(order);await f.scan();response=Response.json({simulated:true})}}
+ else{const data=JSON.parse(body),order=f.sql.prepare('SELECT * FROM membership_purchases WHERE id=? AND account_id=?').get(data.orderId,f.account);if(!order)response=Response.json({error:'not_found'},{status:404});else{f.inject(order);await f.scan();response=Response.json({simulated:true})}}
  }else if(path==='/membership')response=await membershipPage(request,f.env);
  else if(path==='/api/membership'||path.startsWith('/api/membership/'))response=await membershipAPI(request,f.env);
  else response=new Response('Not found',{status:404});
