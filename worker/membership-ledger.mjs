@@ -39,21 +39,21 @@ export async function cancelPurchase(env,accountId,id){
  ]);return first(env,'SELECT * FROM membership_purchases WHERE id=?',id)}catch(e){if(attempt===3)throw e}
  }
 }
-export async function applyBalance(env,accountId){
+export async function applyBalance(env,accountId,{explicit=false,orderId}={}){
  for(let attempt=0;attempt<6;attempt++){
  await expirePurchase(env,accountId);
- const order=await first(env,'SELECT * FROM membership_purchases WHERE account_id=? AND settled_at IS NULL AND cancelled_at IS NULL',accountId);if(!order)return;
- const state=await first(env,'SELECT * FROM membership_account_state WHERE account_id=?',accountId);if(!state||state.cancel_version>state.ack_version)return;
- const balance=await first(env,'SELECT units FROM membership_balances WHERE account_id=?',accountId),member=await first(env,'SELECT * FROM account_memberships WHERE account_id=?',accountId);if(!balance||BigInt(balance.units)<BigInt(order.amount))return;
+ const order=await first(env,'SELECT * FROM membership_purchases WHERE account_id=? AND settled_at IS NULL AND cancelled_at IS NULL',accountId);if(!order){if(explicit)throw error('order_unavailable');return}if(orderId&&order.id!==orderId)throw error('order_changed');
+ const state=await first(env,'SELECT * FROM membership_account_state WHERE account_id=?',accountId);if(!state||(!explicit&&state.cancel_version>state.ack_version))return;
+ const balance=await first(env,'SELECT units FROM membership_balances WHERE account_id=?',accountId),member=await first(env,'SELECT * FROM account_memberships WHERE account_id=?',accountId);if(!balance||BigInt(balance.units)<BigInt(order.amount)){if(explicit)throw error('insufficient_balance');return;}
  if(member?.permanent||state.version!==order.state_version){await env.DB.prepare("UPDATE membership_purchases SET cancelled_at=?,cancel_reason='membership_changed' WHERE id=? AND settled_at IS NULL").bind(Date.now(),order.id).run();return}
  const now=Date.now(),start=order.kind==='renewal'?Math.max(now,member?.expires_at||0):now,expires=order.months?addMonths(start,order.months):0,excess=BigInt(order.credit_units)>BigInt(order.list_units)?BigInt(order.credit_units)-BigInt(order.list_units):0n,next=String(BigInt(balance.units)-BigInt(order.amount)+excess),assertion=crypto.randomUUID();
  try{await env.DB.batch([
- env.DB.prepare('INSERT INTO membership_assertions SELECT ?,EXISTS(SELECT 1 FROM membership_balances WHERE account_id=? AND units=?) AND EXISTS(SELECT 1 FROM membership_account_state WHERE account_id=? AND version=? AND cancel_version<=ack_version) AND EXISTS(SELECT 1 FROM membership_purchases WHERE id=? AND settled_at IS NULL AND cancelled_at IS NULL AND expires_at>?) AND EXISTS(SELECT 1 FROM accounts WHERE id=? AND deleted_at IS NULL)').bind(assertion,accountId,balance.units,accountId,state.version,order.id,now,accountId),
+ env.DB.prepare('INSERT INTO membership_assertions SELECT ?,EXISTS(SELECT 1 FROM membership_balances WHERE account_id=? AND units=?) AND EXISTS(SELECT 1 FROM membership_account_state WHERE account_id=? AND version=? AND cancel_version=? AND ack_version=? AND (?=1 OR cancel_version<=ack_version)) AND EXISTS(SELECT 1 FROM membership_purchases WHERE id=? AND settled_at IS NULL AND cancelled_at IS NULL AND expires_at>?) AND EXISTS(SELECT 1 FROM accounts WHERE id=? AND deleted_at IS NULL)').bind(assertion,accountId,balance.units,accountId,state.version,state.cancel_version,state.ack_version,explicit?1:0,order.id,now,accountId),
  env.DB.prepare('UPDATE membership_balances SET units=? WHERE account_id=?').bind(next,accountId),
  env.DB.prepare('INSERT INTO membership_balance_events VALUES(?,?,\'debit\',?,NULL,NULL,NULL,?,?)').bind('purchase:'+order.id,accountId,order.amount,order.id,now),
  env.DB.prepare("INSERT INTO membership_balance_events VALUES(?,?,'upgrade_excess',?,NULL,NULL,NULL,?,?)").bind('excess:'+order.id,accountId,String(excess),order.id,now),
  env.DB.prepare('INSERT INTO account_memberships VALUES(?,?,?) ON CONFLICT(account_id) DO UPDATE SET permanent=excluded.permanent,expires_at=excluded.expires_at').bind(accountId,order.months?0:1,expires),
- env.DB.prepare('UPDATE membership_account_state SET plan=?,version=version+1 WHERE account_id=?').bind(order.plan,accountId),
+ env.DB.prepare('UPDATE membership_account_state SET plan=?,version=version+1,ack_version=CASE WHEN ?=1 THEN cancel_version ELSE ack_version END,needs_ack=CASE WHEN ?=1 THEN 0 ELSE needs_ack END WHERE account_id=?').bind(order.plan,explicit?1:0,explicit?1:0,accountId),
  env.DB.prepare('UPDATE membership_value_lots SET consumed_at=? WHERE account_id=? AND consumed_at IS NULL AND ?=\'upgrade\'').bind(now,accountId,order.kind),
  env.DB.prepare('INSERT INTO membership_value_lots VALUES(?,?,?,?,?,NULL)').bind(order.id,accountId,start,expires||null,order.list_units),
  env.DB.prepare('INSERT INTO membership_changes VALUES(?,?,?,?,?)').bind(order.id,accountId,order.months?0:1,expires,now),
