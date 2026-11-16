@@ -44,7 +44,7 @@ export async function scanMembership(env,{fetcher=fetch}={}){
  const from=cursor?cursor.block+1:c.startBlock;
  if(from>head){await heartbeat(env,c.chainId,head);return}
  const snapshot=await env.DB.prepare('SELECT COALESCE(MAX(a.id),0) id FROM membership_addresses a JOIN membership_orders o ON o.id=a.order_id WHERE o.chain_id=?').bind(c.chainId).first();
- await env.DB.prepare('INSERT OR IGNORE INTO membership_scan_windows VALUES(?,?,?,0,?)').bind(c.chainId,from,Math.min(head,from+99),snapshot.id).run();
+ await env.DB.prepare('INSERT OR IGNORE INTO membership_scan_windows VALUES(?,?,?,0,?)').bind(c.chainId,from,snapshot.id===0?head:Math.min(head,from+99),snapshot.id).run();
  window=await env.DB.prepare('SELECT * FROM membership_scan_windows WHERE chain_id=?').bind(c.chainId).first();
  }
  if(window.to_block>head)throw Error('Finalized height regressed');
@@ -70,7 +70,7 @@ export async function scanMembership(env,{fetcher=fetch}={}){
  ]);
  if(window.to_block===head)return;
  }
- }catch{console.error(JSON.stringify({event:'membership_scan_failed',chainId:c.chainId}));return false}
+ }catch(error){const reason=error?.name==='TimeoutError'?'rpc_timeout':error?.message==='Wrong RPC chain'?'wrong_chain':error?.message==='RPC unavailable'?'rpc_http_error':error?.message==='RPC error'?'rpc_response_error':'scan_error';console.error(JSON.stringify({event:'membership_scan_failed',chainId:c.chainId,reason}));return false}
  return true;
  }));return results;
 }

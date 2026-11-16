@@ -1,0 +1,1 @@
+CREATE TABLE IF NOT EXISTS membership_job_lease(id INTEGER PRIMARY KEY CHECK(id=1),owner TEXT NOT NULL,expires_at INTEGER NOT NULL);

@@ -32,6 +32,7 @@ jobs:
         run: |
           npx --no-install wrangler d1 execute easybook-data --config worker/wrangler.jsonc --remote --file worker/migrations/0023-membership.sql --yes
           npx --no-install wrangler d1 execute easybook-data --config worker/wrangler.jsonc --remote --file worker/migrations/0024-membership-scan-windows.sql --yes
+          npx --no-install wrangler d1 execute easybook-data --config worker/wrangler.jsonc --remote --file worker/migrations/0025-membership-job-lease.sql --yes
       - name: Deploy identity account entry
         run: npx --no-install wrangler deploy --config mcp-oauth/wrangler.jsonc --keep-vars
       - name: Deploy membership scanner

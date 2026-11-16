@@ -29,7 +29,9 @@ export async function membershipAPI(request,env){let recovery;try{
  recovery={accountId:p.accountId,key:body.idempotency,plan:body.plan,chainId:body.chainId};
  const old=await env.DB.prepare('SELECT * FROM membership_orders WHERE account_id=? AND idempotency=?').bind(p.accountId,body.idempotency).first();if(old){if(old.plan!==body.plan||old.chain_id!==body.chainId)fail('idempotency_conflict',409);return reply(old);}
  const plan=plans.find(v=>v.id===body.plan),chain=configuration(env).find(c=>c.chainId===body.chainId&&c.acceptOrders!==false);if(!plan||!chain||!env.MEMBERSHIP_XPUB)fail('network_unavailable',503);
- const cursor=await env.DB.prepare('SELECT updated_at FROM membership_cursors WHERE chain_id=?').bind(chain.chainId).first();if(!cursor||cursor.updated_at<Date.now()-300000)fail('scanner_unavailable',503);
+ let cursor=await env.DB.prepare('SELECT updated_at FROM membership_cursors WHERE chain_id=?').bind(chain.chainId).first();
+ if((!cursor||cursor.updated_at<Date.now()-300000)&&env.MEMBERSHIP_SCANNER&&env.MEMBERSHIP_JOB_TOKEN){try{await env.MEMBERSHIP_SCANNER.fetch('https://payments.internal/run',{method:'POST',headers:{Authorization:'Bearer '+env.MEMBERSHIP_JOB_TOKEN}})}catch{}cursor=await env.DB.prepare('SELECT updated_at FROM membership_cursors WHERE chain_id=?').bind(chain.chainId).first()}
+ if(!cursor||cursor.updated_at<Date.now()-300000)fail('scanner_unavailable',503);
  const member=await env.DB.prepare('SELECT permanent FROM account_memberships WHERE account_id=?').bind(p.accountId).first();if(member?.permanent)fail('already_permanent',409);
  const now=Date.now();const pending=await env.DB.prepare('SELECT * FROM membership_orders WHERE account_id=? AND plan=? AND chain_id=? AND expires_at>? AND settled_at IS NULL ORDER BY created_at DESC LIMIT 1').bind(p.accountId,plan.id,chain.chainId,now).first();if(pending)return reply(pending);
  const count=await env.DB.prepare('SELECT COUNT(*) n FROM membership_orders WHERE account_id=? AND created_at>?').bind(p.accountId,now-3600000).first();if(count.n>=10)fail('rate_limited',429);

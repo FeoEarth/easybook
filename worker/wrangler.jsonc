@@ -46,6 +46,10 @@
     {
       "binding": "IDENTITY_SERVICE",
       "service": "easybook-mcp-oauth"
+    },
+    {
+      "binding": "MEMBERSHIP_SCANNER",
+      "service": "easybook-payments"
     }
   ]
 }
