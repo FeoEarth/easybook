@@ -1,3 +1,5 @@
+import {membershipAPI} from './membership.mjs';
+import {membershipPage} from './membership-page.mjs';
 import {publicOrigin} from './server-config.mjs';
 import {serveWithServerPolicy,serverDocument,allowConnect,selectedConnectOrigin} from './server-client.mjs';
 import {runSecurityAdmin} from './security-admin.mjs';
@@ -66,6 +68,8 @@ const worker = {
   // Deliberately unset on production until the coordinated identity cutover.
   const identityV2=env.WORKSPACE_IDENTITY_V2==='true';
   if(identityEnabled(env)&&url.origin===publicOrigin(env)&&identityPath(url.pathname)){if(!env.IDENTITY_SERVICE)return json({error:'Identity service unavailable'},503);return env.IDENTITY_SERVICE.fetch(request);}
+  if(url.pathname==='/membership'&&request.method==='GET')return membershipPage(request,env);
+  if(url.pathname==='/api/membership'||url.pathname.startsWith('/api/membership/'))return membershipAPI(request,env);
   if(url.pathname==='/api/turnstile'&&['GET','OPTIONS'].includes(request.method))return turnstileConfig(env,request);
   if(identityV2&&url.pathname.startsWith('/api/workspaces'))return workspaceAPI(request,env);
   if(identityV2&&url.pathname.startsWith('/api/ai/')){

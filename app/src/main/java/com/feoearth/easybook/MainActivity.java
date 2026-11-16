@@ -308,6 +308,7 @@ public class MainActivity extends Activity {
             case "account.browser":nativeAccount.beginBrowser();return new JSONObject().put("externalBrowser",true);
             case "account.resume":nativeAccount.resume();return new JSONObject().put("pending",true);
             case "account.login":nativeAccount.begin();return new JSONObject().put("externalBrowser",true);
+            case "membership.open":{NativeAccount.token(repository);runOnUiThread(()->startActivity(new android.content.Intent(this,MembershipActivity.class)));return new JSONObject().put("opened",true);}
             case "account.status":return nativeAccount.publicStatus();
             case "workspace.action":{
                 String action=bounded(args,"action",16);

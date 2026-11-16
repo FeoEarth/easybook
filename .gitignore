@@ -23,3 +23,7 @@ app/src/main/assets/pdf/manifest.json
 app/src/main/assets/pdf/THIRD_PARTY_LICENSES.md
 app/src/main/assets/pdf/THIRD_PARTY_NOTICES.md
 app/src/main/assets/pdf/EASYBOOK_LICENSE.txt
+
+# Local membership fixtures and public wallet configuration (never production).
+.local-membership/
+**/.dev.vars*

@@ -1,0 +1,67 @@
+# 测试会籍与收款运维
+
+四档均为单次 0.01 USDT 等值数量，无权益，无自动扣款，期限为 1／6／12 个月和永久。按 UTC 自然月续期，永久账户不再接受新订单。过期订单准确到账仍开通；少付、多付、重复付款、永久后到账、删除账户后到账仅记异常，不自动退款。
+
+## 当前测试钱包
+
+测试钱包已按用户明确指定的 MetaMask Account 3（`m/44'/60'/0'/0/2`）核对。应用持有的扩展公钥属于父分支 `m/44'/60'/0'/0`。本地配置将 `MEMBERSHIP_ADDRESS_OFFSET` 设为 `2`，首单使用分支下的 `/3`，避免复用前三个钱包账户。具体地址和 xpub 仅保存在被 Git 忽略的 `.local-membership/wallet.json`，未写入源码。助记词、种子、私钥及 xprv 不存盘、不进入代码、日志或 Git。该钱包已在聊天中披露助记词，永久限定为测试用途。
+
+数据库首次下单时固定钱包公钥哈希和地址偏移量。已有订单的库若更换这两个参数会拒绝分配新地址，防止静默切换钱包造成资金失配。商业上线使用新的自管钱包和独立、干净的支付数据，不直接替换测试数据库的 xpub。
+
+## 本地模拟联调
+
+需要 Node.js 24。已经准备好的本地公钥配置可直接运行：
+
+```sh
+npm run membership:config
+npm run membership:demo
+```
+
+打开 `http://127.0.0.1:8789/`。服务器仅监听 loopback，使用独立的 `.local-membership/demo.sqlite`，不连接生产数据库。模拟 RPC 仅在本地工具内实现，不调用主网，不广播交易。可创建四链、四档订单，查看真实派生的地址、二维码及复制按钮，点击“模拟准确到账”验证完整扫描和会籍流程。只有本地工具提供 `/__simulate`，部署 Worker 不提供这个入口。
+
+本地模拟页明确显示“模拟支付测试，请勿转账”；部署后的正常测试会员页显示真实付款地址和二维码，保留“测试阶段，会员暂无任何功能”的说明，不显示模拟到账按钮。二维码内容是订单收款地址，付款仍须核对页面的网络、代币合约与准确金额。
+
+`.local-membership/env.json` 的模拟 RPC 为 `rpc.simulation.invalid`，不能用于部署。将模拟标志带到外部域名会被 API 拒绝；扫描模拟模式时必须显式注入本地 RPC。
+
+钱包导出工具 `scripts/membership-wallet-export.mjs` 仅通过 stdin 接收助记词，公开参数为预期地址及从 0 开始的账户索引。它会校验助记词和地址，匹配后只导出公钥 JSON；输出文件已存在时不覆盖。不要将助记词作为命令行参数、环境变量、命令历史或源码传入。当前测试钱包不需要再次导出。
+
+## 已确认的代币与候选 RPC
+
+所有代币精度为 6，0.01 的链上整数为 `10000`。收款只认可明确配置的合约，不按 symbol 判断。
+
+| 链 | 代币合约 | 当前候选 RPC |
+|---|---|---|
+| Avalanche C-Chain 43114，原生 USD₮ | `0x9702230a8ea53601f5cd2dc00fdbc13d4df4a8c7` | `https://api.avax.network/ext/bc/C/rpc` |
+| Plasma 9745，USDT0 | `0xB8CE59FC3717ada4C02eaDF9682A9e934F625ebb` | `https://rpc.plasma.to` |
+| Polygon PoS 137，USDT0 | `0xc2132D05D31c914a87C6611C10748AEb04B58e8F` | `https://polygon-bor-rpc.publicnode.com` |
+| Arbitrum One 42161，USD₮0 | `0xFd086bC7CD5C481DCC9C85ebE478A1C0b69FCbb9` | `https://arbitrum.gateway.tenderly.co` |
+
+Plasma／Polygon／Arbitrum 的合约来源为 https://docs.usdt0.to/technical-documentation/deployments 。Avalanche 接受原生 USD₮，不接受 USDT.e。公共 RPC 无可用性保证；正式启用前重新探测，后续按需要更换服务商。
+
+运行 `npm run membership:probe` 只读查询链 ID、token 精度、合约代码、最终确认区块和按地址过滤的日志，不发交易。命令支持 Node.js 的环境代理。结果写入忽略的 `rpc-report.json` 和 `real-network-env.json`；后者默认 `MEMBERSHIP_ENABLED=false`，不会自行开启收款。探测失败的链标记为 `verified=false`、`acceptOrders=false`。
+
+## 部署前准备
+
+1. 新建隔离测试环境与独立数据库，不把测试配置部署到现有生产数据库。API、身份服务和支付 Worker 指向同一套测试账户数据库；安全恢复数据库须保持独立。应用现有账户迁移，再依次应用 `0023-membership.sql`、`0024-membership-scan-windows.sql`。部署配置遵循 Cloudflare 环境绑定规则：https://developers.cloudflare.com/d1/configuration/environments/ 。本轮未创建远端资源或执行远端迁移。
+2. 设置 API 的 `MEMBERSHIP_XPUB`、`MEMBERSHIP_ADDRESS_OFFSET`；API 与支付 Worker 使用相同的 `MEMBERSHIP_NETWORKS`。正常部署不设置模拟标志，或设为 `MEMBERSHIP_SIMULATION=false`。RPC 若包含凭据，使用 Cloudflare secrets，不提交配置文件。
+3. 网络配置字段为 `chainId`、`symbol`、`token`、`decimals`、`rpc`、`startBlock`、`finality:"finalized"`、`verified:true`。只有验证通过的网络才开启；`startBlock` 应在准备部署时重新取值，避免使用过期探测结果。
+4. 先启用支付扫描 Worker，确认扫描游标追平，再开启 API 下单。关闭新单可用单链 `acceptOrders=false`，仍保留原订单扫描；移除网络配置会同时停止扫描。
+5. Android 必须构建签名 APK，不能只 OTA 网页。会员 Activity 使用隔离 WebView，无原生 JS 桥；初始 native 授权换取 30 分钟会员专属 HttpOnly Cookie，原账户会话撤销后也失效。
+6. 当前真实收款未启用，尚未进行真实转账或资金转出验收。商业上线另用新钱包，并补做真实小额付款及转出验证。
+
+## 扫描、异常与恢复
+
+每条链每轮最多两个基础 RPC 查询加五个日志批次；每批最多 64 个订单地址、100 个区块。通过 ERC-20 Transfer 的收款 topic 过滤地址，不扫描全链 USDT 交易。使用 finalized 区块日志；回滚交易不会产生已确认日志，无需逐笔查询回执。返回日志仍校验合约、地址、区块范围和结构。超出 1000 条日志的批次不推进，需要减小窗口或人工诊断。
+
+扫描窗口保存地址快照及已完成的地址索引，所有快照地址扫描完成后才推进全链区块游标。中断后从持久化窗口继续，部分已入账交易可以安全重放。订单、收款与会籍流水通过原子事务保证同一日志只记一次。已结算和过期订单的地址也继续扫描，用于记录重复及迟到付款。
+
+监控 `membership_scan_failed`、每条链游标延迟与异常 receipt。扫描落后超过五分钟暂停新单，保留订单查询。安全恢复锁阻止扫描继续。恢复支付库前必须核对地址分配索引和链上流水，不得恢复旧索引后直接重新分配地址。
+
+核账联结 `membership_receipts`、`membership_orders` 和 `membership_changes`，通过 chain_id、tx、log_index 定位。仅 status=paid 对应自动权益。首版无退款后台或自动归集；异常付款需人工处理并另留审计。将完整支付表及 `membership_wallet_config` 导出 SQLite 后，`node scripts/membership-balances.mjs export.sqlite` 可只读查询当前余额及实际派生索引，不签名交易。资金归集另需各链 Gas。
+
+## 验证与限制
+
+- `npm run test:membership`：交易原子性、四链模拟 RPC、API 鉴权与 CSRF、跨账户隔离、会话撤销、幂等重试、金额异常、续费和永久规则、扫描分页与中断恢复、钱包配置保护，以及真实地址／二维码和复制功能。
+- `npm test`：现有应用回归；另外运行账户和原生授权相关测试。
+- Wrangler `deploy --dry-run`：检查 API、支付 Worker 的实际打包，不证明远端资源可用，也不会执行部署。
+- Android 缺少 Gradle／SDK 时仅做静态与授权接口验证，不声称 APK 或实机流程已验收。

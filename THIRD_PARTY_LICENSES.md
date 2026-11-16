@@ -6,7 +6,7 @@ This inventory covers the locked production npm graphs for the Web editor/PDF bu
 
 **Coverage boundary:** development/test and platform-specific optional npm packages are excluded; esbuild is listed but marked build-only. The Android `releaseRuntimeClasspath` is resolved by Gradle, but final APK byte-for-byte contents are not yet audited. Proprietary Google Play Services modules are **not open-source**: their Maven POMs point to the Android SDK License terms, which are linked rather than reproduced as an open-source license text. The Liberation font uses its own GPL-2.0-based agreement with exceptions, identified with a local `LicenseRef` rather than inaccurately described as Apache-2.0.
 
-Entries: 152 (56 npm main, 27 npm OAuth, 1 vendored OAuth component, 9 embedded PDF resources, 58 resolved Android runtime modules, one native glass port).
+Entries: 185 (89 npm main, 27 npm OAuth, 1 vendored OAuth component, 9 embedded PDF resources, 58 resolved Android runtime modules, one native glass port).
 
 ## Audit inputs / 审计输入
 
@@ -117,7 +117,11 @@ Entries: 152 (56 npm main, 27 npm OAuth, 1 vendored OAuth component, 9 embedded 
 | tslib | 1.14.1 | OAuth Worker | `0BSD` | Copyright (c) Microsoft Corporation. | [5989359645](#license-text-5989359645911c04) |
 | tslib | 2.8.1 | OAuth Worker | `0BSD` | Copyright (c) Microsoft Corporation. | [5989359645](#license-text-5989359645911c04) |
 | tsyringe | 4.10.0 | OAuth Worker | `MIT` | Copyright (c) Microsoft Corporation. All rights reserved. | [27ebda9d51](#license-text-27ebda9d51f0a56b) |
+| @noble/curves | 2.4.0 | Web editor / PDF build | `MIT` | Copyright (c) 2022 Paul Miller (https://paulmillr.com) | [3239e134eb](#license-text-3239e134eb6e6d64) |
 | @noble/hashes | 2.4.0 | Web editor / PDF build | `MIT` | Copyright (c) 2022 Paul Miller (https://paulmillr.com) | [3239e134eb](#license-text-3239e134eb6e6d64) |
+| @scure/base | 2.4.0 | Web editor / PDF build | `MIT` | Copyright (c) 2022 Paul Miller (https://paulmillr.com) | [3239e134eb](#license-text-3239e134eb6e6d64) |
+| @scure/bip32 | 2.4.0 | Web editor / PDF build | `MIT` | Copyright (c) 2022 Patricio Palladino, Paul Miller (paulmillr.com) | [1565efd0ec](#license-text-1565efd0ec4580bf) |
+| @scure/bip39 | 2.4.0 | Web editor / PDF build | `MIT` | Copyright (c) 2022 Patricio Palladino, Paul Miller (paulmillr.com) | [1565efd0ec](#license-text-1565efd0ec4580bf) |
 | @tiptap/core | 3.32.0 | Web editor / PDF build | `MIT` | Copyright (c) 2025, Tiptap GmbH | [c96e5ecb55](#license-text-c96e5ecb55ac5931) |
 | @tiptap/extension-blockquote | 3.32.0 | Web editor / PDF build | `MIT` | Copyright (c) 2025, Tiptap GmbH | [c96e5ecb55](#license-text-c96e5ecb55ac5931) |
 | @tiptap/extension-bold | 3.32.0 | Web editor / PDF build | `MIT` | Copyright (c) 2025, Tiptap GmbH | [c96e5ecb55](#license-text-c96e5ecb55ac5931) |
@@ -146,16 +150,34 @@ Entries: 152 (56 npm main, 27 npm OAuth, 1 vendored OAuth component, 9 embedded 
 | @tiptap/extensions | 3.32.0 | Web editor / PDF build | `MIT` | Copyright (c) 2025, Tiptap GmbH | [c96e5ecb55](#license-text-c96e5ecb55ac5931) |
 | @tiptap/pm | 3.32.0 | Web editor / PDF build | `MIT` | Copyright (c) 2025, Tiptap GmbH | [c96e5ecb55](#license-text-c96e5ecb55ac5931) |
 | @tiptap/starter-kit | 3.32.0 | Web editor / PDF build | `MIT` | Copyright (c) 2025, Tiptap GmbH | [c96e5ecb55](#license-text-c96e5ecb55ac5931) |
+| ansi-regex | 5.0.1 | Web editor / PDF build | `MIT` | Copyright (c) Sindre Sorhus <sindresorhus@gmail.com> (sindresorhus.com) | [48da2f39e1](#license-text-48da2f39e100d408) |
+| ansi-styles | 4.3.0 | Web editor / PDF build | `MIT` | Copyright (c) Sindre Sorhus <sindresorhus@gmail.com> (sindresorhus.com) | [48da2f39e1](#license-text-48da2f39e100d408) |
 | argparse | 2.0.1 | Web editor / PDF build | `Python-2.0` | Copyright (c) 1991 - 1995, Stichting Mathematisch Centrum Amsterdam, | [de4d1f2d2a](#license-text-de4d1f2d2ad5ad0c) |
+| camelcase | 5.3.1 | Web editor / PDF build | `MIT` | Copyright (c) Sindre Sorhus <sindresorhus@gmail.com> (sindresorhus.com) | [48da2f39e1](#license-text-48da2f39e100d408) |
+| cliui | 6.0.0 | Web editor / PDF build | `ISC` | Copyright (c) 2015, Contributors | [2dc0465729](#license-text-2dc0465729366c3a) |
+| color-convert | 2.0.1 | Web editor / PDF build | `MIT` | Copyright (c) 2011-2016 Heather Arthur <fayearthur@gmail.com> | [119fee4ade](#license-text-119fee4adef95a6a) |
+| color-name | 1.1.4 | Web editor / PDF build | `MIT` | Copyright (c) 2015 Dmitry Ivanov | [9060d3e477](#license-text-9060d3e477a57e94) |
+| decamelize | 1.2.0 | Web editor / PDF build | `MIT` | Copyright (c) Sindre Sorhus <sindresorhus@gmail.com> (sindresorhus.com) | [6fb9754611](#license-text-6fb9754611c20f66) |
+| dijkstrajs | 1.0.3 | Web editor / PDF build | `MIT` | Copyright (C) 2008 | [c46324e45a](#license-text-c46324e45a005413) |
 | dompurify | 3.4.17 | Web editor / PDF build | `(MPL-2.0 OR Apache-2.0)` | copyright notice that is included in or attached to the work | [cfc7749b96](#license-text-cfc7749b96f63bd3), [fab3dd6bda](#license-text-fab3dd6bdab226f1) |
+| emoji-regex | 8.0.0 | Web editor / PDF build | `MIT` | Copyright Mathias Bynens <https://mathiasbynens.be/> | [483acb265f](#license-text-483acb265f182907) |
 | entities | 4.5.0 | Web editor / PDF build | `BSD-2-Clause` | Copyright (c) Felix Böhm | [cb99234594](#license-text-cb992345949ccd6e) |
 | esbuild | 0.28.2 | Web editor / PDF build | `MIT` | Copyright (c) 2020 Evan Wallace | [b40ec5baec](#license-text-b40ec5baec7bb34f) |
+| find-up | 4.1.0 | Web editor / PDF build | `MIT` | Copyright (c) Sindre Sorhus <sindresorhus@gmail.com> (sindresorhus.com) | [48da2f39e1](#license-text-48da2f39e100d408) |
+| get-caller-file | 2.0.5 | Web editor / PDF build | `ISC` | Copyright 2018 Stefan Penner | [902dbb4154](#license-text-902dbb4154679fb2) |
+| is-fullwidth-code-point | 3.0.0 | Web editor / PDF build | `MIT` | Copyright (c) Sindre Sorhus <sindresorhus@gmail.com> (sindresorhus.com) | [48da2f39e1](#license-text-48da2f39e100d408) |
 | linkify-it | 5.0.2 | Web editor / PDF build | `MIT` | Copyright (c) 2015 Vitaly Puzrin. | [95e3f7f0e8](#license-text-95e3f7f0e81e9b49) |
 | linkifyjs | 4.4.0 | Web editor / PDF build | `MIT` | Copyright (c) 2024 Nick Frasser | [58e6f36774](#license-text-58e6f3677452cca0) |
+| locate-path | 5.0.0 | Web editor / PDF build | `MIT` | Copyright (c) Sindre Sorhus <sindresorhus@gmail.com> (sindresorhus.com) | [48da2f39e1](#license-text-48da2f39e100d408) |
 | markdown-it | 14.3.3 | Web editor / PDF build | `MIT` | Copyright (c) 2014 Vitaly Puzrin, Alex Kocharin. | [792c48c5a8](#license-text-792c48c5a849a15f) |
 | mdurl | 2.1.0 | Web editor / PDF build | `MIT` | Copyright (c) 2015 Vitaly Puzrin, Alex Kocharin. | [6b6a356c43](#license-text-6b6a356c4337e244) |
 | orderedmap | 2.1.1 | Web editor / PDF build | `MIT` | Copyright (C) 2016 by Marijn Haverbeke <marijn@haverbeke.berlin> and others | [869c30f368](#license-text-869c30f368eb0873) |
+| p-limit | 2.3.0 | Web editor / PDF build | `MIT` | Copyright (c) Sindre Sorhus <sindresorhus@gmail.com> (sindresorhus.com) | [48da2f39e1](#license-text-48da2f39e100d408) |
+| p-locate | 4.1.0 | Web editor / PDF build | `MIT` | Copyright (c) Sindre Sorhus <sindresorhus@gmail.com> (sindresorhus.com) | [48da2f39e1](#license-text-48da2f39e100d408) |
+| p-try | 2.2.0 | Web editor / PDF build | `MIT` | Copyright (c) Sindre Sorhus <sindresorhus@gmail.com> (sindresorhus.com) | [48da2f39e1](#license-text-48da2f39e100d408) |
+| path-exists | 4.0.0 | Web editor / PDF build | `MIT` | Copyright (c) Sindre Sorhus <sindresorhus@gmail.com> (sindresorhus.com) | [48da2f39e1](#license-text-48da2f39e100d408) |
 | pdfjs-dist | 6.4.299 | Web editor / PDF build | `Apache-2.0` | copyright notice that is included in or attached to the work | [0d542e0c88](#license-text-0d542e0c8804e39a) |
+| pngjs | 5.0.0 | Web editor / PDF build | `MIT` | 未在发布包元数据中明确列出 | [176b07a18c](#license-text-176b07a18c0bb383) |
 | prosemirror-changeset | 2.4.4 | Web editor / PDF build | `MIT` | Copyright (C) 2017 by Marijn Haverbeke <marijn@haverbeke.berlin> and others | [7543dfe82f](#license-text-7543dfe82fa61d5b) |
 | prosemirror-commands | 1.7.2 | Web editor / PDF build | `MIT` | Copyright (C) 2015-2017 by Marijn Haverbeke <marijn@haverbeke.berlin> and others | [ef0b452ced](#license-text-ef0b452ced6304db) |
 | prosemirror-dropcursor | 1.8.4 | Web editor / PDF build | `MIT` | Copyright (C) 2015-2017 by Marijn Haverbeke <marijn@haverbeke.berlin> and others | [ef0b452ced](#license-text-ef0b452ced6304db) |
@@ -170,9 +192,20 @@ Entries: 152 (56 npm main, 27 npm OAuth, 1 vendored OAuth component, 9 embedded 
 | prosemirror-transform | 1.12.4 | Web editor / PDF build | `MIT` | Copyright (C) 2015-2017 by Marijn Haverbeke <marijn@haverbeke.berlin> and others | [ef0b452ced](#license-text-ef0b452ced6304db) |
 | prosemirror-view | 1.42.8 | Web editor / PDF build | `MIT` | Copyright (C) 2015-2017 by Marijn Haverbeke <marijn@haverbeke.berlin> and others | [ef0b452ced](#license-text-ef0b452ced6304db) |
 | punycode.js | 2.3.1 | Web editor / PDF build | `MIT` | Copyright Mathias Bynens <https://mathiasbynens.be/> | [483acb265f](#license-text-483acb265f182907) |
+| qrcode | 1.5.4 | Web editor / PDF build | `MIT` | Copyright (c) 2012 Ryan Day | [a060a98ea2](#license-text-a060a98ea20666c5) |
+| require-directory | 2.1.1 | Web editor / PDF build | `MIT` | Copyright (c) 2011 Troy Goode <troygoode@gmail.com> | [a92e52eb1f](#license-text-a92e52eb1fa7cd74) |
+| require-main-filename | 2.0.0 | Web editor / PDF build | `ISC` | Copyright (c) 2016, Contributors | [365496ca1f](#license-text-365496ca1f56da40) |
 | rope-sequence | 1.3.4 | Web editor / PDF build | `MIT` | Copyright (C) 2016 by Marijn Haverbeke <marijn@haverbeke.berlin> | [530424aebd](#license-text-530424aebdd0e73f) |
+| set-blocking | 2.0.0 | Web editor / PDF build | `ISC` | Copyright (c) 2016, Contributors | [365496ca1f](#license-text-365496ca1f56da40) |
+| string-width | 4.2.3 | Web editor / PDF build | `MIT` | Copyright (c) Sindre Sorhus <sindresorhus@gmail.com> (sindresorhus.com) | [48da2f39e1](#license-text-48da2f39e100d408) |
+| strip-ansi | 6.0.1 | Web editor / PDF build | `MIT` | Copyright (c) Sindre Sorhus <sindresorhus@gmail.com> (sindresorhus.com) | [48da2f39e1](#license-text-48da2f39e100d408) |
 | uc.micro | 2.1.0 | Web editor / PDF build | `MIT` | Copyright Mathias Bynens <https://mathiasbynens.be/> | [483acb265f](#license-text-483acb265f182907) |
 | w3c-keyname | 2.2.8 | Web editor / PDF build | `MIT` | Copyright (C) 2016 by Marijn Haverbeke <marijn@haverbeke.berlin> and others | [869c30f368](#license-text-869c30f368eb0873) |
+| which-module | 2.0.1 | Web editor / PDF build | `ISC` | Copyright (c) 2016, Contributors | [852bf81203](#license-text-852bf81203aa93aa) |
+| wrap-ansi | 6.2.0 | Web editor / PDF build | `MIT` | Copyright (c) Sindre Sorhus <sindresorhus@gmail.com> (sindresorhus.com) | [48da2f39e1](#license-text-48da2f39e100d408) |
+| y18n | 4.0.3 | Web editor / PDF build | `ISC` | Copyright (c) 2015, Contributors | [2034cce3b6](#license-text-2034cce3b6fafcdd) |
+| yargs | 15.4.1 | Web editor / PDF build | `MIT` | Copyright 2010 James Halliday (mail@substack.net); Modified work Copyright 2014 Contributors (ben@npmjs.com) | [2f1a503bfa](#license-text-2f1a503bfab84b3b) |
+| yargs-parser | 18.1.3 | Web editor / PDF build | `ISC` | Copyright (c) 2016, Contributors | [365496ca1f](#license-text-365496ca1f56da40) |
 
 ## Source paths and exceptions
 
@@ -383,6 +416,65 @@ Source files: `node_modules/pdfjs-dist/LICENSE`, `third_party/pdfjs/LICENSE`
    END OF TERMS AND CONDITIONS
 ~~~~
 
+### License text 119fee4adef95a6a
+
+SHA-256: `119fee4adef95a6af980129b12bbc02ef32a0a75737cbdd31b6922c0db0050bc`
+
+Source files: `node_modules/color-convert/LICENSE`
+
+~~~~text
+Copyright (c) 2011-2016 Heather Arthur <fayearthur@gmail.com>
+
+Permission is hereby granted, free of charge, to any person obtaining
+a copy of this software and associated documentation files (the
+"Software"), to deal in the Software without restriction, including
+without limitation the rights to use, copy, modify, merge, publish,
+distribute, sublicense, and/or sell copies of the Software, and to
+permit persons to whom the Software is furnished to do so, subject to
+the following conditions:
+
+The above copyright notice and this permission notice shall be
+included in all copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND,
+EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
+MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND
+NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE
+LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION
+OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION
+WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+~~~~
+
+### License text 1565efd0ec4580bf
+
+SHA-256: `1565efd0ec4580bfaa96c7eeaaa9af3791baa1cc562c3bde62d0a055910b9ec7`
+
+Source files: `node_modules/@scure/bip32/LICENSE`, `node_modules/@scure/bip39/LICENSE`
+
+~~~~text
+The MIT License (MIT)
+
+Copyright (c) 2022 Patricio Palladino, Paul Miller (paulmillr.com)
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the “Software”), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in
+all copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED “AS IS”, WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
+THE SOFTWARE.
+~~~~
+
 ### License text 15c88630f1e778db
 
 SHA-256: `15c88630f1e778db64a446cb31b67362cc9eb7a048fdf5ac7ab51905b74464cd`
@@ -414,6 +506,35 @@ AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
 LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
+~~~~
+
+### License text 176b07a18c0bb383
+
+SHA-256: `176b07a18c0bb3836aaeb61088fd0bf11a38f66e6f15e3fbda85faa225250d6e`
+
+Source files: `node_modules/pngjs/LICENSE`
+
+~~~~text
+pngjs2 original work Copyright (c) 2015 Luke Page & Original Contributors
+pngjs derived work Copyright (c) 2012 Kuba Niegowski
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in
+all copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
+THE SOFTWARE.
 ~~~~
 
 ### License text 1a00d37fb9fca78a
@@ -476,6 +597,28 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ~~~~
 
+### License text 2034cce3b6fafcdd
+
+SHA-256: `2034cce3b6fafcddd642c4175e01d3ddfc332a53b9f20fdc46b1466dc89ac469`
+
+Source files: `node_modules/y18n/LICENSE`
+
+~~~~text
+Copyright (c) 2015, Contributors
+
+Permission to use, copy, modify, and/or distribute this software for any purpose
+with or without fee is hereby granted, provided that the above copyright notice
+and this permission notice appear in all copies.
+
+THE SOFTWARE IS PROVIDED "AS IS" AND THE AUTHOR DISCLAIMS ALL WARRANTIES WITH
+REGARD TO THIS SOFTWARE INCLUDING ALL IMPLIED WARRANTIES OF MERCHANTABILITY AND
+FITNESS. IN NO EVENT SHALL THE AUTHOR BE LIABLE FOR ANY SPECIAL, DIRECT,
+INDIRECT, OR CONSEQUENTIAL DAMAGES OR ANY DAMAGES WHATSOEVER RESULTING FROM LOSS
+OF USE, DATA OR PROFITS, WHETHER IN AN ACTION OF CONTRACT, NEGLIGENCE OR OTHER
+TORTIOUS ACTION, ARISING OUT OF OR IN CONNECTION WITH THE USE OR PERFORMANCE OF
+THIS SOFTWARE.
+~~~~
+
 ### License text 27ebda9d51f0a56b
 
 SHA-256: `27ebda9d51f0a56b7e281ccd8230a27236dcb51c05f64b07869ecf6e965d68b0`
@@ -506,11 +649,64 @@ Source files: `mcp-oauth/node_modules/tsyringe/LICENSE`
     SOFTWARE
 ~~~~
 
+### License text 2dc0465729366c3a
+
+SHA-256: `2dc0465729366c3a7890dfa9e972a1ba7048a26c02116fb8b419a6a1ac110149`
+
+Source files: `node_modules/cliui/LICENSE.txt`
+
+~~~~text
+Copyright (c) 2015, Contributors
+
+Permission to use, copy, modify, and/or distribute this software
+for any purpose with or without fee is hereby granted, provided
+that the above copyright notice and this permission notice
+appear in all copies.
+
+THE SOFTWARE IS PROVIDED "AS IS" AND THE AUTHOR DISCLAIMS ALL WARRANTIES
+WITH REGARD TO THIS SOFTWARE INCLUDING ALL IMPLIED WARRANTIES
+OF MERCHANTABILITY AND FITNESS. IN NO EVENT SHALL THE AUTHOR BE
+LIABLE FOR ANY SPECIAL, DIRECT, INDIRECT, OR CONSEQUENTIAL DAMAGES
+OR ANY DAMAGES WHATSOEVER RESULTING FROM LOSS OF USE, DATA OR PROFITS,
+WHETHER IN AN ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION,
+ARISING OUT OF OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
+~~~~
+
+### License text 2f1a503bfab84b3b
+
+SHA-256: `2f1a503bfab84b3ba7393627308b3274501e459e3b5185bbb56bbf16cb1602d4`
+
+Source files: `node_modules/yargs/LICENSE`
+
+~~~~text
+MIT License
+
+Copyright 2010 James Halliday (mail@substack.net); Modified work Copyright 2014 Contributors (ben@npmjs.com)
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in
+all copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
+THE SOFTWARE.
+~~~~
+
 ### License text 3239e134eb6e6d64
 
 SHA-256: `3239e134eb6e6d64538ca76498c7fcb08a395249dd9d4af9927bf6d0169ee429`
 
-Source files: `node_modules/@noble/hashes/LICENSE`
+Source files: `node_modules/@noble/curves/LICENSE`, `node_modules/@noble/hashes/LICENSE`, `node_modules/@scure/base/LICENSE`
 
 ~~~~text
 The MIT License (MIT)
@@ -534,6 +730,29 @@ AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
 LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
+~~~~
+
+### License text 365496ca1f56da40
+
+SHA-256: `365496ca1f56da40b23c9815fc40fa9005847b2f8f8fd1c1a4929ef25ec8cd1d`
+
+Source files: `node_modules/require-main-filename/LICENSE.txt`, `node_modules/set-blocking/LICENSE.txt`, `node_modules/yargs-parser/LICENSE.txt`
+
+~~~~text
+Copyright (c) 2016, Contributors
+
+Permission to use, copy, modify, and/or distribute this software
+for any purpose with or without fee is hereby granted, provided
+that the above copyright notice and this permission notice
+appear in all copies.
+
+THE SOFTWARE IS PROVIDED "AS IS" AND THE AUTHOR DISCLAIMS ALL WARRANTIES
+WITH REGARD TO THIS SOFTWARE INCLUDING ALL IMPLIED WARRANTIES
+OF MERCHANTABILITY AND FITNESS. IN NO EVENT SHALL THE AUTHOR BE
+LIABLE FOR ANY SPECIAL, DIRECT, INDIRECT, OR CONSEQUENTIAL DAMAGES
+OR ANY DAMAGES WHATSOEVER RESULTING FROM LOSS OF USE, DATA OR PROFITS,
+WHETHER IN AN ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION,
+ARISING OUT OF OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
 ~~~~
 
 ### License text 36d847ae882f6574
@@ -660,7 +879,7 @@ SOFTWARE.
 
 SHA-256: `483acb265f182907d1caf6cff9c16c96f31325ed23792832cc5d8b12d5f88c8a`
 
-Source files: `node_modules/punycode.js/LICENSE-MIT.txt`, `node_modules/uc.micro/LICENSE.txt`
+Source files: `node_modules/emoji-regex/LICENSE-MIT.txt`, `node_modules/punycode.js/LICENSE-MIT.txt`, `node_modules/uc.micro/LICENSE.txt`
 
 ~~~~text
 Copyright Mathias Bynens <https://mathiasbynens.be/>
@@ -683,6 +902,24 @@ NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE
 LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION
 OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION
 WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+~~~~
+
+### License text 48da2f39e100d408
+
+SHA-256: `48da2f39e100d4085767e94966b43f4fa95ff6a0698fba57ed460914e35f94a0`
+
+Source files: `node_modules/ansi-regex/license`, `node_modules/ansi-styles/license`, `node_modules/camelcase/license`, `node_modules/find-up/license`, `node_modules/is-fullwidth-code-point/license`, `node_modules/locate-path/license`, `node_modules/p-limit/license`, `node_modules/p-locate/license`, `node_modules/p-try/license`, `node_modules/path-exists/license`, `node_modules/string-width/license`, `node_modules/strip-ansi/license`, `node_modules/wrap-ansi/license`
+
+~~~~text
+MIT License
+
+Copyright (c) Sindre Sorhus <sindresorhus@gmail.com> (sindresorhus.com)
+
+Permission is hereby granted, free of charge, to any person obtaining a copy of this software and associated documentation files (the "Software"), to deal in the Software without restriction, including without limitation the rights to use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies of the Software, and to permit persons to whom the Software is furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 ~~~~
 
 ### License text 508a77d2e7b51d98
@@ -904,6 +1141,36 @@ FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS
 IN THE SOFTWARE.
 ~~~~
 
+### License text 6fb9754611c20f66
+
+SHA-256: `6fb9754611c20f6649f68805e8c990e83261f29316e29de9e6cedae607b8634c`
+
+Source files: `node_modules/decamelize/license`
+
+~~~~text
+The MIT License (MIT)
+
+Copyright (c) Sindre Sorhus <sindresorhus@gmail.com> (sindresorhus.com)
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in
+all copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
+THE SOFTWARE.
+~~~~
+
 ### License text 717fc62da03292db
 
 SHA-256: `717fc62da03292dbb4dd0c8280bd4ce7bb8550dcf31d772bc93455fb50313425`
@@ -994,6 +1261,28 @@ FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR
 OTHER DEALINGS IN THE SOFTWARE.
 ~~~~
 
+### License text 852bf81203aa93aa
+
+SHA-256: `852bf81203aa93aa89afc9f881ebb035322dc7334aaceff435c557634c94a815`
+
+Source files: `node_modules/which-module/LICENSE`
+
+~~~~text
+Copyright (c) 2016, Contributors
+
+Permission to use, copy, modify, and/or distribute this software for any purpose
+with or without fee is hereby granted, provided that the above copyright notice
+and this permission notice appear in all copies.
+
+THE SOFTWARE IS PROVIDED "AS IS" AND THE AUTHOR DISCLAIMS ALL WARRANTIES WITH
+REGARD TO THIS SOFTWARE INCLUDING ALL IMPLIED WARRANTIES OF MERCHANTABILITY AND
+FITNESS. IN NO EVENT SHALL THE AUTHOR BE LIABLE FOR ANY SPECIAL, DIRECT,
+INDIRECT, OR CONSEQUENTIAL DAMAGES OR ANY DAMAGES WHATSOEVER RESULTING FROM LOSS
+OF USE, DATA OR PROFITS, WHETHER IN AN ACTION OF CONTRACT, NEGLIGENCE OR OTHER
+TORTIOUS ACTION, ARISING OUT OF OR IN CONNECTION WITH THE USE OR PERFORMANCE OF
+THIS SOFTWARE.
+~~~~
+
 ### License text 869c30f368eb0873
 
 SHA-256: `869c30f368eb08735e779027b9f4bc9fea2f39624351856aebe42741f0bc0884`
@@ -1020,6 +1309,38 @@ AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
 LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
+~~~~
+
+### License text 902dbb4154679fb2
+
+SHA-256: `902dbb4154679fb2b8d7c33878183f45b268d01eae5e5033dddaa8852d45f213`
+
+Source files: `node_modules/get-caller-file/LICENSE.md`
+
+~~~~text
+ISC License (ISC)
+Copyright 2018 Stefan Penner
+
+Permission to use, copy, modify, and/or distribute this software for any purpose with or without fee is hereby granted, provided that the above copyright notice and this permission notice appear in all copies.
+
+THE SOFTWARE IS PROVIDED "AS IS" AND THE AUTHOR DISCLAIMS ALL WARRANTIES WITH REGARD TO THIS SOFTWARE INCLUDING ALL IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS. IN NO EVENT SHALL THE AUTHOR BE LIABLE FOR ANY SPECIAL, DIRECT, INDIRECT, OR CONSEQUENTIAL DAMAGES OR ANY DAMAGES WHATSOEVER RESULTING FROM LOSS OF USE, DATA OR PROFITS, WHETHER IN AN ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT OF OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
+~~~~
+
+### License text 9060d3e477a57e94
+
+SHA-256: `9060d3e477a57e94563100d089ee07a1bf3342f149fd7366913abf2b4b54f04b`
+
+Source files: `node_modules/color-name/LICENSE`
+
+~~~~text
+The MIT License (MIT)
+Copyright (c) 2015 Dmitry Ivanov
+
+Permission is hereby granted, free of charge, to any person obtaining a copy of this software and associated documentation files (the "Software"), to deal in the Software without restriction, including without limitation the rights to use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies of the Software, and to permit persons to whom the Software is furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 ~~~~
 
 ### License text 95e3f7f0e81e9b49
@@ -1258,6 +1579,24 @@ Source files: `node_modules/pdfjs-dist/wasm/LICENSE_JBIG2`
    limitations under the License.
 ~~~~
 
+### License text a060a98ea20666c5
+
+SHA-256: `a060a98ea20666c5ce36c08c58fcffd9bbf0562f7de525449bbe1b7cdf4911a8`
+
+Source files: `node_modules/qrcode/license`
+
+~~~~text
+The MIT License (MIT)
+
+Copyright (c) 2012 Ryan Day
+
+Permission is hereby granted, free of charge, to any person obtaining a copy of this software and associated documentation files (the "Software"), to deal in the Software without restriction, including without limitation the rights to use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies of the Software, and to permit persons to whom the Software is furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+~~~~
+
 ### License text a5e9f9b1575301c7
 
 SHA-256: `a5e9f9b1575301c7a7a03508fdaa2e05a918cc17fd21c6e898096a96d6a34f61`
@@ -1398,6 +1737,37 @@ Source files: `node_modules/pdfjs-dist/wasm/LICENSE_OPENJPEG`
  * ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
  * POSSIBILITY OF SUCH DAMAGE.
  */
+~~~~
+
+### License text a92e52eb1fa7cd74
+
+SHA-256: `a92e52eb1fa7cd746e3827bf01d3a3589bbc8e1e51348b1da042aad165525ad1`
+
+Source files: `node_modules/require-directory/LICENSE`
+
+~~~~text
+The MIT License (MIT)
+
+Copyright (c) 2011 Troy Goode <troygoode@gmail.com>
+
+Permission is hereby granted, free of charge, to any person obtaining a
+copy of this software and associated documentation files (the
+"Software"), to deal in the Software without restriction, including
+without limitation the rights to use, copy, modify, merge, publish,
+distribute, sublicense, and/or sell copies of the Software, and to
+permit persons to whom the Software is furnished to do so, subject to
+the following conditions:
+
+The above copyright notice and this permission notice shall be included
+in all copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS
+OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
+MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.
+IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY
+CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT,
+TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE
+SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 ~~~~
 
 ### License text aa92ab5a47297486
@@ -1588,6 +1958,34 @@ NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPO
 NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES
 OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
 CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+~~~~
+
+### License text c46324e45a005413
+
+SHA-256: `c46324e45a005413535a6fb7a97e9eacd3cc6bf30335b7d5c10b8ee3af9e60c2`
+
+Source files: `node_modules/dijkstrajs/LICENSE.md`
+
+~~~~text
+```
+Dijkstra path-finding functions. Adapted from the Dijkstar Python project.
+
+Copyright (C) 2008
+  Wyatt Baldwin <self@wyattbaldwin.com>
+  All rights reserved
+
+Licensed under the MIT license.
+
+  http://www.opensource.org/licenses/mit-license.php
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
+THE SOFTWARE.
+```
 ~~~~
 
 ### License text c620c1d08a47c93c
