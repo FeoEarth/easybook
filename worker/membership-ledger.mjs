@@ -59,7 +59,7 @@ export async function applyBalance(env,accountId,{explicit=false,orderId,gift}={
  env.DB.prepare('INSERT INTO membership_assertions SELECT ?,EXISTS(SELECT 1 FROM membership_bonus_balances WHERE account_id=? AND units=?)').bind(assertion+'-bonus',accountId,bonus?.units||'0'),
  ...(gift?giftClaimStatements(env,gift,accountId,'pay:'+order.id,order.id,now,assertion):[]),
  env.DB.prepare('UPDATE membership_balances SET units=? WHERE account_id=?').bind(next,accountId),
- env.DB.prepare('UPDATE membership_bonus_balances SET units=? WHERE account_id=?').bind(String(bonusAvailable-bonusUsed),accountId),
+ env.DB.prepare('UPDATE membership_bonus_balances SET units=? WHERE account_id=?').bind(String(bonusAvailable-bonusUsed+(gift?.balance_type==='bonus'&&BigInt(gift.units)>BigInt(order.amount)?BigInt(gift.units)-BigInt(order.amount):0n)),accountId),
  env.DB.prepare('DELETE FROM membership_assertions WHERE id=?').bind(assertion+'-bonus'),
  env.DB.prepare('INSERT INTO membership_balance_events VALUES(?,?,\'debit\',?,NULL,NULL,NULL,?,?)').bind('purchase:'+order.id,accountId,order.amount,order.id,now),
  env.DB.prepare('INSERT INTO account_memberships VALUES(?,?,?) ON CONFLICT(account_id) DO UPDATE SET permanent=excluded.permanent,expires_at=excluded.expires_at').bind(accountId,0,expires),
@@ -97,4 +97,4 @@ export async function creditTransfer(env,c,log){
  ]);if(live&&!guard)await applyBalance(env,accountId);return}catch(e){if(attempt===5)throw e}
  }
 }
-export async function purchaseView(env,order){if(!order)return order;const b=await first(env,'SELECT units FROM membership_balances WHERE account_id=?',order.account_id),available=BigInt(b?.units||0),due=BigInt(order.amount),funds=order.payment_method==='chain'?await chainFunds(env,order):{actual:0n,bonus:0n,spendable:available},funded=order.settled_at?due:funds.spendable;return {...order,price:money(order.list_units),discount:money(order.discount_units||'0'),required:money(order.amount),received:money(funds.actual),rechargeBonus:money(funds.bonus),funded:money(funded),remaining:money(funded>=due?0n:due-funded),balance:money(available)}}
+export async function purchaseView(env,order){if(!order)return order;const b=await first(env,"SELECT b.units,COALESCE(g.units,'0') bonus_units FROM membership_balances b LEFT JOIN membership_bonus_balances g ON g.account_id=b.account_id WHERE b.account_id=?",order.account_id),available=BigInt(b?.units||0),due=BigInt(order.amount),funds=order.payment_method==='chain'?await chainFunds(env,order):{actual:0n,bonus:0n,spendable:available},funded=order.settled_at?due:funds.spendable;return {...order,price:money(order.list_units),discount:money(order.discount_units||'0'),required:money(order.amount),received:money(funds.actual),rechargeBonus:money(funds.bonus),funded:money(funded),remaining:money(funded>=due?0n:due-funded),balance:money(available),bonusBalance:money(b?.bonus_units||'0')}}
