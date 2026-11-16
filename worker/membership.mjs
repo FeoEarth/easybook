@@ -1,3 +1,4 @@
+import {orderHistory} from './membership-history.mjs';
 import {planCatalog} from './membership-pricing.mjs';
 import {bonusPolicy,rewardFromPolicy,accountBalance} from './membership-bonus.mjs';
 import {couponCode} from './membership-coupons.mjs';
@@ -58,7 +59,7 @@ export async function membershipAPI(request,env){let recovery;
  if(q.coupon_id)statements.push(env.DB.prepare('INSERT INTO membership_coupon_uses(order_id,coupon_id,account_id,expires_at,created_at) VALUES(?,?,?,?,?)').bind(id,q.coupon_id,p.accountId,Math.min(now+1800000,q.coupon_expires_at||Infinity),now));statements.push(env.DB.prepare('DELETE FROM membership_assertions WHERE id=?').bind(assertion));
  await env.DB.batch(statements);if(body.reserveOnly!==true)await applyBalance(env,p.accountId,{explicit:body.useBalance===true,orderId:id});return reply(await purchaseView(env,await env.DB.prepare('SELECT * FROM membership_purchases WHERE id=?').bind(id).first()),201);
  }
- if(path==='/api/membership/orders'&&method==='GET'){const rows=(await env.DB.prepare('SELECT * FROM membership_purchases WHERE account_id=? ORDER BY created_at DESC LIMIT 100').bind(p.accountId).all()).results;return reply({orders:await Promise.all(rows.map(o=>purchaseView(env,o)))})}
+ if(path==='/api/membership/orders'&&method==='GET')return reply(await orderHistory(env,{accountId:p.accountId}));
  const match=path.match(/^\/api\/membership\/orders\/([a-f0-9-]{36})(?:\/(cancel|pay|fund))?$/);if(match){if(match[2]==='fund'&&method==='POST'){
  const body=await input(request),chain=configuration(env).find(c=>c.chainId===body.chainId&&c.acceptOrders!==false);if(!chain)fail('network_unavailable',503);
  const current=await env.DB.prepare('SELECT * FROM membership_purchases WHERE id=? AND account_id=?').bind(match[1],p.accountId).first();if(!current)fail('not_found',404);if((body.plan!==undefined&&body.plan!==current.plan)||(body.amount!==undefined&&body.amount!==current.amount))fail('order_changed',409);if(current.cancelled_at)fail('order_unavailable',409);if(current.settled_at)return reply(await purchaseView(env,current));
