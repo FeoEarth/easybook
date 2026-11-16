@@ -2,7 +2,7 @@ import {READ} from '../../worker/mcp-common.mjs';
 import {requestedScopes,readOnlyConsentNotice} from './requested-scopes.mjs';
 import {V2_SCOPES,accountPolicies} from '../../worker/oauth-workspace-policy.mjs';
 import {listWorkspaces,workspaceAccess,roleScopes} from '../../worker/workspace-identity.mjs';
-import {session,csrf,requireForm,json,page,redirect,rateLimit,safeReturn,accountMenuLink} from './accounts.mjs';
+import {session,csrf,requireForm,json,page,redirect,rateLimit,safeReturn,accountMenuLink,accountMembershipSection} from './accounts.mjs';
 import {escape,oauthConsentHeaders} from './appearance.mjs';
 const labels={'notes.read':'读取笔记','notes.write':'创建和编辑笔记','notes.delete':'删除笔记','folders.read':'读取文件夹','folders.manage':'编辑文件夹','tasks.read':'读取待办','tasks.manage':'编辑待办','attachments.read':'查看附件','attachments.write':'上传和编辑附件','workspace.read':'读取工作区信息','workspace.create':'创建新的账户关联工作区','workspace.write':'重命名和修改普通工作区设置'};
 const roles={manager:'管理者',editor:'编辑者',reader:'阅读者'};
@@ -55,6 +55,7 @@ export async function workspaceAccountPage(request,env,s){
  ]);
  return page('账户与安全',`
  <div class="account-hero"><span class="account-avatar" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="12" cy="7" r="4"/><path d="M4 21v-2a8 8 0 0 1 16 0v2"/></svg></span><div><strong>${escape(s.display_name)}</strong><small>账户 ID：${escape(s.account_id)}</small><p>管理你的工作区与应用访问权限</p></div></div>
+ ${await accountMembershipSection(env,s.account_id)}
  <h2>登录与身份验证</h2><div class="account-menu">${accountMenuLink('/account/passkeys','key','通行密钥与 GitHub','管理关联的登录方式与通行密钥')}</div>
  <h2>扫码与设备授权</h2><div class="account-menu">${accountMenuLink('/account/qr/scan','scan','扫描登录二维码','用此设备确认另一台设备的登录请求')}</div>
  <h2>已登录设备</h2><div class="group">${devices.results.map(d=>`<div class="row"><strong>${d.id===s.id?'当前浏览器':escape(d.device)}</strong><small>${escape(d.device)}</small><form class="account-inline-form" method="post" action="/account/sessions/revoke">${hidden}<input type="hidden" name="id" value="${escape(d.id)}"><button>退出此设备</button></form></div>`).join('')||'<p>暂无已登录设备。</p>'}</div>
