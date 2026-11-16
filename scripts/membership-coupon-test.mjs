@@ -2,13 +2,15 @@
 import assert from 'node:assert/strict';
 import {fixture} from './membership-fixture.mjs';
 import {membershipAPI} from '../worker/membership.mjs';
-import {createCoupon,toggleCoupon} from '../worker/membership-coupons.mjs';
+import {createCoupon,toggleCoupon,deleteCoupon,adminCoupons,couponCode} from '../worker/membership-coupons.mjs';
 import {PRICE_VERSION} from '../worker/membership-plans.mjs';
 const f=await fixture();
 const call=(path,body)=>membershipAPI(new Request(f.origin+'/api/membership'+path,{method:body?'POST':'GET',headers:{Cookie:f.cookie,Origin:f.origin,'Content-Type':'application/json','X-Easybook-CSRF':f.csrf},...(body?{body:JSON.stringify(body)}:{})}),f.env);
 const ok=async r=>{assert.ok(r.ok,await r.clone().text());return r.json()};
 const reserve=(plan,code,idempotency=crypto.randomUUID())=>call('/orders',{plan,chainId:137,priceVersion:PRICE_VERSION,idempotency,reserveOnly:true,couponCode:code}).then(ok);
 try{
+ assert.equal(couponCode('new'),'NEW');assert.equal(couponCode('a'),'A');
+ const short=await createCoupon(f.env,'iodash-test',{code:'new',kind:'percent',percent:'10'});await deleteCoupon(f.env,'iodash-test',short.id);assert.equal(f.sql.prepare('SELECT id FROM membership_coupons WHERE id=?').get(short.id),undefined);await createCoupon(f.env,'iodash-test',{code:'new',kind:'percent',percent:'10'});
  assert.equal((await call('/coupons/admin')).status,404);
  const c=await createCoupon(f.env,'iodash-test',{code:'SAVE20',kind:'percent',percent:'20',maxUses:1,perAccountLimit:1});
  const q=await ok(await call('/quote?plan=month&coupon=save20'));assert.equal(q.required,'0.80');assert.equal(q.discount,'0.20');
@@ -20,6 +22,7 @@ try{
  await ok(await call('/orders/'+pending.id+'/pay',{}));assert.equal(f.sql.prepare('SELECT COUNT(*) n FROM membership_balance_events WHERE order_id=? AND kind=?').get(pending.id,'debit').n,1);
  assert.ok(f.sql.prepare('SELECT redeemed_at FROM membership_coupon_uses WHERE order_id=?').get(pending.id).redeemed_at);
  assert.equal((await call('/quote?plan=month&coupon=SAVE20')).status,409);
+ await deleteCoupon(f.env,'iodash-test',c.id);assert.ok(f.sql.prepare('SELECT deleted_at FROM membership_coupons WHERE id=?').get(c.id).deleted_at);assert.ok(!(await adminCoupons(f.env)).coupons.some(row=>row.id===c.id));await assert.rejects(()=>toggleCoupon(f.env,'iodash-test',c.id,true));assert.equal(f.sql.prepare('SELECT coupon_code FROM membership_purchases WHERE id=?').get(pending.id).coupon_code,'SAVE20');
  await createCoupon(f.env,'iodash-test',{code:'FREE100',kind:'percent',percent:'100',maxUses:1,perAccountLimit:1});
  const free=await reserve('quarter','FREE100');assert.equal(free.required,'0.00');await ok(await call(''));assert.equal(f.sql.prepare('SELECT settled_at FROM membership_purchases WHERE id=?').get(free.id).settled_at,null);
  assert.ok((await ok(await call('/orders/'+free.id+'/pay',{}))).settled_at);assert.equal((await ok(await call(''))).balance,'0.00');
