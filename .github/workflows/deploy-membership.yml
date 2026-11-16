@@ -1,6 +1,11 @@
 name: Deploy membership checkout
 on:
   workflow_dispatch:
+    inputs:
+      apply_schema:
+        description: Apply schema when the workflow token has D1 write access
+        type: boolean
+        default: false
 permissions:
   contents: read
 concurrency:
@@ -23,6 +28,7 @@ jobs:
       - name: Build web assets
         run: npm run build:editor
       - name: Apply additive membership schema
+        if: inputs.apply_schema
         run: |
           npx --no-install wrangler d1 execute easybook-data --config worker/wrangler.jsonc --remote --file worker/migrations/0023-membership.sql --yes
           npx --no-install wrangler d1 execute easybook-data --config worker/wrangler.jsonc --remote --file worker/migrations/0024-membership-scan-windows.sql --yes
