@@ -21,7 +21,7 @@ for(const simulation of [true,false]){
  const doc=dom.window.document;
  await wait(()=>doc.querySelectorAll('#networkList [role=option]').length===4&&!doc.querySelector('#buy').disabled);
  doc.querySelector('#buy').click();await wait(()=>doc.querySelector('[data-method=chain]'));assert.equal(f.sql.prepare('SELECT payment_method FROM membership_purchases').get().payment_method,'unselected');doc.querySelector('[data-method=chain]').click();
- doc.querySelector('#network').click();assert.equal(doc.querySelector('#networkLayer').hidden,false);doc.querySelector('[data-chain="9745"]').click();assert.equal(doc.querySelector('#networkLayer').hidden,true);assert.equal(doc.querySelector('#network').value,'9745');assert.ok(doc.querySelector('#networkIcon use').getAttribute('href').includes('9745'));doc.querySelector('#confirmPayment').click();
+ doc.querySelector('#network').click();assert.equal(doc.querySelector('#networkLayer').hidden,false);doc.querySelector('[data-chain="9745"]').click();await wait(()=>doc.querySelector('#networkLayer').hidden);assert.equal(doc.querySelector('#network').value,'9745');assert.ok(doc.querySelector('#networkIcon use').getAttribute('href').includes('9745'));doc.querySelector('#confirmPayment').click();
  await wait(()=>doc.querySelector('#paymentContent code'));
  const order=f.sql.prepare('SELECT * FROM membership_purchases').get();assert.equal(order.chain_id,9745);assert.equal(doc.querySelector('#paymentContent code').textContent,order.address);assert.match(doc.querySelector('#paymentContent').textContent,/Plasma/);assert.match(doc.querySelector('#paymentContent').textContent,/USDT0/);assert.match(doc.querySelector('#paymentContent').textContent,new RegExp(order.token));
  const image=doc.querySelector('#paymentContent img');assert.equal(doc.querySelector('.qr-card').getAttribute('aria-busy'),'true');image.dispatchEvent(new dom.window.Event('load'));await wait(()=>doc.querySelector('.qr-card').classList.contains('ready'));assert.equal(new URL(image.src).searchParams.get('qr'),order.id);
@@ -29,7 +29,7 @@ for(const simulation of [true,false]){
  const mock=[...doc.querySelectorAll('#paymentContent button')].find(b=>b.textContent==='模拟准确到账');
  if(simulation){assert.ok(mock);mock.click();await wait(()=>doc.querySelector('#paymentContent').textContent.includes('已开通'));assert.ok(!doc.querySelector('#paymentContent img'));}
  else{assert.equal(mock,undefined);assert.ok(!doc.querySelector('[role=alert]'));}
- doc.querySelector('#closePayment').click();assert.equal(doc.querySelector('#paymentLayer').hidden,true);assert.equal(doc.activeElement.id,'buy');assert.deepEqual(errors,[]);
+ doc.querySelector('#closePayment').click();await wait(()=>doc.querySelector('#paymentLayer').hidden);assert.equal(doc.activeElement.id,'buy');assert.deepEqual(errors,[]);
  }finally{dom?.window.close();f.close()}
 }
 console.log('PASS real address/QR, contract and network labels, clipboard and isolated local simulation UI');
