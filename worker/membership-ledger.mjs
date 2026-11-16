@@ -1,9 +1,8 @@
-import {priceUnits,PRICE_VERSION} from './membership-plans.mjs';
+import {plans,priceUnits,PRICE_VERSION} from './membership-plans.mjs';
 import {hash} from './mcp-common.mjs';
 import {HDKey} from '@scure/bip32';
 import {secp256k1} from '@noble/curves/secp256k1.js';
 import {keccak_256} from '@noble/hashes/sha3.js';
-export const PLAN_RANK={month:1,'half-year':2,year:3,permanent:4};
 export const money=units=>{const n=BigInt(units||0);return (n/1000000n).toString()+'.'+(n%1000000n).toString().padStart(6,'0').replace(/0+$/,'').padEnd(2,'0')};
 export function deriveAddress(xpub,index){const key=HDKey.fromExtendedKey(xpub);if(key.privateKey)throw Error('Public key required');const child=key.deriveChild(index),bytes=secp256k1.Point.fromBytes(child.publicKey).toBytes(false);return '0x'+Array.from(keccak_256(bytes.slice(1)).slice(-20),b=>b.toString(16).padStart(2,'0')).join('')}
 export function addMonths(time,months){const d=new Date(time),day=d.getUTCDate();d.setUTCDate(1);d.setUTCMonth(d.getUTCMonth()+months);const end=new Date(Date.UTC(d.getUTCFullYear(),d.getUTCMonth()+1,0)).getUTCDate();d.setUTCDate(Math.min(day,end));return d.getTime()}
@@ -22,12 +21,8 @@ export async function expirePurchase(env,accountId){await env.DB.prepare("UPDATE
 export async function quotePurchase(env,accountId,plan){
  const now=Date.now(),state=await first(env,'SELECT * FROM membership_account_state WHERE account_id=?',accountId),membership=await first(env,'SELECT * FROM account_memberships WHERE account_id=?',accountId);
  if(membership?.permanent)throw error('already_permanent');
- const active=membership?.expires_at>now,current=state?.plan||'',rank=PLAN_RANK[plan.id];
- if(active&&current&&rank<PLAN_RANK[current])throw error('downgrade_not_supported');
- const kind=active&&current&&rank>PLAN_RANK[current]?'upgrade':active&&current===plan.id?'renewal':'purchase';let credit=0n;
- if(kind==='upgrade'){const lots=(await env.DB.prepare('SELECT * FROM membership_value_lots WHERE account_id=? AND consumed_at IS NULL AND ends_at>?').bind(accountId,now).all()).results;for(const lot of lots){const remaining=BigInt(Math.max(0,lot.ends_at-Math.max(now,lot.starts_at))),duration=BigInt(lot.ends_at-lot.starts_at);if(duration>0n)credit+=BigInt(lot.units)*remaining/duration}}
- // Excess prepaid value stays as spendable member balance when an upgrade settles.
- const list=BigInt(priceUnits[plan.id]);return {priceVersion:PRICE_VERSION,kind,list_units:String(list),credit_units:String(credit),amount:String(credit>=list?0n:list-credit),state_version:state?.version||0};
+ const list=priceUnits[plan.id];if(!list)throw error('invalid_plan',400);
+ return {priceVersion:PRICE_VERSION,kind:membership?.expires_at>now?'renewal':'purchase',list_units:list,credit_units:'0',amount:list,state_version:state?.version||0};
 }
 export async function cancelPurchase(env,accountId,id){
  for(let attempt=0;attempt<4;attempt++){
@@ -45,22 +40,21 @@ export async function applyBalance(env,accountId,{explicit=false,orderId}={}){
  for(let attempt=0;attempt<6;attempt++){
  await expirePurchase(env,accountId);
  const order=await first(env,'SELECT * FROM membership_purchases WHERE account_id=? AND settled_at IS NULL AND cancelled_at IS NULL',accountId);if(!order){if(explicit)throw error('order_unavailable');return}if(orderId&&order.id!==orderId)throw error('order_changed');
+ const plan=plans.find(p=>p.id===order.plan);if(!plan||order.months!==plan.months||order.amount!==plan.units||order.list_units!==plan.units||order.credit_units!=='0'||!['purchase','renewal'].includes(order.kind)){await env.DB.prepare("UPDATE membership_purchases SET cancelled_at=?,cancel_reason='billing_changed' WHERE id=? AND settled_at IS NULL AND cancelled_at IS NULL").bind(Date.now(),order.id).run();if(explicit)throw error('order_unavailable');return}
  if(!explicit&&order.payment_method==='unselected')return;
  if(!explicit&&order.payment_method==='chain'&&(await chainFunding(env,order))<BigInt(order.amount))return;
  const state=await first(env,'SELECT * FROM membership_account_state WHERE account_id=?',accountId);if(!state||(!explicit&&state.cancel_version>state.ack_version))return;
  const balance=await first(env,'SELECT units FROM membership_balances WHERE account_id=?',accountId),member=await first(env,'SELECT * FROM account_memberships WHERE account_id=?',accountId);if(!balance||BigInt(balance.units)<BigInt(order.amount)){if(explicit)throw error('insufficient_balance');return;}
  if(member?.permanent||state.version!==order.state_version){await env.DB.prepare("UPDATE membership_purchases SET cancelled_at=?,cancel_reason='membership_changed' WHERE id=? AND settled_at IS NULL").bind(Date.now(),order.id).run();return}
- const now=Date.now(),start=order.kind==='renewal'?Math.max(now,member?.expires_at||0):now,expires=order.months?addMonths(start,order.months):0,excess=BigInt(order.credit_units)>BigInt(order.list_units)?BigInt(order.credit_units)-BigInt(order.list_units):0n,next=String(BigInt(balance.units)-BigInt(order.amount)+excess),assertion=crypto.randomUUID();
+ // Every package adds its full duration to the existing expiry, regardless of prior package.
+ const now=Date.now(),start=Math.max(now,member?.expires_at||0),expires=addMonths(start,plan.months),next=String(BigInt(balance.units)-BigInt(order.amount)),assertion=crypto.randomUUID();
  try{await env.DB.batch([
  env.DB.prepare('INSERT INTO membership_assertions SELECT ?,EXISTS(SELECT 1 FROM membership_balances WHERE account_id=? AND units=?) AND EXISTS(SELECT 1 FROM membership_account_state WHERE account_id=? AND version=? AND cancel_version=? AND ack_version=? AND (?=1 OR cancel_version<=ack_version)) AND EXISTS(SELECT 1 FROM membership_purchases WHERE id=? AND payment_method=? AND funding_cursor=? AND settled_at IS NULL AND cancelled_at IS NULL AND expires_at>?) AND EXISTS(SELECT 1 FROM accounts WHERE id=? AND deleted_at IS NULL)').bind(assertion,accountId,balance.units,accountId,state.version,state.cancel_version,state.ack_version,explicit?1:0,order.id,order.payment_method,order.funding_cursor,now,accountId),
  env.DB.prepare('UPDATE membership_balances SET units=? WHERE account_id=?').bind(next,accountId),
  env.DB.prepare('INSERT INTO membership_balance_events VALUES(?,?,\'debit\',?,NULL,NULL,NULL,?,?)').bind('purchase:'+order.id,accountId,order.amount,order.id,now),
- env.DB.prepare("INSERT INTO membership_balance_events VALUES(?,?,'upgrade_excess',?,NULL,NULL,NULL,?,?)").bind('excess:'+order.id,accountId,String(excess),order.id,now),
- env.DB.prepare('INSERT INTO account_memberships VALUES(?,?,?) ON CONFLICT(account_id) DO UPDATE SET permanent=excluded.permanent,expires_at=excluded.expires_at').bind(accountId,order.months?0:1,expires),
+ env.DB.prepare('INSERT INTO account_memberships VALUES(?,?,?) ON CONFLICT(account_id) DO UPDATE SET permanent=excluded.permanent,expires_at=excluded.expires_at').bind(accountId,0,expires),
  env.DB.prepare('UPDATE membership_account_state SET plan=?,version=version+1,ack_version=CASE WHEN ?=1 THEN cancel_version ELSE ack_version END,needs_ack=CASE WHEN ?=1 THEN 0 ELSE needs_ack END WHERE account_id=?').bind(order.plan,explicit?1:0,explicit?1:0,accountId),
- env.DB.prepare('UPDATE membership_value_lots SET consumed_at=? WHERE account_id=? AND consumed_at IS NULL AND ?=\'upgrade\'').bind(now,accountId,order.kind),
- env.DB.prepare('INSERT INTO membership_value_lots VALUES(?,?,?,?,?,NULL)').bind(order.id,accountId,start,expires||null,order.list_units),
- env.DB.prepare('INSERT INTO membership_changes VALUES(?,?,?,?,?)').bind(order.id,accountId,order.months?0:1,expires,now),
+ env.DB.prepare('INSERT INTO membership_changes VALUES(?,?,?,?,?)').bind(order.id,accountId,0,expires,now),
  env.DB.prepare("UPDATE membership_purchases SET settled_at=?,payment_method=CASE WHEN ?=1 THEN 'balance' ELSE payment_method END WHERE id=?").bind(now,explicit?1:0,order.id),
  env.DB.prepare('DELETE FROM membership_assertions WHERE id=?').bind(assertion)
  ]);return}catch(e){if(attempt===5)throw e}
@@ -86,4 +80,4 @@ export async function creditTransfer(env,c,log){
  ]);if(live&&!guard)await applyBalance(env,accountId);return}catch(e){if(attempt===5)throw e}
  }
 }
-export async function purchaseView(env,order){if(!order)return order;const b=await first(env,'SELECT units FROM membership_balances WHERE account_id=?',order.account_id),available=BigInt(b?.units||0),due=BigInt(order.amount),funded=order.settled_at?due:order.payment_method==='chain'?await chainFunding(env,order):available;return {...order,price:money(order.list_units),upgradeCredit:money(order.credit_units),required:money(order.amount),received:money(funded<due?funded:due),remaining:money(funded>=due?0n:due-funded),balance:money(available)}}
+export async function purchaseView(env,order){if(!order)return order;const b=await first(env,'SELECT units FROM membership_balances WHERE account_id=?',order.account_id),available=BigInt(b?.units||0),due=BigInt(order.amount),funded=order.settled_at?due:order.payment_method==='chain'?await chainFunding(env,order):available;return {...order,price:money(order.list_units),required:money(order.amount),received:money(funded<due?funded:due),remaining:money(funded>=due?0n:due-funded),balance:money(available)}}

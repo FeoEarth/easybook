@@ -27,7 +27,7 @@ export async function membershipAPI(request,env){let recovery;
  const m=await env.DB.prepare('SELECT * FROM account_memberships WHERE account_id=?').bind(p.accountId).first(),b=await env.DB.prepare('SELECT units FROM membership_balances WHERE account_id=?').bind(p.accountId).first(),state=await env.DB.prepare('SELECT * FROM membership_account_state WHERE account_id=?').bind(p.accountId).first();
  return reply({permanent:!!m?.permanent,expiresAt:m?.expires_at||null,active:!!m?.permanent||m?.expires_at>Date.now(),plan:state.plan,balance:money(b.units),address:wallet.address,cancellationGuard:state.cancel_version>state.ack_version,needsAcknowledgement:!!state.needs_ack});
  }
- if(path==='/api/membership/quote'&&method==='GET'){const plan=plans.find(v=>v.id===url.searchParams.get('plan'));if(!plan)fail('invalid_plan');const q=await quotePurchase(env,p.accountId,plan);return reply({...q,price:money(q.list_units),upgradeCredit:money(q.credit_units),required:money(q.amount)})}
+ if(path==='/api/membership/quote'&&method==='GET'){const plan=plans.find(v=>v.id===url.searchParams.get('plan'));if(!plan)fail('invalid_plan');const q=await quotePurchase(env,p.accountId,plan);return reply({...q,price:money(q.list_units),required:money(q.amount)})}
  if(path==='/api/membership/orders'&&method==='POST'){
  const body=await input(request);if(body.priceVersion!==PRICE_VERSION)fail('price_changed',409);if(typeof body.idempotency!=='string'||!/^[a-zA-Z0-9-]{16,80}$/.test(body.idempotency))fail('invalid_request');
  recovery={accountId:p.accountId,key:body.idempotency,plan:body.plan};
