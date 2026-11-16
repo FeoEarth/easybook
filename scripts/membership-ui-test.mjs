@@ -11,6 +11,7 @@ for(const simulation of [true,false]){
  const response=await membershipPage(new Request(f.origin+'/membership',{headers:{Cookie:f.cookie}}),f.env),html=await response.text();assert.ok(!html.includes(f.nativeToken));
  let copied='';
  dom=new JSDOM(html,{url:f.origin+'/membership',runScripts:'dangerously',pretendToBeVisual:true,virtualConsole:new VirtualConsole().on('jsdomError',e=>errors.push(e)),beforeParse(window){
+ window.HTMLCanvasElement.prototype.getContext=()=>null; // JSDOM has no canvas renderer.
  Object.defineProperty(window.crypto,'randomUUID',{value:()=>crypto.randomUUID()});Object.defineProperty(window.navigator,'clipboard',{value:{async writeText(s){copied=s}}});
  window.fetch=async(path,options={})=>{
  const headers=new Headers(options.headers);headers.set('Cookie',f.cookie);headers.set('Origin',f.origin);
