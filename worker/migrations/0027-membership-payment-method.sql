@@ -1,0 +1,7 @@
+-- Existing orders retain their original automatic settlement behavior.
+ALTER TABLE membership_purchases ADD COLUMN payment_method TEXT NOT NULL DEFAULT 'auto';
+ALTER TABLE membership_purchases ADD COLUMN funding_cursor INTEGER NOT NULL DEFAULT 0;
+DROP TRIGGER IF EXISTS membership_purchase_cancel_guard;
+CREATE TRIGGER membership_purchase_cancel_guard AFTER UPDATE OF cancelled_at ON membership_purchases WHEN OLD.cancelled_at IS NULL AND NEW.cancelled_at IS NOT NULL AND OLD.payment_method<>'unselected' AND NEW.cancel_reason IN ('user','expired') BEGIN UPDATE membership_account_state SET cancel_version=cancel_version+1,needs_ack=CASE WHEN EXISTS(SELECT 1 FROM membership_balances WHERE account_id=NEW.account_id AND units<>'0') THEN 1 ELSE needs_ack END WHERE account_id=NEW.account_id; END;
+CREATE TRIGGER IF NOT EXISTS membership_confirm_before_settle BEFORE UPDATE OF settled_at ON membership_purchases WHEN OLD.settled_at IS NULL AND NEW.settled_at IS NOT NULL AND NEW.payment_method='unselected' BEGIN SELECT RAISE(ABORT,'payment_method_unconfirmed'); END;
+CREATE TRIGGER IF NOT EXISTS membership_locked_quote BEFORE UPDATE OF plan,months,amount,kind,list_units,credit_units,state_version ON membership_purchases WHEN NEW.plan<>OLD.plan OR NEW.months<>OLD.months OR NEW.amount<>OLD.amount OR NEW.kind<>OLD.kind OR NEW.list_units<>OLD.list_units OR NEW.credit_units<>OLD.credit_units OR NEW.state_version<>OLD.state_version BEGIN SELECT RAISE(ABORT,'quote_is_locked'); END;
