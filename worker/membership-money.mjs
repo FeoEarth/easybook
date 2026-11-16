@@ -1,0 +1,3 @@
+export const money=units=>{const n=BigInt(units||0);return (n/1000000n).toString()+'.'+(n%1000000n).toString().padStart(6,'0').replace(/0+$/,'').padEnd(2,'0')};
+export function usdtUnits(value,{allowZero=false}={}){if(!['string','number'].includes(typeof value))throw Object.assign(Error('invalid_amount'),{status:400});const text=String(value);if(!/^[0-9]{1,6}(?:\.[0-9]{1,6})?$/.test(text))throw Object.assign(Error('invalid_amount'),{status:400});const [whole,fraction='']=text.split('.'),units=BigInt(whole)*1000000n+BigInt(fraction.padEnd(6,'0'));if(units<0n||(!allowZero&&units===0n))throw Object.assign(Error('invalid_amount'),{status:400});return String(units)}
+export const billingError=(code,status=400)=>Object.assign(Error(code),{status});
