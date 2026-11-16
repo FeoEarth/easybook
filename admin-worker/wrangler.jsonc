@@ -1,0 +1,17 @@
+{
+  "name": "easybook-iodash",
+  "main": "index.mjs",
+  "compatibility_date": "2026-11-16",
+  "compatibility_flags": ["nodejs_compat"],
+  "workers_dev": false,
+  "preview_urls": false,
+  "keep_vars": true,
+  "observability": {"enabled": true,"traces": {"enabled": true},"redact_query_string": true},
+  "routes": [{"pattern": "iodash.easybook.loonxy.com","custom_domain": true}],
+  "rules": [{"type": "Text","globs": ["**/*.md"],"fallthrough": true}],
+  "d1_databases": [
+    {"binding":"DB","database_name":"easybook-data","database_id":"af430aed-01b5-41ca-9653-31212bed3f9f"},
+    {"binding":"AUTH_DB","database_name":"easybook-iodash-auth","database_id":"9c2db0ab-8f47-4e6b-afbe-f67660c337c5","migrations_dir":"migrations"},
+    {"binding":"SECURITY_DB","database_name":"easybook-security","database_id":"d1761c2d-6372-489c-ae5e-114f3d5baa80"}
+  ]
+}

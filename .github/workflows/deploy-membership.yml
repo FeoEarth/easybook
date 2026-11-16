@@ -38,11 +38,14 @@ jobs:
           npx --no-install wrangler d1 execute easybook-data --config worker/wrangler.jsonc --remote --file worker/migrations/0028-membership-duration-only.sql --yes
           npx --no-install wrangler d1 execute easybook-data --config worker/wrangler.jsonc --remote --file worker/migrations/0029-membership-collections.sql --yes
           npx --no-install wrangler d1 execute easybook-data --config worker/wrangler.jsonc --remote --file worker/migrations/0030-membership-coupons.sql --yes
+          npx --no-install wrangler d1 execute easybook-iodash-auth --config admin-worker/wrangler.jsonc --remote --file admin-worker/migrations/0001-iodash-auth.sql --yes
       - name: Deploy identity account entry
         run: npx --no-install wrangler deploy --config mcp-oauth/wrangler.jsonc --keep-vars
       - name: Deploy membership scanner
         run: npx --no-install wrangler deploy --config payment-worker/wrangler.jsonc --keep-vars
       - name: Deploy isolated collection worker
         run: npx --no-install wrangler deploy --config collection-worker/wrangler.jsonc --keep-vars
+      - name: Deploy independent Iodash admin
+        run: npx --no-install wrangler deploy --config admin-worker/wrangler.jsonc --keep-vars
       - name: Deploy checkout and web app
         run: npx --no-install wrangler deploy --config worker/wrangler.jsonc --keep-vars --var RELEASE_SHA:${{ github.sha }}

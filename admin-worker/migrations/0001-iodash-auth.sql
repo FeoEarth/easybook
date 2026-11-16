@@ -1,0 +1,10 @@
+CREATE TABLE IF NOT EXISTS iodash_bootstrap(id INTEGER PRIMARY KEY CHECK(id=1),claimed_at INTEGER,admin_id TEXT);
+INSERT OR IGNORE INTO iodash_bootstrap(id) VALUES(1);
+CREATE TABLE IF NOT EXISTS iodash_admins(id TEXT PRIMARY KEY,singleton INTEGER NOT NULL DEFAULT 1 UNIQUE CHECK(singleton=1),display_name TEXT NOT NULL,created_at INTEGER NOT NULL,disabled INTEGER NOT NULL DEFAULT 0);
+CREATE TABLE IF NOT EXISTS iodash_passkeys(id TEXT PRIMARY KEY,admin_id TEXT NOT NULL REFERENCES iodash_admins(id),public_key TEXT NOT NULL,counter INTEGER NOT NULL,transports TEXT NOT NULL,label TEXT NOT NULL,backed_up INTEGER NOT NULL,created_at INTEGER NOT NULL,last_used_at INTEGER,revoked_at INTEGER);
+CREATE TABLE IF NOT EXISTS iodash_sessions(token_hash TEXT PRIMARY KEY,admin_id TEXT NOT NULL REFERENCES iodash_admins(id),credential_id TEXT NOT NULL REFERENCES iodash_passkeys(id),authenticated_at INTEGER NOT NULL,last_seen_at INTEGER NOT NULL,expires_at INTEGER NOT NULL);
+CREATE INDEX IF NOT EXISTS iodash_session_expiry ON iodash_sessions(expires_at);
+CREATE TABLE IF NOT EXISTS iodash_challenges(token_hash TEXT PRIMARY KEY,challenge TEXT NOT NULL,purpose TEXT NOT NULL CHECK(purpose IN ('setup','login','add')),admin_id TEXT,session_hash TEXT,created_at INTEGER NOT NULL,expires_at INTEGER NOT NULL);
+CREATE TABLE IF NOT EXISTS iodash_rate_limits(key TEXT NOT NULL,window_id INTEGER NOT NULL,attempts INTEGER NOT NULL,PRIMARY KEY(key,window_id));
+CREATE TABLE IF NOT EXISTS iodash_assertions(id TEXT PRIMARY KEY,valid INTEGER NOT NULL CHECK(valid=1));
+CREATE TABLE IF NOT EXISTS iodash_audit(id TEXT PRIMARY KEY,admin_id TEXT,credential_id TEXT,action TEXT NOT NULL,created_at INTEGER NOT NULL);
