@@ -6,7 +6,7 @@ This inventory covers the locked production npm graphs for the Web editor/PDF bu
 
 **Coverage boundary:** development/test and platform-specific optional npm packages are excluded; esbuild is listed but marked build-only. The Android `releaseRuntimeClasspath` is resolved by Gradle, but final APK byte-for-byte contents are not yet audited. Proprietary Google Play Services modules are **not open-source**: their Maven POMs point to the Android SDK License terms, which are linked rather than reproduced as an open-source license text. The Liberation font uses its own GPL-2.0-based agreement with exceptions, identified with a local `LicenseRef` rather than inaccurately described as Apache-2.0.
 
-Entries: 186 (89 npm main, 27 npm OAuth, 1 vendored OAuth component, 9 embedded PDF resources, 58 resolved Android runtime modules, one native glass port).
+Entries: 195 (98 npm main, 27 npm OAuth, 1 vendored OAuth component, 9 embedded PDF resources, 58 resolved Android runtime modules, one native glass port).
 
 ## Audit inputs / 审计输入
 
@@ -117,7 +117,10 @@ Entries: 186 (89 npm main, 27 npm OAuth, 1 vendored OAuth component, 9 embedded 
 | tslib | 1.14.1 | OAuth Worker | `0BSD` | Copyright (c) Microsoft Corporation. | [5989359645](#license-text-5989359645911c04) |
 | tslib | 2.8.1 | OAuth Worker | `0BSD` | Copyright (c) Microsoft Corporation. | [5989359645](#license-text-5989359645911c04) |
 | tsyringe | 4.10.0 | OAuth Worker | `MIT` | Copyright (c) Microsoft Corporation. All rights reserved. | [27ebda9d51](#license-text-27ebda9d51f0a56b) |
+| @adraffy/ens-normalize | 1.10.1 | Web editor / PDF build | `MIT` | Copyright (c) 2021 Andrew Raffensperger | [3b458813ab](#license-text-3b458813ab3316b1) |
+| @noble/curves | 1.2.0 | Web editor / PDF build | `MIT` | Copyright (c) 2022 Paul Miller (https://paulmillr.com) | [3239e134eb](#license-text-3239e134eb6e6d64) |
 | @noble/curves | 2.4.0 | Web editor / PDF build | `MIT` | Copyright (c) 2022 Paul Miller (https://paulmillr.com) | [3239e134eb](#license-text-3239e134eb6e6d64) |
+| @noble/hashes | 1.3.2 | Web editor / PDF build | `MIT` | Copyright (c) 2022 Paul Miller (https://paulmillr.com) | [3239e134eb](#license-text-3239e134eb6e6d64) |
 | @noble/hashes | 2.4.0 | Web editor / PDF build | `MIT` | Copyright (c) 2022 Paul Miller (https://paulmillr.com) | [3239e134eb](#license-text-3239e134eb6e6d64) |
 | @scure/base | 2.4.0 | Web editor / PDF build | `MIT` | Copyright (c) 2022 Paul Miller (https://paulmillr.com) | [3239e134eb](#license-text-3239e134eb6e6d64) |
 | @scure/bip32 | 2.4.0 | Web editor / PDF build | `MIT` | Copyright (c) 2022 Patricio Palladino, Paul Miller (paulmillr.com) | [1565efd0ec](#license-text-1565efd0ec4580bf) |
@@ -150,6 +153,8 @@ Entries: 186 (89 npm main, 27 npm OAuth, 1 vendored OAuth component, 9 embedded 
 | @tiptap/extensions | 3.32.0 | Web editor / PDF build | `MIT` | Copyright (c) 2025, Tiptap GmbH | [c96e5ecb55](#license-text-c96e5ecb55ac5931) |
 | @tiptap/pm | 3.32.0 | Web editor / PDF build | `MIT` | Copyright (c) 2025, Tiptap GmbH | [c96e5ecb55](#license-text-c96e5ecb55ac5931) |
 | @tiptap/starter-kit | 3.32.0 | Web editor / PDF build | `MIT` | Copyright (c) 2025, Tiptap GmbH | [c96e5ecb55](#license-text-c96e5ecb55ac5931) |
+| @types/node | 22.7.5 | Web editor / PDF build | `MIT` | Copyright (c) Microsoft Corporation. | [c2cfccb812](#license-text-c2cfccb812fe4821) |
+| aes-js | 4.0.0-beta.5 | Web editor / PDF build | `MIT` | Copyright (c) 2022 Richard Moore | [8839133ab4](#license-text-8839133ab4230fec) |
 | ansi-regex | 5.0.1 | Web editor / PDF build | `MIT` | Copyright (c) Sindre Sorhus <sindresorhus@gmail.com> (sindresorhus.com) | [48da2f39e1](#license-text-48da2f39e100d408) |
 | ansi-styles | 4.3.0 | Web editor / PDF build | `MIT` | Copyright (c) Sindre Sorhus <sindresorhus@gmail.com> (sindresorhus.com) | [48da2f39e1](#license-text-48da2f39e100d408) |
 | argparse | 2.0.1 | Web editor / PDF build | `Python-2.0` | Copyright (c) 1991 - 1995, Stichting Mathematisch Centrum Amsterdam, | [de4d1f2d2a](#license-text-de4d1f2d2ad5ad0c) |
@@ -163,6 +168,7 @@ Entries: 186 (89 npm main, 27 npm OAuth, 1 vendored OAuth component, 9 embedded 
 | emoji-regex | 8.0.0 | Web editor / PDF build | `MIT` | Copyright Mathias Bynens <https://mathiasbynens.be/> | [483acb265f](#license-text-483acb265f182907) |
 | entities | 4.5.0 | Web editor / PDF build | `BSD-2-Clause` | Copyright (c) Felix Böhm | [cb99234594](#license-text-cb992345949ccd6e) |
 | esbuild | 0.28.2 | Web editor / PDF build | `MIT` | Copyright (c) 2020 Evan Wallace | [b40ec5baec](#license-text-b40ec5baec7bb34f) |
+| ethers | 6.16.0 | Web editor / PDF build | `MIT` | Copyright (c) 2016-2025 Richard Moore | [44eea86637](#license-text-44eea86637405118) |
 | find-up | 4.1.0 | Web editor / PDF build | `MIT` | Copyright (c) Sindre Sorhus <sindresorhus@gmail.com> (sindresorhus.com) | [48da2f39e1](#license-text-48da2f39e100d408) |
 | get-caller-file | 2.0.5 | Web editor / PDF build | `ISC` | Copyright 2018 Stefan Penner | [902dbb4154](#license-text-902dbb4154679fb2) |
 | is-fullwidth-code-point | 3.0.0 | Web editor / PDF build | `MIT` | Copyright (c) Sindre Sorhus <sindresorhus@gmail.com> (sindresorhus.com) | [48da2f39e1](#license-text-48da2f39e100d408) |
@@ -199,10 +205,13 @@ Entries: 186 (89 npm main, 27 npm OAuth, 1 vendored OAuth component, 9 embedded 
 | set-blocking | 2.0.0 | Web editor / PDF build | `ISC` | Copyright (c) 2016, Contributors | [365496ca1f](#license-text-365496ca1f56da40) |
 | string-width | 4.2.3 | Web editor / PDF build | `MIT` | Copyright (c) Sindre Sorhus <sindresorhus@gmail.com> (sindresorhus.com) | [48da2f39e1](#license-text-48da2f39e100d408) |
 | strip-ansi | 6.0.1 | Web editor / PDF build | `MIT` | Copyright (c) Sindre Sorhus <sindresorhus@gmail.com> (sindresorhus.com) | [48da2f39e1](#license-text-48da2f39e100d408) |
+| tslib | 2.7.0 | Web editor / PDF build | `0BSD` | Copyright (c) Microsoft Corporation. | [5989359645](#license-text-5989359645911c04) |
 | uc.micro | 2.1.0 | Web editor / PDF build | `MIT` | Copyright Mathias Bynens <https://mathiasbynens.be/> | [483acb265f](#license-text-483acb265f182907) |
+| undici-types | 6.19.8 | Web editor / PDF build | `MIT` | Copyright (c) Matteo Collina and Undici contributors | [a6db8096b2](#license-text-a6db8096b2707bc0) |
 | w3c-keyname | 2.2.8 | Web editor / PDF build | `MIT` | Copyright (C) 2016 by Marijn Haverbeke <marijn@haverbeke.berlin> and others | [869c30f368](#license-text-869c30f368eb0873) |
 | which-module | 2.0.1 | Web editor / PDF build | `ISC` | Copyright (c) 2016, Contributors | [852bf81203](#license-text-852bf81203aa93aa) |
 | wrap-ansi | 6.2.0 | Web editor / PDF build | `MIT` | Copyright (c) Sindre Sorhus <sindresorhus@gmail.com> (sindresorhus.com) | [48da2f39e1](#license-text-48da2f39e100d408) |
+| ws | 8.17.1 | Web editor / PDF build | `MIT` | Copyright (c) 2011 Einar Otto Stangvik <einaros@gmail.com> | [2b29dcfe0d](#license-text-2b29dcfe0d6471f7) |
 | y18n | 4.0.3 | Web editor / PDF build | `ISC` | Copyright (c) 2015, Contributors | [2034cce3b6](#license-text-2034cce3b6fafcdd) |
 | yargs | 15.4.1 | Web editor / PDF build | `MIT` | Copyright 2010 James Halliday (mail@substack.net); Modified work Copyright 2014 Contributors (ben@npmjs.com) | [2f1a503bfa](#license-text-2f1a503bfab84b3b) |
 | yargs-parser | 18.1.3 | Web editor / PDF build | `ISC` | Copyright (c) 2016, Contributors | [365496ca1f](#license-text-365496ca1f56da40) |
@@ -681,6 +690,35 @@ Source files: `mcp-oauth/node_modules/tsyringe/LICENSE`
     SOFTWARE
 ~~~~
 
+### License text 2b29dcfe0d6471f7
+
+SHA-256: `2b29dcfe0d6471f7e8c92c5fb38c9f93edee10330937055440192f1832b1ecef`
+
+Source files: `node_modules/ethers/node_modules/ws/LICENSE`
+
+~~~~text
+Copyright (c) 2011 Einar Otto Stangvik <einaros@gmail.com>
+Copyright (c) 2013 Arnout Kazemier and contributors
+Copyright (c) 2016 Luigi Pinca and contributors
+
+Permission is hereby granted, free of charge, to any person obtaining a copy of
+this software and associated documentation files (the "Software"), to deal in
+the Software without restriction, including without limitation the rights to
+use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies of
+the Software, and to permit persons to whom the Software is furnished to do so,
+subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS
+FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR
+COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER
+IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
+CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+~~~~
+
 ### License text 2dc0465729366c3a
 
 SHA-256: `2dc0465729366c3a7890dfa9e972a1ba7048a26c02116fb8b419a6a1ac110149`
@@ -738,7 +776,7 @@ THE SOFTWARE.
 
 SHA-256: `3239e134eb6e6d64538ca76498c7fcb08a395249dd9d4af9927bf6d0169ee429`
 
-Source files: `node_modules/@noble/curves/LICENSE`, `node_modules/@noble/hashes/LICENSE`, `node_modules/@scure/base/LICENSE`
+Source files: `node_modules/@noble/curves/LICENSE`, `node_modules/@noble/hashes/LICENSE`, `node_modules/@scure/base/LICENSE`, `node_modules/ethers/node_modules/@noble/curves/LICENSE`, `node_modules/ethers/node_modules/@noble/hashes/LICENSE`
 
 ~~~~text
 The MIT License (MIT)
@@ -847,6 +885,36 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ~~~~
 
+### License text 3b458813ab3316b1
+
+SHA-256: `3b458813ab3316b16bf004c4201d4a0583cf615514422dabf4d7c025988d613d`
+
+Source files: `node_modules/@adraffy/ens-normalize/LICENSE`
+
+~~~~text
+MIT License
+
+Copyright (c) 2021 Andrew Raffensperger
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+~~~~
+
 ### License text 3d5d1b1150b1fc25
 
 SHA-256: `3d5d1b1150b1fc25144d342daaba3875899b8dc2fcb172ea4810cc69affbe4d3`
@@ -887,6 +955,36 @@ Source files: `mcp-oauth/node_modules/@peculiar/asn1-android/LICENSE`, `mcp-oaut
 MIT License
 
 Copyright (c) 2020
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+~~~~
+
+### License text 44eea86637405118
+
+SHA-256: `44eea86637405118248327fbe9d9fa95d04c7a57221c7e8c155f736db9f1b612`
+
+Source files: `node_modules/ethers/LICENSE.md`
+
+~~~~text
+MIT License
+
+Copyright (c) 2016-2025 Richard Moore
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal
@@ -1102,7 +1200,7 @@ THE SOFTWARE.
 
 SHA-256: `5989359645911c04a140c49d89496b13feca980bbf36d2250a12d3b9d06250d6`
 
-Source files: `mcp-oauth/node_modules/tslib/LICENSE.txt`, `mcp-oauth/node_modules/tsyringe/node_modules/tslib/LICENSE.txt`
+Source files: `node_modules/ethers/node_modules/tslib/LICENSE.txt`, `mcp-oauth/node_modules/tslib/LICENSE.txt`, `mcp-oauth/node_modules/tsyringe/node_modules/tslib/LICENSE.txt`
 
 ~~~~text
 Copyright (c) Microsoft Corporation.
@@ -1323,6 +1421,36 @@ Source files: `node_modules/orderedmap/LICENSE`, `node_modules/w3c-keyname/LICEN
 
 ~~~~text
 Copyright (C) 2016 by Marijn Haverbeke <marijn@haverbeke.berlin> and others
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in
+all copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
+THE SOFTWARE.
+~~~~
+
+### License text 8839133ab4230fec
+
+SHA-256: `8839133ab4230fec40eaa71340a0ab40ddb017165c5158b66cd2a21b03b427e8`
+
+Source files: `node_modules/aes-js/LICENSE.txt`
+
+~~~~text
+The MIT License (MIT)
+
+Copyright (c) 2022 Richard Moore
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal
@@ -1771,6 +1899,36 @@ Source files: `node_modules/pdfjs-dist/wasm/LICENSE_OPENJPEG`
  */
 ~~~~
 
+### License text a6db8096b2707bc0
+
+SHA-256: `a6db8096b2707bc0102d256917d4d33f298ba36d8c3f25de067a2b5bb379db27`
+
+Source files: `node_modules/undici-types/LICENSE`
+
+~~~~text
+MIT License
+
+Copyright (c) Matteo Collina and Undici contributors
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+~~~~
+
 ### License text a92e52eb1fa7cd74
 
 SHA-256: `a92e52eb1fa7cd746e3827bf01d3a3589bbc8e1e51348b1da042aad165525ad1`
@@ -1990,6 +2148,36 @@ NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPO
 NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES
 OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
 CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+~~~~
+
+### License text c2cfccb812fe4821
+
+SHA-256: `c2cfccb812fe482101a8f04597dfc5a9991a6b2748266c47ac91b6a5aae15383`
+
+Source files: `node_modules/@types/node/LICENSE`
+
+~~~~text
+    MIT License
+
+    Copyright (c) Microsoft Corporation.
+
+    Permission is hereby granted, free of charge, to any person obtaining a copy
+    of this software and associated documentation files (the "Software"), to deal
+    in the Software without restriction, including without limitation the rights
+    to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+    copies of the Software, and to permit persons to whom the Software is
+    furnished to do so, subject to the following conditions:
+
+    The above copyright notice and this permission notice shall be included in all
+    copies or substantial portions of the Software.
+
+    THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+    IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+    FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+    AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+    LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+    OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+    SOFTWARE
 ~~~~
 
 ### License text c46324e45a005413

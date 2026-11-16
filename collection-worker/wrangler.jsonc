@@ -1,0 +1,43 @@
+{
+  "name": "easybook-collections",
+  "main": "index.mjs",
+  "compatibility_date": "2026-11-16",
+  "compatibility_flags": [
+    "nodejs_compat"
+  ],
+  "keep_vars": true,
+  "observability": {
+    "enabled": true,
+    "traces": {
+      "enabled": true
+    }
+  },
+  "triggers": {
+    "crons": [
+      "*/2 * * * *"
+    ]
+  },
+  "vars": {
+    "COLLECTION_ENABLED": "false",
+    "COLLECTION_TREASURY": "0x08c8fbc8d980b683ca13362bE1687440FCDa2DB6",
+    "COLLECTION_GAS_INDEX": "0",
+    "COLLECTION_MIN_UNITS": "20000000",
+    "COLLECTION_TIMED_MIN_UNITS": "1",
+    "COLLECTION_MAX_AGE_MS": "604800000",
+    "COLLECTION_MAX_FEE_BPS": "200",
+    "COLLECTION_DAILY_BUDGET_UNITS": "5000000",
+    "MEMBERSHIP_NETWORKS": "[{\"chainId\":43114,\"verified\":true,\"decimals\":6,\"finality\":\"finalized\",\"token\":\"0x9702230a8ea53601f5cd2dc00fdbc13d4df4a8c7\",\"rpc\":\"https://api.avax.network/ext/bc/C/rpc\",\"fallbackRPCs\":[\"https://avalanche-c-chain-rpc.publicnode.com\"]},{\"chainId\":9745,\"verified\":true,\"decimals\":6,\"finality\":\"finalized\",\"token\":\"0xB8CE59FC3717ada4C02eaDF9682A9e934F625ebb\",\"rpc\":\"https://rpc.plasma.to\"},{\"chainId\":137,\"verified\":true,\"decimals\":6,\"finality\":\"finalized\",\"token\":\"0xc2132D05D31c914a87C6611C10748AEb04B58e8F\",\"rpc\":\"https://polygon-bor-rpc.publicnode.com\",\"fallbackRPCs\":[\"https://polygon.gateway.tenderly.co\",\"https://polygon.drpc.org\"]},{\"chainId\":42161,\"verified\":true,\"decimals\":6,\"finality\":\"finalized\",\"token\":\"0xFd086bC7CD5C481DCC9C85ebE478A1C0b69FCbb9\",\"rpc\":\"https://arbitrum.gateway.tenderly.co\",\"fallbackRPCs\":[\"https://arb1.arbitrum.io/rpc\",\"https://arbitrum-one-rpc.publicnode.com\"]}]"
+  },
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "easybook-data",
+      "database_id": "af430aed-01b5-41ca-9653-31212bed3f9f"
+    },
+    {
+      "binding": "SECURITY_DB",
+      "database_name": "easybook-security",
+      "database_id": "d1761c2d-6372-489c-ae5e-114f3d5baa80"
+    }
+  ]
+}
