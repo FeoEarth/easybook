@@ -87,6 +87,9 @@ add({name:'qrcode-generator (vendored)',version:'source-'+qrSourceHash.slice(0,1
   note:`ESM adaptation used by QR sign-in. The retained upstream source does not state a release version; the version column is a source fingerprint. Source: ${qrSource}; SHA-256: ${qrSourceHash}. See mcp-oauth/src/vendor/NOTICE.md.`});
 const oauthVendorCount=records.filter(record=>record.scope==='OAuth Worker').length-oauthNpmCount;
 
+const membershipIconHash=hash(read('worker/vendor/network-icons.mjs'));
+add({name:'web3icons network artwork',version:'source-'+membershipIconHash.slice(0,12),scope:'Web membership checkout',spdx:'MIT',holder:'Copyright (c) 2024 0xa3k5',source:'worker/vendor/network-icons.NOTICE.md',files:['worker/vendor/network-icons.LICENSE'],note:'Local SVG network symbols for Avalanche, Plasma, Polygon and Arbitrum One. Upstream: https://github.com/0xa3k5/web3icons'});
+
 const androidManifest=JSON.parse(read('third_party/android/runtime-dependencies.json'));
 if(androidManifest.generated_from!=='Gradle :app:releaseRuntimeClasspath'||!androidManifest.modules?.length)
   throw Error('Missing resolved Android runtime license manifest.');

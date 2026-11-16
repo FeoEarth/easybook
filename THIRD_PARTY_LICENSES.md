@@ -6,7 +6,7 @@ This inventory covers the locked production npm graphs for the Web editor/PDF bu
 
 **Coverage boundary:** development/test and platform-specific optional npm packages are excluded; esbuild is listed but marked build-only. The Android `releaseRuntimeClasspath` is resolved by Gradle, but final APK byte-for-byte contents are not yet audited. Proprietary Google Play Services modules are **not open-source**: their Maven POMs point to the Android SDK License terms, which are linked rather than reproduced as an open-source license text. The Liberation font uses its own GPL-2.0-based agreement with exceptions, identified with a local `LicenseRef` rather than inaccurately described as Apache-2.0.
 
-Entries: 185 (89 npm main, 27 npm OAuth, 1 vendored OAuth component, 9 embedded PDF resources, 58 resolved Android runtime modules, one native glass port).
+Entries: 186 (89 npm main, 27 npm OAuth, 1 vendored OAuth component, 9 embedded PDF resources, 58 resolved Android runtime modules, one native glass port).
 
 ## Audit inputs / 审计输入
 
@@ -206,6 +206,7 @@ Entries: 185 (89 npm main, 27 npm OAuth, 1 vendored OAuth component, 9 embedded 
 | y18n | 4.0.3 | Web editor / PDF build | `ISC` | Copyright (c) 2015, Contributors | [2034cce3b6](#license-text-2034cce3b6fafcdd) |
 | yargs | 15.4.1 | Web editor / PDF build | `MIT` | Copyright 2010 James Halliday (mail@substack.net); Modified work Copyright 2014 Contributors (ben@npmjs.com) | [2f1a503bfa](#license-text-2f1a503bfab84b3b) |
 | yargs-parser | 18.1.3 | Web editor / PDF build | `ISC` | Copyright (c) 2016, Contributors | [365496ca1f](#license-text-365496ca1f56da40) |
+| web3icons network artwork | source-2089e55bec0a | Web membership checkout | `MIT` | Copyright (c) 2024 0xa3k5 | [2706cb41be](#license-text-2706cb41beb31748) |
 
 ## Source paths and exceptions
 
@@ -225,6 +226,7 @@ Entries: 185 (89 npm main, 27 npm OAuth, 1 vendored OAuth component, 9 embedded 
 - **com.google.guava:listenablefuture@1.0**: Google Guava listenablefuture 1.0 empty compatibility artifact; POM omits license metadata. Apache-2.0 per upstream Guava.
 - **qrcode-generator (vendored)@source-ea91d7118a53**: ESM adaptation used by QR sign-in. The retained upstream source does not state a release version; the version column is a source fingerprint. Source: mcp-oauth/src/vendor/qrcode-generator.mjs; SHA-256: ea91d7118a5395289170da848b7c6758b996163bfbccf312591ab65a4911b7c0. See mcp-oauth/src/vendor/NOTICE.md.
 - **esbuild@0.28.2**: Build tool; not embedded in the application runtime.
+- **web3icons network artwork@source-2089e55bec0a**: Local SVG network symbols for Avalanche, Plasma, Polygon and Arbitrum One. Upstream: https://github.com/0xa3k5/web3icons
 
 Source coordinates for each npm package are pinned by `package-lock.json` and `mcp-oauth/package-lock.json`; Android coordinates and license statements come from the exact Gradle release runtime graph and each artifact’s published Maven POM. PDF.js embedded resource names correspond exactly to the directories copied by `scripts/prepare-pdf.mjs`. The upstream open-source license in each section below is reproduced verbatim apart from normalizing line endings and a final newline.
 
@@ -617,6 +619,36 @@ INDIRECT, OR CONSEQUENTIAL DAMAGES OR ANY DAMAGES WHATSOEVER RESULTING FROM LOSS
 OF USE, DATA OR PROFITS, WHETHER IN AN ACTION OF CONTRACT, NEGLIGENCE OR OTHER
 TORTIOUS ACTION, ARISING OUT OF OR IN CONNECTION WITH THE USE OR PERFORMANCE OF
 THIS SOFTWARE.
+~~~~
+
+### License text 2706cb41beb31748
+
+SHA-256: `2706cb41beb3174844a45c860ebb7dff5ccb1088357cfd30dcb2937075a663e7`
+
+Source files: `worker/vendor/network-icons.LICENSE`
+
+~~~~text
+MIT License
+
+Copyright (c) 2024 0xa3k5
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
 ~~~~
 
 ### License text 27ebda9d51f0a56b
