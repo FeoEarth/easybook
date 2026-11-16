@@ -1,5 +1,5 @@
 // Prices use integer micro-USDT in the ledger; one source for API and quoting.
-export const PRICE_VERSION='membership-duration-1-2-3-5-v1';
+export const PRICE_VERSION='membership-duration-coupons-v2';
 export const plans=[
  {id:'month',name:'月度',months:1,price:'1.00',units:'1000000'},
  {id:'quarter',name:'季度',months:3,price:'2.00',units:'2000000'},

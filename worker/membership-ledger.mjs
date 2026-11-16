@@ -1,3 +1,4 @@
+import {couponDiscount,validPurchasePrice} from './membership-coupons.mjs';
 import {plans,priceUnits,PRICE_VERSION} from './membership-plans.mjs';
 import {hash} from './mcp-common.mjs';
 import {HDKey} from '@scure/bip32';
@@ -18,11 +19,11 @@ export async function ensureWallet(env,accountId){
  await env.DB.batch([env.DB.prepare("INSERT OR IGNORE INTO membership_balances VALUES(?,'0')").bind(accountId),env.DB.prepare('INSERT OR IGNORE INTO membership_account_state(account_id) VALUES(?)').bind(accountId)]);return wallet;
 }
 export async function expirePurchase(env,accountId){await env.DB.prepare("UPDATE membership_purchases SET cancelled_at=?,cancel_reason='expired' WHERE account_id=? AND settled_at IS NULL AND cancelled_at IS NULL AND expires_at<=?").bind(Date.now(),accountId,Date.now()).run()}
-export async function quotePurchase(env,accountId,plan){
+export async function quotePurchase(env,accountId,plan,code=''){
  const now=Date.now(),state=await first(env,'SELECT * FROM membership_account_state WHERE account_id=?',accountId),membership=await first(env,'SELECT * FROM account_memberships WHERE account_id=?',accountId);
  if(membership?.permanent)throw error('already_permanent');
  const list=priceUnits[plan.id];if(!list)throw error('invalid_plan',400);
- return {priceVersion:PRICE_VERSION,kind:membership?.expires_at>now?'renewal':'purchase',list_units:list,credit_units:'0',amount:list,state_version:state?.version||0};
+ const discount=await couponDiscount(env,accountId,plan.id,list,code);return {priceVersion:PRICE_VERSION,kind:membership?.expires_at>now?'renewal':'purchase',list_units:list,credit_units:'0',...discount,amount:String(BigInt(list)-BigInt(discount.discount_units)),state_version:state?.version||0};
 }
 export async function cancelPurchase(env,accountId,id){
  for(let attempt=0;attempt<4;attempt++){
@@ -40,7 +41,7 @@ export async function applyBalance(env,accountId,{explicit=false,orderId}={}){
  for(let attempt=0;attempt<6;attempt++){
  await expirePurchase(env,accountId);
  const order=await first(env,'SELECT * FROM membership_purchases WHERE account_id=? AND settled_at IS NULL AND cancelled_at IS NULL',accountId);if(!order){if(explicit)throw error('order_unavailable');return}if(orderId&&order.id!==orderId)throw error('order_changed');
- const plan=plans.find(p=>p.id===order.plan);if(!plan||order.months!==plan.months||order.amount!==plan.units||order.list_units!==plan.units||order.credit_units!=='0'||!['purchase','renewal'].includes(order.kind)){await env.DB.prepare("UPDATE membership_purchases SET cancelled_at=?,cancel_reason='billing_changed' WHERE id=? AND settled_at IS NULL AND cancelled_at IS NULL").bind(Date.now(),order.id).run();if(explicit)throw error('order_unavailable');return}
+ const plan=plans.find(p=>p.id===order.plan);if(!plan||order.months!==plan.months||!validPurchasePrice(order,plan)||!['purchase','renewal'].includes(order.kind)){await env.DB.prepare("UPDATE membership_purchases SET cancelled_at=?,cancel_reason='billing_changed' WHERE id=? AND settled_at IS NULL AND cancelled_at IS NULL").bind(Date.now(),order.id).run();if(explicit)throw error('order_unavailable');return}
  if(!explicit&&order.payment_method==='unselected')return;
  if(!explicit&&order.payment_method==='chain'&&(await chainFunding(env,order))<BigInt(order.amount))return;
  const state=await first(env,'SELECT * FROM membership_account_state WHERE account_id=?',accountId);if(!state||(!explicit&&state.cancel_version>state.ack_version))return;
@@ -80,4 +81,4 @@ export async function creditTransfer(env,c,log){
  ]);if(live&&!guard)await applyBalance(env,accountId);return}catch(e){if(attempt===5)throw e}
  }
 }
-export async function purchaseView(env,order){if(!order)return order;const b=await first(env,'SELECT units FROM membership_balances WHERE account_id=?',order.account_id),available=BigInt(b?.units||0),due=BigInt(order.amount),funded=order.settled_at?due:order.payment_method==='chain'?await chainFunding(env,order):available;return {...order,price:money(order.list_units),required:money(order.amount),received:money(funded<due?funded:due),remaining:money(funded>=due?0n:due-funded),balance:money(available)}}
+export async function purchaseView(env,order){if(!order)return order;const b=await first(env,'SELECT units FROM membership_balances WHERE account_id=?',order.account_id),available=BigInt(b?.units||0),due=BigInt(order.amount),funded=order.settled_at?due:order.payment_method==='chain'?await chainFunding(env,order):available;return {...order,price:money(order.list_units),discount:money(order.discount_units||'0'),required:money(order.amount),received:money(funded<due?funded:due),remaining:money(funded>=due?0n:due-funded),balance:money(available)}}
