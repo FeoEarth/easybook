@@ -8,7 +8,8 @@ import {secp256k1} from '@noble/curves/secp256k1.js';
 import {keccak_256} from '@noble/hashes/sha3.js';
 export const money=units=>{const n=BigInt(units||0);return (n/1000000n).toString()+'.'+(n%1000000n).toString().padStart(6,'0').replace(/0+$/,'').padEnd(2,'0')};
 export function deriveAddress(xpub,index){const key=HDKey.fromExtendedKey(xpub);if(key.privateKey)throw Error('Public key required');const child=key.deriveChild(index),bytes=secp256k1.Point.fromBytes(child.publicKey).toBytes(false);return '0x'+Array.from(keccak_256(bytes.slice(1)).slice(-20),b=>b.toString(16).padStart(2,'0')).join('')}
-export function addMonths(time,months){const d=new Date(time),day=d.getUTCDate();d.setUTCDate(1);d.setUTCMonth(d.getUTCMonth()+months);const end=new Date(Date.UTC(d.getUTCFullYear(),d.getUTCMonth()+1,0)).getUTCDate();d.setUTCDate(Math.min(day,end));return d.getTime()}
+export {addMonths} from './membership-duration.mjs';
+import {addMonths} from './membership-duration.mjs';
 const error=(code,status=409)=>Object.assign(Error(code),{status});
 const first=(env,q,...p)=>env.DB.prepare(q).bind(...p).first();
 export async function ensureWallet(env,accountId){
