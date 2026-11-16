@@ -1,3 +1,4 @@
+import {estimateMembershipGas} from './membership-gas.mjs';
 import {plans,PRICE_VERSION} from './membership-plans.mjs';
 export {plans} from './membership-plans.mjs';
 import {hash} from './mcp-common.mjs';
@@ -21,6 +22,7 @@ export async function membershipAPI(request,env){let recovery;
  if(path==='/api/membership/plans'&&method==='GET')return reply({priceVersion:PRICE_VERSION,simulation:env.MEMBERSHIP_SIMULATION==='true',plans,networks:configuration(env).filter(c=>c.acceptOrders!==false).map(c=>({chainId:c.chainId,name:c.name,symbol:c.symbol||'USDT',token:c.token}))});
  const p=await membershipPrincipal(request,env,{mutation:method!=='GET'});if(p.kind!=='account')fail('account_required',403);
  const alive=await env.DB.prepare('SELECT id FROM accounts WHERE id=? AND deleted_at IS NULL').bind(p.accountId).first();if(!alive)fail('account_required',401);
+ if(path==='/api/membership/gas'&&method==='GET'){const c=configuration(env).find(c=>c.chainId===Number(url.searchParams.get('chainId')));if(!c)fail('network_unavailable',503);try{return reply(await estimateMembershipGas(c))}catch{return reply({error:'gas_estimate_unavailable'},503)}}
  const wallet=await ensureWallet(env,p.accountId);await expirePurchase(env,p.accountId);
  if(path==='/api/membership'&&method==='GET'){
  const available=await env.DB.prepare('SELECT units FROM membership_balances WHERE account_id=?').bind(p.accountId).first();if(!available||BigInt(available.units)===0n)await warmScanner(env);await applyBalance(env,p.accountId);
