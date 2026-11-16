@@ -1,3 +1,4 @@
+import {topupUnits,topupProgress,chainReceipts} from './membership-deposits.mjs';
 import {estimateMembershipGas} from './membership-gas.mjs';
 import {plans,PRICE_VERSION} from './membership-plans.mjs';
 export {plans} from './membership-plans.mjs';
@@ -29,6 +30,9 @@ export async function membershipAPI(request,env){let recovery;
  const m=await env.DB.prepare('SELECT * FROM account_memberships WHERE account_id=?').bind(p.accountId).first(),b=await env.DB.prepare('SELECT units FROM membership_balances WHERE account_id=?').bind(p.accountId).first(),state=await env.DB.prepare('SELECT * FROM membership_account_state WHERE account_id=?').bind(p.accountId).first();
  return reply({permanent:!!m?.permanent,expiresAt:m?.expires_at||null,active:!!m?.permanent||m?.expires_at>Date.now(),plan:state.plan,balance:money(b.units),address:wallet.address,cancellationGuard:state.cancel_version>state.ack_version,needsAcknowledgement:!!state.needs_ack});
  }
+ if(path==='/api/membership/receipts'&&method==='GET'){const cursor=url.searchParams.get('cursor')||'';if(cursor.length>256)fail('invalid_cursor');return reply(await chainReceipts(env,p.accountId,cursor))}
+ if(path==='/api/membership/topups/status'&&method==='GET'){const after=url.searchParams.get('after')||'';if(!/^[0-9]{1,16}$/.test(after)||!Number.isSafeInteger(Number(after)))fail('invalid_request');return reply(await topupProgress(env,p.accountId,Number(after)))}
+ if(path==='/api/membership/topups'&&method==='POST'){const body=await input(request),units=topupUnits(body.amount),chain=configuration(env).find(c=>c.chainId===body.chainId&&c.acceptOrders!==false);if(!chain)fail('network_unavailable',503);await warmScanner(env,chain.chainId);const cursor=await env.DB.prepare('SELECT updated_at FROM membership_cursors WHERE chain_id=?').bind(chain.chainId).first();if(!cursor||cursor.updated_at<Date.now()-300000)fail('scanner_unavailable',503);const start=await env.DB.prepare('SELECT COALESCE(MAX(rowid),0) cursor FROM membership_balance_events WHERE account_id=?').bind(p.accountId).first();return reply({id:crypto.randomUUID(),kind:'topup',payment_method:'chain',chain_id:chain.chainId,token:chain.token,address:wallet.address,amount:units,required:money(units),fundingCursor:start.cursor,created_at:Date.now(),expires_at:Date.now()+1800000},201)}
  if(path==='/api/membership/quote'&&method==='GET'){const plan=plans.find(v=>v.id===url.searchParams.get('plan'));if(!plan)fail('invalid_plan');const q=await quotePurchase(env,p.accountId,plan);return reply({...q,price:money(q.list_units),required:money(q.amount)})}
  if(path==='/api/membership/orders'&&method==='POST'){
  const body=await input(request);if(body.priceVersion!==PRICE_VERSION)fail('price_changed',409);if(typeof body.idempotency!=='string'||!/^[a-zA-Z0-9-]{16,80}$/.test(body.idempotency))fail('invalid_request');
