@@ -1,3 +1,4 @@
+import {priceUnits,PRICE_VERSION} from './membership-plans.mjs';
 import {hash} from './mcp-common.mjs';
 import {HDKey} from '@scure/bip32';
 import {secp256k1} from '@noble/curves/secp256k1.js';
@@ -26,7 +27,7 @@ export async function quotePurchase(env,accountId,plan){
  const kind=active&&current&&rank>PLAN_RANK[current]?'upgrade':active&&current===plan.id?'renewal':'purchase';let credit=0n;
  if(kind==='upgrade'){const lots=(await env.DB.prepare('SELECT * FROM membership_value_lots WHERE account_id=? AND consumed_at IS NULL AND ends_at>?').bind(accountId,now).all()).results;for(const lot of lots){const remaining=BigInt(Math.max(0,lot.ends_at-Math.max(now,lot.starts_at))),duration=BigInt(lot.ends_at-lot.starts_at);if(duration>0n)credit+=BigInt(lot.units)*remaining/duration}}
  // Excess prepaid value stays as spendable member balance when an upgrade settles.
- const list=10000n;return {kind,list_units:String(list),credit_units:String(credit),amount:String(credit>=list?0n:list-credit),state_version:state?.version||0};
+ const list=BigInt(priceUnits[plan.id]);return {priceVersion:PRICE_VERSION,kind,list_units:String(list),credit_units:String(credit),amount:String(credit>=list?0n:list-credit),state_version:state?.version||0};
 }
 export async function cancelPurchase(env,accountId,id){
  for(let attempt=0;attempt<4;attempt++){

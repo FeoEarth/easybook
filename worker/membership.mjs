@@ -1,3 +1,5 @@
+import {plans,PRICE_VERSION} from './membership-plans.mjs';
+export {plans} from './membership-plans.mjs';
 import {hash} from './mcp-common.mjs';
 import {sessionAllowed} from './security-checkpoint.mjs';
 import {readCookie} from '../mcp-oauth/src/accounts.mjs';
@@ -5,18 +7,18 @@ import {workspacePrincipal} from './workspace-api.mjs';
 import {boundedJSON} from './mcp-common.mjs';
 import {ensureWallet,expirePurchase,quotePurchase,cancelPurchase,applyBalance,purchaseView,money} from './membership-ledger.mjs';
 export {deriveAddress,addMonths} from './membership-ledger.mjs';
-export const plans=[{id:'month',name:'月度',months:1},{id:'half-year',name:'半年',months:6},{id:'year',name:'年度',months:12},{id:'permanent',name:'永久',months:0}].map(p=>({...p,price:'0.01',currency:'USDT'}));
+
 const networks={43114:'Avalanche C-Chain',9745:'Plasma',137:'Polygon PoS',42161:'Arbitrum One'};
 const reply=(v,s=200)=>Response.json(v,{status:s,headers:{'Cache-Control':'no-store'}});
 const fail=(code,status=400,order)=>{throw Object.assign(Error(code),{status,order})};
-export function configuration(env){if(env.MEMBERSHIP_ENABLED!=='true')return [];const values=JSON.parse(env.MEMBERSHIP_NETWORKS||'[]');return values.filter(c=>networks[c.chainId]&&c.verified===true&&/^0x[a-fA-F0-9]{40}$/.test(c.token)&&c.decimals===6&&Number.isSafeInteger(c.startBlock)&&c.startBlock>=0&&c.finality==='finalized'&&new URL(c.rpc).protocol==='https:').map(c=>({...c,fallbackRPCs:c.fallbackRPCs||(c.chainId===42161?['https://arb1.arbitrum.io/rpc','https://arbitrum-one-rpc.publicnode.com','https://1rpc.io/arb','https://arbitrum.drpc.org']:[]),name:networks[c.chainId],amount:'10000'}))}
+export function configuration(env){if(env.MEMBERSHIP_ENABLED!=='true')return [];const values=JSON.parse(env.MEMBERSHIP_NETWORKS||'[]');return values.filter(c=>networks[c.chainId]&&c.verified===true&&/^0x[a-fA-F0-9]{40}$/.test(c.token)&&c.decimals===6&&Number.isSafeInteger(c.startBlock)&&c.startBlock>=0&&c.finality==='finalized'&&new URL(c.rpc).protocol==='https:').map(c=>({...c,fallbackRPCs:c.fallbackRPCs||(c.chainId===42161?['https://arb1.arbitrum.io/rpc','https://arbitrum-one-rpc.publicnode.com','https://1rpc.io/arb','https://arbitrum.drpc.org']:[]),name:networks[c.chainId]}))}
 async function warmScanner(env,chainId){const rows=(await env.DB.prepare('SELECT chain_id,updated_at FROM membership_cursors').all()).results;const stale=configuration(env).filter(c=>!chainId||c.chainId===chainId).some(c=>!rows.some(r=>r.chain_id===c.chainId&&r.updated_at>Date.now()-300000));if(stale&&env.MEMBERSHIP_SCANNER&&env.MEMBERSHIP_JOB_TOKEN){try{await env.MEMBERSHIP_SCANNER.fetch('https://payments.internal/run',{method:'POST',headers:{Authorization:'Bearer '+env.MEMBERSHIP_JOB_TOKEN}})}catch{}}}
 async function input(request){try{const v=await boundedJSON(request,2048);if(!v||Array.isArray(v)||typeof v!=='object')fail('invalid_request');return v}catch{fail('invalid_request')}}
 export async function membershipAPI(request,env){let recovery;
  try{
  const url=new URL(request.url),path=url.pathname,method=request.method;
  if(env.MEMBERSHIP_SIMULATION==='true'&&!['localhost','127.0.0.1','membership.test'].includes(url.hostname))return reply({error:'simulation_local_only'},403);
- if(path==='/api/membership/plans'&&method==='GET')return reply({simulation:env.MEMBERSHIP_SIMULATION==='true',plans,networks:configuration(env).filter(c=>c.acceptOrders!==false).map(c=>({chainId:c.chainId,name:c.name,symbol:c.symbol||'USDT',token:c.token}))});
+ if(path==='/api/membership/plans'&&method==='GET')return reply({priceVersion:PRICE_VERSION,simulation:env.MEMBERSHIP_SIMULATION==='true',plans,networks:configuration(env).filter(c=>c.acceptOrders!==false).map(c=>({chainId:c.chainId,name:c.name,symbol:c.symbol||'USDT',token:c.token}))});
  const p=await membershipPrincipal(request,env,{mutation:method!=='GET'});if(p.kind!=='account')fail('account_required',403);
  const alive=await env.DB.prepare('SELECT id FROM accounts WHERE id=? AND deleted_at IS NULL').bind(p.accountId).first();if(!alive)fail('account_required',401);
  const wallet=await ensureWallet(env,p.accountId);await expirePurchase(env,p.accountId);
@@ -27,7 +29,7 @@ export async function membershipAPI(request,env){let recovery;
  }
  if(path==='/api/membership/quote'&&method==='GET'){const plan=plans.find(v=>v.id===url.searchParams.get('plan'));if(!plan)fail('invalid_plan');const q=await quotePurchase(env,p.accountId,plan);return reply({...q,price:money(q.list_units),upgradeCredit:money(q.credit_units),required:money(q.amount)})}
  if(path==='/api/membership/orders'&&method==='POST'){
- const body=await input(request);if(typeof body.idempotency!=='string'||!/^[a-zA-Z0-9-]{16,80}$/.test(body.idempotency))fail('invalid_request');
+ const body=await input(request);if(body.priceVersion!==PRICE_VERSION)fail('price_changed',409);if(typeof body.idempotency!=='string'||!/^[a-zA-Z0-9-]{16,80}$/.test(body.idempotency))fail('invalid_request');
  recovery={accountId:p.accountId,key:body.idempotency,plan:body.plan};
  const old=await env.DB.prepare('SELECT * FROM membership_purchases WHERE account_id=? AND idempotency=?').bind(p.accountId,body.idempotency).first();if(old){if(old.plan!==body.plan)fail('idempotency_conflict',409);if(body.useBalance===true&&!old.settled_at&&!old.cancelled_at)await applyBalance(env,p.accountId,{explicit:true,orderId:old.id});return reply(await purchaseView(env,await env.DB.prepare('SELECT * FROM membership_purchases WHERE id=?').bind(old.id).first()))}
  const plan=plans.find(v=>v.id===body.plan),chain=configuration(env).find(c=>c.chainId===body.chainId&&(body.useBalance===true||c.acceptOrders!==false));if(!plan||!chain)fail('network_unavailable',503);
