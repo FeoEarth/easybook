@@ -1,3 +1,4 @@
+import {giftClaimStatements} from './membership-gifts.mjs';
 import {bonusPolicy,rewardFromPolicy} from './membership-bonus.mjs';
 import {couponDiscount,validPurchasePrice} from './membership-coupons.mjs';
 import {plans,PRICE_VERSION} from './membership-plans.mjs';
@@ -39,7 +40,7 @@ export async function cancelPurchase(env,accountId,id){
 }
 export async function chainFunds(env,order){const rows=(await env.DB.prepare("SELECT kind,units FROM membership_balance_events WHERE account_id=? AND kind IN ('credit','recharge_bonus') AND rowid>? AND rowid<COALESCE((SELECT rowid FROM membership_balance_events WHERE id=?),9223372036854775807)").bind(order.account_id,order.funding_cursor||0,'purchase:'+order.id).all()).results;let actual=0n,bonus=0n;for(const row of rows){if(row.kind==='credit')actual+=BigInt(row.units);else bonus+=BigInt(row.units)}return {actual,bonus,spendable:actual+bonus}}
 export async function chainFunding(env,order){return (await chainFunds(env,order)).spendable}
-export async function applyBalance(env,accountId,{explicit=false,orderId}={}){
+export async function applyBalance(env,accountId,{explicit=false,orderId,gift}={}){
  for(let attempt=0;attempt<6;attempt++){
  await expirePurchase(env,accountId);
  const order=await first(env,'SELECT * FROM membership_purchases WHERE account_id=? AND settled_at IS NULL AND cancelled_at IS NULL',accountId);if(!order){if(explicit)throw error('order_unavailable');return}if(orderId&&order.id!==orderId)throw error('order_changed');
@@ -47,14 +48,15 @@ export async function applyBalance(env,accountId,{explicit=false,orderId}={}){
  if(!explicit&&order.payment_method==='unselected')return;
  if(!explicit&&order.payment_method==='chain'&&(await chainFunding(env,order))<BigInt(order.amount))return;
  const state=await first(env,'SELECT * FROM membership_account_state WHERE account_id=?',accountId);if(!state||(!explicit&&state.cancel_version>state.ack_version))return;
- const bonus=await first(env,'SELECT units FROM membership_bonus_balances WHERE account_id=?',accountId),balance=await first(env,'SELECT units FROM membership_balances WHERE account_id=?',accountId),member=await first(env,'SELECT * FROM account_memberships WHERE account_id=?',accountId);if(!balance||BigInt(balance.units)<BigInt(order.amount)){if(explicit)throw error('insufficient_balance');return;}
+ const bonus=await first(env,'SELECT units FROM membership_bonus_balances WHERE account_id=?',accountId),balance=await first(env,'SELECT units FROM membership_balances WHERE account_id=?',accountId),member=await first(env,'SELECT * FROM account_memberships WHERE account_id=?',accountId);if(!balance||BigInt(balance.units)+BigInt(gift?.units||'0')<BigInt(order.amount)){if(explicit)throw error('insufficient_balance');return;}
  if(member?.permanent||state.version!==order.state_version){await env.DB.prepare("UPDATE membership_purchases SET cancelled_at=?,cancel_reason='membership_changed' WHERE id=? AND settled_at IS NULL").bind(Date.now(),order.id).run();return}
- const bonusAvailable=BigInt(bonus?.units||'0'),bonusEligible=explicit||order.payment_method!=='chain'?bonusAvailable:(await chainFunds(env,order)).bonus,bonusUsed=[bonusAvailable,bonusEligible,BigInt(order.amount)].reduce((a,b)=>a<b?a:b);
+ const bonusAvailable=BigInt(bonus?.units||'0'),bonusEligible=explicit||order.payment_method!=='chain'?bonusAvailable:(await chainFunds(env,order)).bonus,bonusUsed=[bonusAvailable,bonusEligible,BigInt(order.amount)>BigInt(gift?.units||'0')?BigInt(order.amount)-BigInt(gift?.units||'0'):0n].reduce((a,b)=>a<b?a:b);
  // Every package adds its full duration to the existing expiry, regardless of prior package.
- const now=Date.now(),start=Math.max(now,member?.expires_at||0),expires=addMonths(start,plan.months),next=String(BigInt(balance.units)-BigInt(order.amount)),assertion=crypto.randomUUID();
+ const now=Date.now(),start=Math.max(now,member?.expires_at||0),expires=addMonths(start,plan.months),next=String(BigInt(balance.units)+BigInt(gift?.units||'0')-BigInt(order.amount)),assertion=crypto.randomUUID();
  try{await env.DB.batch([
  env.DB.prepare('INSERT INTO membership_assertions SELECT ?,EXISTS(SELECT 1 FROM membership_balances WHERE account_id=? AND units=?) AND EXISTS(SELECT 1 FROM membership_account_state WHERE account_id=? AND version=? AND cancel_version=? AND ack_version=? AND (?=1 OR cancel_version<=ack_version)) AND EXISTS(SELECT 1 FROM membership_purchases WHERE id=? AND payment_method=? AND funding_cursor=? AND settled_at IS NULL AND cancelled_at IS NULL AND expires_at>?) AND EXISTS(SELECT 1 FROM accounts WHERE id=? AND deleted_at IS NULL)').bind(assertion,accountId,balance.units,accountId,state.version,state.cancel_version,state.ack_version,explicit?1:0,order.id,order.payment_method,order.funding_cursor,now,accountId),
  env.DB.prepare('INSERT INTO membership_assertions SELECT ?,EXISTS(SELECT 1 FROM membership_bonus_balances WHERE account_id=? AND units=?)').bind(assertion+'-bonus',accountId,bonus?.units||'0'),
+ ...(gift?giftClaimStatements(env,gift,accountId,'pay:'+order.id,order.id,now,assertion):[]),
  env.DB.prepare('UPDATE membership_balances SET units=? WHERE account_id=?').bind(next,accountId),
  env.DB.prepare('UPDATE membership_bonus_balances SET units=? WHERE account_id=?').bind(String(bonusAvailable-bonusUsed),accountId),
  env.DB.prepare('DELETE FROM membership_assertions WHERE id=?').bind(assertion+'-bonus'),
@@ -62,9 +64,9 @@ export async function applyBalance(env,accountId,{explicit=false,orderId}={}){
  env.DB.prepare('INSERT INTO account_memberships VALUES(?,?,?) ON CONFLICT(account_id) DO UPDATE SET permanent=excluded.permanent,expires_at=excluded.expires_at').bind(accountId,0,expires),
  env.DB.prepare('UPDATE membership_account_state SET plan=?,version=version+1,ack_version=CASE WHEN ?=1 THEN cancel_version ELSE ack_version END,needs_ack=CASE WHEN ?=1 THEN 0 ELSE needs_ack END WHERE account_id=?').bind(order.plan,explicit?1:0,explicit?1:0,accountId),
  env.DB.prepare('INSERT INTO membership_changes VALUES(?,?,?,?,?)').bind(order.id,accountId,0,expires,now),
- env.DB.prepare("UPDATE membership_purchases SET settled_at=?,payment_method=CASE WHEN ?=1 THEN 'balance' ELSE payment_method END WHERE id=?").bind(now,explicit?1:0,order.id),
+ env.DB.prepare("UPDATE membership_purchases SET settled_at=?,payment_method=CASE WHEN ?=1 THEN ? ELSE payment_method END WHERE id=?").bind(now,explicit?1:0,gift?'gift_card':'balance',order.id),
  env.DB.prepare('DELETE FROM membership_assertions WHERE id=?').bind(assertion)
- ]);return}catch(e){if(attempt===5)throw e}
+ ]);return}catch(e){if(gift){const status=await first(env,'SELECT redeemed_at,redeemed_by,redeem_order,revoked_at FROM membership_gift_cards WHERE id=?',gift.id);if(status?.revoked_at)throw error('gift_unavailable');if(status?.redeemed_at){if(status.redeemed_by===accountId&&status.redeem_order===order.id)return;throw error('gift_already_used')}}if(attempt===5)throw e}
  }
 }
 export async function creditTransfer(env,c,log){

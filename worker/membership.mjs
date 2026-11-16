@@ -1,3 +1,4 @@
+import {listGifts,buyGift,revealGift,redeemGift,giftPreview,readGift,giftRateLimit} from './membership-gifts.mjs';
 import {orderHistory} from './membership-history.mjs';
 import {planCatalog} from './membership-pricing.mjs';
 import {bonusPolicy,rewardFromPolicy,accountBalance} from './membership-bonus.mjs';
@@ -26,6 +27,11 @@ export async function membershipAPI(request,env){let recovery;
  if(path==='/api/membership/plans'&&method==='GET')return reply({...await planCatalog(env),rechargeBonus:await bonusPolicy(env),simulation:env.MEMBERSHIP_SIMULATION==='true',networks:configuration(env).filter(c=>c.acceptOrders!==false).map(c=>({chainId:c.chainId,name:c.name,symbol:c.symbol||'USDT',token:c.token}))});
  const p=await membershipPrincipal(request,env,{mutation:method!=='GET'});if(p.kind!=='account')fail('account_required',403);
  const alive=await env.DB.prepare('SELECT id FROM accounts WHERE id=? AND deleted_at IS NULL').bind(p.accountId).first();if(!alive)fail('account_required',401);
+ if(path==='/api/membership/gift-cards'&&method==='GET')return reply(await listGifts(env,p.accountId));
+ const giftPath=path.match(/^\/api\/membership\/gift-cards\/(buy|preview|redeem|[a-f0-9-]{36}\/reveal)$/);
+ if(giftPath&&method==='POST'){await giftRateLimit(env,p.accountId);const body=await input(request);if(giftPath[1]==='buy')return reply(await buyGift(env,p.accountId,body),201);if(giftPath[1]==='preview')return reply(await giftPreview(env,p.accountId,body));if(giftPath[1]==='redeem')return reply(await redeemGift(env,p.accountId,body));return reply(await revealGift(env,p.accountId,giftPath[1].split('/')[0]))}
+ const giftPay=path.match(/^\/api\/membership\/orders\/([a-f0-9-]{36})\/gift-pay$/);
+ if(giftPay&&method==='POST'){const body=await input(request),current=await env.DB.prepare('SELECT * FROM membership_purchases WHERE id=? AND account_id=?').bind(giftPay[1],p.accountId).first();if(!current)fail('not_found',404);if(body.plan!==current.plan||body.amount!==current.amount)fail('order_changed',409);if(current.settled_at)return reply(await purchaseView(env,current));if(current.cancelled_at||current.expires_at<=Date.now())fail('order_unavailable',409);if(current.amount==='0')fail('gift_not_needed',409);await giftRateLimit(env,p.accountId);const gift=await readGift(env,body.code);try{await applyBalance(env,p.accountId,{explicit:true,orderId:current.id,gift})}catch(e){const paid=await env.DB.prepare('SELECT settled_at FROM membership_purchases WHERE id=? AND account_id=?').bind(current.id,p.accountId).first();if(!paid?.settled_at)throw e}return reply(await purchaseView(env,await env.DB.prepare('SELECT * FROM membership_purchases WHERE id=?').bind(current.id).first()))}
  if(path==='/api/membership/gas'&&method==='GET'){const c=configuration(env).find(c=>c.chainId===Number(url.searchParams.get('chainId')));if(!c)fail('network_unavailable',503);try{return reply(await estimateMembershipGas(c))}catch{return reply({error:'gas_estimate_unavailable'},503)}}
  const wallet=await ensureWallet(env,p.accountId);await expirePurchase(env,p.accountId);
  if(path==='/api/membership'&&method==='GET'){
