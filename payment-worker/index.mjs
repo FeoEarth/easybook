@@ -5,7 +5,7 @@ async function run(env){
  await requireRestoreAccess(env);const owner=crypto.randomUUID(),now=Date.now();
  const lease=await env.DB.prepare('INSERT INTO membership_job_lease VALUES(1,?,?) ON CONFLICT(id) DO UPDATE SET owner=excluded.owner,expires_at=excluded.expires_at WHERE expires_at<? RETURNING id').bind(owner,now+120000,now).first();
  if(!lease)return {running:true};
- try{await scanMembership(env);return {completed:true}}finally{await env.DB.prepare('DELETE FROM membership_job_lease WHERE id=1 AND owner=?').bind(owner).run()}
+ try{await scanMembership(env);return {completed:true}}finally{await env.DB.prepare('UPDATE membership_job_lease SET expires_at=? WHERE id=1 AND owner=?').bind(Date.now()+30000,owner).run()}
 }
 export default {
  async scheduled(controller,env,ctx){ctx.waitUntil(run(env))},

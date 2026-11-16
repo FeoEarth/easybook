@@ -13,7 +13,7 @@ const fail=(code,status=400)=>{throw Object.assign(Error(code),{status})};
 export function configuration(env){
  if(env.MEMBERSHIP_ENABLED!=='true')return [];
  const values=JSON.parse(env.MEMBERSHIP_NETWORKS||'[]');
- return values.filter(c=>networks[c.chainId]&&c.verified===true&&/^0x[a-fA-F0-9]{40}$/.test(c.token)&&Number.isInteger(c.decimals)&&c.decimals>=2&&c.decimals<=18&&Number.isSafeInteger(c.startBlock)&&c.startBlock>=0&&c.finality==='finalized'&&new URL(c.rpc).protocol==='https:').map(c=>({...c,name:networks[c.chainId],amount:(10n**BigInt(c.decimals-2)).toString()}));
+ return values.filter(c=>networks[c.chainId]&&c.verified===true&&/^0x[a-fA-F0-9]{40}$/.test(c.token)&&Number.isInteger(c.decimals)&&c.decimals>=2&&c.decimals<=18&&Number.isSafeInteger(c.startBlock)&&c.startBlock>=0&&c.finality==='finalized'&&new URL(c.rpc).protocol==='https:').map(c=>({...c,fallbackRPCs:c.fallbackRPCs||(c.chainId===42161?['https://arb1.arbitrum.io/rpc','https://arbitrum-one-rpc.publicnode.com','https://1rpc.io/arb','https://arbitrum.drpc.org']:[]),name:networks[c.chainId],amount:(10n**BigInt(c.decimals-2)).toString()}));
 }
 export function addMonths(time,months){const d=new Date(time),day=d.getUTCDate();d.setUTCDate(1);d.setUTCMonth(d.getUTCMonth()+months);const end=new Date(Date.UTC(d.getUTCFullYear(),d.getUTCMonth()+1,0)).getUTCDate();d.setUTCDate(Math.min(day,end));return d.getTime()}
 export function deriveAddress(xpub,index){const key=HDKey.fromExtendedKey(xpub);if(key.privateKey)throw Error('Public key required');const child=key.deriveChild(index);const bytes=secp256k1.Point.fromBytes(child.publicKey).toBytes(false);return '0x'+Array.from(keccak_256(bytes.slice(1)).slice(-20),b=>b.toString(16).padStart(2,'0')).join('')}
@@ -23,7 +23,9 @@ export async function membershipAPI(request,env){let recovery;try{
  if(path==='/api/membership/plans'&&method==='GET')return reply({simulation:env.MEMBERSHIP_SIMULATION==='true',plans,networks:configuration(env).filter(c=>c.acceptOrders!==false).map(c=>({chainId:c.chainId,name:c.name,symbol:c.symbol||'USDT',token:c.token}))});
  const p=await membershipPrincipal(request,env,method!=='GET');if(p.kind!=='account')fail('account_required',403);
  const alive=await env.DB.prepare('SELECT id FROM accounts WHERE id=? AND deleted_at IS NULL').bind(p.accountId).first();if(!alive)fail('account_required',401);
- if(path==='/api/membership'&&method==='GET'){const m=await env.DB.prepare('SELECT * FROM account_memberships WHERE account_id=?').bind(p.accountId).first();return reply({permanent:!!m?.permanent,expiresAt:m?.expires_at||null,active:!!m?.permanent||m?.expires_at>Date.now()})}
+ if(path==='/api/membership'&&method==='GET'){
+ if(env.MEMBERSHIP_SCANNER&&env.MEMBERSHIP_JOB_TOKEN){const rows=(await env.DB.prepare('SELECT chain_id,updated_at FROM membership_cursors').all()).results;if(configuration(env).some(c=>!rows.some(r=>r.chain_id===c.chainId&&r.updated_at>Date.now()-300000))){try{await env.MEMBERSHIP_SCANNER.fetch('https://payments.internal/run',{method:'POST',headers:{Authorization:'Bearer '+env.MEMBERSHIP_JOB_TOKEN}})}catch{}}}
+ const m=await env.DB.prepare('SELECT * FROM account_memberships WHERE account_id=?').bind(p.accountId).first();return reply({permanent:!!m?.permanent,expiresAt:m?.expires_at||null,active:!!m?.permanent||m?.expires_at>Date.now()})}
  if(path==='/api/membership/orders'&&method==='POST'){
  let body;try{body=await boundedJSON(request,2048)}catch{fail('invalid_request',400)};if(!body||typeof body.idempotency!=='string'||!/^[a-zA-Z0-9-]{16,80}$/.test(body.idempotency))fail('invalid_request');
  recovery={accountId:p.accountId,key:body.idempotency,plan:body.plan,chainId:body.chainId};

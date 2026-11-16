@@ -1,7 +1,20 @@
 import {configuration,addMonths} from './membership.mjs';
 import {requireRestoreAccess} from './security-checkpoint.mjs';
 const topic='0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef';
-async function rpc(c,method,params,fetcher){const r=await fetcher(c.rpc,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({jsonrpc:'2.0',id:1,method,params}),signal:AbortSignal.timeout(15000)});if(!r.ok)throw Error('RPC unavailable');const v=await r.json();if(v.error||v.result===undefined)throw Error('RPC error');return v.result}
+async function rpc(c,method,params,fetcher){
+ let lastError;
+ for(const url of [c.rpc,...(c.fallbackRPCs||[])]){
+ try{
+ if(url!==c.rpc&&method!=='eth_chainId'){
+ const chain=await rpc({...c,rpc:url,fallbackRPCs:[]},'eth_chainId',[],fetcher);
+ if(Number(BigInt(chain))!==c.chainId)throw Error('Wrong RPC chain');
+ }
+ const r=await fetcher(url,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({jsonrpc:'2.0',id:1,method,params}),signal:AbortSignal.timeout(10000)});
+ if(!r.ok)throw Error('RPC unavailable');const v=await r.json();if(v.error||v.result===undefined)throw Error('RPC error');return v.result;
+ }catch(error){lastError=error}
+ }
+ throw lastError;
+}
 const hex=n=>'0x'+n.toString(16);
 export async function settle(env,c,log){
  if(log.removed||log.address?.toLowerCase()!==c.token.toLowerCase()||log.topics?.[0]!==topic||log.topics.length!==3||!/^0x[0-9a-fA-F]{64}$/.test(log.data))return;
