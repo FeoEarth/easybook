@@ -105,3 +105,11 @@ The delivery step copies the same text into Android's offline assets and the
 Web PDF asset directory. For an Android dependency change, first regenerate the
 resolved Gradle snapshot with `npm run licenses:android`. Vendored source updates
 also require reviewing the corresponding upstream attribution and license file.
+
+## DeepSeek chat-demo
+
+The AI transport uses the upstream SSE decoder and reader from DeepSeek
+chat-demo, revision `5d5dd754ebc1948e977ddb880a9eb5aa25f37b4c`, under MIT.
+Copyright (c) 2026 DeepSeek. See [source and adaptation notes](shared/vendor/chat-demo/NOTICE.md)
+and the [full license](shared/vendor/chat-demo/LICENSE). This notice and the full
+MIT text are retained in the Web and Android distribution.

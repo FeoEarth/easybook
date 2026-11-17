@@ -2,11 +2,11 @@
 
 > **Generated file / 自动生成文件。** Run `npm ci --omit=dev --ignore-scripts` in both the repository root and `mcp-oauth/`, then run `node scripts/generate-third-party-licenses.mjs`. Do not hand-edit this file.
 
-This inventory covers the locked production npm graphs for the Web editor/PDF build and OAuth Worker, the separately vendored OAuth QR encoder, the QWEA0 port, PDF.js embedded font/CMap/decoder assets, and the **resolved Android release runtime dependency graph** (including transitive AAR/JAR artifacts). SPDX entries describe each **third-party component**; Easybook itself remains AGPL-3.0-only. Identical full open-source license texts are printed once and referenced by SHA-256.
+This inventory covers the locked production npm graphs for the Web editor/PDF build and OAuth Worker, the separately vendored OAuth QR encoder and DeepSeek chat-demo SSE transport, the QWEA0 port, PDF.js embedded font/CMap/decoder assets, and the **resolved Android release runtime dependency graph** (including transitive AAR/JAR artifacts). SPDX entries describe each **third-party component**; Easybook itself remains AGPL-3.0-only. Identical full open-source license texts are printed once and referenced by SHA-256.
 
 **Coverage boundary:** development/test and platform-specific optional npm packages are excluded; esbuild is listed but marked build-only. The Android `releaseRuntimeClasspath` is resolved by Gradle, but final APK byte-for-byte contents are not yet audited. Proprietary Google Play Services modules are **not open-source**: their Maven POMs point to the Android SDK License terms, which are linked rather than reproduced as an open-source license text. The Liberation font uses its own GPL-2.0-based agreement with exceptions, identified with a local `LicenseRef` rather than inaccurately described as Apache-2.0.
 
-Entries: 195 (98 npm main, 27 npm OAuth, 1 vendored OAuth component, 9 embedded PDF resources, 58 resolved Android runtime modules, one native glass port).
+Entries: 196 (98 npm main, 27 npm OAuth, 1 vendored OAuth component, one vendored chat transport, 9 embedded PDF resources, 58 resolved Android runtime modules, one native glass port).
 
 ## Audit inputs / 审计输入
 
@@ -117,6 +117,7 @@ Entries: 195 (98 npm main, 27 npm OAuth, 1 vendored OAuth component, 9 embedded 
 | tslib | 1.14.1 | OAuth Worker | `0BSD` | Copyright (c) Microsoft Corporation. | [5989359645](#license-text-5989359645911c04) |
 | tslib | 2.8.1 | OAuth Worker | `0BSD` | Copyright (c) Microsoft Corporation. | [5989359645](#license-text-5989359645911c04) |
 | tsyringe | 4.10.0 | OAuth Worker | `MIT` | Copyright (c) Microsoft Corporation. All rights reserved. | [27ebda9d51](#license-text-27ebda9d51f0a56b) |
+| DeepSeek chat-demo (SSE transport) | 5d5dd754ebc1948e977ddb880a9eb5aa25f37b4c | Web editor / Android AI runtime | `MIT` | Copyright (c) 2026 DeepSeek | [18895f3c65](#license-text-18895f3c654f3444) |
 | @adraffy/ens-normalize | 1.10.1 | Web editor / PDF build | `MIT` | Copyright (c) 2021 Andrew Raffensperger | [3b458813ab](#license-text-3b458813ab3316b1) |
 | @noble/curves | 1.2.0 | Web editor / PDF build | `MIT` | Copyright (c) 2022 Paul Miller (https://paulmillr.com) | [3239e134eb](#license-text-3239e134eb6e6d64) |
 | @noble/curves | 2.4.0 | Web editor / PDF build | `MIT` | Copyright (c) 2022 Paul Miller (https://paulmillr.com) | [3239e134eb](#license-text-3239e134eb6e6d64) |
@@ -234,6 +235,7 @@ Entries: 195 (98 npm main, 27 npm OAuth, 1 vendored OAuth component, 9 embedded 
 - **com.google.android.libraries.identity.googleid:googleid@1.1.0**: Proprietary Google Android SDK terms (not an OSI-approved open-source license).
 - **com.google.guava:listenablefuture@1.0**: Google Guava listenablefuture 1.0 empty compatibility artifact; POM omits license metadata. Apache-2.0 per upstream Guava.
 - **qrcode-generator (vendored)@source-ea91d7118a53**: ESM adaptation used by QR sign-in. The retained upstream source does not state a release version; the version column is a source fingerprint. Source: mcp-oauth/src/vendor/qrcode-generator.mjs; SHA-256: ea91d7118a5395289170da848b7c6758b996163bfbccf312591ab65a4911b7c0. See mcp-oauth/src/vendor/NOTICE.md.
+- **DeepSeek chat-demo (SSE transport)@5d5dd754ebc1948e977ddb880a9eb5aa25f37b4c**: Actual upstream SSE decoder and abort-aware reader, transpiled from src/services/api/sse.ts. https://github.com/deepseek-ai/chat-demo
 - **esbuild@0.28.2**: Build tool; not embedded in the application runtime.
 - **web3icons network artwork@source-2089e55bec0a**: Local SVG network symbols for Avalanche, Plasma, Polygon and Arbitrum One. Upstream: https://github.com/0xa3k5/web3icons
 
@@ -528,6 +530,36 @@ Source files: `node_modules/pngjs/LICENSE`
 ~~~~text
 pngjs2 original work Copyright (c) 2015 Luke Page & Original Contributors
 pngjs derived work Copyright (c) 2012 Kuba Niegowski
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in
+all copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
+THE SOFTWARE.
+~~~~
+
+### License text 18895f3c654f3444
+
+SHA-256: `18895f3c654f34440e66b920a8815e43d38abaa77bd54d8da0e89c4f7fb987e4`
+
+Source files: `shared/vendor/chat-demo/LICENSE`
+
+~~~~text
+MIT License
+
+Copyright (c) 2026 DeepSeek
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal

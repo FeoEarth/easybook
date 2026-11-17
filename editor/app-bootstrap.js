@@ -17,3 +17,6 @@ window.EasybookServerAuth=serverAuth;
 
 import {createVideoPlayer,mediaMime} from './video-player.js';
 window.EasybookVideo={create:createVideoPlayer,mime:mediaMime,pauseAll:()=>document.querySelectorAll('video').forEach(v=>v.pause())};
+
+import * as aiChat from '../shared/ai-chat.mjs';
+window.EasybookAiChat=aiChat;

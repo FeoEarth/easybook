@@ -90,6 +90,11 @@ const oauthVendorCount=records.filter(record=>record.scope==='OAuth Worker').len
 const membershipIconHash=hash(read('worker/vendor/network-icons.mjs'));
 add({name:'web3icons network artwork',version:'source-'+membershipIconHash.slice(0,12),scope:'Web membership checkout',spdx:'MIT',holder:'Copyright (c) 2024 0xa3k5',source:'worker/vendor/network-icons.NOTICE.md',files:['worker/vendor/network-icons.LICENSE'],note:'Local SVG network symbols for Avalanche, Plasma, Polygon and Arbitrum One. Upstream: https://github.com/0xa3k5/web3icons'});
 
+add({name:'DeepSeek chat-demo (SSE transport)',version:'5d5dd754ebc1948e977ddb880a9eb5aa25f37b4c',
+  scope:'Web editor / Android AI runtime',spdx:'MIT',holder:'Copyright (c) 2026 DeepSeek',
+  source:'shared/vendor/chat-demo/NOTICE.md',files:['shared/vendor/chat-demo/LICENSE'],
+  note:'Actual upstream SSE decoder and abort-aware reader, transpiled from src/services/api/sse.ts. https://github.com/deepseek-ai/chat-demo'});
+
 const androidManifest=JSON.parse(read('third_party/android/runtime-dependencies.json'));
 if(androidManifest.generated_from!=='Gradle :app:releaseRuntimeClasspath'||!androidManifest.modules?.length)
   throw Error('Missing resolved Android runtime license manifest.');
@@ -144,11 +149,11 @@ sections.push('# THIRD_PARTY_LICENSES — 第三方生产组件与许可证清�
 sections.push('');
 sections.push('> **Generated file / 自动生成文件。** Run `npm ci --omit=dev --ignore-scripts` in both the repository root and `mcp-oauth/`, then run `node scripts/generate-third-party-licenses.mjs`. Do not hand-edit this file.');
 sections.push('');
-sections.push('This inventory covers the locked production npm graphs for the Web editor/PDF build and OAuth Worker, the separately vendored OAuth QR encoder, the QWEA0 port, PDF.js embedded font/CMap/decoder assets, and the **resolved Android release runtime dependency graph** (including transitive AAR/JAR artifacts). SPDX entries describe each **third-party component**; Easybook itself remains AGPL-3.0-only. Identical full open-source license texts are printed once and referenced by SHA-256.');
+sections.push('This inventory covers the locked production npm graphs for the Web editor/PDF build and OAuth Worker, the separately vendored OAuth QR encoder and DeepSeek chat-demo SSE transport, the QWEA0 port, PDF.js embedded font/CMap/decoder assets, and the **resolved Android release runtime dependency graph** (including transitive AAR/JAR artifacts). SPDX entries describe each **third-party component**; Easybook itself remains AGPL-3.0-only. Identical full open-source license texts are printed once and referenced by SHA-256.');
 sections.push('');
 sections.push('**Coverage boundary:** development/test and platform-specific optional npm packages are excluded; esbuild is listed but marked build-only. The Android `releaseRuntimeClasspath` is resolved by Gradle, but final APK byte-for-byte contents are not yet audited. Proprietary Google Play Services modules are **not open-source**: their Maven POMs point to the Android SDK License terms, which are linked rather than reproduced as an open-source license text. The Liberation font uses its own GPL-2.0-based agreement with exceptions, identified with a local `LicenseRef` rather than inaccurately described as Apache-2.0.');
 sections.push('');
-sections.push(`Entries: ${records.length} (${records.filter(x=>x.scope==='Web editor / PDF build').length} npm main, ${oauthNpmCount} npm OAuth, ${oauthVendorCount} vendored OAuth component, ${records.filter(x=>x.scope==='Android APK / Web PDF assets').length} embedded PDF resources, ${android.length} resolved Android runtime modules, one native glass port).`);
+sections.push(`Entries: ${records.length} (${records.filter(x=>x.scope==='Web editor / PDF build').length} npm main, ${oauthNpmCount} npm OAuth, ${oauthVendorCount} vendored OAuth component, one vendored chat transport, ${records.filter(x=>x.scope==='Android APK / Web PDF assets').length} embedded PDF resources, ${android.length} resolved Android runtime modules, one native glass port).`);
 sections.push('');
 sections.push('## Audit inputs / 审计输入');
 sections.push('');
