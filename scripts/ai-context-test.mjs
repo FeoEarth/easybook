@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import {buildChatContext,recoverChatSession,createChatRun,ServerSentEventDecoder,readServerSentEvents} from '../shared/ai-chat.mjs';
+import {normalizeChatTitle,chatTitleMessages,buildChatContext,recoverChatSession,createChatRun,ServerSentEventDecoder,readServerSentEvents} from '../shared/ai-chat.mjs';
 const history=[{role:'user',content:'请用中文，创建三篇笔记，保留引用。'}];
 for(let i=0;i<50;i++){
  history.push({role:'assistant',content:'已完成创建 '+i,receipt:{tool:'notes_create',result:{id:'note-'+i}},apiContent:'已执行 notes_create，结果 id=note-'+i});
@@ -37,3 +37,9 @@ let cancelled=false;
 const openStream=new ReadableStream({start(c){c.enqueue(new TextEncoder().encode('data: first\n\n'))},cancel(){cancelled=true}});
 for await(const event of readServerSentEvents(openStream)){assert.equal(event.data,'first');break}assert.ok(cancelled,'Early exit cancels the reader');
 console.log('Chat context, interrupted recovery, run ownership and upstream SSE fragmentation/cancellation OK');
+
+assert.equal(normalizeChatTitle('标题：“项目计划”'),'项目计划');
+assert.equal(normalizeChatTitle('<tool_call>'), '');
+assert.equal(normalizeChatTitle('```json\n{}\n```'), '');
+assert.equal(Array.from(normalizeChatTitle('标题'.repeat(100))).length,40);
+assert.ok(chatTitleMessages([{role:'user',content:'u'.repeat(4000)},{role:'assistant',content:'a'.repeat(4000)}]).every(m=>m.content.length<=2000));

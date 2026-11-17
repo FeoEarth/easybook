@@ -566,12 +566,27 @@ body[data-page=ai-hub] .app{max-width:none;height:var(--viewport-height,100dvh);
 .ai-tool-activity{margin:0 0 14px;border:1px solid var(--border);border-radius:12px;font-size:12px;line-height:1.6;overflow:hidden;background:transparent}.ai-tool-activity summary{display:flex;gap:8px;align-items:center;padding:9px 12px;cursor:pointer;list-style:none;color:var(--muted)}.ai-tool-activity summary:after{content:'⌄';margin-left:auto}.ai-tool-activity summary::-webkit-details-marker{display:none}.ai-tool-steps{padding:0 12px 10px}.ai-tool-step{display:flex;align-items:center;gap:8px;min-height:28px;color:var(--muted)}.ai-tool-step strong{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--ink);font-weight:400}.ai-tool-step small{margin:0!important;font-size:11px}.ai-tool-indicator{display:grid;place-items:center;width:12px;height:12px;flex:none}.ai-tool-step[data-status=running] .ai-tool-indicator{border:1.5px solid var(--chat-brand);border-right-color:transparent;border-radius:50%;animation:ai-tool-spin .8s linear infinite}.ai-tool-step[data-status=done] .ai-tool-indicator{color:var(--green)}.ai-tool-step[data-status=failed] .ai-tool-indicator{color:var(--danger)}
 .ai-thinking{display:inline-flex;align-items:center;gap:5px;min-height:28px;color:var(--muted);font-size:13px}.ai-thinking:before{content:'';width:7px;height:7px;border-radius:50%;background:var(--chat-brand);animation:ai-thinking-pulse .8s ease-in-out infinite alternate}
 @keyframes ai-tool-spin{to{transform:rotate(360deg)}}@keyframes ai-thinking-pulse{to{opacity:.2}}
-.ai-session-dialog{box-sizing:border-box;position:fixed;inset:0 auto 0 0;width:min(320px,86vw);height:var(--viewport-height,100dvh);max-height:none;margin:0;padding:0;border:0;border-radius:0;background:var(--paper);color:var(--ink);box-shadow:16px 0 42px #0002}.ai-session-dialog[open]{display:grid;grid-template-rows:auto minmax(0,1fr) auto}.ai-session-dialog:not([open]){display:none}.ai-session-dialog::backdrop{background:#0006}
-.ai-session-nav{display:flex;align-items:center;gap:6px;padding:max(16px,env(safe-area-inset-top)) 16px 12px}.ai-session-nav h2{flex:1;margin:0;font-size:19px;letter-spacing:-.4px}.ai-session-nav button{width:36px;height:36px;min-width:36px;min-height:36px;padding:7px;border-radius:9px}.ai-session-nav svg,.ai-session-search svg,.ai-session-create svg,.ai-session-footer svg{width:19px;height:19px}.ai-session-search{display:flex;align-items:center;gap:8px;margin:0 12px 12px;padding:0 10px;min-height:40px;border:1px solid var(--border);border-radius:10px;color:var(--muted)}.ai-session-search input{min-width:0;width:100%;border:0;outline:0;background:transparent;font-size:13px;color:var(--ink)}
-.ai-session-content{min-height:0;padding:0 10px 12px;overflow:auto;overscroll-behavior:contain}.ai-session-create,.ai-session-footer button{display:flex;align-items:center;gap:10px;width:100%;min-height:40px;padding:8px 12px;border-radius:10px;text-align:left;font-size:13px}.ai-session-create{background:var(--chat-tint);color:var(--chat-brand);margin-bottom:14px}.ai-session-group{margin:22px 12px 8px;font-size:11px;font-weight:500;color:var(--muted)}.ai-session-list{background:transparent}.ai-session-row{display:flex;align-items:center;gap:3px;min-height:42px;padding:0 6px;border-radius:9px}.ai-session-row:hover,.ai-session-row[aria-current=true]{background:var(--control-fill)}.ai-session-open{flex:1;min-width:0;text-align:left;padding:8px 6px;min-height:42px}.ai-session-open strong{display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:13px;font-weight:400}.ai-session-more{flex:none;width:30px;height:32px;min-width:30px;min-height:32px;padding:0;color:var(--muted);font-size:20px}.ai-session-actions{display:flex;gap:6px;padding:6px}.ai-session-actions button{min-height:32px;padding:6px 10px;border-radius:7px;background:var(--control-fill);font-size:12px}.ai-session-footer{border-top:1px solid var(--border);padding:10px 12px max(12px,env(safe-area-inset-bottom))}
+/* Native history surface. The same hierarchy serves the desktop rail and mobile sheet. */
+.ai-hub-sidebar,.ai-session-dialog{--history-bg:color-mix(in srgb,var(--paper) 35%,var(--bg));--history-active:var(--paper);--history-accent:#5575e7;background:var(--history-bg);color:var(--ink)}
+:root[data-theme=dark] :is(.ai-hub-sidebar,.ai-session-dialog){--history-bg:#242426;--history-active:#303033;--history-accent:#859aff}
+@media(prefers-color-scheme:dark){:root:not([data-theme=light]) :is(.ai-hub-sidebar,.ai-session-dialog){--history-bg:#242426;--history-active:#303033;--history-accent:#859aff}}
+.ai-session-dialog{box-sizing:border-box;position:fixed;inset:calc(var(--visual-viewport-top,0px) + 8px) auto auto 8px;width:min(330px,calc(100vw - 32px));height:calc(var(--viewport-height,100dvh) - 16px);max-height:calc(var(--viewport-height,100dvh) - 16px);margin:0;padding:0;border:1px solid color-mix(in srgb,var(--ink) 4%,transparent);border-radius:25px;box-shadow:8px 0 40px #00000014;overflow:hidden}.ai-session-dialog[open]{display:grid;grid-template-rows:auto minmax(0,1fr) auto}.ai-session-dialog:not([open]){display:none}.ai-session-dialog::backdrop{background:#0003;backdrop-filter:blur(4px)}
+.ai-history-toolbar{display:flex;align-items:center;justify-content:space-between;gap:8px;min-height:78px;box-sizing:border-box;padding:max(20px,env(safe-area-inset-top)) 16px 12px 22px}.ai-history-heading{flex:1;margin:0;min-width:0;font-size:23px;line-height:30px;font-weight:650;letter-spacing:-.5px}
+.ai-history-toolbar>button{position:relative;display:grid;place-items:center;flex:none;width:40px;height:40px;min-width:40px;min-height:40px;padding:10px;border-radius:50%;background:transparent;color:var(--muted)}.ai-history-toolbar>button:before{content:'';position:absolute;inset:4px;border-radius:50%;background:var(--control-fill)}.ai-history-toolbar>button:hover:before{background:color-mix(in srgb,var(--ink) 12%,transparent)}.ai-history-toolbar>button svg{position:relative;z-index:1}
+.ai-history-toolbar svg,.ai-session-search svg,.ai-session-footer svg{flex:none;width:18px;height:18px;fill:none;stroke:currentColor;stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round}
+.ai-session-search{display:flex;align-items:center;gap:8px;box-sizing:border-box;min-height:40px;margin:0 20px 18px;padding:0 11px;border:0;border-radius:12px;background:var(--control-fill);color:var(--muted)}.ai-session-search input{min-width:0;width:100%;border:0;outline:0;background:transparent;font-size:14px;color:var(--ink)}.ai-session-search:focus-within{box-shadow:inset 0 0 0 1px color-mix(in srgb,var(--history-accent) 35%,transparent)}.ai-session-search input:focus-visible{outline:0}
+.ai-session-content{min-height:0;padding:0 10px 12px;overflow:auto;overscroll-behavior:contain;scrollbar-width:thin}.ai-session-list{background:transparent;scrollbar-width:thin}.ai-session-group{margin:4px 12px 10px;color:var(--muted);font-size:11px;line-height:18px;font-weight:500}
+.ai-session-row{position:relative;display:flex;align-items:center;gap:10px;min-height:60px;box-sizing:border-box;padding:0 6px 0 12px;margin:2px 0;border:1px solid transparent;border-radius:15px}.ai-session-row:hover{background:color-mix(in srgb,var(--paper) 45%,transparent)}.ai-session-row[aria-current=true]{background:var(--history-active);border-color:color-mix(in srgb,var(--ink) 3%,transparent);box-shadow:0 1px 3px #00000004}
+.ai-session-icon{flex:none;width:19px;height:19px;fill:none;stroke:var(--muted);stroke-width:1.5;stroke-linecap:round;stroke-linejoin:round}.ai-session-row[aria-current=true] .ai-session-icon{stroke:var(--history-accent)}
+.ai-session-open{flex:1;min-width:0;min-height:58px;padding:10px 0;text-align:left}.ai-session-open strong{display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:14px;line-height:22px;font-weight:500}.ai-session-preview{display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:12px;line-height:19px;font-weight:400;color:var(--muted)}
+.ai-session-more{display:grid;place-items:center;flex:none;width:32px;height:38px;min-width:32px;min-height:38px;padding:0;border-radius:10px;background:transparent;color:var(--muted);font-size:20px;opacity:0}.ai-session-row:hover .ai-session-more,.ai-session-row[aria-current=true] .ai-session-more,.ai-session-row:focus-within .ai-session-more,.ai-session-more[aria-expanded=true]{opacity:1}.ai-session-more:hover{background:var(--control-fill);color:var(--ink)}
+.ai-session-actions{display:flex;justify-content:flex-end;gap:4px;padding:2px 5px 8px}.ai-session-actions button{min-height:36px;padding:6px 11px;border-radius:10px;background:var(--paper);font-size:12px}.ai-session-actions [data-ai-delete]{color:var(--danger)}
+.ai-session-empty{padding:28px 16px;text-align:center;color:var(--muted);font-size:13px;line-height:1.8}.ai-session-footer{padding:10px 18px max(14px,env(safe-area-inset-bottom));border:0}.ai-session-footer button{display:flex;align-items:center;gap:10px;width:100%;min-height:40px;padding:9px 6px;border-radius:10px;text-align:left;font-size:13px;color:var(--muted)}.ai-session-footer button:hover{background:var(--control-fill);color:var(--ink)}
+@media(max-width:999px){.ai-session-more{width:36px;min-width:36px;height:44px;min-height:44px}.ai-session-search input{font-size:16px}.ai-session-open strong{font-size:15px}}
 .ai-hub-attachments{display:flex;gap:8px;overflow:auto;max-width:100%;padding:0 4px 10px;scrollbar-width:thin}.ai-hub-attachment{display:flex;align-items:center;gap:8px;flex:none;max-width:220px;padding:9px 10px;border:1px solid var(--border);border-radius:11px;background:var(--paper);font-size:12px}.ai-hub-attachment span{overflow:hidden;white-space:nowrap;text-overflow:ellipsis}.ai-hub-attachment button{display:grid;place-items:center;width:22px;height:22px;min-width:22px;min-height:22px;padding:0;border-radius:50%;background:var(--control-fill)}.ai-hub-voice[aria-pressed=true]{color:var(--chat-brand)!important;background:var(--chat-tint)!important}
 body.keyboard .ai-hub-welcome{display:none}body.keyboard .ai-hub-composer{padding-bottom:5px}
-@media(min-width:1000px){.ai-hub{grid-template-columns:248px minmax(0,1fr)}.ai-hub>*{grid-column:2}.ai-hub-sidebar{display:flex;flex-direction:column;grid-column:1;grid-row:1/-1;min-height:0;padding:24px 12px 16px;background:var(--bg);border-right:1px solid var(--border)}.ai-sidebar-brand{padding:0 12px 24px;font-weight:650;font-size:18px}.ai-hub-sidebar .ai-session-list{flex:1;min-height:0;overflow:auto}.ai-hub-sidebar>.ai-session-footer{padding:10px 0 0}.ai-hub-nav{padding-inline:28px}.ai-hub-welcome{padding-bottom:80px}}
+@media(min-width:1000px){.ai-hub{grid-template-columns:280px minmax(0,1fr)}.ai-hub>*{grid-column:2}.ai-hub-sidebar{display:flex;flex-direction:column;grid-column:1;grid-row:1/-1;min-height:0;padding:0;border-right:1px solid var(--border)}.ai-hub-sidebar .ai-session-list{flex:1;min-height:0;overflow:auto;padding:0 10px 16px}.ai-hub-nav{padding-inline:28px}.ai-hub-welcome{padding-bottom:80px}.ai-hub[data-sidebar=collapsed]{grid-template-columns:minmax(0,1fr)}.ai-hub[data-sidebar=collapsed]>*{grid-column:1}.ai-hub[data-sidebar=collapsed]>.ai-hub-sidebar{display:none}}
+
 @media(max-width:600px){.ai-hub-nav{padding-inline:12px;min-height:58px}.ai-hub-header{padding-bottom:4px}.ai-hub>.ai-messages{padding:20px 18px 28px;gap:24px}.ai-hub-welcome{padding-bottom:30px}.ai-hub-welcome h2{font-size:25px}.ai-hub-welcome>p{font-size:13px}.ai-hub-composer{padding-inline:12px}.ai-hub-composer .ai-compose{border-radius:28px}.ai-hub-modes button{padding-inline:8px}.ai-compose-footnote{gap:6px}.ai-hub .ai-message{font-size:15px}.ai-hub .ai-message.user{max-width:90%}}
 @media(max-width:370px){.ai-hub-composer .ai-compose{gap:3px;padding-right:6px}.ai-hub-composer .ai-hub-attach,.ai-hub-composer .ai-hub-voice{width:34px;min-width:34px;padding:7px}}
 @media(prefers-reduced-motion:reduce){.ai-tool-indicator,.ai-thinking:before{animation:none!important}}
@@ -610,7 +625,7 @@ body.keyboard .ai-hub-welcome{display:none}body.keyboard .ai-hub-composer{paddin
 <section class="view" id="home"><h1 id="heading" tabindex="-1">备忘录</h1><button id="workspaceHome" class="workspace-home-chip" type="button" aria-haspopup="dialog" aria-controls="workspaceSwitchDialog" aria-expanded="false" hidden><svg aria-hidden="true"><use href="#i-folder"/></svg><span id="workspaceHomeName" translate="no">我的工作区</span><svg class="workspace-chevron" aria-hidden="true"><use href="#i-chevron"/></svg></button><div class="list-summary"><span id="allCount"></span><span id="syncStatus" class="status-text" role="status">已保存在本机</span></div><div id="searchOptions" class="search-options" hidden><button id="scopeCurrent" aria-pressed="true">当前分类</button><button id="scopeAll" aria-pressed="false">全部笔记</button></div><div class="notes" id="cards"></div></section>
 <section class="view" id="folders" hidden><div class="tablet-folder-toolbar"><h1 id="foldersTitle" tabindex="-1">文件夹</h1><button id="tabletNewFolder" type="button" aria-label="新建文件夹" title="新建文件夹"><svg><use href="#i-folder-add"/></svg></button></div><button id="workspaceQuick" class="workspace-quick-row" type="button" aria-haspopup="dialog" aria-controls="workspaceSwitchDialog" aria-expanded="false" hidden><span class="workspace-quick-symbol" aria-hidden="true"><svg><use href="#i-folder"/></svg></span><span class="workspace-quick-copy"><strong id="workspaceQuickName" translate="no">我的工作区</strong><small id="workspaceQuickDetail">切换或管理工作区</small></span><svg class="workspace-chevron" aria-hidden="true"><use href="#i-chevron"/></svg></button><h2 class="account-heading">Easybook</h2><div class="folder-group"><button class="folder-row" data-tab="all"><svg><use href="#i-note"/></svg><span>全部备忘录</span><span class="folder-count" id="folderAllCount"></span><svg class="chevron"><use href="#i-chevron"/></svg></button><button class="folder-row" data-tab="favorite"><svg><use href="#i-star"/></svg><span>收藏</span><span class="folder-count" id="folderFavCount"></span><svg class="chevron"><use href="#i-chevron"/></svg></button><button class="folder-row" id="aiHubEntry"><svg><use href="#i-spark"/></svg><span>AI 助手</span><span class="folder-count">会话</span><svg class="chevron"><use href="#i-chevron"/></svg></button><button class="folder-row" data-tab="trash"><svg><use href="#i-trash"/></svg><span>最近删除</span><span class="folder-count" id="folderTrashCount"></span><svg class="chevron"><use href="#i-chevron"/></svg></button></div><h2 class="account-heading">我的文件夹</h2><div class="folder-group" id="customFolders"></div></section>
 <section class="view ai-hub" id="aiHub" hidden>
-<aside class="ai-hub-sidebar" aria-label="会话历史"><div class="ai-sidebar-brand">会话</div><button type="button" class="ai-session-create" id="aiSidebarNew"><svg><use href="#i-plus"/></svg>新建会话</button><div id="aiSidebarList" class="ai-session-list"></div><div class="ai-session-footer"><button type="button" id="aiSidebarExit"><svg><use href="#i-back"/></svg>返回笔记</button></div></aside>
+<aside id="aiHubSidebar" class="ai-hub-sidebar" aria-label="会话历史"><div class="ai-history-toolbar"><h2 class="ai-history-heading">会话</h2><button type="button" id="aiSidebarClose" aria-label="收起会话侧栏"><svg aria-hidden="true" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="3"/><path d="M9 4v16"/></svg></button></div><label id="aiSidebarSearchBox" class="ai-session-search"><svg aria-hidden="true"><use href="#i-search"/></svg><input id="aiSidebarSearch" type="search" placeholder="搜索会话" autocomplete="off" aria-label="搜索会话历史"></label><div id="aiSidebarList" class="ai-session-list"></div><div class="ai-session-footer"><button type="button" id="aiSidebarExit"><svg aria-hidden="true"><use href="#i-back"/></svg>返回笔记</button></div></aside>
 <nav class="ai-hub-nav" aria-label="AI 导航">
   <button type="button" id="aiHubSessions" class="ai-hub-icon" aria-label="打开会话历史" aria-haspopup="dialog" aria-controls="aiSessionDialog"><svg><use href="#i-list"/></svg></button>
   <div class="ai-hub-modes" role="group" aria-label="AI 模式"><button type="button" id="aiHubConversation" aria-pressed="true">对话</button><button type="button" id="aiHubAgent" aria-pressed="false">Agent</button></div>
@@ -675,11 +690,10 @@ body.keyboard .ai-hub-welcome{display:none}body.keyboard .ai-hub-composer{paddin
 </div></section>
 <dialog id="aiModelDialog" class="ui-material ai-model-dialog" aria-labelledby="aiModelDialogTitle"><div class="sync-panel-grabber" aria-hidden="true"></div><nav class="ai-model-nav"><button type="button" id="aiModelClose">关闭</button><h2 id="aiModelDialogTitle">选择模型</h2><span id="aiModelCount"></span></nav><div class="ai-model-content"><label class="ai-model-search"><svg aria-hidden="true"><use href="#i-search"/></svg><input id="aiModelSearch" type="search" autocomplete="off" placeholder="搜索模型" aria-label="搜索模型"></label><div id="aiModelOptions" class="ai-model-options" role="radiogroup" aria-label="提供商模型列表"></div><p id="aiModelEmpty" class="ai-model-empty" hidden>没有匹配的模型</p></div></dialog>
 <dialog id="aiSessionDialog" class="ai-session-dialog" aria-labelledby="aiSessionTitle">
-<div class="ai-session-top"><nav class="ai-session-nav"><h2 id="aiSessionTitle">会话</h2><button type="button" id="aiSessionSearchToggle" aria-label="搜索会话" aria-controls="aiSessionSearchBox" aria-expanded="false"><svg><use href="#i-search"/></svg></button><button type="button" id="aiSessionClose" aria-label="关闭会话列表"><svg><use href="#i-back"/></svg></button></nav>
-<div id="aiSessionSearchBox" class="ai-session-search" hidden><svg aria-hidden="true"><use href="#i-search"/></svg><input id="aiSessionSearch" type="search" placeholder="搜索会话" autocomplete="off" aria-label="搜索会话"></div>
-<button type="button" id="aiSessionNew" class="ai-session-create"><svg><use href="#i-edit"/></svg>新建对话</button></div>
+<div class="ai-session-top"><div class="ai-history-toolbar"><h2 id="aiSessionTitle" class="ai-history-heading">会话</h2><button type="button" id="aiSessionClose" aria-label="关闭会话列表"><svg aria-hidden="true" viewBox="0 0 24 24"><path d="m6 6 12 12M18 6 6 18"/></svg></button></div>
+<label id="aiSessionSearchBox" class="ai-session-search"><svg aria-hidden="true"><use href="#i-search"/></svg><input id="aiSessionSearch" type="search" placeholder="搜索会话" autocomplete="off" aria-label="搜索会话"></label></div>
 <div class="ai-session-content"><div id="aiSessionList" class="ai-session-list"></div></div>
-<div class="ai-session-footer"><button type="button" id="aiSessionExit"><svg><use href="#i-back"/></svg>返回 Easybook</button></div>
+<div class="ai-session-footer"><button type="button" id="aiSessionExit"><svg><use href="#i-back"/></svg>返回笔记</button></div>
 </dialog>
 <dialog id="aiHubModelDialog" class="ui-material ai-model-dialog" aria-labelledby="aiHubModelTitle"><div class="sync-panel-grabber" aria-hidden="true"></div><nav class="ai-model-nav"><button type="button" id="aiHubModelClose">关闭</button><h2 id="aiHubModelTitle">对话模型</h2><span id="aiHubModelCount"></span></nav><div class="ai-model-content"><label class="ai-model-search"><svg aria-hidden="true"><use href="#i-search"/></svg><input id="aiHubModelSearch" type="search" autocomplete="off" placeholder="搜索对话模型" aria-label="搜索对话模型"></label><div id="aiHubModelOptions" class="ai-model-options" role="radiogroup" aria-label="对话模型列表"></div><button type="button" id="aiHubLocalManage" class="ai-local-manage" hidden>下载或管理设备端 AI 模型</button></div></dialog>
 <dialog id="aiRenameDialog" class="ui-material" aria-labelledby="aiRenameTitle"><form method="dialog" id="aiRenameForm"><h2 id="aiRenameTitle">重命名会话</h2><input id="aiRenameInput" maxlength="80" autocomplete="off" required><div class="dialog-actions"><button value="cancel">取消</button><button class="primary" id="aiRenameSave" value="default">保存</button></div></form></dialog>
@@ -1258,11 +1272,12 @@ $('aiLocalModels').onclick=async event=>{
 setInterval(()=>{if(tab==='ai'&&(['downloading','verifying'].includes(aiLocalStatus?.runtime?.state)||aiLocalStatus?.models?.some(model=>['downloading','verifying'].includes(model.state))))void refreshAiLocal()},2500);
 const aiErrorMessage=code=>({account_required:'请先登录 Easybook 账户',reauthentication_required:'请先重新验证身份，再更新密钥',credential_vault_unavailable:'AI 凭据保险库尚未配置',credential_unavailable:'无法解密已保存的密钥，请重新保存',invalid_provider:'请完整填写自定义提供商信息',invalid_provider_url:'Base URL 必须是公开的 HTTPS 地址',provider_key_rejected:'API 密钥被提供商拒绝',provider_error:'AI 提供商暂时不可用',model_discovery_failed:'无法从提供商获取模型列表',ai_not_configured:'请先保存 BYOK 密钥',workspace_access_denied:'当前账户无权访问此工作区',workspace_required:'请先选择账户中的工作区',agent_turn_limit:'Agent 工具调用次数已达上限'}[code]||code||'AI 请求失败');
 async function aiRequest(path,{method='GET',body}={}){
+ const selectedWorkspace=workspaceCurrent,selectedKey=key;
  if(native){const operation=path==='config'?(method==='GET'?'ai.config':'ai.credential'):path==='models'?'ai.models':path==='select'?'ai.select':path==='execute'?'ai.execute':'ai.chat';return native.call(operation,{method,...((path==='chat'||path==='execute')&&workspaceCurrent?{workspace:workspaceCurrent}:{}),...(body||{})})}
  const session=await browserAccount();if(!session.signedIn)throw Error('请先登录 Easybook 账户');
  const headers={'Content-Type':'application/json'};if(method!=='GET')headers['X-Easybook-CSRF']=session.csrf;
  if(path==='chat'||path==='execute'){
-  let id=workspaceCurrent;if(!id&&key.startsWith('account:'))id=key.slice(8);if(!id&&!key.startsWith('account:'))try{id=(await workspaceIdentity(key)).id}catch{}
+  let id=selectedWorkspace;if(!id&&selectedKey.startsWith('account:'))id=selectedKey.slice(8);if(!id&&!selectedKey.startsWith('account:'))try{id=(await workspaceIdentity(selectedKey)).id}catch{}
   if(id)headers['X-Easybook-Workspace']=id;
  }
  const endpoint=API+'/api/ai/'+path+(path==='models'&&body?.credentialId?'?credentialId='+encodeURIComponent(body.credentialId):''),result=await fetch(endpoint,{method,headers,body:body&&path!=='models'?JSON.stringify(body):undefined,cache:'no-store'}),data=await result.json();
@@ -1408,7 +1423,7 @@ const aiHubStorageKey=()=>`easybook-ai-sessions-v1:${localSpace}`;
 function loadAiHubSessions(){try{const value=JSON.parse(localStorage.getItem(aiHubStorageKey())||'[]');aiHubSessions=Array.isArray(value)?value.filter(session=>session&&typeof session.id==='string'&&Array.isArray(session.messages)).slice(0,30).map(session=>window.EasybookAiChat.recoverChatSession(session)):[]}catch{aiHubSessions=[]}if(!aiHubSessions.length)newAiHubSession(false);else if(!aiHubSessions.some(session=>session.id===aiHubCurrent))aiHubCurrent=aiHubSessions[0].id;renderAiHub()}
 function saveAiHubSessions(){try{localStorage.setItem(aiHubStorageKey(),JSON.stringify(aiHubSessions.slice(0,30).map(session=>({...session,messages:session.messages}))))}catch{toast('本机空间不足，会话未能保存')}}
 function currentAiHubSession(){return aiHubSessions.find(session=>session.id===aiHubCurrent)}
-function newAiHubSession(save=true){if(aiHubBusy)return currentAiHubSession();saveAiHubDraft();const profile=activeAiProfile(),session={id:uuid(),title:'新会话',createdAt:Date.now(),updatedAt:Date.now(),profileId:profile?.id||'',model:profile?.model||'',messages:[],draft:''};aiHubSessions.unshift(session);aiHubCurrent=session.id;if(save)saveAiHubSessions();restoreAiHubDraft();renderAiHub();renderAiHubSessions();return session}
+function newAiHubSession(save=true){if(aiHubBusy)return currentAiHubSession();saveAiHubDraft();const profile=activeAiProfile(),session={id:uuid(),title:'新会话',createdAt:Date.now(),updatedAt:Date.now(),profileId:profile?.id||'',model:profile?.model||'',messages:[],draft:'',titleSource:'fallback',titleRevision:0};aiHubSessions.unshift(session);aiHubCurrent=session.id;if(save)saveAiHubSessions();restoreAiHubDraft();renderAiHub();renderAiHubSessions();return session}
 const aiToolLabels={notes_search:'搜索笔记',notes_get:'读取笔记',notes_list:'浏览笔记',notes_create:'新建笔记',notes_append:'追加内容',notes_update:'更新笔记',notes_move:'移动笔记',notes_pin:'置顶笔记',notes_favorite:'收藏笔记',folders_list:'读取文件夹',folders_create:'新建文件夹',tasks_list:'读取待办',workspace_get_summary:'查看工作区'};
 const aiToolLabel=name=>aiToolLabels[name]||name;
 const aiHubWelcome=()=>'<div class="ai-hub-welcome"><span class="ai-hub-mark" aria-hidden="true"><svg><use href="#i-spark"/></svg></span><h2>有什么可以帮你？</h2><p>从一个想法开始，和你的笔记一起思考。</p><div class="ai-hub-suggestions"><button type="button" data-ai-suggestion="总结当前工作区最近的内容，并列出重点"><svg><use href="#i-note"/></svg>总结笔记</button><button type="button" data-ai-suggestion="帮我整理一个清晰、可执行的计划"><svg><use href="#i-list"/></svg>制定计划</button><button type="button" data-ai-suggestion="查找当前工作区中尚未完成的待办事项"><svg><use href="#i-search"/></svg>查找待办</button></div></div>';
@@ -1490,18 +1505,24 @@ function renderAiHub(){
  $('aiHubLatest').hidden=nearBottom||!session.messages.length;
  renderAiHubContext(session);updateAiHubComposer();
 }
+function aiHistoryPreview(session){
+ if(session.pendingApproval)return '等待确认 · '+aiToolLabel(session.pendingApproval.tool);
+ const last=session.messages?.at(-1);
+ if(last?.streaming)return '正在生成…';
+ if(session.draft?.trim())return '草稿 · '+session.draft.trim().replace(/\s+/g,' ').slice(0,180);
+ const messages=Array.isArray(session.messages)?session.messages:[];
+ const reply=[...messages].reverse().find(message=>message.role==='assistant'&&!message.receipt&&message.status!=='approval'&&!message.error&&message.content?.trim());
+ const request=[...messages].reverse().find(message=>message.role==='user'&&message.content?.trim());
+ const content=reply?.content||request?.content||'';
+ return content?content.replace(/```[\s\S]*?```/g,'[代码]').replace(/!\[[^\]]*\]\([^)]*\)/g,'[图片]').replace(/\[([^\]]+)\]\([^)]*\)/g,'$1').replace(/^[#>\-\s]+/,'').replace(/[*_`]/g,'').replace(/\s+/g,' ').trim().slice(0,180):'尚未开始对话';
+}
 function renderAiHubSessions(){
- const query=normalizeSearch($('aiSessionSearch').value);
- const now=new Date(),today=now.toDateString(),yesterday=new Date(now.getFullYear(),now.getMonth(),now.getDate()-1).toDateString();
- const groups=new Map();
- for(const session of [...aiHubSessions].sort((a,b)=>b.updatedAt-a.updatedAt)){
-  if(query&&!normalizeSearch(session.title).includes(query))continue;
-  const day=new Date(session.updatedAt).toDateString(),group=day===today?'今天':day===yesterday?'昨天':'更早';
-  if(!groups.has(group))groups.set(group,[]);
-  groups.get(group).push(session);
- }
- const historyHTML=[...groups].map(([group,sessions])=>'<h3 class="ai-session-group">'+group+'</h3>'+sessions.map(session=>'<div class="ai-session-row" aria-current="'+String(session.id===aiHubCurrent)+'"><button type="button" class="ai-session-open" data-ai-session="'+esc(session.id)+'"><strong>'+esc(session.title)+'</strong></button><button type="button" class="ai-session-more" data-ai-actions="'+esc(session.id)+'" aria-label="管理会话：'+esc(session.title)+'" aria-expanded="false">⋯</button></div><div class="ai-session-actions" data-ai-action-row="'+esc(session.id)+'" hidden><button type="button" data-ai-rename="'+esc(session.id)+'">重命名</button><button type="button" data-ai-delete="'+esc(session.id)+'">删除</button></div>').join('')).join('')||'<p class="ai-session-group">没有匹配的会话</p>';
- $('aiSessionList').innerHTML=historyHTML;$('aiSidebarList').innerHTML=historyHTML;
+ const history=(query)=>{
+ const sessions=[...aiHubSessions].sort((a,b)=>b.updatedAt-a.updatedAt).filter(session=>!query||normalizeSearch(session.title).includes(query));
+ const historyHTML=sessions.map(session=>'<div class="ai-session-row" aria-current="'+String(session.id===aiHubCurrent)+'"><svg class="ai-session-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M20.5 11.5a8.5 8.5 0 0 1-12 7.8L3 21l1.7-5.5A8.5 8.5 0 1 1 20.5 11.5Z"/></svg><button type="button" class="ai-session-open" data-ai-session="'+esc(session.id)+'"><strong>'+esc(session.title)+'</strong><span class="ai-session-preview">'+esc(aiHistoryPreview(session))+'</span></button><button type="button" class="ai-session-more" data-ai-actions="'+esc(session.id)+'" aria-label="管理会话：'+esc(session.title)+'" aria-expanded="false">⋯</button></div><div class="ai-session-actions" data-ai-action-row="'+esc(session.id)+'" hidden><button type="button" data-ai-rename="'+esc(session.id)+'">重命名</button><button type="button" data-ai-delete="'+esc(session.id)+'">删除</button></div>').join('')||'<p class="ai-session-empty">'+(query?'没有匹配的会话':'还没有会话，开始一段新对话吧')+'</p>';
+ return '<h3 class="ai-session-group">'+(query?'搜索结果':'最近会话')+'</h3>'+historyHTML;
+ };
+ $('aiSessionList').innerHTML=history(normalizeSearch($('aiSessionSearch').value));$('aiSidebarList').innerHTML=history(normalizeSearch($('aiSidebarSearch').value));
 }
 function openAiHub(){if(!aiHubBusy){loadAiHubSessions();restoreAiHubDraft();renderAiHubSessions()}switchTab('ai-hub');void refreshAiLocal().then(()=>renderAiHub());void refreshAiConfig().then(()=>renderAiHub()).catch(()=>{})}
 function setAiHubMode(mode){const session=currentAiHubSession();if(!session||aiHubBusy||session.pendingApproval)return;session.mode=mode==='agent'?'agent':'conversation';saveAiHubSessions();renderAiHub()}
@@ -1511,7 +1532,7 @@ function updateAiHubComposer(){
  $('aiHubSend').disabled=executing||(!aiHubBusy&&(pending||(!$('aiHubPrompt').value.trim()&&!aiHubFiles.length)));
  $('aiHubSend').setAttribute('aria-label',executing?'正在执行操作':aiHubBusy?'停止生成':'发送');
  $('aiHubSend').innerHTML=aiHubBusy?'<span class="ai-stop-square" aria-hidden="true"></span>':'<svg aria-hidden="true" viewBox="0 0 24 24"><path d="M12 19V5m-6 6 6-6 6 6"/></svg>';
- for(const id of ['aiHubAttach','aiHubVoice','aiHubConversation','aiHubAgent','aiHubModel','aiHubNew','aiSidebarNew','aiSessionNew'])$(id).disabled=aiHubBusy||(['aiHubConversation','aiHubAgent','aiHubModel'].includes(id)&&pending);
+ for(const id of ['aiHubAttach','aiHubVoice','aiHubConversation','aiHubAgent','aiHubModel','aiHubNew'])$(id).disabled=aiHubBusy||(['aiHubConversation','aiHubAgent','aiHubModel'].includes(id)&&pending);
 }
 function setAiHubBusy(value){aiHubBusy=value;updateAiHubComposer()}
 let aiHubDraftSession='';
@@ -1618,6 +1639,21 @@ $('aiHubVoice').onclick=async()=>{
  recognition.onend=()=>{aiSpeechRecognition=null;$('aiHubVoice').setAttribute('aria-pressed','false')};
  try{recognition.start()}catch(error){recognition.onend();toast('无法启动语音识别')}
 };
+async function generateAiHubTitle(session,run=null){
+ if(session.titleSource!=='fallback'||session.titleAttempted)return;
+ const local=session.profileId==='__local__';if(local&&!run)return;
+ const messages=window.EasybookAiChat.chatTitleMessages(session.messages);if(!messages.length)return;
+ const workspace=localSpace,originalTitle=session.title,revision=session.titleRevision||0,profileId=session.profileId,model=session.model;
+ session.titleAttempted=true;saveAiHubSessions();
+ try{
+  const data=local?await aiLocalRaw(model,window.EasybookAiChat.CHAT_TITLE_INSTRUCTION+'\n\n对话数据：\n'+JSON.stringify(messages),()=>{}):await aiRequest('chat',{method:'POST',body:{purpose:'title',messages,credentialId:profileId,model}});
+  const title=window.EasybookAiChat.normalizeChatTitle(local?data.message?.content:data.title);
+  if(!title||workspace!==localSpace||run?.controller.signal.aborted||session.titleSource!=='fallback'||session.title!==originalTitle||(session.titleRevision||0)!==revision||!aiHubSessions.includes(session))return;
+  session.title=title;session.titleSource='ai';saveAiHubSessions();
+  if(aiHubCurrent===session.id)$('aiHubTitle').textContent=title;
+  renderAiHubSessions();
+ }catch{/* A title failure must not interrupt a reply or replay a tool. */}
+}
 let aiHubStreamAbort=null,aiHubRun=null;
 function stopAiHubRun(){
  if(!aiHubRun)return;
@@ -1643,6 +1679,7 @@ async function sendAiHubMessage(content,resumeSession=null,{regenerate=false}={}
   }else{
    if(aiConfigured===null)await refreshAiConfig();active();
    if(!aiConfigured)throw Error('请先在“设置 → AI 与 MCP”配置模型，或选择已下载的本地模型');
+   if(!session.profileId){const profile=activeAiProfile();if(profile){session.profileId=profile.id;session.model=profile.model}}
    await activateAiHubModel(session);active();
   }
   if(!resumeSession){
@@ -1674,6 +1711,7 @@ async function sendAiHubMessage(content,resumeSession=null,{regenerate=false}={}
   if(data.approval)session.pendingApproval=data.approval;
   partial.content=data.message?.content||'';partial.tools=(data.tools||[]).map(tool=>tool.name);
   partial.status=data.approval?'approval':'done';
+  if(localModel){partial.streaming=false;renderAiHub();await generateAiHubTitle(session,run)}
  }catch(error){
   const stopped=error.name==='AbortError'||run.controller.signal.aborted;
   if(partial){partial.status=stopped?'stopped':'error';partial.error=stopped?'已停止生成，可以继续回答。':error.message||'生成失败，请重试。'}
@@ -1684,6 +1722,7 @@ async function sendAiHubMessage(content,resumeSession=null,{regenerate=false}={}
   session.updatedAt=Date.now();saveAiHubSessions();
   if(aiHubRun===run){aiHubRun=null;aiHubStreamAbort=null;setAiHubBusy(false)}
   if(localSpace===run.workspace&&aiHubCurrent===session.id){renderAiHub();renderAiHubSessions()}
+  if(session.profileId!=='__local__'&&localSpace===run.workspace&&!run.controller.signal.aborted&&['done','approval'].includes(partial?.status))void generateAiHubTitle(session);
  }
 }
 async function confirmAiHubAction(accept){
@@ -1740,17 +1779,33 @@ function renderAiHubModels(){
 }
 $('aiHubEntry').onclick=openAiHub;
 $('aiHubNew').onclick=()=>{if(aiHubBusy)return;newAiHubSession();$('aiHubPrompt').focus()};
-$('aiSidebarNew').onclick=$('aiHubNew').onclick;
 $('aiSidebarExit').onclick=()=>{if(!aiHubBusy){saveAiHubDraft();switchTab('folders')}};
 $('aiHubConversation').onclick=()=>setAiHubMode('conversation');
 $('aiHubAgent').onclick=()=>setAiHubMode('agent');
-$('aiHubSessions').onclick=()=>{$('aiHubPrompt').blur();renderAiHubSessions();$('aiSessionDialog').showModal()};
-$('aiSessionSearchToggle').onclick=()=>{const box=$('aiSessionSearchBox'),expanded=box.hidden;box.hidden=!expanded;$('aiSessionSearchToggle').setAttribute('aria-expanded',String(expanded));if(expanded)$('aiSessionSearch').focus();else{$('aiSessionSearch').value='';renderAiHubSessions()}};
+const aiHistoryDesktop=window.matchMedia?.('(min-width:1000px)')||{matches:false,addEventListener(){}};
+function updateAiHistoryNavigation(){
+ const trigger=$('aiHubSessions');
+ trigger.setAttribute('aria-controls',aiHistoryDesktop.matches?'aiHubSidebar':'aiSessionDialog');
+ if(aiHistoryDesktop.matches){trigger.removeAttribute('aria-haspopup');trigger.setAttribute('aria-expanded',String($('aiHub').dataset.sidebar!=='collapsed'));if($('aiSessionDialog').open)$('aiSessionDialog').close()}
+ else{trigger.setAttribute('aria-haspopup','dialog');trigger.removeAttribute('aria-expanded')}
+}
+aiHistoryDesktop.addEventListener('change',updateAiHistoryNavigation);updateAiHistoryNavigation();
+function toggleAiSidebar(){
+ const collapsed=$('aiHub').dataset.sidebar!=='collapsed';
+ $('aiHub').dataset.sidebar=collapsed?'collapsed':'expanded';
+ $('aiHubSessions').setAttribute('aria-expanded',String(!collapsed));
+ (collapsed?$('aiHubSessions'):$('aiSidebarClose')).focus();
+}
+$('aiSidebarClose').onclick=toggleAiSidebar;
+$('aiHubSessions').onclick=()=>{
+ if(aiHistoryDesktop.matches){toggleAiSidebar();return}
+ $('aiHubPrompt').blur();renderAiHubSessions();$('aiSessionDialog').showModal();
+};
+$('aiSidebarSearch').oninput=renderAiHubSessions;
 $('aiSessionSearch').oninput=renderAiHubSessions;
 $('aiSessionClose').onclick=()=>$('aiSessionDialog').close();
-$('aiSessionDialog').addEventListener('close',()=>{$('aiSessionSearchBox').hidden=true;$('aiSessionSearchToggle').setAttribute('aria-expanded','false');$('aiSessionSearch').value=''});
+$('aiSessionDialog').addEventListener('close',()=>{$('aiSessionSearch').value='';renderAiHubSessions()});
 $('aiSessionExit').onclick=()=>{$('aiSessionDialog').close();switchTab('folders')};
-$('aiSessionNew').onclick=()=>{if(aiHubBusy)return;newAiHubSession();$('aiSessionDialog').close();$('aiHubPrompt').focus()};
 const onAiSessionClick=event=>{
  if(aiHubBusy){toast('请先停止当前生成');return}
  const actions=event.target.closest('[data-ai-actions]'),open=event.target.closest('[data-ai-session]'),rename=event.target.closest('[data-ai-rename]'),remove=event.target.closest('[data-ai-delete]');
@@ -1764,7 +1819,7 @@ $('aiSessionList').oncontextmenu=event=>{const row=event.target.closest('.ai-ses
 let aiSessionHold=null,aiSessionLongPressed=false;
 $('aiSessionList').addEventListener('pointerdown',event=>{const row=event.target.closest('.ai-session-row');if(!row||event.target.closest('button.ai-session-more'))return;clearTimeout(aiSessionHold);aiSessionLongPressed=false;aiSessionHold=setTimeout(()=>{aiSessionLongPressed=true;row.querySelector('[data-ai-actions]')?.click()},550)});
 for(const name of ['pointerup','pointercancel','pointermove'])$('aiSessionList').addEventListener(name,()=>clearTimeout(aiSessionHold));
-$('aiRenameForm').onsubmit=event=>{event.preventDefault();const session=aiHubSessions.find(value=>value.id===aiHubRenameId),title=$('aiRenameInput').value.trim();if(!session||!title)return;session.title=title;session.updatedAt=Date.now();saveAiHubSessions();renderAiHub();renderAiHubSessions();$('aiRenameDialog').close()};
+$('aiRenameForm').onsubmit=event=>{event.preventDefault();const session=aiHubSessions.find(value=>value.id===aiHubRenameId),title=$('aiRenameInput').value.trim();if(!session||!title)return;session.title=title;session.titleSource='manual';session.titleRevision=(session.titleRevision||0)+1;session.updatedAt=Date.now();saveAiHubSessions();renderAiHub();renderAiHubSessions();$('aiRenameDialog').close()};
 $('aiHubForm').onsubmit=event=>{event.preventDefault();if(aiHubBusy){stopAiHubRun();return}void sendAiHubMessage($('aiHubPrompt').value.trim())};
 $('aiHubMessages').onclick=async event=>{
  if(event.target.closest('[data-ai-approve]')){void confirmAiHubAction(true);return}
@@ -2548,7 +2603,7 @@ const en={
 '创建工作区':'Create Workspace','添加独立笔记空间，登录后可关联账户':'Add a separate note space and link it to an account after signing in','当前工作区':'Current Workspace','添加工作区':'Add Workspace','管理当前工作区':'Manage Current Workspace','工作区名称':'Workspace Name','我的工作区':'My Workspace','保存':'Save','共享与成员':'Sharing & Members','成员与权限':'Members & Permissions',
 '使用通行密钥登录':'Sign in with a Passkey','使用 GitHub 登录':'Sign in with GitHub','使用二维码登录':'Sign in with QR Code','创建账户':'Create Account','账户名称':'Account Name','你的名称':'Your name','已登录设备':'Signed-in Devices','账户管理':'Account Management','安全活动':'Security Activity','操作审批':'Action Approvals','退出此设备账户':'Sign Out on This Device','删除账户…':'Delete Account…',
 '关于':'About','应用':'App','检查更新':'Check for Updates','下载 Android App':'Download Android App','从 GitHub 获取最新签名 APK':'Get the latest signed APK from GitHub','Easybook 开源许可证':'Easybook Open-source License','第三方归属说明':'Third-party Notices','第三方组件与许可证':'Third-party Components & Licenses','法律说明':'Legal Information','正在载入…':'Loading…','正在检查…':'Checking…','当前已是最新版本':'Easybook is up to date','检查失败，请确认网络后重试':'Check failed. Verify your connection and try again',
-'发送消息…':'Message…','发送消息':'Send a message','新会话':'New chat','新建会话':'New chat','返回笔记':'Back to notes','有什么可以帮你？':'How can I help?','从一个想法开始，和你的笔记一起思考。':'Start with an idea. Think with your notes.','总结笔记':'Summarize notes','制定计划':'Make a plan','查找待办':'Find tasks','发消息，或让 AI 帮你整理笔记':'Message AI, or organize your notes','对话':'Chat','选择模型':'Choose model','回到最新消息':'Jump to latest','复制回答':'Copy response','重新回答':'Regenerate','继续回答':'Continue reply','继续任务':'Continue task','查看完整参数':'View all parameters','确认并继续':'Confirm and continue','对话上下文':'Conversation context','开启新会话':'Start a new chat','会话历史':'Chat history',
+'发送消息…':'Message…','发送消息':'Send a message','收起会话侧栏':'Collapse chat sidebar','搜索会话历史':'Search chat history','搜索会话':'Search chats','最近会话':'Recent chats','尚未开始对话':'No messages yet','搜索结果':'Search results','聊天记录':'Your chats','历史会话':'Chat history','会话':'Chats','没有匹配的会话':'No matching chats','还没有会话，开始一段新对话吧':'No chats yet. Start a new conversation.','新会话':'New chat','新建会话':'New chat','返回笔记':'Back to notes','有什么可以帮你？':'How can I help?','从一个想法开始，和你的笔记一起思考。':'Start with an idea. Think with your notes.','总结笔记':'Summarize notes','制定计划':'Make a plan','查找待办':'Find tasks','发消息，或让 AI 帮你整理笔记':'Message AI, or organize your notes','对话':'Chat','选择模型':'Choose model','回到最新消息':'Jump to latest','复制回答':'Copy response','重新回答':'Regenerate','继续回答':'Continue reply','继续任务':'Continue task','查看完整参数':'View all parameters','确认并继续':'Confirm and continue','对话上下文':'Conversation context','开启新会话':'Start a new chat','会话历史':'Chat history',
 '笔记':'Notes','固定的备忘录':'Pinned','今天':'Today','昨天':'Yesterday','新建文件夹':'New Folder','文件夹名称':'Folder Name','创建':'Create','重命名':'Rename','排序方式':'Sort By','修改日期':'Date Edited','创建日期':'Date Created','名称':'Name','列表':'List','画廊':'Gallery','选择备忘录':'Select Notes','未分类':'Uncategorized','全部备忘录':'All Notes'
 };
 const originals=new WeakMap(),attributes=['aria-label','title','placeholder','aria-description'];

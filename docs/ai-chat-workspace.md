@@ -56,3 +56,19 @@ streamed DOM identity and approval continuation across cloud/local execution.
 messages, with external requests blocked. It checks desktop/mobile layout, dark
 mode, the history drawer and a short viewport. Screenshots go to
 `/tmp/easybook-ai-preview/`; no user workspace or provider credentials are used.
+
+## Automatic chat titles
+
+New sessions begin with a truncated prompt as a fallback. After the first reply
+(or write proposal), the selected model summarizes a bounded excerpt into a
+short title. Cloud requests run in the background through the existing chat
+endpoint with `purpose: title`, an explicit profile/model, no tools and a
+128-token output budget. The native account proxy forwards the same fields.
+Local models run a separate text-only title prompt after the reply, before
+releasing the local generation lock. They do not get a tool protocol.
+
+Titles are attempted once per new session; a failure preserves the fallback.
+Existing saved sessions retain their titles. A user rename sets a manual flag
+and revision so a late response cannot overwrite it. Deleted sessions and
+responses from another workspace are ignored. Title generation does not add
+messages to history, change conversation ordering or execute workspace tools.

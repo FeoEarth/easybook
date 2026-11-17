@@ -18,6 +18,15 @@ try{
   await context.addInitScript(()=>{localStorage.setItem('easybook-language','zh-CN');Object.defineProperty(navigator,'onLine',{get:()=>false})});
   const page=await context.newPage(),errors=[];page.on('pageerror',e=>errors.push(e.message));
   await page.goto(origin);await page.waitForFunction(()=>window.aiHarness);await page.evaluate(()=>{window.aiHarness.setup();document.activeElement?.blur()});
+  await page.evaluate(()=>{const app=window.aiHarness,active=app.session(),now=Date.now();active.title='本周项目行动计划';active.messages=[{role:'user',content:'把本周的工作整理成三件最重要的事。'},{role:'assistant',status:'done',content:'先完善对话体验，再验证上下文管理，最后完成发布前检查。'}];
+   ['整理读书笔记与摘录','产品迭代中的想法','下周旅行安排','接口设计与待办事项','一段很长的会话标题，用来确认边栏标题能够正确截断','会议记录整理','年度目标复盘'].forEach((title,i)=>app.sessions().push({id:'history-'+i,title,updatedAt:now-(i<2?0:i<4?86400000:86400000*7),createdAt:now,messages:i===6?[]:[{role:'user',content:'帮我整理'+title},{role:'assistant',status:'done',content:['保留有用的摘录，按主题整理。','把零散的灵感整理成下一步行动。','先确认时间，再安排每天的行程。','先对齐接口边界，再列出待办。','把相关讨论整理为几个清楚的结论。','区分已确定的事项和待跟进的问题。'][i]}],draft:''}));app.select(active.id);document.activeElement?.blur();});
+  if(name==='desktop'){
+   await page.locator('#aiSidebarClose').click();assert.equal(await page.locator('.ai-hub-sidebar').isVisible(),false);
+   await page.locator('#aiHubSessions').click();assert.equal(await page.locator('.ai-hub-sidebar').isVisible(),true);
+   assert.equal(await page.locator('#aiSessionDialog').evaluate(el=>el.open),false,'Desktop toggle must not open duplicate drawer');
+   await page.locator('#aiSidebarSearch').fill('读书');assert.equal(await page.locator('#aiSidebarList [data-ai-session]').count(),1);
+   await page.locator('#aiSidebarSearch').fill('');await page.locator('#aiSidebarSearch').blur();
+  }
   await page.screenshot({animations:'disabled',path:output+'/'+name+'-welcome.png'});
   assert.equal(await page.locator('#aiHub').evaluate(el=>el.scrollWidth>el.clientWidth),false,'No horizontal page overflow');
   const compact=await page.locator('#aiHubForm').boundingBox();assert.ok(compact.height<=64,'Original compact single-row composer');
@@ -45,7 +54,11 @@ try{
   const compose=await page.locator('#aiHubForm').boundingBox();assert.ok(compose.x>=0&&compose.x+compose.width<=width&&compose.y+compose.height<=height,'Composer stays in viewport');
   await page.evaluate(()=>window.aiHarness.theme('dark'));await page.screenshot({animations:'disabled',path:output+'/'+name+'-dark.png'});
   if(name==='mobile'){
-   await page.locator('#aiHubSessions').click();await page.screenshot({animations:'disabled',path:output+'/mobile-history.png'});await page.locator('#aiSessionClose').click();
+   await page.locator('#aiHubSessions').click();await page.locator('#aiSessionSearch').fill('读书');assert.equal(await page.locator('#aiSessionList [data-ai-session]').count(),1);await page.locator('#aiSessionSearch').fill('');await page.locator('#aiSessionSearch').blur();await page.screenshot({animations:'disabled',path:output+'/mobile-history.png'});await page.evaluate(()=>window.aiHarness.theme('light'));await page.screenshot({animations:'disabled',path:output+'/mobile-history-light.png'});
+   await page.setViewportSize({width:320,height:480});
+   const drawer=await page.locator('#aiSessionDialog').boundingBox();assert.ok(drawer.x>=0&&drawer.x+drawer.width<=320&&drawer.y+drawer.height<=480,'History sheet fits narrow keyboard viewport');
+   await page.locator('#aiSessionSearch').fill('读书');assert.equal(await page.locator('#aiSessionList [data-ai-session]').count(),1);await page.locator('#aiSessionSearch').fill('');
+   await page.locator('#aiSessionClose').click();
    await page.setViewportSize({width,height:480});assert.ok(await page.locator('#aiHubSend').isVisible(),'Composer survives short viewport / keyboard');
   }
   assert.deepEqual(errors,[],'No browser runtime errors');await context.close();

@@ -40,5 +40,24 @@ try{
  const trace=$('aiHubMessages').querySelector('.ai-tool-activity');trace.open=true;app.render();assert.equal(trace.open,true);
  $('aiHubContext').click();assert.equal($('aiContextPanel').hidden,false);assert.match($('aiContextDetail').textContent,/字符预算/);
  assert.equal($('aiHubSend').disabled,true);
+ app.seed([{role:'user',content:'测试摘要'},{role:'assistant',status:'done',content:'<img src=x onerror=alert(1)> **真实内容**'}]);
+ app.select(app.session().id);
+ const preview=$('aiSidebarList').querySelector('.ai-session-preview');
+ assert.ok(preview.textContent.includes('真实内容'),'History excerpts actual conversation text');
+ assert.equal(preview.querySelector('img'),null,'History preview escapes untrusted content');
+ app.seed([]);app.select(app.session().id);assert.match($('aiSidebarList').textContent,/尚未开始对话/);
+ const titledSession=app.session();titledSession.titleSource='fallback';titledSession.title='初始标题';titledSession.titleAttempted=false;
+ app.seed([{role:'user',content:'请制定一个清晰的项目计划'},{role:'assistant',content:'可以分三步推进。',status:'done'}]);
+ let titleCalls=0;app.execute(async(path,options)=>{titleCalls++;assert.equal(options.body.purpose,'title');return {title:'“项目行动计划”'}});
+ await app.title(titledSession);await app.title(titledSession);assert.equal(titleCalls,1);assert.equal(titledSession.title,'项目行动计划');assert.equal(titledSession.titleSource,'ai');
+ titledSession.titleSource='fallback';titledSession.titleAttempted=false;
+ let finishTitle;app.execute(()=>new Promise(resolve=>{finishTitle=resolve}));
+ const pendingTitle=app.title(titledSession);titledSession.title='我的手动标题';titledSession.titleSource='manual';titledSession.titleRevision=1;
+ finishTitle({title:'迟到的AI标题'});await pendingTitle;assert.equal(titledSession.title,'我的手动标题');
+ titledSession.titleSource='fallback';titledSession.titleAttempted=false;
+ app.execute(async()=>{throw Error('provider unavailable')});await app.title(titledSession);assert.equal(titledSession.title,'我的手动标题');
+ titledSession.profileId='__local__';titledSession.titleSource='fallback';titledSession.titleAttempted=false;
+ app.titleLocal(async(model,prompt)=>{assert.match(prompt,/只返回标题文本/);assert.match(prompt,/项目计划/);return {message:{content:'本地会话标题'}}});
+ await app.title(titledSession,{controller:new AbortController()});assert.equal(titledSession.title,'本地会话标题');
  console.log('AI UI: isolated drafts, streaming DOM, attachments, error/stop recovery, approval continuation and context controls OK');
 }finally{dom.window.close()}
