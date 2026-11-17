@@ -11,7 +11,7 @@ sql.prepare('INSERT INTO account_sessions VALUES(?,?,?,?,?,?,?,NULL)').run(sid,a
 let tail=Promise.resolve();const batch=env.DB.batch.bind(env.DB);env.DB.batch=ss=>{const out=tail.then(()=>batch(ss));tail=out.catch(()=>{});return out};
 const browser=await chromium.launch({headless:true}),errors=[];
 try{
- const context=await browser.newContext({viewport:{width:390,height:844},serviceWorkers:'block'});
+ const context=await browser.newContext({viewport:{width:390,height:844},serviceWorkers:'block',locale:'zh-CN'});
  await context.addInitScript(()=>{let options;window.turnstile={render(_container,value){options=value;return 1},execute(){queueMicrotask(()=>options.callback('verified'))},remove(){}}});
  await context.addCookies([{name:'__Host-easybook-session',value:token,domain:'easybook.loonxy.com',path:'/',secure:true,httpOnly:true,sameSite:'Lax'}]);
  await context.route('**/*',async route=>{const r=route.request();if(!r.url().startsWith(origin)){await route.abort();return}try{const response=await worker.fetch(new Request(r.url(),{method:r.method(),headers:{...await r.allHeaders(),'CF-Connecting-IP':'203.0.113.55'},body:['GET','HEAD'].includes(r.method())?undefined:r.postDataBuffer()}),env);await route.fulfill({status:response.status,headers:Object.fromEntries(response.headers),body:Buffer.from(await response.arrayBuffer())})}catch(e){errors.push(String(e));await route.abort()}});
