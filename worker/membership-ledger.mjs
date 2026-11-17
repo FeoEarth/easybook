@@ -1,3 +1,4 @@
+import {ensureOrderCutoffs,chainOrderCutoff} from './membership-order-cutoff.mjs';
 import {settleGiftOrder,expireGiftOrders} from './membership-gift-orders.mjs';
 import {giftClaimStatements} from './membership-gifts.mjs';
 import {bonusPolicy,rewardFromPolicy} from './membership-bonus.mjs';
@@ -30,6 +31,7 @@ export async function quotePurchase(env,accountId,plan,code=''){
  const discount=await couponDiscount(env,accountId,plan.id,list,code);return {priceVersion:plan.priceVersion||PRICE_VERSION,kind:membership?.expires_at>now?'renewal':'purchase',list_units:list,credit_units:'0',...discount,amount:String(BigInt(list)-BigInt(discount.discount_units)),state_version:state?.version||0};
 }
 export async function cancelPurchase(env,accountId,id){
+ await ensureOrderCutoffs(env.DB);
  for(let attempt=0;attempt<4;attempt++){
  const order=await first(env,'SELECT * FROM membership_purchases WHERE id=? AND account_id=?',id,accountId);if(!order)throw error('not_found',404);if(order.settled_at)throw error('order_already_paid');if(order.cancelled_at)return order;
  const now=Date.now(),assertion=crypto.randomUUID();
@@ -40,18 +42,30 @@ export async function cancelPurchase(env,accountId,id){
  ]);return first(env,'SELECT * FROM membership_purchases WHERE id=?',id)}catch(e){if(attempt===3)throw e}
  }
 }
-export async function chainFunds(env,order){const rows=(await env.DB.prepare("SELECT kind,units FROM membership_balance_events WHERE account_id=? AND kind IN ('credit','recharge_bonus') AND rowid>? AND rowid<COALESCE((SELECT rowid FROM membership_balance_events WHERE id=?),9223372036854775807)").bind(order.account_id,order.funding_cursor||0,'purchase:'+order.id).all()).results;let actual=0n,bonus=0n;for(const row of rows){if(row.kind==='credit')actual+=BigInt(row.units);else bonus+=BigInt(row.units)}return {actual,bonus,spendable:actual+bonus}}
+export async function chainFunds(env,order){const {lastEvent,before}=await chainOrderCutoff(env.DB,'membership_purchases',order);const rows=(await env.DB.prepare("SELECT kind,units FROM membership_balance_events WHERE account_id=? AND kind IN ('credit','recharge_bonus') AND rowid>? AND rowid<=COALESCE(?,9223372036854775807) AND created_at<COALESCE(?,9223372036854775807) AND rowid<COALESCE((SELECT rowid FROM membership_balance_events WHERE id=?),9223372036854775807)").bind(order.account_id,order.funding_cursor||0,lastEvent,before,'purchase:'+order.id).all()).results;let actual=0n,bonus=0n;for(const row of rows){if(row.kind==='credit')actual+=BigInt(row.units);else bonus+=BigInt(row.units)}return {actual,bonus,spendable:actual+bonus}}
 export async function chainFunding(env,order){return (await chainFunds(env,order)).spendable}
 export async function applyBalance(env,accountId,{explicit=false,orderId,gift}={}){
  if(!explicit)await settleGiftOrder(env,accountId);
  for(let attempt=0;attempt<6;attempt++){
  await expirePurchase(env,accountId);
- const order=await first(env,'SELECT * FROM membership_purchases WHERE account_id=? AND settled_at IS NULL AND cancelled_at IS NULL',accountId);if(!order){if(explicit)throw error('order_unavailable');return}if(orderId&&order.id!==orderId)throw error('order_changed');
+ const order=explicit&&orderId
+  ?await first(env,'SELECT * FROM membership_purchases WHERE account_id=? AND id=?',accountId,orderId)
+  :await first(env,'SELECT * FROM membership_purchases WHERE account_id=? AND settled_at IS NULL AND cancelled_at IS NULL',accountId);
+ if(!order||order.cancelled_at){
+  if(explicit)throw error('order_unavailable');
+  return;
+ }
+ if(orderId&&order.id!==orderId)throw error('order_changed');
+ if(order.settled_at)return;
  const historical=await first(env,'SELECT * FROM membership_price_entries WHERE version=? AND plan=?',order.price_version,order.plan),definition=plans.find(p=>p.id===order.plan),plan=definition&&historical?{...definition,units:historical.units}:null;if(!plan||order.months!==plan.months||!validPurchasePrice(order,plan)||!['purchase','renewal'].includes(order.kind)){await env.DB.prepare("UPDATE membership_purchases SET cancelled_at=?,cancel_reason='billing_changed' WHERE id=? AND settled_at IS NULL AND cancelled_at IS NULL").bind(Date.now(),order.id).run();if(explicit)throw error('order_unavailable');return}
  if(!explicit&&order.payment_method==='unselected')return;
  if(!explicit&&order.payment_method==='chain'&&(await chainFunding(env,order))<BigInt(order.amount))return;
  const state=await first(env,'SELECT * FROM membership_account_state WHERE account_id=?',accountId);if(!state||(!explicit&&state.cancel_version>state.ack_version))return;
- const bonus=await first(env,'SELECT units FROM membership_bonus_balances WHERE account_id=?',accountId),balance=await first(env,'SELECT units FROM membership_balances WHERE account_id=?',accountId),member=await first(env,'SELECT * FROM account_memberships WHERE account_id=?',accountId);if(!balance||BigInt(balance.units)+BigInt(gift?.units||'0')<BigInt(order.amount)){if(explicit)throw error('insufficient_balance');return;}
+ const bonus=await first(env,'SELECT units FROM membership_bonus_balances WHERE account_id=?',accountId),balance=await first(env,'SELECT units FROM membership_balances WHERE account_id=?',accountId),member=await first(env,'SELECT * FROM account_memberships WHERE account_id=?',accountId);
+ if(!balance||BigInt(balance.units)+BigInt(gift?.units||'0')<BigInt(order.amount)){
+  if(explicit&&!await first(env,'SELECT 1 FROM membership_purchases WHERE account_id=? AND id=? AND settled_at IS NOT NULL',accountId,order.id))throw error('insufficient_balance');
+  return;
+ }
  if(member?.permanent||state.version!==order.state_version){await env.DB.prepare("UPDATE membership_purchases SET cancelled_at=?,cancel_reason='membership_changed' WHERE id=? AND settled_at IS NULL").bind(Date.now(),order.id).run();return}
  const bonusAvailable=BigInt(bonus?.units||'0'),bonusEligible=explicit||order.payment_method!=='chain'?bonusAvailable:(await chainFunds(env,order)).bonus,bonusUsed=[bonusAvailable,bonusEligible,BigInt(order.amount)>BigInt(gift?.units||'0')?BigInt(order.amount)-BigInt(gift?.units||'0'):0n].reduce((a,b)=>a<b?a:b);
  // Every package adds its full duration to the existing expiry, regardless of prior package.
@@ -75,14 +89,17 @@ export async function applyBalance(env,accountId,{explicit=false,orderId,gift}={
 export async function creditTransfer(env,c,log){
  if(c.decimals!==6||log.removed||log.address?.toLowerCase()!==c.token.toLowerCase()||log.topics?.[0]!=='0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef'||log.topics.length!==3||!/^0x[0-9a-fA-F]{64}$/.test(log.data))return;
  const address='0x'+log.topics[2].slice(-40).toLowerCase(),owner=await first(env,'SELECT * FROM membership_address_owners WHERE address=?',address);if(!owner)return;
- const accountId=owner.account_id,amount=BigInt(log.data).toString(),tx=log.transactionHash,index=Number(BigInt(log.logIndex)),key=c.chainId+':'+tx+':'+index;
+ const accountId=owner.account_id,amount=BigInt(log.data).toString(),tx=log.transactionHash.toLowerCase(),index=Number(BigInt(log.logIndex)),key=c.chainId+':'+tx+':'+index;
  if(BigInt(amount)===0n)return;
+ await ensureOrderCutoffs(env.DB);
+ // Old receipts kept the RPC's original hex casing. Recognize them in both checks.
+ const receiptExists='SELECT 1 FROM membership_receipts WHERE chain_id=? AND tx=? COLLATE NOCASE AND log_index=?';
  await env.DB.batch([env.DB.prepare("INSERT OR IGNORE INTO membership_balances VALUES(?,'0')").bind(accountId),env.DB.prepare("INSERT OR IGNORE INTO membership_bonus_balances VALUES(?,'0')").bind(accountId),env.DB.prepare('INSERT OR IGNORE INTO membership_account_state(account_id) VALUES(?)').bind(accountId)]);
  for(let attempt=0;attempt<6;attempt++){
- if(await first(env,'SELECT 1 FROM membership_receipts WHERE chain_id=? AND tx=? AND log_index=?',c.chainId,tx,index)){await applyBalance(env,accountId);return}
+ if(await first(env,receiptExists,c.chainId,tx,index)){await applyBalance(env,accountId);return}
  const policy=await bonusPolicy(env),reward=rewardFromPolicy(policy,amount),bonus=await first(env,'SELECT units FROM membership_bonus_balances WHERE account_id=?',accountId),balance=await first(env,'SELECT units FROM membership_balances WHERE account_id=?',accountId),state=await first(env,'SELECT * FROM membership_account_state WHERE account_id=?',accountId),live=await first(env,'SELECT 1 FROM accounts WHERE id=? AND deleted_at IS NULL',accountId),guard=state.cancel_version>state.ack_version,now=Date.now(),assertion=crypto.randomUUID();
  try{await env.DB.batch([
- env.DB.prepare('INSERT INTO membership_assertions SELECT ?,EXISTS(SELECT 1 FROM membership_balances WHERE account_id=? AND units=?) AND EXISTS(SELECT 1 FROM membership_account_state WHERE account_id=? AND cancel_version=? AND ack_version=?) AND NOT EXISTS(SELECT 1 FROM membership_receipts WHERE chain_id=? AND tx=? AND log_index=?)').bind(assertion,accountId,balance.units,accountId,state.cancel_version,state.ack_version,c.chainId,tx,index),
+ env.DB.prepare('INSERT INTO membership_assertions SELECT ?,EXISTS(SELECT 1 FROM membership_balances WHERE account_id=? AND units=?) AND EXISTS(SELECT 1 FROM membership_account_state WHERE account_id=? AND cancel_version=? AND ack_version=?) AND NOT EXISTS('+receiptExists+')').bind(assertion,accountId,balance.units,accountId,state.cancel_version,state.ack_version,c.chainId,tx,index),
  env.DB.prepare('INSERT INTO membership_receipts VALUES(?,?,?,\'\',?,?,?,?)').bind(c.chainId,tx,index,amount,Number(BigInt(log.blockNumber)),live?'credited':'account_unavailable',now),
  env.DB.prepare('INSERT INTO membership_balance_events VALUES(?,?,\'credit\',?,?,?,?,\'\',?)').bind(key,accountId,amount,c.chainId,tx,index,now),
  env.DB.prepare('INSERT INTO membership_assertions SELECT ?,EXISTS(SELECT 1 FROM membership_bonus_balances WHERE account_id=? AND units=?) AND EXISTS(SELECT 1 FROM membership_recharge_bonus_state WHERE id=1 AND version=?)').bind(assertion+'-bonus',accountId,bonus.units,policy.version),

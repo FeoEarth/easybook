@@ -12,6 +12,7 @@ for(const simulation of [true,false]){
  let copied='';
  dom=new JSDOM(html,{url:f.origin+'/membership',runScripts:'dangerously',pretendToBeVisual:true,virtualConsole:new VirtualConsole().on('jsdomError',e=>errors.push(e)),beforeParse(window){
  window.HTMLCanvasElement.prototype.getContext=()=>null; // JSDOM has no canvas renderer.
+ window.AbortController=AbortController; // The injected fetch uses Node's Request and AbortSignal.
  Object.defineProperty(window.crypto,'randomUUID',{value:()=>crypto.randomUUID()});Object.defineProperty(window.navigator,'clipboard',{value:{async writeText(s){copied=s}}});
  window.fetch=async(path,options={})=>{
  const headers=new Headers(options.headers);headers.set('Cookie',f.cookie);headers.set('Origin',f.origin);
@@ -30,6 +31,7 @@ for(const simulation of [true,false]){
  const mock=[...doc.querySelectorAll('#paymentContent button')].find(b=>b.textContent==='模拟准确到账');
  if(simulation){assert.ok(mock);mock.click();await wait(()=>doc.querySelector('#paymentContent').textContent.includes('已开通'));assert.ok(!doc.querySelector('#paymentContent img'));}
  else{assert.equal(mock,undefined);assert.ok(!doc.querySelector('[role=alert]'));}
+ await wait(()=>!doc.querySelector('#buy').disabled); // The simulated purchase refreshes the quote.
  doc.querySelector('#closePayment').click();await wait(()=>doc.querySelector('#paymentLayer').hidden);assert.equal(doc.activeElement.id,'buy');assert.deepEqual(errors,[]);
  }finally{dom?.window.close();f.close()}
 }

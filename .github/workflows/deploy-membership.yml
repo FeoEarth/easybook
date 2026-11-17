@@ -2,6 +2,10 @@ name: Deploy membership checkout
 on:
   workflow_dispatch:
     inputs:
+      scanner_only:
+        description: Deploy only the membership payment scanner
+        type: boolean
+        default: false
       apply_schema:
         description: Apply schema when the workflow token has D1 write access
         type: boolean
@@ -26,9 +30,10 @@ jobs:
       - run: npm ci --no-audit --no-fund
       - run: npm ci --prefix mcp-oauth --no-audit --no-fund
       - name: Build web assets
+        if: ${{ !inputs.scanner_only }}
         run: npm run build:editor
       - name: Apply additive membership schema
-        if: inputs.apply_schema
+        if: inputs.apply_schema && !inputs.scanner_only
         run: |
           npx --no-install wrangler d1 execute easybook-data --config worker/wrangler.jsonc --remote --file worker/migrations/0023-membership.sql --yes
           npx --no-install wrangler d1 execute easybook-data --config worker/wrangler.jsonc --remote --file worker/migrations/0024-membership-scan-windows.sql --yes
@@ -47,12 +52,20 @@ jobs:
           npx --no-install wrangler d1 execute easybook-data --config worker/wrangler.jsonc --remote --file worker/migrations/0037-gift-purchase-checkout.sql --yes
           npx --no-install wrangler d1 execute easybook-iodash-auth --config admin-worker/wrangler.jsonc --remote --file admin-worker/migrations/0001-iodash-auth.sql --yes
       - name: Deploy identity account entry
+        if: ${{ !inputs.scanner_only }}
         run: npx --no-install wrangler deploy --config mcp-oauth/wrangler.jsonc --keep-vars
+      - name: Count existing checkout and receipt anomalies
+        if: inputs.scanner_only
+        continue-on-error: true
+        run: npx --no-install wrangler d1 execute easybook-data --config worker/wrangler.jsonc --remote --file scripts/membership-production-audit.sql --json
       - name: Deploy membership scanner
         run: npx --no-install wrangler deploy --config payment-worker/wrangler.jsonc --keep-vars
       - name: Deploy isolated collection worker
+        if: ${{ !inputs.scanner_only }}
         run: npx --no-install wrangler deploy --config collection-worker/wrangler.jsonc --keep-vars
       - name: Deploy checkout and web app
+        if: ${{ !inputs.scanner_only }}
         run: npx --no-install wrangler deploy --config worker/wrangler.jsonc --keep-vars --var RELEASE_SHA:${{ github.sha }}
       - name: Deploy independent Iodash admin
+        if: ${{ !inputs.scanner_only }}
         run: npx --no-install wrangler deploy --config admin-worker/wrangler.jsonc --keep-vars

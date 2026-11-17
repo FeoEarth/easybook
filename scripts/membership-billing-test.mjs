@@ -24,12 +24,34 @@ try{
  assert.equal((await adminUsers(f.env,f.account)).users[0].bonusBalance,'1.00');
  const off=await bonusPolicy(f.env);await updateBonusPolicy(f.env,'test-admin',{version:off.version,enabled:true,tiers:[{minAmount:'1',kind:'fixed',amount:'0.25',capAmount:'0'},{minAmount:'10',kind:'percent',percent:'10',capAmount:'2'}]});
  const order=await ok(await reserve('month',changed.priceVersion));await ok(await call('/orders/'+order.id+'/fund',{chainId:137}));
- const chain=JSON.parse(f.env.MEMBERSHIP_NETWORKS).find(c=>c.chainId===137),log=f.inject(order,{amount:'1000000'});
- await creditTransfer(f.env,chain,log);await creditTransfer(f.env,chain,log);
+ const chain=JSON.parse(f.env.MEMBERSHIP_NETWORKS).find(c=>c.chainId===137);
+ const sameHash=(log,uppercase)=>({...log,transactionHash:'0x'+(uppercase?log.transactionHash.slice(2).toUpperCase():log.transactionHash.slice(2).toLowerCase())});
+ const log=f.inject(order,{amount:'1000000',tx:'0x'+'ab'.repeat(32)});
+ await creditTransfer(f.env,chain,log);
+ await creditTransfer(f.env,chain,sameHash(log,true));
+ await creditTransfer(f.env,chain,log);
  assert.ok((await ok(await call('/orders/'+order.id))).settled_at);
  assert.deepEqual(await accountBalance(f.env,f.account),{balance:'1.00',bonusBalance:'1.00'});
  assert.equal(f.sql.prepare('SELECT COUNT(*) n FROM membership_recharge_rewards').get().n,1);
  assert.equal(f.sql.prepare("SELECT units FROM membership_balance_events WHERE kind='credit'").get().units,'1000000');
  assert.equal(f.sql.prepare("SELECT units FROM membership_balance_events WHERE kind='recharge_bonus'").get().units,'250000');
+
+ const upperFirst=f.inject(order,{amount:'1000000',tx:'0x'+'CD'.repeat(32)});
+ const canonical=sameHash(upperFirst,false);
+ await creditTransfer(f.env,chain,upperFirst);
+ await creditTransfer(f.env,chain,canonical);
+ assert.equal(f.sql.prepare('SELECT tx FROM membership_receipts WHERE tx=? COLLATE NOCASE').get(upperFirst.transactionHash).tx,canonical.transactionHash);
+ assert.deepEqual(await accountBalance(f.env,f.account),{balance:'2.25',bonusBalance:'1.25'});
+
+ // Recreate a receipt and its ledger history as stored before hash canonicalization.
+ for(const table of ['membership_receipts','membership_balance_events','membership_recharge_rewards']){
+  f.sql.prepare('UPDATE '+table+' SET tx=? WHERE tx=?').run(upperFirst.transactionHash,canonical.transactionHash);
+ }
+ await creditTransfer(f.env,chain,canonical);
+ await creditTransfer(f.env,chain,upperFirst);
+ assert.deepEqual(await accountBalance(f.env,f.account),{balance:'2.25',bonusBalance:'1.25'});
+ assert.equal(f.sql.prepare('SELECT COUNT(*) n FROM membership_receipts').get().n,2);
+ assert.equal(f.sql.prepare("SELECT COUNT(*) n FROM membership_balance_events WHERE kind='credit'").get().n,2);
+ assert.equal(f.sql.prepare('SELECT COUNT(*) n FROM membership_recharge_rewards').get().n,2);
  console.log('PASS versioned prices, locked quote settlement, grant idempotency, bonus consumption and duplicate receipt protection');
 }finally{f.close()}

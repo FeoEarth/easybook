@@ -1,3 +1,4 @@
+import {ensureOrderCutoffs} from './membership-order-cutoff.mjs';
 import {formatGiftCode,normalizeGiftCode,giftCodeMatchesKind} from './membership-gift-codes.mjs';
 import {planCatalog} from './membership-pricing.mjs';
 import {addMonths} from './membership-duration.mjs';
@@ -24,19 +25,41 @@ export async function buyGift(env,account,body){
  if(!uuid(body?.idempotency)||!['balance','subscription'].includes(body.kind||'balance'))throw billingError('invalid_gift_amount');const kind=body.kind||'balance';let units,plan=null,catalog;
  if(kind==='balance'){if(!['number','string'].includes(typeof body.amount)||!/^([1-9][0-9]{0,5})$/.test(String(body.amount)))throw billingError('invalid_gift_amount');units=String(BigInt(body.amount)*1000000n)}else if(typeof body.plan!=='string')throw billingError('invalid_plan');
  const matches=old=>(old.card_kind||'balance')===kind&&(kind==='subscription'?old.card_plan===body.plan:old.units===units);
- const old=await first(env,'SELECT * FROM membership_gift_cards WHERE purchaser_id=? AND request_id=?',account,body.idempotency);if(old){if(!matches(old))throw billingError('idempotency_conflict',409);return revealGift(env,account,old.id)}
+ const replay=async()=>{
+  const previous=await first(env,'SELECT * FROM membership_gift_cards WHERE purchaser_id=? AND request_id=?',account,body.idempotency);
+  if(previous){
+   if(!matches(previous))throw billingError('idempotency_conflict',409);
+   return revealGift(env,account,previous.id);
+  }
+  const reservation=await first(env,'SELECT id FROM membership_gift_orders WHERE account_id=? AND idempotency=?',account,body.idempotency);
+  if(reservation)throw billingError('idempotency_conflict',409);
+  return null;
+ };
+ const previous=await replay();
+ if(previous)return previous;
  if(kind==='subscription'){catalog=await planCatalog(env);if(body.priceVersion!==catalog.priceVersion)throw billingError('price_changed',409);plan=catalog.plans.find(p=>p.id===body.plan);if(!plan)throw billingError('invalid_plan');units=plan.units}
  const card={code_version:2,id:crypto.randomUUID(),purchaser_id:account,units,card_kind:kind,card_plan:plan?.id||'',card_months:plan?.months||0,card_plan_name:plan?.name||'',price_version:catalog?.priceVersion||''},code=await giftCode(env,card),digest=await hash(normalizeCode(code));await initBalance(env,account);
  for(let attempt=0;attempt<6;attempt++){
- const b=await first(env,'SELECT units FROM membership_balances WHERE account_id=?',account),g=await first(env,'SELECT units FROM membership_bonus_balances WHERE account_id=?',account);if(BigInt(b.units)-BigInt(g.units)<BigInt(units)){const prior=await first(env,'SELECT * FROM membership_gift_cards WHERE purchaser_id=? AND request_id=?',account,body.idempotency);if(prior){if(!matches(prior))throw billingError('idempotency_conflict',409);return revealGift(env,account,prior.id)}throw billingError('insufficient_cash_balance',409)}const assertion=crypto.randomUUID(),now=Date.now();
+ const b=await first(env,'SELECT units FROM membership_balances WHERE account_id=?',account),g=await first(env,'SELECT units FROM membership_bonus_balances WHERE account_id=?',account);
+ if(BigInt(b.units)-BigInt(g.units)<BigInt(units)){
+  const prior=await replay();
+  if(prior)return prior;
+  throw billingError('insufficient_cash_balance',409);
+ }
+ const assertion=crypto.randomUUID(),now=Date.now();
  try{await env.DB.batch([
- env.DB.prepare('INSERT INTO membership_assertions SELECT ?,EXISTS(SELECT 1 FROM accounts WHERE id=? AND deleted_at IS NULL) AND EXISTS(SELECT 1 FROM membership_balances WHERE account_id=? AND units=?) AND EXISTS(SELECT 1 FROM membership_bonus_balances WHERE account_id=? AND units=?)').bind(assertion,account,account,b.units,account,g.units),
+ env.DB.prepare('INSERT INTO membership_assertions SELECT ?,EXISTS(SELECT 1 FROM accounts WHERE id=? AND deleted_at IS NULL) AND EXISTS(SELECT 1 FROM membership_balances WHERE account_id=? AND units=?) AND EXISTS(SELECT 1 FROM membership_bonus_balances WHERE account_id=? AND units=?) AND NOT EXISTS(SELECT 1 FROM membership_gift_orders WHERE account_id=? AND idempotency=?)').bind(assertion,account,account,b.units,account,g.units,account,body.idempotency),
  env.DB.prepare('INSERT INTO membership_gift_cards(id,purchaser_id,units,code_hash,request_id,created_at,card_kind,card_plan,card_months,card_plan_name,price_version,code_version) VALUES(?,?,?,?,?,?,?,?,?,?,?,?)').bind(card.id,account,units,digest,body.idempotency,now,kind,card.card_plan,card.card_months,card.card_plan_name,card.price_version,card.code_version),
  env.DB.prepare('UPDATE membership_balances SET units=? WHERE account_id=?').bind(String(BigInt(b.units)-BigInt(units)),account),
  env.DB.prepare("INSERT INTO membership_balance_events VALUES(?,?,'gift_purchase',?,NULL,NULL,NULL,?,?)").bind('gift_purchase:'+card.id,account,units,card.id,now),
  env.DB.prepare("INSERT INTO membership_billing_audit VALUES(?,?,'gift_purchased',?,?)").bind(crypto.randomUUID(),account,JSON.stringify({cardId:card.id,units,kind,plan:card.card_plan,months:card.card_months,priceVersion:card.price_version}),now),
  env.DB.prepare('DELETE FROM membership_assertions WHERE id=?').bind(assertion)
- ]);return {...giftView({...card,created_at:now}),code}}catch(e){const prior=await first(env,'SELECT * FROM membership_gift_cards WHERE purchaser_id=? AND request_id=?',account,body.idempotency);if(prior){if(!matches(prior))throw billingError('idempotency_conflict',409);return revealGift(env,account,prior.id)}if(String(e.message).includes('price_changed'))throw billingError('price_changed',409);if(attempt===5)throw e}
+ ]);return {...giftView({...card,created_at:now}),code}}catch(e){
+  const prior=await replay();
+  if(prior)return prior;
+  if(String(e.message).includes('price_changed'))throw billingError('price_changed',409);
+  if(attempt===5)throw e;
+ }
  }
 }
 // Included in the SAME transaction as the balance credit or the membership settlement.
@@ -49,9 +72,23 @@ export function giftClaimStatements(env,card,account,request,orderId,now,asserti
  ]}
 export const subscriptionGiftRecord=row=>({id:'subscription-gift:'+row.card_id,cardId:row.card_id,record_type:'subscription_redemption',kind:'subscription_redemption',account_id:row.account_id,plan:row.plan,planName:row.plan_name,months:row.months,expiresAt:row.expires_at,expires_at:row.expires_at,created_at:row.created_at,settled_at:row.created_at,amount:'0',required:'0.00',payment_method:'subscription_gift'});
 async function subscriptionResult(env,card,account,repeated=false){const row=await first(env,'SELECT * FROM membership_subscription_gift_redemptions WHERE card_id=? AND account_id=?',card.id,account);if(!row)throw billingError('gift_service_unavailable',503);return {redeemed:true,kind:'subscription',repeated,record:subscriptionGiftRecord(row),...await accountBalance(env,account)}}
+async function replaySubscription(env,card,account,orderId){
+ // redeem_order identifies the stable subscription receipt and is checked by the claim trigger.
+ // New receipts record the requested invoice (or null) under the same ID in the billing audit.
+ const audit=await first(env,"SELECT payload FROM membership_billing_audit WHERE id=? AND actor_id=? AND action='subscription_gift_redeemed'",card.redeem_order,account);
+ if(audit){
+  if(JSON.parse(audit.payload).orderId!==(orderId??null))throw billingError('idempotency_conflict',409);
+ }else if(orderId){
+  // Legacy receipts didn't distinguish a standalone redemption from replacing an unconfirmed draft.
+  const replaced=await first(env,"SELECT id FROM membership_purchases WHERE id=? AND account_id=? AND plan=? AND months=? AND cancelled_at=? AND cancel_reason='subscription_gift'",orderId,account,card.card_plan,card.card_months,card.redeemed_at);
+  if(!replaced)throw billingError('idempotency_conflict',409);
+ }
+ return subscriptionResult(env,card,account,true);
+}
 async function redeemSubscription(env,account,card,request,orderId){
+ await ensureOrderCutoffs(env.DB);
  for(let attempt=0;attempt<6;attempt++){
- const current=await first(env,'SELECT * FROM membership_gift_cards WHERE id=?',card.id),prior=await first(env,'SELECT id FROM membership_gift_cards WHERE redeemed_by=? AND redeem_request=?',account,request);if(prior&&prior.id!==card.id)throw billingError('idempotency_conflict',409);if(!current||current.revoked_at)throw billingError('gift_unavailable',409);if(current.redeemed_at){if(current.redeemed_by===account&&current.redeem_request===request)return subscriptionResult(env,current,account,true);throw billingError('gift_already_used',409)}
+ const current=await first(env,'SELECT * FROM membership_gift_cards WHERE id=?',card.id),prior=await first(env,'SELECT id FROM membership_gift_cards WHERE redeemed_by=? AND redeem_request=?',account,request);if(prior&&prior.id!==card.id)throw billingError('idempotency_conflict',409);if(!current||current.revoked_at)throw billingError('gift_unavailable',409);if(current.redeemed_at){if(current.redeemed_by===account&&current.redeem_request===request)return replaySubscription(env,current,account,orderId);throw billingError('gift_already_used',409)}
  const member=await first(env,'SELECT * FROM account_memberships WHERE account_id=?',account),state=await first(env,'SELECT * FROM membership_account_state WHERE account_id=?',account),pending=await first(env,'SELECT * FROM membership_purchases WHERE account_id=? AND settled_at IS NULL AND cancelled_at IS NULL',account),now=Date.now();if(member?.permanent)throw billingError('already_permanent',409);if(orderId){const target=await first(env,'SELECT * FROM membership_purchases WHERE id=? AND account_id=?',orderId,account);if(!target||target.cancelled_at||target.expires_at<=now)throw billingError('order_unavailable',409);if(target.settled_at)throw billingError('gift_order_paid',409);if(target.plan!==current.card_plan||target.months!==current.card_months)throw billingError('gift_wrong_plan',409);if(pending?.id!==target.id)throw billingError('order_changed',409)}if(pending&&pending.payment_method!=='unselected'&&pending.expires_at>now&&pending.id!==orderId)throw billingError('gift_pending_order',409);
  const expiry=addMonths(Math.max(now,member?.expires_at||0),current.card_months),recordId='subscription-gift:'+current.id,assertion=crypto.randomUUID();
  try{await env.DB.batch([
@@ -64,7 +101,7 @@ async function redeemSubscription(env,account,card,request,orderId){
  env.DB.prepare('INSERT INTO account_memberships VALUES(?,?,?) ON CONFLICT(account_id) DO UPDATE SET permanent=excluded.permanent,expires_at=excluded.expires_at').bind(account,0,expiry),
  env.DB.prepare('UPDATE membership_account_state SET plan=?,version=version+1 WHERE account_id=?').bind(current.card_plan,account),
  env.DB.prepare('INSERT INTO membership_changes VALUES(?,?,?,?,?)').bind(recordId,account,0,expiry,now),
- env.DB.prepare("INSERT INTO membership_billing_audit VALUES(?,?,'subscription_gift_redeemed',?,?)").bind(crypto.randomUUID(),account,JSON.stringify({cardId:current.id,plan:current.card_plan,months:current.card_months,expiresAt:expiry,recordId}),now),
+ env.DB.prepare("INSERT INTO membership_billing_audit VALUES(?,?,'subscription_gift_redeemed',?,?)").bind(recordId,account,JSON.stringify({cardId:current.id,plan:current.card_plan,months:current.card_months,expiresAt:expiry,recordId,orderId:orderId??null}),now),
  env.DB.prepare('DELETE FROM membership_assertions WHERE id IN (?,?,?)').bind(assertion,assertion+'-pending',assertion+'-card')
  ]);return subscriptionResult(env,current,account)}catch(e){if(attempt===5)throw e}
  }
@@ -75,6 +112,7 @@ export async function redeemGift(env,account,body){
  const card=await first(env,'SELECT * FROM membership_gift_cards WHERE code_hash=?',digest),prior=await first(env,'SELECT id FROM membership_gift_cards WHERE redeemed_by=? AND redeem_request=?',account,body.idempotency);if(prior&&prior.id!==card?.id)throw billingError('idempotency_conflict',409);if(!card||card.revoked_at)throw billingError('gift_unavailable',409);
  if(!giftCodeMatchesKind(body.code,card.card_kind))throw billingError('gift_invalid');
  if(card.card_kind==='subscription')return redeemSubscription(env,account,card,body.idempotency,body.orderId);
+ if(body.orderId!==undefined)throw billingError('invalid_request');
  if(card.redeemed_at){if(card.redeemed_by===account&&card.redeem_request===body.idempotency)return {redeemed:true,repeated:true,balanceType:card.balance_type||'cash',value:money(card.units),...await accountBalance(env,account)};throw billingError('gift_already_used',409)}
  const b=await first(env,'SELECT units FROM membership_balances WHERE account_id=?',account),g=await first(env,'SELECT units FROM membership_bonus_balances WHERE account_id=?',account),assertion=crypto.randomUUID(),now=Date.now();try{await env.DB.batch([
  env.DB.prepare('INSERT INTO membership_assertions SELECT ?,EXISTS(SELECT 1 FROM accounts WHERE id=? AND deleted_at IS NULL) AND EXISTS(SELECT 1 FROM membership_balances WHERE account_id=? AND units=?)').bind(assertion,account,account,b.units),

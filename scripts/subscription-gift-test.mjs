@@ -15,9 +15,43 @@ try{
  const catalog=await planCatalog(f.env),request={kind:'subscription',plan:'quarter',priceVersion:catalog.priceVersion,idempotency:crypto.randomUUID()},card=await buyGift(f.env,buyer,request);assert.equal(card.months,3);assert.equal((await buyGift(f.env,buyer,request)).id,card.id);assert.equal((await accountBalance(f.env,buyer)).balance,'18.00');
  const price=await updatePricing(f.env,'test-admin',{version:catalog.priceVersion,plans:catalog.plans.map(p=>({id:p.id,price:p.id==='quarter'?'99':p.price}))});assert.equal((await buyGift(f.env,buyer,request)).value,'2.00');
  const raw=await readGift(f.env,card.code);assert.throws(()=>giftClaimStatements(f.env,raw,recipient,crypto.randomUUID(),'',Date.now(),crypto.randomUUID()),/gift_subscription_only/);
- const claim={code:card.code,idempotency:crypto.randomUUID()},received=await redeemGift(f.env,recipient,claim),repeat=await redeemGift(f.env,recipient,claim);assert.equal(received.kind,'subscription');assert.equal(received.record.months,3);assert.equal(repeat.record.expiresAt,received.record.expiresAt);assert.equal(repeat.repeated,true);assert.equal((await accountBalance(f.env,recipient)).balance,'0.00');
+ const claim={code:card.code,idempotency:crypto.randomUUID()};
+ const received=await redeemGift(f.env,recipient,claim),repeat=await redeemGift(f.env,recipient,claim);
+ assert.equal(received.kind,'subscription');
+ assert.equal(received.record.months,3);
+ assert.equal(repeat.record.expiresAt,received.record.expiresAt);
+ assert.equal(repeat.repeated,true);
+ assert.equal((await accountBalance(f.env,recipient)).balance,'0.00');
+ const conflict={message:'idempotency_conflict',status:409};
+ await assert.rejects(()=>redeemGift(f.env,recipient,{...claim,orderId:crypto.randomUUID()}),conflict);
  const activeExpiry=addMonths(Date.now(),12);f.sql.prepare('INSERT INTO account_memberships VALUES(?,?,?)').run(buyer,0,activeExpiry);const monthly=await buyGift(f.env,buyer,{kind:'subscription',plan:'month',priceVersion:price.priceVersion,idempotency:crypto.randomUUID()}),pending=await reserve('month');f.sql.prepare("UPDATE membership_purchases SET payment_method='chain' WHERE id=?").run(pending.id);
- await assert.rejects(()=>redeemGift(f.env,buyer,{code:monthly.code,idempotency:crypto.randomUUID()}),/gift_pending_order/);assert.equal((await giftPreview(f.env,buyer,{code:monthly.code,orderId:pending.id})).redeemable,true);const before=await accountBalance(f.env,buyer),fulfilled=await redeemGift(f.env,buyer,{code:monthly.code,idempotency:crypto.randomUUID(),orderId:pending.id});assert.equal(fulfilled.record.expiresAt,addMonths(activeExpiry,1));assert.deepEqual(await accountBalance(f.env,buyer),before);assert.equal(f.sql.prepare('SELECT cancel_reason FROM membership_purchases WHERE id=?').get(pending.id).cancel_reason,'subscription_gift');assert.ok(f.sql.prepare('SELECT cancel_version FROM membership_account_state WHERE account_id=?').get(buyer).cancel_version>0);
+ await assert.rejects(()=>redeemGift(f.env,buyer,{code:monthly.code,idempotency:crypto.randomUUID()}),/gift_pending_order/);
+ assert.equal((await giftPreview(f.env,buyer,{code:monthly.code,orderId:pending.id})).redeemable,true);
+ const before=await accountBalance(f.env,buyer);
+ const checkout={code:monthly.code,idempotency:crypto.randomUUID(),orderId:pending.id};
+ const fulfilled=await redeemGift(f.env,buyer,checkout);
+ assert.equal(fulfilled.record.expiresAt,addMonths(activeExpiry,1));
+ const checkoutReplay=await redeemGift(f.env,buyer,checkout);
+ assert.equal(checkoutReplay.repeated,true);
+ assert.deepEqual(checkoutReplay.record,fulfilled.record);
+ await assert.rejects(()=>redeemGift(f.env,buyer,{...checkout,orderId:crypto.randomUUID()}),conflict);
+ await assert.rejects(()=>redeemGift(f.env,buyer,{code:checkout.code,idempotency:checkout.idempotency}),conflict);
+ assert.deepEqual(await accountBalance(f.env,buyer),before);
+ assert.equal(f.sql.prepare('SELECT cancel_reason FROM membership_purchases WHERE id=?').get(pending.id).cancel_reason,'subscription_gift');
+ assert.ok(f.sql.prepare('SELECT cancel_version FROM membership_account_state WHERE account_id=?').get(buyer).cancel_version>0);
+
+ // Historical receipts used a random audit ID and did not record the target.
+ const makeLegacy=f.sql.prepare("UPDATE membership_billing_audit SET id=?,payload=json_remove(payload,'$.orderId') WHERE id=?");
+ makeLegacy.run(crypto.randomUUID(),received.record.id);
+ makeLegacy.run(crypto.randomUUID(),fulfilled.record.id);
+ assert.equal((await redeemGift(f.env,recipient,claim)).repeated,true);
+ assert.equal((await redeemGift(f.env,buyer,checkout)).repeated,true);
+ await assert.rejects(()=>redeemGift(f.env,buyer,{...checkout,orderId:crypto.randomUUID()}),conflict);
+
+ const balanceCard=await buyGift(f.env,buyer,{amount:'1',idempotency:crypto.randomUUID()});
+ await assert.rejects(()=>redeemGift(f.env,recipient,{code:balanceCard.code,idempotency:crypto.randomUUID(),orderId:pending.id}),{message:'invalid_request',status:400});
+ assert.equal((await readGift(f.env,balanceCard.code)).redeemed_at,null);
+ assert.equal((await accountBalance(f.env,recipient)).balance,'0.00');
  const history=await orderHistory(f.env,{accountId:recipient});assert.ok(history.orders.some(o=>o.record_type==='subscription_redemption'&&o.months===3));assert.equal(f.sql.prepare("SELECT COUNT(*) n FROM membership_balance_events WHERE kind='gift_credit'").get().n,0);assert.equal(f.sql.prepare('SELECT COUNT(*) n FROM membership_subscription_gift_redemptions').get().n,2);
  console.log('PASS locked plan prices, single-use subscription claims, duration extension, cash isolation, pending invoice guards and redemption history');
 }finally{f.close()}
