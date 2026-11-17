@@ -1,0 +1,4 @@
+import {billingError} from './membership-money.mjs';
+export function formatGiftCode(kind,bytes){const size=kind==='subscription'?20:16;if(!['balance','subscription'].includes(kind)||bytes.length<size)throw billingError('gift_invalid');const hex=Array.from(bytes.slice(0,size),x=>x.toString(16).padStart(2,'0')).join('').toUpperCase();return (kind==='subscription'?'EBS-':'EBB-')+hex.match(/.{8}/g).join('-')}
+export function normalizeGiftCode(value){if(typeof value!=='string'||value.length>80)throw billingError('gift_invalid');const code=value.toUpperCase().replace(/[\s-]/g,'');if(!/^(?:EBGC[A-F0-9]{40}|EBB[A-F0-9]{32}|EBS[A-F0-9]{40})$/.test(code))throw billingError('gift_invalid');return code}
+export function giftCodeMatchesKind(code,kind){const normalized=normalizeGiftCode(code);return normalized.startsWith('EBGC')||(kind==='subscription'?normalized.startsWith('EBS'):normalized.startsWith('EBB'))}
