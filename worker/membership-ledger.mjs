@@ -1,3 +1,4 @@
+import {settleGiftOrder,expireGiftOrders} from './membership-gift-orders.mjs';
 import {giftClaimStatements} from './membership-gifts.mjs';
 import {bonusPolicy,rewardFromPolicy} from './membership-bonus.mjs';
 import {couponDiscount,validPurchasePrice} from './membership-coupons.mjs';
@@ -21,7 +22,7 @@ export async function ensureWallet(env,accountId){
  await env.DB.batch([env.DB.prepare('INSERT OR IGNORE INTO membership_address_owners VALUES(?,?,?,?)').bind(row.id,address,accountId,now),env.DB.prepare('INSERT OR IGNORE INTO membership_account_wallets VALUES(?,?,?,?)').bind(accountId,row.id,address,now)]);wallet=await first(env,'SELECT * FROM membership_account_wallets WHERE account_id=?',accountId)}
  await env.DB.batch([env.DB.prepare("INSERT OR IGNORE INTO membership_balances VALUES(?,'0')").bind(accountId),env.DB.prepare("INSERT OR IGNORE INTO membership_bonus_balances VALUES(?,'0')").bind(accountId),env.DB.prepare('INSERT OR IGNORE INTO membership_account_state(account_id) VALUES(?)').bind(accountId)]);return wallet;
 }
-export async function expirePurchase(env,accountId){await env.DB.prepare("UPDATE membership_purchases SET cancelled_at=?,cancel_reason='expired' WHERE account_id=? AND settled_at IS NULL AND cancelled_at IS NULL AND expires_at<=?").bind(Date.now(),accountId,Date.now()).run()}
+export async function expirePurchase(env,accountId){await expireGiftOrders(env,accountId);await env.DB.prepare("UPDATE membership_purchases SET cancelled_at=?,cancel_reason='expired' WHERE account_id=? AND settled_at IS NULL AND cancelled_at IS NULL AND expires_at<=?").bind(Date.now(),accountId,Date.now()).run()}
 export async function quotePurchase(env,accountId,plan,code=''){
  const now=Date.now(),state=await first(env,'SELECT * FROM membership_account_state WHERE account_id=?',accountId),membership=await first(env,'SELECT * FROM account_memberships WHERE account_id=?',accountId);
  if(membership?.permanent)throw error('already_permanent');
@@ -42,6 +43,7 @@ export async function cancelPurchase(env,accountId,id){
 export async function chainFunds(env,order){const rows=(await env.DB.prepare("SELECT kind,units FROM membership_balance_events WHERE account_id=? AND kind IN ('credit','recharge_bonus') AND rowid>? AND rowid<COALESCE((SELECT rowid FROM membership_balance_events WHERE id=?),9223372036854775807)").bind(order.account_id,order.funding_cursor||0,'purchase:'+order.id).all()).results;let actual=0n,bonus=0n;for(const row of rows){if(row.kind==='credit')actual+=BigInt(row.units);else bonus+=BigInt(row.units)}return {actual,bonus,spendable:actual+bonus}}
 export async function chainFunding(env,order){return (await chainFunds(env,order)).spendable}
 export async function applyBalance(env,accountId,{explicit=false,orderId,gift}={}){
+ if(!explicit)await settleGiftOrder(env,accountId);
  for(let attempt=0;attempt<6;attempt++){
  await expirePurchase(env,accountId);
  const order=await first(env,'SELECT * FROM membership_purchases WHERE account_id=? AND settled_at IS NULL AND cancelled_at IS NULL',accountId);if(!order){if(explicit)throw error('order_unavailable');return}if(orderId&&order.id!==orderId)throw error('order_changed');
@@ -92,6 +94,7 @@ export async function creditTransfer(env,c,log){
  ]:[]),
  env.DB.prepare('DELETE FROM membership_assertions WHERE id=?').bind(assertion+'-bonus'),
  env.DB.prepare("UPDATE membership_purchases SET cancelled_at=?,cancel_reason='late_payment' WHERE account_id=? AND settled_at IS NULL AND cancelled_at IS NULL AND ?=1").bind(now,accountId,guard?1:0),
+ env.DB.prepare("UPDATE membership_gift_orders SET cancelled_at=?,cancel_reason='late_payment' WHERE account_id=? AND settled_at IS NULL AND cancelled_at IS NULL AND ?=1").bind(now,accountId,guard?1:0),
  env.DB.prepare('UPDATE membership_account_state SET needs_ack=1 WHERE account_id=? AND ?=1').bind(accountId,guard?1:0),
  env.DB.prepare('DELETE FROM membership_assertions WHERE id=?').bind(assertion)
  ]);if(live&&!guard)await applyBalance(env,accountId);return}catch(e){if(attempt===5)throw e}
