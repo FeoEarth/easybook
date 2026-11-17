@@ -10,13 +10,14 @@ async function scenario({local=false,accept=true,toolError=false,networkError=fa
  let executions=0,generations=0,payload;
  const prompt={value:'尚未发送的草稿',style:{height:'50px'}};
  const files=[{name:'draft.txt',type:'text',text:'unsent'}];
- const context={session,aiHubBusy:false,aiHubFiles:files,aiConfigured:true,aiLocalStatus:{models:[{id:'model',state:'installed'}]},AbortController,DOMException,window:{EasybookAiChat:aiChat},localSpace:'workspace',aiHubCurrent:'session',aiHubDraftFiles:new Map(),uuid:()=>crypto.randomUUID(),aiToolLabel:name=>name,renderAiHubSessions(){},generateAiHubTitle:async()=>{},
+ const context={session,aiBusy:false,aiHubRuns:new Map(),aiHubExecutions:new Set(),aiHubBusy:false,aiHubFiles:files,aiConfigured:true,aiLocalStatus:{models:[{id:'model',state:'installed'}]},AbortController,DOMException,window:{EasybookAiChat:aiChat},localSpace:'workspace',aiHubCurrent:'session',aiHubDraftFiles:new Map(),uuid:()=>crypto.randomUUID(),aiToolLabel:name=>name,renderAiHubSessions(){},generateAiHubTitle:async()=>{},
   currentAiHubSession:()=>session,setAiHubBusy:value=>{context.aiHubBusy=value},saveAiHubSessions(){},renderAiHub(){},toast(){},
   $:id=>id==='aiHubPrompt'?prompt:{},requestAnimationFrame:()=>1,cancelAnimationFrame(){},compactAiMessages:messages=>messages,
   refreshAiLocal:async()=>{},activateAiHubModel:async()=>{},recordAiToolEvent(){},clearAiHubFiles:()=>{files.length=0},
  };
  const execute=async()=>{executions++;if(networkError)throw Error('network');return toolError?{ok:false,error:{code:'CONFLICT'}}:{ok:true,result:{id:'created-note'}}};
  const generate=async messages=>{generations++;payload=messages;assert.equal(context.aiHubBusy,true);if(generationError)throw Error('provider unavailable');return {message:{content:'任务继续'},...(nextApproval?{approval:{id:'approval-2',tool:'notes_create'}}:{})}};
+ context.syncAiHubRun=()=>{context.aiHubBusy=context.aiHubRuns.has(session.id)||context.aiHubExecutions.has(session.id)};context.updateAiHubComposer=context.syncAiHubRun;
  context.aiRequest=execute;context.executeLocalAiApproval=execute;
  context.aiStreamRequest=async body=>{assert.equal(body.attachments.length,0);return generate(body.messages)};
  context.aiLocalGenerate=async(model,messages)=>generate(messages);

@@ -308,6 +308,7 @@ public class MainActivity extends Activity {
             case "account.browser":nativeAccount.beginBrowser();return new JSONObject().put("externalBrowser",true);
             case "account.resume":nativeAccount.resume();return new JSONObject().put("pending",true);
             case "account.login":nativeAccount.begin();return new JSONObject().put("externalBrowser",true);
+            case "membership.status":return nativeAccount.membershipStatus();
             case "membership.open":{NativeAccount.token(repository);runOnUiThread(()->startActivity(new android.content.Intent(this,MembershipActivity.class)));return new JSONObject().put("opened",true);}
             case "account.status":return nativeAccount.publicStatus();
             case "workspace.action":{
@@ -591,7 +592,7 @@ public class MainActivity extends Activity {
         if (!ready) {super.onBackPressed(); return;}
         web.evaluateJavascript("window.handleBack()", handled -> {if (!"true".equals(handled)) MainActivity.super.onBackPressed();});
     }
-    @Override protected void onResume(){super.onResume();if(nativeAccount!=null)nativeAccount.resume();}
+    @Override protected void onResume(){super.onResume();if(nativeAccount!=null){nativeAccount.resume();accountChanged();}}
     @Override protected void onPause() { if(localAiEngine!=null)localAiEngine.cancel();if(security!=null)security.dismissConnection(); if(nativeGlass!=null)nativeGlass.dismiss(true);web.evaluateJavascript("window.EasybookVideo?.pauseAll();window.persistNow && window.persistNow()", null); super.onPause(); }
     @Override protected void onDestroy() { hideVideoFullscreen(); if(nativeAccount!=null){nativeAccount.cancel();nativeAccount.shutdownAiStream();} if(localAiEngine!=null)localAiEngine.shutdown();if(localAiModels!=null)localAiModels.shutdown();if(localAiRuntime!=null)localAiRuntime.shutdown(); if(security!=null)security.dismissConnection(); if(connectivity!=null&&networkCallback!=null)connectivity.unregisterNetworkCallback(networkCallback); if(nativeGlass!=null){nativeGlass.clearFormatFrame();nativeGlass.dismiss(true);}ready=false; destroyed=true;if(WebViewFeature.isFeatureSupported(WebViewFeature.WEB_MESSAGE_LISTENER))WebViewCompat.removeWebMessageListener(web,"EasybookNative");web.destroy();if(appUpdater!=null)appUpdater.shutdown();io.shutdown();super.onDestroy(); }
 }

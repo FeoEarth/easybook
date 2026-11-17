@@ -26,6 +26,9 @@ public class AccountBridgePermissionTest {
  }
  @Test public void aiPersonalizationAndModelSelectionsCrossTheInitializedBridge()throws Exception{
   SecurityManager security=new SecurityManager(null,null,null);security.initialized(7);
+  security.authorize("membership.open",new JSONObject(),7);
+  security.authorize("membership.status",new JSONObject(),7);
+  try{security.authorize("membership.open",new JSONObject().put("url","https://example.com"),7);fail();}catch(SecurityException expected){}
   security.authorize("ai.preferences",new JSONObject().put("method","GET"),7);
   security.authorize("ai.preferences",new JSONObject().put("method","PUT").put("preferences",new JSONObject().put("version",1)),7);
   security.authorize("ai.models",new JSONObject().put("method","GET").put("credentialId","fixture").put("refresh",true),7);

@@ -83,5 +83,13 @@ try{
  $('aiAutoMemory').checked=false;$('aiAutoMemory').dispatchEvent(new w.Event('change'));await wait(()=>app.preferences().autoMemory===false);assert.equal($('aiAutoMemory').disabled,false);
  $('aiPersonalClose').click();
 
+ // Independent sessions may stream at once; stopping one must not stop another.
+ app.setup();const concurrentA=app.session();let completeA,completeB;
+ app.cloud((body,events)=>new Promise((resolve,reject)=>{if(body.messages.some(m=>m.content==='并发 A')){completeA=()=>resolve({message:{content:'A 完成'}});events.signal?.addEventListener('abort',()=>reject(new DOMException('Stopped','AbortError')))}else completeB=()=>resolve({message:{content:'B 完成'}})}));
+ const requestA=app.send('并发 A');await wait(()=>completeA);assert.equal(app.busy(),true);
+ const concurrentB=app.newSession();assert.notEqual(concurrentA.id,concurrentB.id);assert.equal(app.busy(),false);assert.equal($('aiHubNew').disabled,false);
+ const requestB=app.send('并发 B');await wait(()=>completeB);assert.equal(app.busy(),true);
+ app.select(concurrentA.id);assert.equal(app.busy(),true);app.stop();await requestA;
+ assert.equal(concurrentA.messages.at(-1).status,'stopped');app.select(concurrentB.id);assert.equal(app.busy(),true,'Stopping A does not unlock or cancel B');completeB();await requestB;assert.equal(concurrentB.messages.at(-1).content,'B 完成');assert.equal(app.busy(),false);
  console.log('AI UI: isolated drafts, streaming DOM, attachments, error/stop recovery, approval continuation and context controls OK');
 }finally{dom.window.close()}

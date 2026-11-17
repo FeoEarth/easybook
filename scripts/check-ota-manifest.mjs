@@ -8,8 +8,8 @@ const legacy=await (await get('/ota/manifest.json')).json();
 const current=await (await get('/ota/manifest.json?v=2')).json();
 
 for(const [manifest,schema,names,minCode] of [
-  [legacy,1,['index.html','editor.js'],103],
-  [current,2,['index.html','editor.js','native_update.js'],103],
+  [legacy,1,['index.html','editor.js'],104],
+  [current,2,['index.html','editor.js','native_update.js'],104],
 ]){
   assert.equal(manifest.schema,schema);
   assert.equal(manifest.minNativeVersionCode,minCode);

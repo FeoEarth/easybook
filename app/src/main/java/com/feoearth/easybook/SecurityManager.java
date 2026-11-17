@@ -49,6 +49,7 @@ public final class SecurityManager {
             case "conflict.resolve":fields=fields("id","choice");break;
             case "account.manage":fields=fields("action","id","workspace","cursor","category","choices","confirm");break;
             case "ai.preferences":fields=fields("method","preferences");break;
+            case "membership.open":case "membership.status":fields=Collections.emptySet();break;
             case "ai.config":fields=fields("method");break;
             case "ai.local.status":case "ai.local.cancel":case "ai.local.runtime.install":case "ai.local.runtime.cancel":case "ai.local.runtime.delete":fields=Collections.emptySet();break;
             case "ai.local.install":case "ai.local.download.cancel":case "ai.local.delete":fields=fields("model");break;

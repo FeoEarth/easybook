@@ -27,9 +27,8 @@ final class NativeAccount {
     private static final String SESSION="account-session-v1",PENDING="account-login-pending-v1",LOGOUT="account-logout-pending-v1";
     private final Activity activity;private final NoteRepository db;private final ExecutorService io;
     private static final ExecutorService revocations=java.util.concurrent.Executors.newSingleThreadExecutor();
-    private final ExecutorService aiStreams=Executors.newSingleThreadExecutor();
-    private String aiStreamId;
-    private HttpURLConnection aiStreamConnection;
+    private final ExecutorService aiStreams=Executors.newFixedThreadPool(4);
+    private final java.util.Map<String,HttpURLConnection> activeAiStreams=new java.util.HashMap<>();
     private volatile boolean starting;
     private volatile boolean switching;
     private void requireActive(){db.assertActiveProfile();if(switching)throw new SecurityException("Server changed");}
@@ -225,6 +224,20 @@ final class NativeAccount {
         if(action.equals("delete-account")){db.setSetting(SESSION,"");db.setSetting(PENDING,"");changed();}
         return result;
     }
+    JSONObject membershipStatus()throws Exception{
+        requireActive();String access=token(db);
+        HttpURLConnection connection=NativeTransport.open(db,"/api/membership",false);
+        try{
+            connection.setConnectTimeout(12000);connection.setReadTimeout(20000);connection.setRequestMethod("GET");
+            connection.setRequestProperty("Authorization","Easybook-Session "+access);
+            connection.setRequestProperty("X-Easybook-Native","1");
+            if(connection.getResponseCode()!=200)throw new IOException("会员与钱包信息暂不可用");
+            try(InputStream in=connection.getInputStream();ByteArrayOutputStream out=new ByteArrayOutputStream()){
+                byte[] buffer=new byte[2048];int n;while((n=in.read(buffer))!=-1){if(out.size()+n>16384)throw new IOException("Membership response too large");out.write(buffer,0,n);}
+                requireActive();return new JSONObject(out.toString("UTF-8"));
+            }
+        }finally{connection.disconnect();NativeTransport.release(db,connection);}
+    }
     JSONObject ai(JSONObject args)throws Exception{
         String action=args.getString("action");if(!java.util.Arrays.asList("config","credential","models","select","chat","execute","preferences").contains(action))throw new SecurityException("AI action denied");
         if(action.equals("preferences")&&!java.util.Arrays.asList("GET","PUT").contains(args.optString("method")))throw new SecurityException("AI preferences method denied");
@@ -236,9 +249,9 @@ final class NativeAccount {
     synchronized void startAiStream(JSONObject args,Consumer<JSONObject> emit)throws Exception{
         String id=args.getString("id"),workspace=args.getString("workspace");
         if(!id.matches("[a-f0-9-]{20,70}")||!workspace.matches("[a-f0-9]{64}")||!args.has("messages"))throw new SecurityException("Invalid AI stream request");
-        if(aiStreamId!=null)throw new IllegalStateException("AI generation already running");
+        if(activeAiStreams.containsKey(id)||activeAiStreams.size()>=4)throw new IllegalStateException("AI concurrent request limit reached");
         String session=token(db);
-        aiStreamId=id;
+        activeAiStreams.put(id,null);
         aiStreams.execute(()->{
             HttpURLConnection connection=null;
             try{
@@ -247,7 +260,7 @@ final class NativeAccount {
                 connection.setInstanceFollowRedirects(false);connection.setConnectTimeout(12000);connection.setReadTimeout(125000);connection.setRequestMethod("POST");
                 connection.setRequestProperty("X-Easybook-Native","1");connection.setRequestProperty("Content-Type","application/json");connection.setRequestProperty("Accept","text/event-stream");
                 connection.setRequestProperty("Authorization","Easybook-Session "+session);
-                synchronized(this){if(!id.equals(aiStreamId))return;aiStreamConnection=connection;}
+                synchronized(this){if(!activeAiStreams.containsKey(id))return;activeAiStreams.put(id,connection);}
                 byte[] bytes=args.toString().getBytes(StandardCharsets.UTF_8);connection.setDoOutput(true);connection.setFixedLengthStreamingMode(bytes.length);
                 try(OutputStream out=connection.getOutputStream()){out.write(bytes);}
                 int status=connection.getResponseCode();
@@ -256,7 +269,7 @@ final class NativeAccount {
                 try(BufferedReader lines=new BufferedReader(new InputStreamReader(connection.getInputStream(),StandardCharsets.UTF_8))){
                     String line,type="",data="";int chars=0;boolean done=false;
                     while((line=lines.readLine())!=null){
-                        if(!id.equals(currentAiStreamId())||!db.isActiveProfile()||switching)return;
+                        if(!hasAiStream(id)||!db.isActiveProfile()||switching)return;
                         chars+=line.length();if(chars>4*1024*1024)throw new IOException("AI response too large");
                         if(line.isEmpty()){
                             if(!data.isEmpty()){
@@ -279,20 +292,20 @@ final class NativeAccount {
                     if(!done)throw new IOException("AI stream interrupted");
                 }
             }catch(Exception error){
-                if(id.equals(currentAiStreamId())&&db.isActiveProfile()&&!switching){
+                if(hasAiStream(id)&&db.isActiveProfile()&&!switching){
                     String code=error instanceof HttpFailure&& !((HttpFailure)error).code.isEmpty()?((HttpFailure)error).code:"ai_unavailable";
                     try{emit.accept(new JSONObject().put("id",id).put("type","error").put("error",code));}catch(JSONException ignored){}
                 }
             }finally{
-                synchronized(this){if(id.equals(aiStreamId)){aiStreamId=null;aiStreamConnection=null;}}
+                synchronized(this){activeAiStreams.remove(id);}
                 if(connection!=null){connection.disconnect();NativeTransport.release(db,connection);}
             }
         });
     }
-    private synchronized String currentAiStreamId(){return aiStreamId;}
+    private synchronized boolean hasAiStream(String id){return activeAiStreams.containsKey(id);}
     synchronized void cancelAiStream(String id){
-        if(aiStreamId==null||id!=null&&!id.equals(aiStreamId))return;
-        aiStreamId=null;if(aiStreamConnection!=null){aiStreamConnection.disconnect();aiStreamConnection=null;}
+        if(id==null){for(HttpURLConnection connection:activeAiStreams.values())if(connection!=null)connection.disconnect();activeAiStreams.clear();}
+        else{HttpURLConnection connection=activeAiStreams.remove(id);if(connection!=null)connection.disconnect();}
     }
     void shutdownAiStream(){cancelAiStream(null);aiStreams.shutdownNow();}
     JSONObject devices()throws Exception{JSONObject saved=read(SESSION);if(saved==null)throw new CredentialVault.KeyUnavailable();try{return request("/account/native/sessions",null,saved.getString("token"));}catch(HttpFailure error){if(error.status==401)db.setSetting(SESSION,"");throw error;}}
