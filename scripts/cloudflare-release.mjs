@@ -1,4 +1,4 @@
-import {readUploadedVersion} from './cloudflare-release-utils.mjs';
+import {readUploadedVersion,readDeployment} from './cloudflare-release-utils.mjs';
 import {execFileSync} from 'node:child_process';
 import {readFileSync,writeFileSync,appendFileSync,existsSync} from 'node:fs';
 const mode=process.argv[2],oauth=process.argv.includes('--oauth');
@@ -54,7 +54,7 @@ if(mode==='stage'){
   if(!same(active.versions,[{version_id:state.candidate,percentage:100}]))throw Error('Another deployment is active; refusing to overwrite it');
   const rollback=await api('/deployments',{strategy:'percentage',versions:state.baseline.versions,annotations:{'workers/message':'Automatic rollback after failed release '+state.sha}});
   if(state.baselineSchedules)await putSchedules(state.baselineSchedules);
-  if(!same((await current()).versions,state.baseline.versions))throw Error('Rollback verification failed');
+  await readDeployment(current,deployment=>same(deployment.versions,state.baseline.versions));
   state.rollback=rollback;writeFileSync(stateFile,JSON.stringify(state,null,2));summary(`Automatic rollback verified: ${rollback.id}. D1/R2 unchanged.`);
  }
 }else throw Error('Use stage, promote, or rollback');
