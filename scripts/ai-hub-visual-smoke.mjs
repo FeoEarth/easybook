@@ -32,7 +32,7 @@ try{
 
    for(const testWidth of [320,360,width]){
    await page.setViewportSize({width:testWidth,height});
-   for(const selector of ['.ai-hub-nav','.ai-hub-header','#aiHubMessages','.ai-hub-composer','#aiHubNew','#aiHubSend']){
+   for(const selector of ['.ai-hub-nav','#aiHubMessages','.ai-hub-composer','#aiHubNew','#aiHubSend']){
     const bounds=await page.locator(selector).boundingBox();assert.ok(bounds.x>=0&&bounds.x+bounds.width<=testWidth+1,selector+' fits actual viewport with a long conversation title');
    }
    }
@@ -40,6 +40,8 @@ try{
   }
   await page.screenshot({animations:'disabled',path:output+'/'+name+'-welcome.png'});
   assert.equal(await page.locator('#aiHub').evaluate(el=>el.scrollWidth>el.clientWidth),false,'No horizontal page overflow');
+  assert.equal(await page.locator('#aiHubModel, .ai-hub-header').count(),0,'Redundant title and model row removed');
+  const navigation=await page.locator('.ai-hub-nav').boundingBox(),messages=await page.locator('#aiHubMessages').boundingBox();assert.ok(Math.abs(messages.y-navigation.y-navigation.height)<1,'Messages start directly below navigation');
   const compact=await page.locator('#aiHubForm').boundingBox();assert.ok(compact.height<=64,'Original compact single-row composer');
   if(name==='mobile'){
    await page.evaluate(()=>{const app=window.aiHarness;app.profiles([{id:'deepseek-api',active:true,label:'DeepSeek',providerName:'DeepSeek',model:'deepseek-chat',models:['deepseek-chat','deepseek-reasoner']},{id:'gateway-api',label:'工作区 API',providerName:'OpenAI 兼容',model:'gateway/fast',models:['gateway/fast','gateway/reasoning']}]);app.session().profileId='deepseek-api';app.session().model='deepseek-chat';app.render();app.execute(async(path,options)=>{if(path!=='models')throw Error('Unexpected profile mutation');return {models:options.body.credentialId==='deepseek-api'?['deepseek-chat','deepseek-reasoner']:['gateway/fast','gateway/reasoning']}})});
@@ -96,6 +98,14 @@ try{
    await page.locator('#aiSessionClose').click();
    await page.setViewportSize({width,height:480});assert.ok(await page.locator('#aiHubSend').isVisible(),'Composer survives short viewport / keyboard');
   }
+  await page.setViewportSize({width,height});
+  await page.evaluate(()=>{const app=window.aiHarness;document.querySelectorAll('dialog[open]').forEach(d=>d.close());window.setKeyboardVisible(false);app.theme('light');app.execute(async(path,options={})=>{if(path==='preferences')return {version:1,autoMemory:true,useMemory:true,instructions:'先给结论，再按需解释。',memories:[{id:'visual-memory',text:'喜欢简洁中文，保留专业术语。',source:'auto'}]};throw Error('Preview request: '+path)});app.settings()});
+  await page.evaluate(()=>window.aiHarness.refreshPreferences());
+  await page.screenshot({animations:'disabled',path:output+'/'+name+'-ai-settings.png'});
+  await page.locator('#aiAddProvider').click();await page.screenshot({animations:'disabled',path:output+'/'+name+'-api-editor.png'});
+  const providerBounds=await page.locator('#aiProviderDialog').boundingBox();assert.ok(providerBounds.x>=0&&providerBounds.x+providerBounds.width<=width+1,'API form fits viewport');await page.locator('#aiProviderClose').click();
+  await page.locator('#aiMemoriesOpen').click();await page.waitForFunction(()=>document.getElementById('aiMemoryList').textContent.includes('喜欢简洁中文'));
+  await page.screenshot({animations:'disabled',path:output+'/'+name+'-ai-memory.png'});
   assert.deepEqual(errors,[],'No browser runtime errors');await context.close();
  }
  console.log('Desktop/mobile, dark mode, history and short viewport browser checks OK; previews: '+output);

@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import {normalizeChatTitle,chatTitleMessages,buildChatContext,recoverChatSession,createChatRun,ServerSentEventDecoder,readServerSentEvents} from '../shared/ai-chat.mjs';
+import {fallbackChatTitle,normalizeChatTitle,chatTitleMessages,buildChatContext,recoverChatSession,createChatRun,ServerSentEventDecoder,readServerSentEvents} from '../shared/ai-chat.mjs';
 const history=[{role:'user',content:'请用中文，创建三篇笔记，保留引用。'}];
 for(let i=0;i<50;i++){
  history.push({role:'assistant',content:'已完成创建 '+i,receipt:{tool:'notes_create',result:{id:'note-'+i}},apiContent:'已执行 notes_create，结果 id=note-'+i});
@@ -41,5 +41,15 @@ console.log('Chat context, interrupted recovery, run ownership and upstream SSE 
 assert.equal(normalizeChatTitle('标题：“项目计划”'),'项目计划');
 assert.equal(normalizeChatTitle('<tool_call>'), '');
 assert.equal(normalizeChatTitle('```json\n{}\n```'), '');
-assert.equal(Array.from(normalizeChatTitle('标题'.repeat(100))).length,40);
+assert.equal(normalizeChatTitle('标题'.repeat(100)),'');
 assert.ok(chatTitleMessages([{role:'user',content:'u'.repeat(4000)},{role:'assistant',content:'a'.repeat(4000)}]).every(m=>m.content.length<=2000));
+
+// Prefer meaningful titles over strict word counts. Existing names stay unchanged.
+assert.equal(normalizeChatTitle('## “近期笔记整理”'),'近期笔记整理');
+assert.equal(normalizeChatTitle('OpenAI API 配置'),'OpenAI API 配置');
+assert.equal(normalizeChatTitle('Build a concise useful project planning guide'),'Build a concise useful project planning guide');
+assert.equal(normalizeChatTitle('标题：输入框交互。'),'输入框交互');
+assert.ok(Array.from(fallbackChatTitle('请帮我总结当前工作区最近的内容，并列出重点和待办')).length<=28);
+const manualName='这是用户自己指定的完整长标题，不能擅自修改';
+assert.equal(recoverChatSession({title:manualName,titleSource:'manual',messages:[]}).title,manualName);
+assert.equal(recoverChatSession({title:manualName,titleSource:'ai',messages:[]}).title,manualName);

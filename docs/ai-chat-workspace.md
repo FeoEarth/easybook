@@ -104,3 +104,38 @@ Hiding the IME returns to the compact shell even when the textarea keeps focus
 and retains a multiline draft. Keyboard viewport changes
 reposition the model menu. Screenshot coverage includes both composer states and
 the model menu; the supplied recording was used to identify these states.
+
+The redundant title/model subheader has been removed. The conversation title
+remains as a visually hidden heading for accessibility; history still displays
+the generated title. The model picker lives in the composer, visible in the IME
+expanded layout and also in the desktop compact layout for hardware keyboards.
+
+## Shared response and title policy
+
+`shared/ai-prompts.mjs` supplies the cloud/local assistant policy and title rules.
+Replies lead with the requested result, expand only as needed, distinguish note
+metadata from actual content, and keep empty-workspace responses brief. Read and
+write scopes, per-operation approval and untrusted-data boundaries remain intact.
+The Agent finishes prerequisite reads before proposing one write per turn, then
+continues from confirmed receipts without replaying successful work.
+
+AI titles aim for roughly 6–12 Chinese characters or 3–6 English words, as
+writing guidance rather than enforced counts. Normalization cleans wrappers and
+prefixes, and rejects clearly abnormal output over 80 characters instead of
+cutting a generated title mid-phrase. Existing titles and manual names stay
+unchanged. A short prompt-based fallback remains available if generation fails.
+The local prompt budget is adjusted for the shared policy to stay below the
+native bridge's 16,000-character limit. Prompt changes are covered structurally
+and through provider mocks; live-model wording quality is not asserted by tests.
+
+### Account personalization
+
+AI settings now separates model connection cards, personalization and optional on-device models. Adding a connection asks for provider, optional label and API key; default model/catalog overrides are under optional model settings. Editing a connection does not activate it; “set default” is explicit. Model selection inside a conversation remains independent.
+
+`GET/PUT /api/ai/preferences` stores account-private user instructions, automatic/use-memory switches and up to 50 editable memory entries. PUT requires the last observed version; atomic compare-and-swap returns 409 on a concurrent update. A migration and idempotent runtime schema setup cover both Workers. The native account proxy and Java bridge expose the same authenticated operation; the updated APK is required for this new bridge operation.
+
+Cloud chat/writer prompts read the account preferences on the server; local inference uses synchronized preferences within its prompt budget. Current user requests and application tool/approval boundaries take priority over customization. Device-local legacy free text can be imported explicitly, rather than silently uploading it to an account.
+
+After a successful new user turn, optional extraction uses only the original user input (not note contents, attachment text, assistant replies or tool results), no tools and a small JSON output budget. Local extraction runs serially on the local engine; cloud extraction runs in the background. Entries can be edited, deleted, cleared, disabled or excluded from future replies. Extraction captures the settings version; deletion, toggling or another-device modification invalidates an in-flight save. Failed extraction does not fail the conversation. Automatic extraction uses the selected model and may consume additional BYOK tokens; semantic extraction quality depends on the model.
+
+Validation includes account isolation, stale-write rejection, preference injection, extraction without tools, disabling automatic extraction, UI CRUD and deletion during extraction, plus mobile/desktop browser layout screenshots. Provider responses in these tests are mocked.

@@ -19,3 +19,6 @@ const prompt=localAiPrompt([{role:'user',content:'查找笔记并制作表格'}]
 assert.match(prompt,/notes_search/);assert.match(prompt,/notes_create/);assert.match(prompt,/确认前/);assert.match(prompt,/表格/);assert.match(prompt,/工具 notes_search 返回/);
 assert.doesNotMatch(localAiPrompt([{role:'user',content:'你好'}]),/Agent 模式可提议写入工具/);
 console.log('Local AI protocol: OK');
+
+const bounded=localAiPrompt(Array.from({length:6},()=>({role:'user',content:'长对话'.repeat(4000)})),{mode:'agent',memory:'偏好'.repeat(2000),toolResults:Array.from({length:3},()=>({name:'notes_get',result:{text:'正文'.repeat(5000)}}))});
+assert.ok(bounded.length<=16000,'Expanded shared policy still fits the native local-prompt limit');

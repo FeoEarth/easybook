@@ -23,3 +23,6 @@ window.EasybookAiChat=aiChat;
 
 import * as aiModels from '../shared/ai-models.mjs';
 window.EasybookAiModels=aiModels;
+
+import * as aiPreferences from '../shared/ai-preferences.mjs';
+window.EasybookAiPreferences=aiPreferences;

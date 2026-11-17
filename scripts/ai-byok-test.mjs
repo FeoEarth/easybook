@@ -104,4 +104,24 @@ const invalidSelection=await aiAPI(request('/api/ai/chat','POST',{credentialId:'
 const autoSaved=await aiAPI(request('/api/ai/config','PUT',{label:'Auto-detected API',provider:'custom',providerName:'Test gateway',baseUrl:'https://gateway.example/v1',apiKey:secret,model:''}),env,principal,{fetcher:async()=>Response.json({data:[{id:'vendor/fast'},{id:'vendor/reasoning'}]})});
 assert.equal(autoSaved.status,200);const automatic=await autoSaved.json();assert.equal(automatic.model,'vendor/fast');assert.equal(automatic.models.length,2);
 const defaultless=await aiAPI(request('/api/ai/config','PUT',{label:'Manual API',provider:'custom',providerName:'No models',baseUrl:'https://gateway.example/v1',apiKey:secret,model:''}),env,principal,{fetcher:async()=>new Response('',{status:404})});assert.equal(defaultless.status,400);assert.equal((await defaultless.json()).error,'model_required');
+// Account preferences synchronize independently of provider credentials and use CAS.
+let prefs=await (await aiAPI(request('/api/ai/preferences'),env,principal)).json();assert.equal(prefs.version,0);
+const otherAccount='22222222-2222-4222-8222-222222222222';sqlite.prepare('INSERT INTO accounts(id,display_name,created_at) VALUES(?,?,?)').run(otherAccount,'Other',now);
+const prefRequest=body=>aiAPI(request('/api/ai/preferences','PUT',body),env,principal);
+prefs=await (await prefRequest({...prefs,instructions:'默认先给结论',memories:[{id:'memory1',text:'偏好中文简洁回复',source:'manual'}]})).json();assert.equal(prefs.version,1);
+assert.equal((await prefRequest({...prefs,version:0,instructions:'stale overwrite'})).status,409);
+assert.equal((await (await aiAPI(request('/api/ai/preferences'),env,{...principal,accountId:otherAccount})).json()).memories.length,0,'Memory is private to the account');
+let preferencePrompt='';
+result=await aiAPI(request('/api/ai/chat','POST',{credentialId:openaiId,messages:[{role:'user',content:'介绍一下'}]}),env,principal,{workspaceId:workspace,fetcher:async(url,init)=>{const b=JSON.parse(init.body);preferencePrompt=b.messages[0].content;return Response.json({choices:[{message:{content:'好'}}]})}});
+assert.equal(result.status,200);assert.match(preferencePrompt,/默认先给结论/);assert.match(preferencePrompt,/偏好中文简洁回复/);
+let memoryCalls=0;
+const extract=()=>aiAPI(request('/api/ai/chat','POST',{purpose:'memory',credentialId:openaiId,messages:[{role:'user',content:'以后请用中文回答我'}]}),env,principal,{workspaceId:workspace,fetcher:async(url,init)=>{memoryCalls++;const b=JSON.parse(init.body);assert.equal(b.tools,undefined,'Memory extraction has no workspace tools');assert.equal(b.max_completion_tokens,512);return Response.json({choices:[{message:{content:'["偏好中文回答","sk-sensitiveabcdefghijklmnop"]'}}]})}});
+assert.deepEqual((await (await extract()).json()).memories,['偏好中文回答']);
+// Deleting from another device makes an in-flight memory save stale.
+const oldVersion=prefs.version;
+prefs=await (await prefRequest({...prefs,memories:[],autoMemory:false,useMemory:false})).json();
+assert.equal((await prefRequest({...prefs,version:oldVersion,memories:[{id:'late',text:'deleted memory'}]})).status,409);
+assert.deepEqual((await (await extract()).json()).memories,[]);assert.equal(memoryCalls,1,'Disabled automatic memory makes no provider request');
+assert.equal((await aiAPI(request('/api/ai/preferences'),env,{kind:'anonymous'})).status,403);
+
 sqlite.close();console.log('PASS multi-BYOK encryption, provider presets, model discovery, active switching, Anthropic protocol and workspace authorization');

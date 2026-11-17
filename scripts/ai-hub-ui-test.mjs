@@ -64,13 +64,24 @@ try{
  app.execute(async(path,options)=>{if(path!=='models'){writes++;throw Error('Model switching must not mutate a profile')}modelRequests.push(options.body.credentialId);if(options.body.credentialId==='offline')throw Error('Models endpoint unavailable');return {models:options.body.credentialId==='secondary'?['second-chat','vendor/second-model']:['chat','reasoner','discovered-model']}});
  await app.loadModels();assert.equal(new Set(modelRequests).size,3,'All configured APIs are discovered, including inactive ones');
  assert.ok(app.choices().some(c=>c.model==='manual-model'),'Saved choices survive discovery failure');
- $('aiHubModel').click();await wait(()=>$('aiHubModelDialog').open);
+ w.setKeyboardVisible(true);$('aiHubComposerModel').click();await wait(()=>$('aiHubModelDialog').open);
  const secondChoice=$('aiHubModelOptions').querySelector('[data-hub-model="vendor/second-model"]');assert.ok(secondChoice);secondChoice.click();
  assert.equal(app.session().profileId,'secondary');assert.equal(app.session().model,'vendor/second-model');assert.equal(writes,0,'Session selection is local state');
- $('aiHubPrompt').focus();assert.equal($('aiHubForm').classList.contains('expanded'),false,'Focus alone does not expand');
+ w.setKeyboardVisible(false);$('aiHubPrompt').focus();assert.equal($('aiHubForm').classList.contains('expanded'),false,'Focus alone does not expand');
  w.setKeyboardVisible(true);assert.ok($('aiHubForm').classList.contains('expanded'));assert.equal($('aiHubComposerModel').textContent,'vendor/second-model');
  $('aiHubPrompt').blur();assert.ok($('aiHubForm').classList.contains('expanded'),'Losing focus with IME visible keeps the expanded layout');
  $('aiHubPrompt').focus();$('aiHubPrompt').value='长草稿\n'.repeat(40);$('aiHubPrompt').dispatchEvent(new w.Event('input'));app.files([{type:'text',name:'draft.txt',text:'draft'}]);
  w.setKeyboardVisible(false);assert.equal($('aiHubForm').classList.contains('expanded'),false,'IME dismissal collapses with focus, content and attachment retained');assert.equal(w.document.activeElement,$('aiHubPrompt'));assert.equal($('aiHubPrompt').style.height,'40px');
+ let settings={version:0,autoMemory:true,useMemory:true,instructions:'',memories:[]},pendingMemory=null;
+ app.execute(async(path,options={})=>{if(path==='preferences'){if(options.method==='PUT'){assert.equal(options.body.version,settings.version);settings={...options.body,version:settings.version+1}}return structuredClone(settings)}if(path==='chat'&&options.body?.purpose==='memory')return pendingMemory?await pendingMemory:{memories:['偏好中文回答']};if(path==='select')return {};throw Error('Unexpected settings request: '+path)});
+ app.settings();assert.equal($('aiProviderCards').querySelectorAll('.ai-provider-card').length,3);$('aiAddProvider').click();assert.ok($('aiProviderDialog').open);assert.equal($('aiProfile').value,'');$('aiProviderClose').click();
+ await app.personal('instructions');$('aiInstructions').value='先给结论';$('aiInstructionsForm').dispatchEvent(new w.Event('submit',{cancelable:true}));await wait(()=>settings.instructions==='先给结论');await wait(()=>app.preferences().version===1);
+ await app.remember('以后请用中文回复',{credentialId:'primary',model:'chat'});assert.equal(settings.memories.length,1);assert.equal($('aiMemoryList').querySelector('p').textContent,'偏好中文回答');
+ await app.personal('memory');$('aiMemoryList').querySelector('[data-memory-edit]').click();$('aiMemoryText').value='喜欢中文并保留术语';$('aiMemoryForm').dispatchEvent(new w.Event('submit',{cancelable:true}));await wait(()=>app.preferences().memories[0].text==='喜欢中文并保留术语');
+ let finishMemory;pendingMemory=new Promise(resolve=>finishMemory=resolve);const inFlight=app.remember('我习惯先看结论',{credentialId:'primary',model:'chat'});await new Promise(resolve=>setTimeout(resolve,10));
+ $('aiMemoryList').querySelector('[data-memory-delete]').click();await wait(()=>app.preferences().memories.length===0);const afterDelete=settings.version;finishMemory({memories:['已删除的信息']});await inFlight;assert.equal(settings.version,afterDelete);assert.equal(settings.memories.length,0,'Late extraction cannot restore a deleted memory');
+ $('aiAutoMemory').checked=false;$('aiAutoMemory').dispatchEvent(new w.Event('change'));await wait(()=>app.preferences().autoMemory===false);assert.equal($('aiAutoMemory').disabled,false);
+ $('aiPersonalClose').click();
+
  console.log('AI UI: isolated drafts, streaming DOM, attachments, error/stop recovery, approval continuation and context controls OK');
 }finally{dom.window.close()}

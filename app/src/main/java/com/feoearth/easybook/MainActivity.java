@@ -344,6 +344,7 @@ public class MainActivity extends Activity {
                 return new JSONObject().put("accepted",true);
             }
             case "ai.local.cancel":localAiEngine.cancel();return new JSONObject().put("accepted",true);
+            case "ai.preferences":return nativeAccount.ai(new JSONObject(args.toString()).put("action","preferences"));
             case "ai.config":return nativeAccount.ai(new JSONObject().put("action","config"));
             case "ai.credential":return nativeAccount.ai(new JSONObject(args.toString()).put("action","credential"));
             case "ai.models":return nativeAccount.ai(new JSONObject(args.toString()).put("action","models"));
