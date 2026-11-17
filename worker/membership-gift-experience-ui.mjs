@@ -2,7 +2,7 @@
 export const giftExperienceCSS=String.raw`
 .gift-preview{min-width:0;margin:4px 0 16px}
 .gift-flip-stage{
- --card-depth:1.5px;--card-edge:#39334c;
+ --card-depth:1.5px;
  position:relative;min-width:0;padding:3px 1px 10px;perspective:1050px;touch-action:pan-y;
 }
 .gift-flip-object{
@@ -18,33 +18,9 @@ export const giftExperienceCSS=String.raw`
  backface-visibility:hidden;-webkit-backface-visibility:hidden;
  transform:translateZ(var(--card-depth));
 }
-/* The reverse keeps the original graphite and champagne finishes. */
 .gift-card-art.gift-flip-back{
- --gift-glint:#cfe5ff38;--gift-brush-light:#e1eeff12;--gift-brush-dark:#090e172e;
  padding:clamp(16px,5vw,22px);justify-content:flex-start;gap:12px;
- color:#f0f4fa;
- background:linear-gradient(128deg,#19202a 0%,#3c495a 32%,#2b3542 58%,#1b222c 100%);
- border-color:#9fb7d64d;
- box-shadow:inset 0 1px 0 var(--gift-glint),inset 0 -1px 0 #0002,0 14px 26px -19px #0009;
  transform:rotateY(180deg) translateZ(var(--card-depth));
-}
-.gift-card-art.gift-flip-back.is-subscription{
- --gift-glint:#fff8df8c;--gift-brush-light:#fffcee42;--gift-brush-dark:#65553218;
- color:#302b21;
- background:linear-gradient(128deg,#b9a885 0%,#eee4cc 31%,#d1c09d 62%,#b6a27d 100%);
- border-color:#74603d45;
-}
-.gift-flip-back::before,.gift-flip-back::after{
- content:"";position:absolute;inset:0;z-index:-1;pointer-events:none;
-}
-.gift-flip-back::before{
- background:
-  repeating-linear-gradient(0deg,var(--gift-brush-light) 0 1px,transparent 1px 4px,var(--gift-brush-dark) 4px 5px,transparent 5px 8px),
-  repeating-linear-gradient(0deg,transparent 0 13px,var(--gift-brush-dark) 13px 14px,transparent 14px 19px);
- opacity:.7;
-}
-.gift-flip-back::after{
- background:radial-gradient(ellipse at 24% 0%,var(--gift-glint),transparent 68%),linear-gradient(152deg,#fff1 4%,transparent 44%,#0001 92%);
 }
 .gift-card-rim{
  position:absolute;inset:1px;border-radius:17px;
@@ -68,17 +44,21 @@ export const giftExperienceCSS=String.raw`
 .gift-code-heading{display:flex;align-items:center;justify-content:space-between;gap:10px}
 .gift-code{margin:0;overflow-wrap:anywhere;user-select:all;font:500 14px/1.9 ui-monospace,SFMono-Regular,Consolas,monospace}
 .gift-back-top{display:flex;justify-content:space-between;align-items:center;gap:8px;min-height:24px}
-.gift-back-return{min-height:28px;padding:4px 7px;background:transparent;color:inherit;border:0;border-radius:8px;font-size:10px;opacity:.75;white-space:nowrap}
-.gift-back-unavailable{font-size:12px;line-height:1.8;opacity:.7;margin:auto 0}
+.gift-back-return{min-height:28px;padding:4px 7px;background:transparent;color:var(--card-muted);border:0;border-radius:8px;font-size:10px;white-space:nowrap}
+.gift-back-unavailable{font-size:12px;line-height:1.8;color:var(--card-muted);margin:auto 0}
 .gift-back-secret{position:relative;min-width:0;width:100%;margin:auto 0 0;display:grid;grid-template-columns:1fr auto;gap:4px}
-.gift-back-secret .gift-code-heading{grid-column:1/-1;font-size:9px;min-height:18px;font-weight:500;letter-spacing:1px;opacity:.75}
-.gift-back-secret .gift-code-hide{position:absolute;right:0;top:-8px;min-height:28px;color:inherit;font-size:10px}
+.gift-back-secret .gift-code-heading{grid-column:1/-1;font-size:9px;min-height:18px;font-weight:500;letter-spacing:1px;color:var(--card-muted)}
+.gift-back-secret .gift-code-hide{position:absolute;right:0;top:-8px;min-height:28px;color:var(--card-muted);font-size:10px}
 .gift-back-secret .gift-secret{grid-column:1/-1;margin:2px 0 5px;border-color:currentColor;border-width:0;border-radius:8px;background:transparent;min-width:0}
 .gift-back-secret .gift-secret .gift-code{display:block;min-height:42px;padding:4px 0;font-size:clamp(11px,3.4vw,14px);line-height:1.5;letter-spacing:1px;color:inherit;font-variant-numeric:tabular-nums}
 .gift-back-secret .gift-spoiler{padding:0;gap:0;color:inherit;background:transparent;border-radius:8px}
 .gift-back-copy{display:block;grid-column:2;justify-self:end;width:auto;min-height:28px;padding:3px 0 3px 10px;border-radius:8px;border:0;background:transparent;color:inherit;font-size:11px;letter-spacing:.3px}
 .gift-back-copy svg{width:13px;height:13px;vertical-align:middle;margin-right:5px}
-.gift-back-copy:disabled{opacity:.3}
+.gift-back-copy:disabled{color:var(--card-muted);opacity:.62}
+.gift-flip-back button:focus-visible{
+ outline:2px solid var(--card-ink);outline-offset:2px;
+}
+.gift-flip-back .gift-spoiler:focus-visible{outline-offset:-2px}
 .gift-code-hide{min-height:40px;padding:6px 8px;background:transparent;color:var(--action);font-size:12px;border-radius:10px}
 .gift-secret{position:relative;isolation:isolate;overflow:hidden;border:1px solid var(--line);border-radius:14px;background:var(--fill);margin:10px 0 14px}
 .gift-secret .gift-code{min-height:88px;margin:0;border:0;background:transparent;border-radius:0;display:flex;align-items:center;letter-spacing:.6px;white-space:normal}

@@ -2,15 +2,16 @@ import {giftExperienceCSS,giftExperienceScript} from './membership-gift-experien
 export const giftActions=`<section class="gift-entry-actions" aria-label="礼品卡"><button type="button" id="giftRedeemOpen"><svg><use href="#gift"/></svg>兑换礼品卡</button><button type="button" id="giftShopOpen"><svg><use href="#gift"/></svg>购买礼品卡</button></section>`;
 export const giftSymbol=`<symbol id="gift" viewBox="0 0 24 24"><rect x="3" y="8" width="18" height="4" rx="1"/><path d="M5 12v9h14v-9M12 8v13M12 8H8a3 3 0 1 1 3-3l1 3Zm0 0h4a3 3 0 1 0-3-3l-1 3Z"/></symbol>`;
 export const giftCSS=`.gift-entry-actions{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin:-10px 0 24px}.gift-entry-actions button{display:flex;gap:8px;align-items:center;justify-content:center;padding:12px 8px;min-height:48px;border:1px solid var(--line);border-radius:15px;color:var(--action);background:var(--surface);font-size:13px}.gift-entry-actions svg{width:18px;height:18px}.gift-art{background:linear-gradient(135deg,#8174d2,#a087bc);color:#fff}.gift-art svg{width:23px;height:23px}
-/* The card face is also used on redemption receipts. */
-.gift-card-art{
+/* Card faces, the rim and redemption receipts share one palette. */
+.gift-card-art,.gift-flip-stage{
  --card-base:#232036;
  --card-ink:#f7f4ff;
  --card-muted:#c9c1db;
  --card-edge:#39334c;
- --card-well:#181626;
  --card-shape:#3d345e;
  --card-shape-light:#51436f;
+}
+.gift-card-art{
  position:relative;isolation:isolate;overflow:hidden;
  display:flex;flex-direction:column;justify-content:space-between;
  width:100%;min-width:0;min-height:190px;aspect-ratio:1.586;
@@ -24,11 +25,10 @@ export const giftCSS=`.gift-entry-actions{display:grid;grid-template-columns:1fr
  --card-ink:#271f3a;
  --card-muted:#514566;
  --card-edge:#c8bede;
- --card-well:#d6cee9;
  --card-shape:#c5b9e0;
  --card-shape-light:#d1c4ed;
 }
-.gift-card-front::before,.gift-card-front::after{
+.gift-card-front::before,.gift-card-front::after,.gift-flip-back::after{
  content:"";position:absolute;z-index:-1;pointer-events:none;
  border-radius:48% 52% 47% 53%;transform:rotate(-31deg);
 }
@@ -37,10 +37,12 @@ export const giftCSS=`.gift-entry-actions{display:grid;grid-template-columns:1fr
  background:linear-gradient(160deg,var(--card-shape-light),var(--card-shape) 62%);
  box-shadow:inset 1px 0 #ffffff16;
 }
-.gift-card-front::after{
+.gift-card-front::after,.gift-flip-back::after{
  width:62%;height:157%;right:-23%;top:-40%;
  border:1px solid color-mix(in srgb,var(--card-ink) 20%,transparent);
 }
+/* Keep the arc quiet behind the card number on the reverse. */
+.gift-flip-back::after{top:-72%;right:-28%;opacity:.55}
 .gift-card-kind{margin:0;color:var(--card-muted);font-size:13px;font-weight:570}
 .gift-card-caption{margin:0 0 8px;color:var(--card-muted);font-size:13px}
 .gift-card-value{
