@@ -3,6 +3,7 @@ import {registry} from './mcp-registry.mjs';
 import {callTool} from './mcp-services.mjs';
 import {workspaceAccess} from './workspace-identity.mjs';
 import {readAIProviderStream} from './ai-stream.mjs';
+import {modelIdPattern,modelIds,profileModels} from '../shared/ai-models.mjs';
 import {CHAT_TITLE_INSTRUCTION,normalizeChatTitle} from '../shared/ai-chat.mjs';
 
 const encoder=new TextEncoder(),decoder=new TextDecoder();
@@ -10,7 +11,7 @@ const providerSignal=(requestSignal,streaming)=>requestSignal?AbortSignal.any([r
 const response=(body,status=200)=>Response.json(body,{status,headers:{'Cache-Control':'no-store','Referrer-Policy':'no-referrer','X-Content-Type-Options':'nosniff'}});
 const b64=bytes=>btoa(String.fromCharCode(...bytes));
 const unb64=value=>Uint8Array.from(atob(value),c=>c.charCodeAt(0));
-const modelPattern=/^[A-Za-z0-9][A-Za-z0-9._:-]{0,119}$/;
+const modelPattern=modelIdPattern;
 const allowedRoles=new Set(['manager','editor','reader']);
 async function ensureCredentialSchema(env){
  await env.DB.prepare("CREATE TABLE IF NOT EXISTS account_ai_credentials(account_id TEXT PRIMARY KEY REFERENCES accounts(id) ON DELETE CASCADE,provider TEXT NOT NULL CHECK(provider='openai'),provider_name TEXT NOT NULL DEFAULT 'OpenAI',base_url TEXT NOT NULL DEFAULT 'https://api.openai.com/v1',model TEXT NOT NULL CHECK(length(model) BETWEEN 1 AND 120),key_ciphertext TEXT NOT NULL,key_iv TEXT NOT NULL,created_at INTEGER NOT NULL,updated_at INTEGER NOT NULL)").run();
@@ -19,6 +20,9 @@ async function ensureCredentialSchema(env){
  if(!columns.has('provider_name'))await add("ALTER TABLE account_ai_credentials ADD COLUMN provider_name TEXT NOT NULL DEFAULT 'OpenAI'");
  if(!columns.has('base_url'))await add("ALTER TABLE account_ai_credentials ADD COLUMN base_url TEXT NOT NULL DEFAULT 'https://api.openai.com/v1'");
  await env.DB.prepare("CREATE TABLE IF NOT EXISTS account_ai_profiles(id TEXT PRIMARY KEY,account_id TEXT NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,label TEXT NOT NULL,provider TEXT NOT NULL,protocol TEXT NOT NULL CHECK(protocol IN ('openai','anthropic')),provider_name TEXT NOT NULL,base_url TEXT NOT NULL,model TEXT NOT NULL,key_ciphertext TEXT NOT NULL,key_iv TEXT NOT NULL,active INTEGER NOT NULL DEFAULT 0,created_at INTEGER NOT NULL,updated_at INTEGER NOT NULL)").run();
+ const profileColumns=new Set((await env.DB.prepare('PRAGMA table_info(account_ai_profiles)').all()).results.map(column=>column.name));
+ if(!profileColumns.has('models_json'))await add("ALTER TABLE account_ai_profiles ADD COLUMN models_json TEXT NOT NULL DEFAULT '[]'");
+ if(!profileColumns.has('models_updated_at'))await add('ALTER TABLE account_ai_profiles ADD COLUMN models_updated_at INTEGER NOT NULL DEFAULT 0');
  await env.DB.prepare('CREATE INDEX IF NOT EXISTS account_ai_profiles_account ON account_ai_profiles(account_id,active DESC,updated_at DESC)').run();
  await env.DB.prepare('CREATE UNIQUE INDEX IF NOT EXISTS account_ai_profiles_one_active ON account_ai_profiles(account_id) WHERE active=1').run();
 }
@@ -44,14 +48,14 @@ async function open(env,row){
  catch{throw Object.assign(Error('AI credential cannot be decrypted'),{status:503,code:'credential_unavailable'})}
 }
 async function profiles(env,accountId){
- let rows=(await env.DB.prepare('SELECT id,account_id,label,provider,protocol,provider_name,base_url,model,key_ciphertext,key_iv,active,created_at,updated_at FROM account_ai_profiles WHERE account_id=? ORDER BY active DESC,updated_at DESC').bind(accountId).all()).results;
+ let rows=(await env.DB.prepare('SELECT id,account_id,label,provider,protocol,provider_name,base_url,model,key_ciphertext,key_iv,active,created_at,updated_at,models_json,models_updated_at FROM account_ai_profiles WHERE account_id=? ORDER BY active DESC,updated_at DESC').bind(accountId).all()).results;
  if(rows.length)return rows;
  const legacy=await env.DB.prepare('SELECT account_id,provider,provider_name,base_url,model,key_ciphertext,key_iv,created_at,updated_at FROM account_ai_credentials WHERE account_id=?').bind(accountId).first();
  if(!legacy)return [];
  const secret=await open(env,legacy),id=crypto.randomUUID(),wrapped=await seal(env,accountId,id,secret),provider=legacy.base_url==='https://api.openai.com/v1'?'openai':'custom';
  await env.DB.prepare('INSERT INTO account_ai_profiles(id,account_id,label,provider,protocol,provider_name,base_url,model,key_ciphertext,key_iv,active,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)').bind(id,accountId,legacy.provider_name,provider,'openai',legacy.provider_name,legacy.base_url,legacy.model,wrapped.ciphertext,wrapped.iv,1,legacy.created_at,legacy.updated_at).run();
  await env.DB.prepare('DELETE FROM account_ai_credentials WHERE account_id=?').bind(accountId).run();
- rows=(await env.DB.prepare('SELECT id,account_id,label,provider,protocol,provider_name,base_url,model,key_ciphertext,key_iv,active,created_at,updated_at FROM account_ai_profiles WHERE account_id=?').bind(accountId).all()).results;return rows;
+ rows=(await env.DB.prepare('SELECT id,account_id,label,provider,protocol,provider_name,base_url,model,key_ciphertext,key_iv,active,created_at,updated_at,models_json,models_updated_at FROM account_ai_profiles WHERE account_id=?').bind(accountId).all()).results;return rows;
 }
 async function credential(env,accountId,id=''){const rows=await profiles(env,accountId);return id?rows.find(row=>row.id===id):rows.find(row=>row.active)||rows[0]}
 function validateKey(value){return typeof value==='string'&&value.length>=20&&value.length<=500&&!/[\s\u0000-\u001f]/.test(value)}
@@ -71,7 +75,7 @@ function providerConfig(input){
  let path=url.pathname.replace(/\/+$/,'');if(path.endsWith('/chat/completions'))path=path.slice(0,-17);url.pathname=path||'/';
  return {providerName:input.providerName.trim(),baseUrl:url.href.replace(/\/$/,''),protocol:input.provider==='custom-anthropic'?'anthropic':'openai'};
 }
-const publicProfile=row=>({id:row.id,label:row.label,provider:row.provider,protocol:row.protocol,providerName:row.provider_name,baseUrl:row.base_url,model:row.model,active:!!row.active,updatedAt:row.updated_at});
+const publicProfile=row=>({id:row.id,label:row.label,provider:row.provider,protocol:row.protocol,providerName:row.provider_name,baseUrl:row.base_url,model:row.model,active:!!row.active,updatedAt:row.updated_at,models:profileModels(row),modelsUpdatedAt:row.models_updated_at||0});
 function toolScopes(role,mode){return mode==='agent'&&role!=='reader'?[...READ,...WRITE]:READ}
 function toolsFor(role,mode){
  const scopes=toolScopes(role,mode);
@@ -136,17 +140,28 @@ export async function aiAPI(request,env,principal,{workspaceId,fetcher=fetch}={}
     await env.DB.batch([env.DB.prepare('DELETE FROM account_ai_profiles WHERE account_id=? AND id=?').bind(principal.accountId,id),env.DB.prepare('UPDATE account_ai_profiles SET active=1 WHERE id=(SELECT id FROM account_ai_profiles WHERE account_id=? AND id<>? ORDER BY updated_at DESC LIMIT 1) AND NOT EXISTS(SELECT 1 FROM account_ai_profiles WHERE account_id=? AND id<>? AND active=1)').bind(principal.accountId,id,principal.accountId,id)]);const rows=await profiles(env,principal.accountId);return response({configured:!!rows.length,activeId:rows.find(value=>value.active)?.id||rows[0]?.id||'',profiles:rows.map(publicProfile)});
    }
    if(request.method!=='PUT')return response({error:'method_not_allowed'},405);
-   const input=await boundedJSON(request,4096);if(!object(input)||!modelPattern.test(input.model||''))return response({error:'invalid_credential'},400);const existing=input.credentialId?await credential(env,principal.accountId,input.credentialId):null;if(input.credentialId&&!existing)return response({error:'not_found'},404);if((!existing&&!validateKey(input.apiKey))||(existing&&input.apiKey&&!validateKey(input.apiKey)))return response({error:'invalid_credential'},400);const provider=providerConfig(input),id=existing?.id||crypto.randomUUID(),label=typeof input.label==='string'&&input.label.trim()?input.label.trim().slice(0,80):provider.providerName;
+   const input=await boundedJSON(request,80000);if(!object(input)||typeof input.model!=='string'||input.model&&!modelPattern.test(input.model))return response({error:'invalid_credential'},400);const existing=input.credentialId?await credential(env,principal.accountId,input.credentialId):null;if(input.credentialId&&!existing)return response({error:'not_found'},404);if((!existing&&!validateKey(input.apiKey))||(existing&&input.apiKey&&!validateKey(input.apiKey)))return response({error:'invalid_credential'},400);const provider=providerConfig(input),id=existing?.id||crypto.randomUUID(),label=typeof input.label==='string'&&input.label.trim()?input.label.trim().slice(0,80):provider.providerName;
+   if(input.models!==undefined&&(!Array.isArray(input.models)||input.models.length>500||input.models.some(model=>typeof model!=='string'||!modelPattern.test(model))))return response({error:'invalid_models'},400);
    const changesSecretDestination=!existing||!!input.apiKey||existing.provider!==input.provider||existing.protocol!==provider.protocol||existing.base_url!==provider.baseUrl;if(changesSecretDestination&&Date.now()-principal.authenticatedAt>300000)return response({error:'reauthentication_required'},403);
+   let autoDiscovered=false;
+   if(!input.model){
+    if(input.models?.length)input.model=input.models[0];
+    else{try{const found=await discoverModels(input.apiKey||await open(env,existing),{protocol:provider.protocol,base_url:provider.baseUrl},fetcher);if(!found.length)return response({error:'model_required'},400);input.model=found[0];input.models=found;autoDiscovered=true}catch(error){if(error.code==='provider_key_rejected')throw error;return response({error:'model_required'},400)}}
+   }
    const wrapped=input.apiKey?await seal(env,principal.accountId,id,input.apiKey):{ciphertext:existing.key_ciphertext,iv:existing.key_iv},now=Date.now(),makeActive=input.active!==false;
-   const statements=[];if(makeActive)statements.push(env.DB.prepare('UPDATE account_ai_profiles SET active=0 WHERE account_id=?').bind(principal.accountId));statements.push(env.DB.prepare('INSERT INTO account_ai_profiles(id,account_id,label,provider,protocol,provider_name,base_url,model,key_ciphertext,key_iv,active,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?) ON CONFLICT(id) DO UPDATE SET label=excluded.label,provider=excluded.provider,protocol=excluded.protocol,provider_name=excluded.provider_name,base_url=excluded.base_url,model=excluded.model,key_ciphertext=excluded.key_ciphertext,key_iv=excluded.key_iv,active=excluded.active,updated_at=excluded.updated_at').bind(id,principal.accountId,label,input.provider,provider.protocol,provider.providerName,provider.baseUrl,input.model,wrapped.ciphertext,wrapped.iv,makeActive?1:existing?.active||0,existing?.created_at||now,now));await env.DB.batch(statements);
+   const statements=[];if(makeActive)statements.push(env.DB.prepare('UPDATE account_ai_profiles SET active=0 WHERE account_id=?').bind(principal.accountId));statements.push(env.DB.prepare('INSERT INTO account_ai_profiles(id,account_id,label,provider,protocol,provider_name,base_url,model,key_ciphertext,key_iv,active,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?) ON CONFLICT(id) DO UPDATE SET label=excluded.label,provider=excluded.provider,protocol=excluded.protocol,provider_name=excluded.provider_name,base_url=excluded.base_url,model=excluded.model,key_ciphertext=excluded.key_ciphertext,key_iv=excluded.key_iv,active=excluded.active,updated_at=excluded.updated_at').bind(id,principal.accountId,label,input.provider,provider.protocol,provider.providerName,provider.baseUrl,input.model,wrapped.ciphertext,wrapped.iv,makeActive?1:existing?.active||0,existing?.created_at||now,now));
+   if(input.models!==undefined||changesSecretDestination)statements.push(env.DB.prepare('UPDATE account_ai_profiles SET models_json=?,models_updated_at=? WHERE id=? AND account_id=?').bind(JSON.stringify(modelIds([input.model,...input.models||[]])),autoDiscovered?now:0,id,principal.accountId));
+   await env.DB.batch(statements);
    const rows=await profiles(env,principal.accountId);return response({configured:true,activeId:(rows.find(value=>value.active)||rows[0]).id,profiles:rows.map(publicProfile),...publicProfile(rows.find(value=>value.id===id))});
   }
   if(path==='/api/ai/select'&&request.method==='POST'){
    const input=await boundedJSON(request,4096),row=await credential(env,principal.accountId,input?.credentialId);if(!row)return response({error:'not_found'},404);await env.DB.batch([env.DB.prepare('UPDATE account_ai_profiles SET active=0 WHERE account_id=?').bind(principal.accountId),env.DB.prepare('UPDATE account_ai_profiles SET active=1,updated_at=? WHERE account_id=? AND id=?').bind(Date.now(),principal.accountId,row.id)]);return response({selected:true,...publicProfile({...row,active:1})});
   }
   if(path==='/api/ai/models'&&request.method==='GET'){
-   const row=await credential(env,principal.accountId,url.searchParams.get('credentialId')||'');if(!row)return response({error:'ai_not_configured'},409);return response({models:await discoverModels(await open(env,row),row,fetcher),credentialId:row.id});
+   const row=await credential(env,principal.accountId,url.searchParams.get('credentialId')||'');if(!row)return response({error:'ai_not_configured'},409);if(row.models_updated_at>Date.now()-600000&&url.searchParams.get('refresh')!=='1')return response({models:profileModels(row),credentialId:row.id,cached:true});
+   const models=modelIds([...profileModels(row),...await discoverModels(await open(env,row),row,fetcher)]),now=Date.now();
+   await env.DB.prepare('UPDATE account_ai_profiles SET models_json=?,models_updated_at=? WHERE id=? AND account_id=? AND updated_at=?').bind(JSON.stringify(models),now,row.id,principal.accountId,row.updated_at).run();
+   return response({models,credentialId:row.id,modelsUpdatedAt:now});
   }
   if(!['/api/ai/chat','/api/ai/execute'].includes(path)||request.method!=='POST')return response({error:'not_found'},404);
   if(!/^[a-f0-9]{64}$/.test(workspaceId||''))return response({error:'workspace_required'},400);
@@ -167,7 +182,9 @@ export async function aiAPI(request,env,principal,{workspaceId,fetcher=fetch}={}
    return response({ok:!result?.error,tool:tool.name,result:result?.error?undefined:result,error:result?.error});
   }
   const input=await boundedJSON(request,1600000);
-  const row=await credential(env,principal.accountId,input?.purpose==='title'?input.credentialId||'':'');if(!row)return response({error:'ai_not_configured'},409);
+  const savedRow=await credential(env,principal.accountId,input?.credentialId||'');
+  if(input?.model!==undefined&&input.model!==''&&(typeof input.model!=='string'||!modelPattern.test(input.model)))return response({error:'invalid_credential'},400);
+  const row=savedRow&&input?.model?{...savedRow,model:input.model}:savedRow;if(!row)return response({error:'ai_not_configured'},409);
   if(input?.purpose==='title'){
    const messages=safeMessages(input.messages);
    if(messages.length>4||messages.reduce((n,m)=>n+m.content.length,0)>6000||input.attachments?.length)return response({error:'invalid_messages'},400);

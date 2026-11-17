@@ -41,6 +41,27 @@ try{
   await page.screenshot({animations:'disabled',path:output+'/'+name+'-welcome.png'});
   assert.equal(await page.locator('#aiHub').evaluate(el=>el.scrollWidth>el.clientWidth),false,'No horizontal page overflow');
   const compact=await page.locator('#aiHubForm').boundingBox();assert.ok(compact.height<=64,'Original compact single-row composer');
+  if(name==='mobile'){
+   await page.evaluate(()=>{const app=window.aiHarness;app.profiles([{id:'deepseek-api',active:true,label:'DeepSeek',providerName:'DeepSeek',model:'deepseek-chat',models:['deepseek-chat','deepseek-reasoner']},{id:'gateway-api',label:'工作区 API',providerName:'OpenAI 兼容',model:'gateway/fast',models:['gateway/fast','gateway/reasoning']}]);app.session().profileId='deepseek-api';app.session().model='deepseek-chat';app.render();app.execute(async(path,options)=>{if(path!=='models')throw Error('Unexpected profile mutation');return {models:options.body.credentialId==='deepseek-api'?['deepseek-chat','deepseek-reasoner']:['gateway/fast','gateway/reasoning']}})});
+   await page.emulateMedia({reducedMotion:'no-preference'});
+   const animated=await page.locator('#aiHubPrompt').evaluate(input=>{input.focus();return document.getElementById('aiHubForm').getAnimations().length>0});assert.ok(animated,'Focus expansion has a real animation');
+   await page.locator('#aiHubPrompt').fill('动画中快速输入多行内容\n'.repeat(12));
+   const growingText=await page.locator('#aiHubPrompt').boundingBox(),growingForm=await page.locator('#aiHubForm').boundingBox();assert.ok(growingForm.height>=growingText.height+44,'Content growth cancels the old compact-height animation');
+   await page.locator('#aiHubPrompt').fill('');
+   await page.evaluate(()=>Promise.all(document.getAnimations().filter(a=>a.effect?.getComputedTiming().iterations!==Infinity).map(a=>a.finished.catch(()=>{}))));
+   await page.screenshot({animations:'disabled',path:output+'/mobile-composer-expanded.png'});
+   await page.locator('#aiHubComposerModel').click();await page.locator('#aiHubModelDialog').waitFor({state:'visible'});
+   assert.equal(await page.locator('#aiHubModelOptions .ai-model-group').count(),2);
+   const menu=await page.locator('#aiHubModelDialog').boundingBox();assert.ok(menu.x>=0&&menu.x+menu.width<=width+1&&menu.y>=0&&menu.y+menu.height<=height+1,'Anchored model menu fits mobile viewport');
+   await page.screenshot({animations:'disabled',path:output+'/mobile-model-menu.png'});
+   await page.setViewportSize({width,height:480});
+   await page.evaluate(()=>new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve))));
+   const keyboardMenu=await page.locator('#aiHubModelDialog').boundingBox();assert.ok(keyboardMenu.y>=0&&keyboardMenu.y+keyboardMenu.height<=481,'Model menu fits keyboard viewport');
+   await page.setViewportSize({width,height});
+   await page.locator('[data-hub-profile="gateway-api"][data-hub-model="gateway/reasoning"]').click();assert.equal(await page.evaluate(()=>window.aiHarness.session().model),'gateway/reasoning');
+   await page.emulateMedia({reducedMotion:'reduce'});
+  }
+
   await page.locator('#aiHubPrompt').fill(Array.from({length:16},(_,i)=>'第 '+(i+1)+' 行：需要保留的多行草稿').join('\n'));
   const expanded=await page.locator('#aiHubPrompt').boundingBox();assert.ok(expanded.height>40&&expanded.height<=180,'Long draft expands within the scroll limit');
   await page.evaluate(()=>window.aiHarness.files([{name:'项目说明.md',type:'text',text:'附件草稿'}]));
@@ -49,8 +70,9 @@ try{
   if(name==='mobile'){
    await page.screenshot({animations:'disabled',path:output+'/mobile-multiline.png'});
    await page.setViewportSize({width:320,height:568});
+   await page.evaluate(()=>new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve))));
    const textBox=await page.locator('#aiHubPrompt').boundingBox(),sendBox=await page.locator('#aiHubSend').boundingBox();
-   assert.ok(textBox.width>=100&&textBox.x+textBox.width<sendBox.x,'Narrow input keeps text and send button separate');
+   assert.ok(textBox.width>=100&&(textBox.y+textBox.height<=sendBox.y+1||textBox.x+textBox.width<sendBox.x),'Narrow input keeps text and send button separate');
    assert.equal(await page.locator('#aiHub').evaluate(el=>el.scrollWidth>el.clientWidth),false);
    await page.setViewportSize({width,height});
   }

@@ -20,3 +20,6 @@ window.EasybookVideo={create:createVideoPlayer,mime:mediaMime,pauseAll:()=>docum
 
 import * as aiChat from '../shared/ai-chat.mjs';
 window.EasybookAiChat=aiChat;
+
+import * as aiModels from '../shared/ai-models.mjs';
+window.EasybookAiModels=aiModels;

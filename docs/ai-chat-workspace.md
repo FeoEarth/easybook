@@ -72,3 +72,32 @@ Existing saved sessions retain their titles. A user rename sets a manual flag
 and revision so a late response cannot overwrite it. Deleted sessions and
 responses from another workspace are ignored. Title generation does not add
 messages to history, change conversation ordering or execute workspace tools.
+
+## Multiple models per API profile
+
+`account_ai_profiles.models_json` stores a profile's model catalog, separate from
+its default `model`. `models_updated_at` bounds discovery caching to ten minutes.
+The additive schema in migration 0038 is also initialized idempotently through
+the authenticated Worker on older installations. Each account can use up to 500
+model IDs per profile, including provider-prefixed IDs such as `vendor/model`.
+
+Saving a profile starts discovery. Opening either picker discovers models across
+all saved profiles with at most three simultaneous requests; stored/manual models
+remain available when a provider does not expose a models endpoint. Refresh bypasses
+the server cache. If a profile is saved with an empty default model, an explicitly
+entered catalog supplies the first model, otherwise the provider's model list is
+queried. Unsupported model listing returns an actionable manual-entry error.
+
+Conversation requests carry their selected `credentialId` and `model`. The Worker
+looks up that credential under the authenticated account and uses an ephemeral
+model override; picking a model does not rewrite profile defaults or globally
+activate another credential. Web, the native account proxy and editor AI use the
+same selection fields. Existing chat history and tool authorization are retained.
+
+The hub picker is an anchored, searchable menu grouped by API. The original compact
+composer expands on focus, multiline content or attachments, revealing a model
+selector in the second row. Expansion uses a short Web Animation, with reduced
+motion respected. A single long line retains expansion after blur when necessary;
+empty, unfocused drafts return to the compact shell. Keyboard viewport changes
+reposition the model menu. Screenshot coverage includes both composer states and
+the model menu; the supplied recording was used to identify these states.

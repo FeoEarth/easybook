@@ -59,5 +59,15 @@ try{
  titledSession.profileId='__local__';titledSession.titleSource='fallback';titledSession.titleAttempted=false;
  app.titleLocal(async(model,prompt)=>{assert.match(prompt,/只返回标题文本/);assert.match(prompt,/项目计划/);return {message:{content:'本地会话标题'}}});
  await app.title(titledSession,{controller:new AbortController()});assert.equal(titledSession.title,'本地会话标题');
+ app.profiles([{id:'primary',active:true,label:'Primary API',model:'chat',models:['chat','reasoner']},{id:'secondary',label:'Second API',model:'second-chat',models:[]},{id:'offline',label:'Unavailable API',model:'saved-model',models:['saved-model','manual-model']}]);
+ const modelRequests=[];let writes=0;
+ app.execute(async(path,options)=>{if(path!=='models'){writes++;throw Error('Model switching must not mutate a profile')}modelRequests.push(options.body.credentialId);if(options.body.credentialId==='offline')throw Error('Models endpoint unavailable');return {models:options.body.credentialId==='secondary'?['second-chat','vendor/second-model']:['chat','reasoner','discovered-model']}});
+ await app.loadModels();assert.equal(new Set(modelRequests).size,3,'All configured APIs are discovered, including inactive ones');
+ assert.ok(app.choices().some(c=>c.model==='manual-model'),'Saved choices survive discovery failure');
+ $('aiHubModel').click();await wait(()=>$('aiHubModelDialog').open);
+ const secondChoice=$('aiHubModelOptions').querySelector('[data-hub-model="vendor/second-model"]');assert.ok(secondChoice);secondChoice.click();
+ assert.equal(app.session().profileId,'secondary');assert.equal(app.session().model,'vendor/second-model');assert.equal(writes,0,'Session selection is local state');
+ $('aiHubPrompt').focus();assert.ok($('aiHubForm').classList.contains('expanded'));assert.equal($('aiHubComposerModel').textContent,'vendor/second-model');
+ $('aiHubPrompt').value='';$('aiHubPrompt').blur();await wait(()=>!$('aiHubForm').classList.contains('expanded'));
  console.log('AI UI: isolated drafts, streaming DOM, attachments, error/stop recovery, approval continuation and context controls OK');
 }finally{dom.window.close()}
