@@ -44,7 +44,7 @@ try{
   if(name==='mobile'){
    await page.evaluate(()=>{const app=window.aiHarness;app.profiles([{id:'deepseek-api',active:true,label:'DeepSeek',providerName:'DeepSeek',model:'deepseek-chat',models:['deepseek-chat','deepseek-reasoner']},{id:'gateway-api',label:'工作区 API',providerName:'OpenAI 兼容',model:'gateway/fast',models:['gateway/fast','gateway/reasoning']}]);app.session().profileId='deepseek-api';app.session().model='deepseek-chat';app.render();app.execute(async(path,options)=>{if(path!=='models')throw Error('Unexpected profile mutation');return {models:options.body.credentialId==='deepseek-api'?['deepseek-chat','deepseek-reasoner']:['gateway/fast','gateway/reasoning']}})});
    await page.emulateMedia({reducedMotion:'no-preference'});
-   const animated=await page.locator('#aiHubPrompt').evaluate(input=>{input.focus();return document.getElementById('aiHubForm').getAnimations().length>0});assert.ok(animated,'Focus expansion has a real animation');
+   const animated=await page.locator('#aiHubPrompt').evaluate(input=>{input.focus();if(document.getElementById('aiHubForm').classList.contains('expanded'))throw Error('Focus must not expand');window.setKeyboardVisible(true);return document.getElementById('aiHubForm').getAnimations().length>0});assert.ok(animated,'IME appearance animates expansion');
    await page.locator('#aiHubPrompt').fill('动画中快速输入多行内容\n'.repeat(12));
    const growingText=await page.locator('#aiHubPrompt').boundingBox(),growingForm=await page.locator('#aiHubForm').boundingBox();assert.ok(growingForm.height>=growingText.height+44,'Content growth cancels the old compact-height animation');
    await page.locator('#aiHubPrompt').fill('');
@@ -62,6 +62,7 @@ try{
    await page.emulateMedia({reducedMotion:'reduce'});
   }
 
+  await page.evaluate(()=>window.setKeyboardVisible(true));
   await page.locator('#aiHubPrompt').fill(Array.from({length:16},(_,i)=>'第 '+(i+1)+' 行：需要保留的多行草稿').join('\n'));
   const expanded=await page.locator('#aiHubPrompt').boundingBox();assert.ok(expanded.height>40&&expanded.height<=180,'Long draft expands within the scroll limit');
   await page.evaluate(()=>window.aiHarness.files([{name:'项目说明.md',type:'text',text:'附件草稿'}]));
@@ -76,7 +77,7 @@ try{
    assert.equal(await page.locator('#aiHub').evaluate(el=>el.scrollWidth>el.clientWidth),false);
    await page.setViewportSize({width,height});
   }
-  await page.locator('#aiHubPrompt').fill('');await page.evaluate(()=>window.aiHarness.files([]));
+  await page.locator('#aiHubPrompt').fill('');await page.evaluate(()=>{window.aiHarness.files([]);window.setKeyboardVisible(false)});
 
   await page.evaluate(()=>{const app=window.aiHarness;app.session().mode='agent';document.activeElement?.blur();app.seed([
    {role:'user',content:'帮我整理本周的项目笔记，生成一份清晰的行动计划。'},
@@ -89,6 +90,7 @@ try{
   if(name==='mobile'){
    await page.locator('#aiHubSessions').click();await page.locator('#aiSessionSearch').fill('读书');assert.equal(await page.locator('#aiSessionList [data-ai-session]').count(),1);await page.locator('#aiSessionSearch').fill('');await page.locator('#aiSessionSearch').blur();await page.screenshot({animations:'disabled',path:output+'/mobile-history.png'});await page.evaluate(()=>window.aiHarness.theme('light'));await page.screenshot({animations:'disabled',path:output+'/mobile-history-light.png'});
    await page.setViewportSize({width:320,height:480});
+   await page.evaluate(()=>new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve))));
    const drawer=await page.locator('#aiSessionDialog').boundingBox();assert.ok(drawer.x>=0&&drawer.x+drawer.width<=320&&drawer.y+drawer.height<=480,'History sheet fits narrow keyboard viewport');
    await page.locator('#aiSessionSearch').fill('读书');assert.equal(await page.locator('#aiSessionList [data-ai-session]').count(),1);await page.locator('#aiSessionSearch').fill('');
    await page.locator('#aiSessionClose').click();

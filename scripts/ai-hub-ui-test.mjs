@@ -67,7 +67,10 @@ try{
  $('aiHubModel').click();await wait(()=>$('aiHubModelDialog').open);
  const secondChoice=$('aiHubModelOptions').querySelector('[data-hub-model="vendor/second-model"]');assert.ok(secondChoice);secondChoice.click();
  assert.equal(app.session().profileId,'secondary');assert.equal(app.session().model,'vendor/second-model');assert.equal(writes,0,'Session selection is local state');
- $('aiHubPrompt').focus();assert.ok($('aiHubForm').classList.contains('expanded'));assert.equal($('aiHubComposerModel').textContent,'vendor/second-model');
- $('aiHubPrompt').value='';$('aiHubPrompt').blur();await wait(()=>!$('aiHubForm').classList.contains('expanded'));
+ $('aiHubPrompt').focus();assert.equal($('aiHubForm').classList.contains('expanded'),false,'Focus alone does not expand');
+ w.setKeyboardVisible(true);assert.ok($('aiHubForm').classList.contains('expanded'));assert.equal($('aiHubComposerModel').textContent,'vendor/second-model');
+ $('aiHubPrompt').blur();assert.ok($('aiHubForm').classList.contains('expanded'),'Losing focus with IME visible keeps the expanded layout');
+ $('aiHubPrompt').focus();$('aiHubPrompt').value='长草稿\n'.repeat(40);$('aiHubPrompt').dispatchEvent(new w.Event('input'));app.files([{type:'text',name:'draft.txt',text:'draft'}]);
+ w.setKeyboardVisible(false);assert.equal($('aiHubForm').classList.contains('expanded'),false,'IME dismissal collapses with focus, content and attachment retained');assert.equal(w.document.activeElement,$('aiHubPrompt'));assert.equal($('aiHubPrompt').style.height,'40px');
  console.log('AI UI: isolated drafts, streaming DOM, attachments, error/stop recovery, approval continuation and context controls OK');
 }finally{dom.window.close()}

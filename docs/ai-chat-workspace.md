@@ -95,9 +95,12 @@ activate another credential. Web, the native account proxy and editor AI use the
 same selection fields. Existing chat history and tool authorization are retained.
 
 The hub picker is an anchored, searchable menu grouped by API. The original compact
-composer expands on focus, multiline content or attachments, revealing a model
+composer expands only while the input method is visible, revealing a model
 selector in the second row. Expansion uses a short Web Animation, with reduced
-motion respected. A single long line retains expansion after blur when necessary;
-empty, unfocused drafts return to the compact shell. Keyboard viewport changes
+motion respected. Android supplies authoritative WindowInsets IME visibility through the existing
+setKeyboardVisible bridge; the Web uses the existing visual-viewport keyboard
+detection. Focus, blur, draft length and attachments do not decide expansion.
+Hiding the IME returns to the compact shell even when the textarea keeps focus
+and retains a multiline draft. Keyboard viewport changes
 reposition the model menu. Screenshot coverage includes both composer states and
 the model menu; the supplied recording was used to identify these states.
