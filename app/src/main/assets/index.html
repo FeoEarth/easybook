@@ -607,6 +607,32 @@ body.keyboard .ai-hub-welcome{display:none}body.keyboard .ai-hub-composer{paddin
 .ai-message.assistant tr>:last-child{border-right:0}.ai-message.assistant tbody tr:last-child>td{border-bottom:0}
 
 .ai-settings-intro{color:var(--muted);font-size:15px;line-height:1.6;margin:8px 4px 28px}.ai-section-heading{display:flex;align-items:center;justify-content:space-between;gap:12px;margin:28px 4px 12px}.ai-section-heading h2{font-size:17px;margin:0}.ai-section-heading button,.ai-memory-toolbar button{color:var(--accent);padding:10px 6px;font-size:14px}.ai-provider-cards{display:grid;gap:10px}.ai-provider-card{display:flex;gap:12px;align-items:center;padding:18px 16px;background:var(--paper);border:1px solid var(--line);border-radius:18px}.ai-provider-avatar{display:grid;place-items:center;width:42px;height:42px;flex:none;border-radius:13px;background:var(--control-fill);font-size:20px;font-weight:600}.ai-provider-copy{display:grid;gap:5px;min-width:0;flex:1}.ai-provider-copy strong{font-size:16px;overflow-wrap:anywhere}.ai-provider-copy small{font-size:12px;color:var(--muted)}.ai-provider-model{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.ai-provider-actions{display:grid;justify-items:end;gap:5px;flex:none}.ai-provider-actions button{min-height:36px;font-size:13px;color:var(--accent);padding:6px}.ai-default-badge{color:var(--muted);font-size:12px;padding:6px}.ai-provider-empty{padding:26px 20px;border:1px dashed var(--line);border-radius:18px;text-align:center}.ai-provider-empty p{font-size:13px;line-height:1.6;color:var(--muted)}#aiSettings .ai-personalization strong{color:var(--ink);font-size:16px}#aiSettings .ai-personalization small{display:block;font-size:12px;line-height:1.6;margin-top:4px;color:var(--muted)}.ai-personalization button{width:100%;text-align:left}.ai-personalization input[type=checkbox]{appearance:none;position:relative;width:51px;height:31px;flex:none;border:0;border-radius:20px;background:var(--control-fill);cursor:pointer;margin:0}.ai-personalization input[type=checkbox]:after{content:"";position:absolute;width:27px;height:27px;left:2px;top:2px;border-radius:50%;background:#fff;box-shadow:0 1px 4px #0003;transition:transform .18s}.ai-personalization input[type=checkbox]:checked{background:var(--accent)}.ai-personalization input[type=checkbox]:checked:after{transform:translateX(20px)}.ai-personalization input[type=checkbox]:focus-visible{outline:2px solid var(--accent);outline-offset:3px}.ai-personalization input[type=checkbox]:disabled{opacity:.5}.ai-advanced-models{margin:12px 0 22px}.ai-advanced-models>summary{padding:12px 8px;color:var(--muted);font-size:14px;cursor:pointer}@media(prefers-reduced-motion:reduce){.ai-personalization input[type=checkbox]:after{transition:none}}.ai-device-settings{margin:28px 4px}.ai-device-settings>summary{padding:12px 0;color:var(--muted);font-size:14px}.ai-settings-dialog{width:min(560px,calc(100vw - 24px));max-height:calc(var(--viewport-height,100dvh) - 32px);padding:20px;border-radius:24px;overflow:auto;color:var(--ink);background:var(--bg)}.ai-settings-dialog .dialog-title{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:18px}.ai-settings-dialog h2{font-size:20px;margin:0}.ai-settings-dialog .dialog-title>button{min-width:44px;min-height:44px;font-size:26px;color:var(--muted)}.ai-settings-dialog textarea{display:block;width:100%;min-width:0;padding:12px;border:1px solid var(--line);border-radius:12px;background:var(--paper);color:var(--ink);font:15px/1.6 inherit;resize:vertical;margin:12px 0}.ai-settings-dialog form>button.primary{width:100%;min-height:44px;margin-top:10px}.ai-settings-dialog::backdrop{background:#0006}.ai-memory-toolbar{display:flex;justify-content:space-between}.ai-memory-item{padding:14px 0;border-bottom:1px solid var(--line)}.ai-memory-item p{margin:0 0 8px;font-size:15px;line-height:1.6;overflow-wrap:anywhere;white-space:pre-wrap}.ai-memory-item small{color:var(--muted);font-size:12px}.ai-memory-item button{padding:8px;min-height:36px;font-size:13px;color:var(--accent)}.ai-memory-item footer{display:flex;align-items:center;justify-content:space-between}.ai-settings-dialog .danger,.ai-memory-toolbar .danger{color:var(--danger)}
+
+/* Shared form controls for settings and their dialogs. */
+:is(#settings,.sync-page,#syncSurfaceDialog,.ai-settings-dialog,.workspace-switch-dialog) :is(input:not([type]),input[type=text],input[type=password],input[type=url],input[type=search],textarea,select):not([hidden]){
+ box-sizing:border-box;max-inline-size:100%;min-inline-size:0;min-block-size:44px;
+ padding:10px 12px;border:1px solid var(--line);border-radius:12px;
+ background:var(--control-fill);color:var(--ink);font:inherit;font-size:16px;line-height:1.4;
+}
+:is(#settings,.sync-page,#syncSurfaceDialog,.ai-settings-dialog,.workspace-switch-dialog) :is(input:not([type]),input[type=text],input[type=password],input[type=url],input[type=search],textarea,select):focus-visible{
+ outline:2px solid var(--accent);outline-offset:2px;
+}
+:is(#settings,.sync-page,#syncSurfaceDialog,.ai-settings-dialog,.workspace-switch-dialog) select:not([hidden]){
+ appearance:none;padding-inline-end:34px;
+ background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 16 16'%3E%3Cpath d='m4 6 4 4 4-4' fill='none' stroke='%23888' stroke-width='1.7' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+ background-repeat:no-repeat;background-position:right 10px center;
+}
+#aiSettings .ai-fields .settings-row:not([hidden]){display:block;padding:12px 14px}
+#aiSettings .ai-fields .row-text{display:grid;gap:6px;width:100%}
+#aiSettings .ai-fields :is(input,select,textarea){width:100%;margin:0}
+#aiSettings .ai-fields .settings-row>button{padding-inline:0;margin-top:4px}
+#aiSettings .ai-actions{display:flex;flex-wrap:wrap;gap:8px;padding:0;background:transparent}
+#aiSettings .ai-actions button{width:auto;min-height:44px;padding:10px 16px;border-radius:12px;background:var(--control-fill)}
+#aiSettings .ai-actions button+button::before{content:none}
+#aiSettings .ai-actions #aiSave{flex:1;background:var(--accent);color:var(--accent-ink,#fff)}
+#aiSettings .ai-status:empty{display:none}
+#aiSettings .ai-personalization .chevron{flex:none}
+.ai-settings-dialog :is(input,select,textarea):disabled{opacity:.65}
 </style></head><body>
 <svg xmlns="http://www.w3.org/2000/svg" style="position:absolute;width:0;height:0;overflow:hidden" aria-hidden="true"><defs>
 <symbol id="i-spark" viewBox="0 0 24 24"><path d="M12 2c.8 5.3 3.7 8.2 9 9-5.3.8-8.2 3.7-9 9-.8-5.3-3.7-8.2-9-9 5.3-.8 8.2-3.7 9-9Z"/><path d="M19 2c.2 1.8 1.2 2.8 3 3-1.8.2-2.8 1.2-3 3-.2-1.8-1.2-2.8-3-3 1.8-.2 2.8-1.2 3-3Z"/></symbol>
@@ -690,10 +716,10 @@ body.keyboard .ai-hub-welcome{display:none}body.keyboard .ai-hub-composer{paddin
 <div class="ai-section-heading"><h2>模型连接</h2><button type="button" id="aiAddProvider">添加 API</button></div>
 <div id="aiProviderCards" class="ai-provider-cards" aria-live="polite"></div><p id="aiConnectionsStatus" class="ai-note" role="status"></p>
 <div class="ai-section-heading"><h2>个性化</h2></div><div class="settings-group ai-personalization">
-<button type="button" class="settings-row" id="aiInstructionsOpen"><span class="row-text"><strong>用户提示词</strong><small id="aiInstructionsSummary">设置回复语言、风格和其他偏好</small></span><span aria-hidden="true">›</span></button>
+<button type="button" class="settings-row" id="aiInstructionsOpen"><span class="row-text"><strong>用户提示词</strong><small id="aiInstructionsSummary">设置回复语言、风格和其他偏好</small></span><svg class="chevron" aria-hidden="true"><use href="#i-chevron"/></svg></button>
 <label class="settings-row"><span class="row-text"><strong>使用记忆</strong><small>回复时参考已保存的长期偏好</small></span><input type="checkbox" id="aiUseMemory"></label>
 <label class="settings-row"><span class="row-text"><strong>自动记忆</strong><small>使用当前模型记住长期偏好，可随时删除</small></span><input type="checkbox" id="aiAutoMemory"></label>
-<button type="button" class="settings-row" id="aiMemoriesOpen"><span class="row-text"><strong>管理记忆</strong><small id="aiMemorySummary">查看、修改或删除已保存的信息</small></span><span aria-hidden="true">›</span></button></div>
+<button type="button" class="settings-row" id="aiMemoriesOpen"><span class="row-text"><strong>管理记忆</strong><small id="aiMemorySummary">查看、修改或删除已保存的信息</small></span><svg class="chevron" aria-hidden="true"><use href="#i-chevron"/></svg></button></div>
 <p id="aiPreferencesStatus" class="ai-note" role="status">记忆与用户提示词随账户跨设备同步。自动记忆会使用当前模型的额外用量。</p>
 <details id="aiDeviceSettings" class="ai-device-settings" hidden><summary>设备端模型</summary><div id="aiLocalSection" hidden><div class="settings-label">设备端 AI · 可选下载</div><div class="settings-group" id="aiLocalModels"><p class="ai-note">正在检测设备与本地模型…</p></div><p id="aiLocalNote" role="status">支持 Wi-Fi 和蜂窝网络主动下载；使用蜂窝网络可能产生流量费用，漫游下载仍受限制。</p></div>
 </details><dialog id="aiProviderDialog" class="ai-settings-dialog ui-material" aria-labelledby="aiProviderTitle"><div class="dialog-title"><h2 id="aiProviderTitle">添加 API</h2><button type="button" id="aiProviderClose" aria-label="关闭">×</button></div><form id="aiConfigForm">
@@ -1443,16 +1469,18 @@ function renderAiProfiles(activeId=''){$('aiProfile').innerHTML='<option value="
 function fillAiProfile(profile){aiModelChoices=[];$('aiLabel').value=profile?.label||'';$('aiProvider').value=profile?.provider||'openai';$('aiProviderName').value=['custom','custom-anthropic'].includes(profile?.provider)?profile.providerName||'':'';$('aiBaseUrl').value=['custom','custom-anthropic'].includes(profile?.provider)?profile.baseUrl||'':'';$('aiModel').value=profile?.model||'';$('aiKey').value='';$('aiDelete').hidden=!profile;$('aiModelsInput').value=(profile?.models||[]).join('\n');toggleAiProvider()}
 async function refreshAiConfig({force=false}={}){
  if(aiConfigPromise&&!force)return aiConfigPromise;
- $('aiConfigStatus').textContent='正在读取账户配置…';
- const request=aiRequest('config').then(data=>{aiConfigured=!!data.configured;aiProfiles=data.profiles||[];if(!$('aiProviderDialog').open)renderAiProfiles(data.activeId);const profile=aiProfiles.find(value=>value.id===data.activeId)||aiProfiles[0];if(!$('aiProviderDialog').open)fillAiProfile(profile);renderAiProviderCards();updateAiChatModelLabel();$('aiConfigStatus').textContent=profile?(profile.providerName||profile.label)+' · '+aiProfiles.length+' 个加密配置 · '+new Date(profile.updatedAt).toLocaleString():'尚未配置 BYOK 密钥';$('aiConnectionsStatus').textContent=aiProfiles.length?'密钥加密保存在账户中，模型会自动识别。':'添加一个 API 连接，即可在对话中使用其模型。';return aiConfigured}).catch(error=>{aiConfigured=null;$('aiConnectionsStatus').textContent=error.message;$('aiConfigStatus').textContent=error.message;throw error});
+ $('aiConnectionsStatus').textContent='正在读取账户配置…';
+ const request=aiRequest('config').then(data=>{aiConfigured=!!data.configured;aiProfiles=data.profiles||[];if(!$('aiProviderDialog').open)renderAiProfiles(data.activeId);const profile=aiProfiles.find(value=>value.id===data.activeId)||aiProfiles[0];if(!$('aiProviderDialog').open)fillAiProfile(profile);renderAiProviderCards();updateAiChatModelLabel();$('aiConnectionsStatus').textContent=aiProfiles.length?'密钥加密保存在账户中，模型会自动识别。':'添加一个 API 连接，即可在对话中使用其模型。';return aiConfigured}).catch(error=>{aiConfigured=null;$('aiConnectionsStatus').textContent=error.message;throw error});
  const settled=request.finally(()=>{if(aiConfigPromise===settled)aiConfigPromise=null});aiConfigPromise=settled;return settled
 }
 function toggleAiProvider(){const custom=['custom','custom-anthropic'].includes($('aiProvider').value);$('aiProviderNameRow').hidden=!custom;$('aiBaseUrlRow').hidden=!custom;$('aiProviderName').required=custom;$('aiBaseUrl').required=custom}
-function showAiPage(){switchTab('ai');void refreshAiConfig().catch(()=>{});void refreshAiPreferences().catch(()=>{});void refreshAiLocal()}
-$('aiBack').onclick=()=>switchTab('settings');
+let aiSettingsOrigin='settings';
+function showAiPage(){if(tab!=='ai')aiSettingsOrigin=tab==='ai-hub'?'ai-hub':'settings';$('aiBack').querySelector('span').textContent=aiSettingsOrigin==='ai-hub'?'对话':'设置';switchTab('ai');void refreshAiConfig().catch(()=>{});void refreshAiPreferences().catch(()=>{});void refreshAiLocal()}
+$('aiBack').onclick=()=>switchTab(aiSettingsOrigin);
 $('aiProvider').onchange=()=>{const value=$('aiProvider').value;toggleAiProvider();if(!$('aiProfile').value&&aiDefaults[value]){$('aiModel').value='';if(!$('aiLabel').value)$('aiLabel').value=aiDefaults[value][1]}};
 $('aiProfile').onchange=()=>fillAiProfile(aiProfiles.find(value=>value.id===$('aiProfile').value));
-function openAiProvider(id=''){renderAiProfiles(id);fillAiProfile(aiProfiles.find(p=>p.id===id));$('aiProviderTitle').textContent=id?'编辑 API':'添加 API';$('aiConfigStatus').textContent='';$('aiKey').placeholder=id?'留空保留原密钥':'输入 API 密钥';$('aiAdvancedModels').open=false;$('aiProviderDialog').showModal()}
+let aiProviderRevision=0;
+function openAiProvider(id=''){aiProviderRevision++;renderAiProfiles(id);fillAiProfile(aiProfiles.find(p=>p.id===id));$('aiProviderTitle').textContent=id?'编辑 API':'添加 API';$('aiConfigStatus').textContent='';$('aiKey').placeholder=id?'留空保留原密钥':'输入 API 密钥';$('aiAdvancedModels').open=false;$('aiModels').hidden=!id;$('aiModels').disabled=false;$('aiProviderDialog').showModal()}
 $('aiNew').onclick=()=>{renderAiProfiles('');fillAiProfile(null)};
 $('aiAddProvider').onclick=()=>openAiProvider();$('aiProviderClose').onclick=()=>$('aiProviderDialog').close();
 function renderAiProviderCards(){
@@ -1463,7 +1491,7 @@ $('aiProviderCards').onclick=async event=>{const edit=event.target.closest('[dat
 function renderAiModelChoices(){const query=normalizeSearch($('aiModelSearch').value),models=aiModelChoices.filter(model=>!query||normalizeSearch(model).includes(query)),selected=$('aiModel').value;$('aiModelCount').textContent=models.length+' 个';$('aiModelOptions').innerHTML=models.map(model=>'<button type="button" class="ai-model-option" role="radio" aria-checked="'+String(model===selected)+'" data-ai-model="'+esc(model)+'"><span>'+esc(model)+'</span>'+(model===selected?'<svg aria-hidden="true"><use href="#i-check"/></svg>':'')+'</button>').join('');$('aiModelEmpty').hidden=!!models.length}
 function showAiModelChoices(){if(!aiModelChoices.length)return toast('请先获取模型列表');$('aiModelSearch').value='';renderAiModelChoices();$('aiModelDialog').showModal();requestAnimationFrame(()=>$('aiModelSearch').focus())}
 $('aiModelSearch').oninput=renderAiModelChoices;$('aiModelClose').onclick=()=>$('aiModelDialog').close();$('aiModelOptions').onclick=event=>{const button=event.target.closest('[data-ai-model]');if(!button)return;$('aiModel').value=button.dataset.aiModel;$('aiModelDialog').close();$('aiConfigStatus').textContent='已选择模型：'+button.dataset.aiModel;$('aiModels').focus()};
-$('aiModels').onclick=async()=>{const id=$('aiProfile').value;if(!id)return toast('请先保存 API 密钥，再获取模型列表');$('aiModels').disabled=true;$('aiConfigStatus').textContent='正在从提供商获取模型列表…';try{const data=await aiRequest('models',{body:{credentialId:id,refresh:true}});aiModelChoices=data.models||[];$('aiModelsInput').value=aiModelChoices.join('\n');const profile=aiProfiles.find(p=>p.id===id);if(profile)profile.models=aiModelChoices;$('aiConfigStatus').textContent=aiModelChoices.length?'已获取 '+aiModelChoices.length+' 个模型，请选择':'提供商没有返回可选择的模型';if(aiModelChoices.length)showAiModelChoices()}catch(error){$('aiConfigStatus').textContent=error.message}finally{$('aiModels').disabled=false}};
+$('aiModels').onclick=async()=>{const id=$('aiProfile').value,revision=aiProviderRevision;if(!id||aiConfigSaving)return;$('aiModels').disabled=true;$('aiConfigStatus').textContent='正在从提供商获取模型列表…';try{const data=await aiRequest('models',{body:{credentialId:id,refresh:true}});if(revision!==aiProviderRevision||!$('aiProviderDialog').open)return;aiModelChoices=data.models||[];$('aiModelsInput').value=aiModelChoices.join('\n');const profile=aiProfiles.find(p=>p.id===id);if(profile)profile.models=aiModelChoices;$('aiConfigStatus').textContent=aiModelChoices.length?'已获取 '+aiModelChoices.length+' 个模型，请选择':'提供商没有返回可选择的模型';if(aiModelChoices.length)showAiModelChoices()}catch(error){if(revision===aiProviderRevision&&$('aiProviderDialog').open)$('aiConfigStatus').textContent=error.message}finally{if(revision===aiProviderRevision)$('aiModels').disabled=false}};
 const activeAiProfile=()=>aiProfiles.find(profile=>profile.active)||aiProfiles[0];
 let aiWriterLocalModel='',aiWriterProfileId='',aiWriterModel='';
 function updateAiChatModelLabel(){const profile=aiProfiles.find(p=>p.id===aiWriterProfileId)||activeAiProfile();$('aiChatModelLabel').textContent=aiWriterLocalModel?(aiLocalStatus?.models?.find(m=>m.id===aiWriterLocalModel)?.title||aiWriterLocalModel)+' · 本地':profile?(aiWriterModel||profile.model):'选择模型'}
@@ -1501,7 +1529,31 @@ async function loadAiChatModels({refresh=false}={}){
 }
 $('aiChatModelMenu').ontoggle=()=>{const open=$('aiChatModelMenu').open;$('aiChatModelMenu').closest('.ai-quick-actions').classList.toggle('model-open',open);if(open){$('aiChatModelSearch').value='';void loadAiChatModels()}};$('aiChatModelSearch').oninput=renderAiChatModels;
 $('aiChatModelOptions').onclick=event=>{const button=event.target.closest('[data-chat-model]');if(!button||aiBusy)return;const model=button.dataset.chatModel,id=button.dataset.chatProfile;if(id==='__local__')aiWriterLocalModel=model;else{if(!aiProfiles.some(profile=>profile.id===id))return;aiWriterLocalModel='';aiWriterProfileId=id;aiWriterModel=model}updateAiChatModelLabel();$('aiChatModelMenu').open=false};
-$('aiConfigForm').onsubmit=async event=>{event.preventDefault();if(aiBusy)return;const apiKey=$('aiKey').value.trim(),model=$('aiModel').value.trim(),provider=$('aiProvider').value,providerName=$('aiProviderName').value.trim(),baseUrl=$('aiBaseUrl').value.trim(),credentialId=$('aiProfile').value,label=$('aiLabel').value.trim();if(!apiKey&&!credentialId)return toast('请输入新的 API 密钥');aiBusy=true;$('aiSave').disabled=true;$('aiConfigStatus').textContent='正在加密保存…';try{await aiRequest('config',{method:'PUT',body:{credentialId:credentialId||undefined,label,provider,providerName,baseUrl,model,models:$('aiModelsInput').value.split(/[\s,，]+/).filter(Boolean),...(apiKey?{apiKey}:{}),active:!credentialId||!!aiProfiles.find(p=>p.id===credentialId)?.active}});$('aiProviderDialog').close();await refreshAiConfig({force:true});toast('AI 配置已保存，正在识别模型');void loadAiChatModels()}catch(error){$('aiConfigStatus').textContent=error.message;if(error.code==='model_required'){$('aiAdvancedModels').open=true;$('aiModel').focus()}}finally{aiBusy=false;$('aiSave').disabled=false}};
+let aiConfigSaving=false;
+$('aiProviderDialog').addEventListener('cancel',event=>{if(aiConfigSaving)event.preventDefault()});
+$('aiConfigForm').onsubmit=async event=>{
+ event.preventDefault();
+ if(aiConfigSaving||$('aiModels').disabled)return;
+ const apiKey=$('aiKey').value.trim(),credentialId=$('aiProfile').value;
+ if(!apiKey&&!credentialId){$('aiConfigStatus').textContent='请输入 API 密钥';$('aiKey').focus();return}
+ const body={credentialId:credentialId||undefined,label:$('aiLabel').value.trim(),
+  provider:$('aiProvider').value,providerName:$('aiProviderName').value.trim(),
+  baseUrl:$('aiBaseUrl').value.trim(),model:$('aiModel').value.trim(),
+  models:$('aiModelsInput').value.split(/[\s,，]+/).filter(Boolean),
+  ...(apiKey?{apiKey}:{}),active:credentialId?!!aiProfiles.find(p=>p.id===credentialId)?.active:!aiProfiles.length};
+ const controls=[$('aiSave'),$('aiDelete'),$('aiProviderClose'),$('aiModels')];
+ aiConfigSaving=true;controls.forEach(control=>control.disabled=true);
+ $('aiConfigStatus').textContent='正在保存…';
+ try{
+  await aiRequest('config',{method:'PUT',body});
+  $('aiKey').value='';$('aiProviderDialog').close();toast('API 配置已保存');
+  try{await refreshAiConfig({force:true});void loadAiChatModels()}
+  catch{toast('已保存配置，列表刷新失败，请重新进入 AI 设置')}
+ }catch(error){
+  $('aiConfigStatus').textContent=error.message;
+  if(error.code==='model_required'){$('aiAdvancedModels').open=true;$('aiModel').focus()}
+ }finally{aiConfigSaving=false;controls.forEach(control=>control.disabled=false)}
+};
 $('aiDelete').onclick=()=>{const credentialId=$('aiProfile').value;if(!credentialId)return;confirmAction('删除此 API 密钥？','只删除当前选择的加密配置；其他 API 密钥、笔记和 MCP 授权不受影响。',async()=>{try{await aiRequest('config',{method:'DELETE',body:{credentialId}});$('aiProviderDialog').close();aiConversation=[];aiContextCompressed=false;renderAiMessages();await refreshAiConfig({force:true});toast('API 密钥已删除')}catch(error){toast(error.message)}})};
 function compressNoteMarkdown(text,limit=24000){if(text.length<=limit)return {text,compressed:false};const lines=text.split('\n'),structure=lines.filter(line=>/^(#{1,4}\s|\s*[-*+]\s+\[[ xX]\])/.test(line)).join('\n').slice(0,5000),head=text.slice(0,11000),tail=text.slice(-6000);return {text:head+'\n\n<!-- 中间内容已智能压缩 -->\n## 结构与待办\n'+structure+'\n\n## 笔记末尾\n'+tail,compressed:true}}
 function compactAiMessages(messages,limit=50000){let size=messages.reduce((sum,message)=>sum+message.content.length,0);if(size<=limit)return messages;aiContextCompressed=true;const first=messages[0],recent=messages.slice(-6),older=messages.slice(1,-6),summary=older.map(message=>(message.role==='assistant'?'AI':'用户')+'：'+message.content.replace(/\s+/g,' ').slice(0,700)).join('\n');const compact=[first,{role:'user',content:'以下是较早对话的压缩摘要，请延续其中的约束与结论：\n'+summary.slice(0,7000)},...recent];for(let index=0;(size=compact.reduce((sum,message)=>sum+message.content.length,0))>limit&&index<compact.length;index++){const excess=size-limit,content=compact[index].content,keep=Math.max(1000,content.length-excess);if(content.length>keep)compact[index]={...compact[index],content:content.slice(0,keep)+'\n\n[内容已压缩]'}}updateAiContextStatus();return compact}
@@ -1999,7 +2051,7 @@ $('aiHubModelRefresh').onclick=()=>void loadAiChatModels({refresh:true});
 $('aiHubModelDialog').addEventListener('close',()=>{aiHubModelAnchor=null;resizeAiHubPrompt()});
 $('aiHubModelDialog').addEventListener('click',event=>{if(event.target!==$('aiHubModelDialog'))return;const r=event.currentTarget.getBoundingClientRect();if(event.clientX<r.left||event.clientX>r.right||event.clientY<r.top||event.clientY>r.bottom)event.currentTarget.close()});
 for(const target of [window,window.visualViewport].filter(Boolean))target.addEventListener('resize',()=>{if(tab==='ai-hub')resizeAiHubPrompt();positionAiHubModels()});
-$('aiHubLocalManage').onclick=()=>{$('aiHubModelDialog').close();showAiPage()};
+$('aiHubLocalManage').onclick=()=>{$('aiHubModelDialog').close();showAiPage();$('aiDeviceSettings').open=true};
 $('aiHubModelSearch').oninput=renderAiHubModels;
 $('aiHubModelOptions').onclick=event=>{
  const button=event.target.closest('[data-hub-model]');if(!button||aiHubBusy)return;
