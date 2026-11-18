@@ -32,7 +32,8 @@ async function checkHost(url,fetcher,signal){
  const answers=await Promise.all(['A','AAAA'].map(async type=>{
   const query=new URL('https://cloudflare-dns.com/dns-query');
   query.searchParams.set('name',url.hostname);query.searchParams.set('type',type);
-  const res=await fetcher(query,{headers:{Accept:'application/dns-json'},redirect:'error',signal});
+  // Workers supports manual redirects. The status check rejects all 3xx responses.
+  const res=await fetcher(query,{headers:{Accept:'application/dns-json'},redirect:'manual',signal});
   if(!res.ok)throw mcpError('mcp_unreachable');
   const data=await boundedJSON(res,22000);
   if(data.Status!==0)throw mcpError('mcp_unreachable');
@@ -83,7 +84,7 @@ async function withServer(urlValue,token,fetcher,requestSignal,work){
  let id=0,session;
  async function send(method,params,notice=false){
   const requestId=notice?undefined:++id;
-  const response=await fetcher(url,{method:'POST',headers,redirect:'error',signal,body:JSON.stringify({jsonrpc:'2.0',id:requestId,method,params})});
+  const response=await fetcher(url,{method:'POST',headers,redirect:'manual',signal,body:JSON.stringify({jsonrpc:'2.0',id:requestId,method,params})});
   if(notice){if(!response.ok)throw mcpError('mcp_protocol_error');void response.body?.cancel().catch(()=>{});return}
   if(method==='initialize')session=response.headers.get('Mcp-Session-Id');
   return rpcResult(response,requestId);
@@ -98,7 +99,7 @@ async function withServer(urlValue,token,fetcher,requestSignal,work){
   return await work(send);
  }catch(error){if(error?.status)throw error;throw mcpError('mcp_unreachable')}
  finally{if(headers.has('Mcp-Session-Id'))try{
-  const response=await fetcher(url,{method:'DELETE',headers,redirect:'error',signal:AbortSignal.timeout(1200)});
+  const response=await fetcher(url,{method:'DELETE',headers,redirect:'manual',signal:AbortSignal.timeout(1200)});
   void response.body?.cancel().catch(()=>{});
  }catch{}}
 }

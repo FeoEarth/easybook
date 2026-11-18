@@ -137,7 +137,7 @@ assert.equal((await aiAPI(request('/api/ai/preferences'),env,{kind:'anonymous'})
    return Response.json({Status:0,Answer:type==='A'?[{type:1,data:privateDns?'127.0.0.1':'8.8.8.8'}]:[]});
   }
   if(target.href===endpoint){
-   assert.equal(init.redirect,'error');
+   assert.equal(init.redirect,'manual');
    assert.equal(headers.get('Authorization'),'Bearer '+token);
    if(redirected)return new Response(null,{status:302,headers:{Location:'https://other.example.net'}});
    if(init.method==='DELETE')return new Response(null,{status:204});
@@ -192,10 +192,10 @@ assert.equal((await aiAPI(request('/api/ai/preferences'),env,{kind:'anonymous'})
  const resource='https://tools.example.net/mcp',issuer='https://login.example.net/auth';
  const callback='/api/ai/mcp/oauth/callback';
  const access='oauth-access-secret',refreshed='oauth-access-refreshed',refresh='oauth-refresh-secret';
- let registered=0,downloads=0,refreshes=0,challenge='',privateTokenEndpoint=false;
+ let registered=0,downloads=0,refreshes=0,challenge='',privateTokenEndpoint=false,redirectTokenEndpoint=false;
  const fetcher=async(input,init)=>{
   const url=new URL(input);
-  assert.equal(init.redirect,'error');
+  assert.equal(init.redirect,'manual');
   if(url.hostname==='cloudflare-dns.com'){
    const privateHost=privateTokenEndpoint&&url.searchParams.get('name')==='token.example.net';
    return Response.json({Status:0,Answer:[{type:1,data:privateHost?'10.0.0.1':'93.184.216.34'}]});
@@ -221,6 +221,7 @@ assert.equal((await aiAPI(request('/api/ai/preferences'),env,{kind:'anonymous'})
    return Response.json({client_id:'dynamic-client',token_endpoint_auth_method:'none',client_secret:'registrar-ignored-secret'});
   }
   if(url.pathname==='/token'){
+   if(redirectTokenEndpoint)return new Response(null,{status:307,headers:{Location:'https://other.example.net/token'}});
    const body=new URLSearchParams(init.body);
    assert.equal(body.get('resource'),resource);
    assert.equal(body.get('client_secret'),null,'a public registration never sends an unused vendor secret');
@@ -271,6 +272,11 @@ assert.equal((await aiAPI(request('/api/ai/preferences'),env,{kind:'anonymous'})
  assert.equal((await useCallback(blocked.state)).status,400);
  assert.equal(downloads,1,'the token endpoint is checked for public addresses before exchanging the code');
  privateTokenEndpoint=false;
+ const redirectedFlow=await (await start('manual-public-client')).json();
+ redirectTokenEndpoint=true;
+ assert.equal((await useCallback(redirectedFlow.state)).status,400,'OAuth token endpoints may not redirect');
+ assert.deepEqual(await (await config({oauthState:redirectedFlow.state})).json(),{status:'mcp_oauth_token_failed'});
+ redirectTokenEndpoint=false;
  assert.equal((await config({label:'Second connection',url:resource,token:refreshed})).status,200);
  assert.equal((await (await config()).json()).servers.length,2,'multiple connections to the same MCP endpoint can coexist');
  const canonical='https://easybook.loonxy.com';

@@ -1623,7 +1623,11 @@ let aiMcpBusy=false;
 const aiMcpMessages={
  mcp_invalid_url:'请输入公开的 HTTPS MCP 地址，地址不能包含密钥、查询参数或自定义端口。',
  mcp_unreachable:'无法连接 MCP 服务器，请检查地址和网络。',
- mcp_invalid_config:'请检查名称和访问令牌格式。',
+ mcp_invalid_config:'请检查名称、访问令牌或 OAuth 客户端 ID。',
+ credential_vault_unavailable:'此服务器尚未配置 OAuth 凭据存储。',
+ account_session_expired:'Easybook 会话已过期，请重新登录后再授权。',
+ web_session_expired:'Easybook 会话已过期，请重新登录后再授权。',
+ CREDENTIAL_UNAVAILABLE:'请先登录 Easybook 账户，再发起 OAuth 授权。',
  mcp_request_failed:'MCP 服务器返回错误，请检查服务端配置。',
  mcp_auth_failed:'MCP 服务器拒绝访问，请检查访问令牌。',
  mcp_no_tools:'服务器没有返回可用工具。',
@@ -1732,7 +1736,7 @@ $('aiMcpForm').onsubmit=event=>{
    aiMcpOAuth=result;$('aiMcpOAuthActions').hidden=false;
    $('aiMcpStatus').textContent='打开授权页面，完成后返回 Easybook。';
    if(!$('aiMcpPage').hidden)$('aiMcpAuthorize').focus();
-  }).catch(error=>$('aiMcpStatus').textContent=mcpAuthorizationMessage(error.code||error.message))
+  }).catch(error=>$('aiMcpStatus').textContent=aiMcpMessages[error.code||error.message]||'无法准备 OAuth 授权，请稍后重试。')
    .finally(()=>{aiMcpBusy=false;$('aiMcpSave').disabled=false});
   return;
  }

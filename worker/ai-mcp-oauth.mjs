@@ -13,7 +13,9 @@ async function json(url,options,{fetcher,safeUrl,checkHost},errorCode='mcp_oauth
  url=safeUrl(url);
  const signal=AbortSignal.timeout(10000);
  await checkHost(url,fetcher,signal);
- const response=await fetcher(url,{...options,redirect:'error',signal});
+ let response;
+ try{response=await fetcher(url,{...options,redirect:'manual',signal})}
+ catch{throw invalid(errorCode,502)}
  if(!response.ok){void response.body?.cancel().catch(()=>{});throw invalid(errorCode)}
  return boundedJSON(response,32000);
 }
@@ -22,7 +24,7 @@ async function discover(resource,context){
  const {safeUrl,checkHost,fetcher}=context;
  const signal=AbortSignal.timeout(10000);
  await checkHost(resource,fetcher,signal);
- const probe=await fetcher(resource,{method:'POST',redirect:'error',signal,headers:{'Content-Type':'application/json',Accept:'application/json, text/event-stream'},body:JSON.stringify({jsonrpc:'2.0',id:1,method:'initialize',params:{protocolVersion:'2025-06-18',capabilities:{},clientInfo:{name:'Easybook',version:'1.0'}}})});
+ const probe=await fetcher(resource,{method:'POST',redirect:'manual',signal,headers:{'Content-Type':'application/json',Accept:'application/json, text/event-stream'},body:JSON.stringify({jsonrpc:'2.0',id:1,method:'initialize',params:{protocolVersion:'2025-06-18',capabilities:{},clientInfo:{name:'Easybook',version:'1.0'}}})}).catch(()=>{throw invalid('mcp_unreachable',502)});
  const challenge=probe.headers.get('WWW-Authenticate')||'';
  void probe.body?.cancel().catch(()=>{});
  if(probe.status!==401&&probe.status!==403)throw invalid('mcp_oauth_unavailable');
