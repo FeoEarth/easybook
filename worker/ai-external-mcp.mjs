@@ -1,6 +1,8 @@
 import {boundedJSON,object,hash} from './mcp-common.mjs';
+import {beginMcpOAuth,handleMcpOAuth,mcpAccessToken,mcpOAuthStatus} from './ai-mcp-oauth.mjs';
 
 export const mcpError=(code,status=502)=>Object.assign(Error(code),{code,status});
+const serverLimit=20;
 const versions=new Set(['2024-11-05','2025-03-26','2025-06-18','2025-11-25']);
 const latest='2025-06-18';
 const serverId=/^[a-f0-9-]{36}$/;
@@ -138,8 +140,33 @@ function schema(db){
 }
 const view=row=>({id:row.id,label:row.label,url:row.url,enabled:!!row.enabled,authenticated:!!row.key_ciphertext,tools:JSON.parse(row.tools_json).map(t=>t.name)});
 
-export async function configureMcp(request,env,principal,{fetcher,seal,open}){
+const oauthContext=options=>({...options,safeUrl:endpoint,checkHost,
+ save:async(env,account,config,token,secret,signal)=>{
+  await schema(env.DB);
+  const id=config.reconnectId||crypto.randomUUID();
+  const wrapped=await options.seal(env,account,id,secret);
+  const tools=await catalog(config.url,token,options.fetcher,signal,id);
+  if(!tools.length)throw mcpError('mcp_no_tools',400);
+  if(config.reconnectId){
+   const found=await env.DB.prepare('UPDATE account_ai_mcp_servers SET key_ciphertext=?,key_iv=?,tools_json=?,revision=? WHERE id=? AND account_id=? AND url=? AND revision=? RETURNING id')
+    .bind(wrapped.ciphertext,wrapped.iv,JSON.stringify(tools),crypto.randomUUID(),id,account,config.url,config.reconnectRevision).first();
+   if(!found)throw mcpError('mcp_changed',409);
+  }else await insertServer(env,account,id,config.label,config.url,tools,wrapped);
+ }
+});
+
+async function insertServer(env,account,id,label,url,tools,wrapped){
+ const created=await env.DB.prepare(`INSERT INTO account_ai_mcp_servers(id,account_id,label,url,key_ciphertext,key_iv,revision,tools_json)
+  SELECT ?,?,?,?,?,?,?,? WHERE (SELECT COUNT(*) FROM account_ai_mcp_servers WHERE account_id=?)<? RETURNING id`)
+  .bind(id,account,label,url,wrapped.ciphertext,wrapped.iv,crypto.randomUUID(),JSON.stringify(tools),account,serverLimit).first();
+ if(!created)throw mcpError('mcp_server_limit',409);
+}
+
+export const mcpOAuthPage=(request,env,options)=>handleMcpOAuth(request,env,oauthContext(options));
+
+export async function configureMcp(request,env,principal,options){
  await schema(env.DB);
+ const {fetcher,seal,open}=options;
  const account=principal.accountId;
  if(request.method==='GET'){
   const rows=(await env.DB.prepare('SELECT * FROM account_ai_mcp_servers WHERE account_id=? ORDER BY label,id').bind(account).all()).results;
@@ -154,13 +181,23 @@ export async function configureMcp(request,env,principal,{fetcher,seal,open}){
   return {ok:true};
  }
  if(request.method!=='PUT')throw mcpError('mcp_invalid_config',400);
+ if(input.oauthState){
+  const statusUrl=new URL(request.url);
+  statusUrl.searchParams.set('state',input.oauthState);
+  return mcpOAuthStatus(env,new Request(statusUrl),account);
+ }
+ if(input.oauth===true){
+  if(existing&&existing.url!==input.url)throw mcpError('mcp_invalid_config',400);
+  if(!existing&&(await env.DB.prepare('SELECT COUNT(*) AS n FROM account_ai_mcp_servers WHERE account_id=?').bind(account).first()).n>=serverLimit)throw mcpError('mcp_server_limit',409);
+  return beginMcpOAuth(env,request,account,{...input,reconnectRevision:existing?.revision},oauthContext(options));
+ }
  const revision=crypto.randomUUID();
  if(existing&&typeof input.enabled==='boolean'){
   await env.DB.prepare('UPDATE account_ai_mcp_servers SET enabled=?,revision=? WHERE id=? AND account_id=?').bind(input.enabled?1:0,revision,existing.id,account).run();
   return {ok:true};
  }
  if(existing&&input.refresh===true){
-  const token=existing.key_ciphertext?await open(env,existing):'';
+  const token=await mcpAccessToken(env,existing,oauthContext(options));
   const tools=await catalog(existing.url,token,fetcher,request.signal,existing.id);
   const change=await env.DB.prepare('UPDATE account_ai_mcp_servers SET tools_json=?,revision=? WHERE id=? AND account_id=? AND revision=? RETURNING id').bind(JSON.stringify(tools),revision,existing.id,account,existing.revision).first();
   if(!change)throw mcpError('mcp_changed',409);
@@ -170,21 +207,27 @@ export async function configureMcp(request,env,principal,{fetcher,seal,open}){
  const url=endpoint(input.url).href,id=crypto.randomUUID();
  if(input.token&&url.includes(input.token))throw mcpError('mcp_invalid_url',400);
  const {n}=await env.DB.prepare('SELECT COUNT(*) AS n FROM account_ai_mcp_servers WHERE account_id=?').bind(account).first();
- if(n>=5)throw mcpError('mcp_server_limit',409);
+ if(n>=serverLimit)throw mcpError('mcp_server_limit',409);
  const wrapped=input.token?await seal(env,account,id,input.token):{ciphertext:null,iv:null};
  const tools=await catalog(url,input.token||'',fetcher,request.signal,id);
  if(!tools.length)throw mcpError('mcp_no_tools',400);
- const created=await env.DB.prepare(`INSERT INTO account_ai_mcp_servers(id,account_id,label,url,key_ciphertext,key_iv,revision,tools_json)
-  SELECT ?,?,?,?,?,?,?,? WHERE (SELECT COUNT(*) FROM account_ai_mcp_servers WHERE account_id=?)<5 RETURNING id`)
-  .bind(id,account,input.label.trim(),url,wrapped.ciphertext,wrapped.iv,revision,JSON.stringify(tools),account).first();
- if(!created)throw mcpError('mcp_server_limit',409);
+ await insertServer(env,account,id,input.label.trim(),url,tools,wrapped);
  return {ok:true};
 }
 
 export async function externalMcpTools(env,account){
  await schema(env.DB);
  const rows=(await env.DB.prepare('SELECT id,label,url,revision,tools_json FROM account_ai_mcp_servers WHERE account_id=? AND enabled=1 ORDER BY label,id').bind(account).all()).results;
- return new Map(rows.flatMap(row=>JSON.parse(row.tools_json).map(t=>[t.alias,{...t,server:row.label,url:row.url,revision:row.revision}])).slice(0,24));
+ const catalogs=rows.map(row=>JSON.parse(row.tools_json).map(tool=>({...tool,server:row.label,url:row.url,revision:row.revision})));
+ const available=new Map();
+ for(let index=0;index<12&&available.size<24;index++){
+  for(const tools of catalogs){
+   const tool=tools[index];
+   if(tool)available.set(tool.alias,tool);
+   if(available.size===24)break;
+  }
+ }
+ return available;
 }
 
 export async function approvedMcpTool(env,account,name,revision){
@@ -197,9 +240,9 @@ export async function approvedMcpTool(env,account,name,revision){
  return tool?{server,tool}:null;
 }
 
-export async function runApprovedMcp(env,entry,args,{open,fetcher,signal}){
+export async function runApprovedMcp(env,entry,args,{open,seal,fetcher,signal}){
  const {server,tool}=entry;
- const token=server.key_ciphertext?await open(env,server):'';
+ const token=await mcpAccessToken(env,server,oauthContext({open,seal,fetcher}));
  return withServer(server.url,token,fetcher,signal,async send=>{
   const result=await send('tools/call',{name:tool.name,arguments:args});
   if(!object(result))throw mcpError('mcp_protocol_error');

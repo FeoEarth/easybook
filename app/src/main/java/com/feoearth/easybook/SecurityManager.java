@@ -48,6 +48,7 @@ public final class SecurityManager {
             case "workspace.action":fields=fields("action","name","account","id","accountId","role","mode","confirm","version","turnstileToken","kind","expiresHours","decision","token");break;
             case "conflict.resolve":fields=fields("id","choice");break;
             case "account.manage":fields=fields("action","id","workspace","cursor","category","choices","confirm");break;
+            case "ai.mcp.open":fields=fields("url");break;
             case "ai.mcp":fields=fields("method","config");break;
             case "ai.preferences":fields=fields("method","preferences");break;
             case "membership.open":case "membership.status":fields=Collections.emptySet();break;

@@ -15,7 +15,7 @@ import {boundedJSON,object,validate,schema,str} from '../../worker/mcp-common.mj
 import {permissions} from '../../worker/mcp-access.mjs';
 import { verifyGithubIdentity } from '../../worker/mcp-github-identity.mjs';
 import { verifyWorkspaceAssertion } from './pairing.mjs';
-import {aiAPI} from '../../worker/ai.mjs';
+import {aiAPI,aiMcpOAuthPage,isAiMcpOAuthPage} from '../../worker/ai.mjs';
 
 import {escape,oauthAppearance,htmlHeaders} from './appearance.mjs';
 const pairingWebOrigins = env=>new Set([...validateServerConfig(env).webClientOrigins,...(hasLegacyIdentity(env)?['https://easybook-sync.1902521952.workers.dev']:[])]);
@@ -316,6 +316,7 @@ export default {async fetch(request,env,ctx){
   if(!hasLegacyIdentity(env)&&requestUrl.origin!==publicOrigin(env))return Response.json({error:'identity_origin_required'},{status:403,headers:{'Cache-Control':'no-store'}});
   if(requestUrl.pathname==='/.well-known/oauth-protected-resource'){requestUrl.pathname+='\/mcp';request=new Request(requestUrl,request);}
   const path=requestUrl.pathname;
+  if(modernWorkspaces(env)&&request.method==='GET'&&isAiMcpOAuthPage(requestUrl))return await aiMcpOAuthPage(request,env);
   const web=await webAccountRoutes(request,env);if(web)return web;
   // Fixed first-party native API transport. Do not redirect POSTs or proxy OAuth
   // endpoints: browser login/consent and the WebAuthn RP remain canonical.

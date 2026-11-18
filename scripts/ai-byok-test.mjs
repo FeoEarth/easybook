@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import {DatabaseSync} from 'node:sqlite';
 import {readFileSync} from 'node:fs';
-import {aiAPI} from '../worker/ai.mjs';
+import {aiAPI,aiMcpOAuthPage} from '../worker/ai.mjs';
 const sqlite=new DatabaseSync(':memory:');sqlite.exec('PRAGMA foreign_keys=ON');for(const file of ['worker/schema.sql','mcp-oauth/migrations/0002_accounts.sql','worker/migrations/0010-workspace-identity.sql'])sqlite.exec(readFileSync(file,'utf8'));
 const DB={prepare(sql){const statement=sqlite.prepare(sql);let args=[];return {bind(...values){args=values;return this},async first(){return statement.get(...args)||null},async all(){return {results:statement.all(...args)}},async run(){return statement.run(...args)}}},async batch(statements){sqlite.exec('BEGIN');try{const results=[];for(const statement of statements)results.push(await statement.run());sqlite.exec('COMMIT');return results}catch(error){sqlite.exec('ROLLBACK');throw error}}};
 const migration=readFileSync('worker/migrations/0021-ai-profiles.sql','utf8');sqlite.exec(migration);sqlite.exec(migration);const account='11111111-1111-4111-8111-111111111111',workspace='a'.repeat(64),now=Date.now();sqlite.prepare('INSERT INTO accounts(id,display_name,created_at) VALUES(?,?,?)').run(account,'AI test',now);sqlite.prepare("INSERT INTO workspaces(id,name,mode,manager_account_id,created_at) VALUES(?,?,'personal',?,?)").run(workspace,'AI workspace',account,now);
@@ -185,6 +185,93 @@ assert.equal((await aiAPI(request('/api/ai/preferences'),env,{kind:'anonymous'})
  assert.equal(remoteCalls,1);
  assert.equal((await call('mcp','DELETE',{id:server.id})).status,200);
  console.log('PASS external MCP discovery, session headers, private addresses, single-use approval, credential redaction and config revocation');
+}
+
+{
+ const resource='https://tools.example.net/mcp',issuer='https://login.example.net/auth';
+ const callback='/api/ai/mcp/oauth/callback';
+ const access='oauth-access-secret',refreshed='oauth-access-refreshed',refresh='oauth-refresh-secret';
+ let registered=0,downloads=0,refreshes=0,challenge='',privateTokenEndpoint=false;
+ const fetcher=async(input,init)=>{
+  const url=new URL(input);
+  assert.equal(init.redirect,'error');
+  if(url.hostname==='cloudflare-dns.com'){
+   const privateHost=privateTokenEndpoint&&url.searchParams.get('name')==='token.example.net';
+   return Response.json({Status:0,Answer:[{type:1,data:privateHost?'10.0.0.1':'93.184.216.34'}]});
+  }
+  if(url.href===resource){
+   const body=JSON.parse(init.body),token=init.headers.get?.('Authorization');
+   if(!token)return new Response(null,{status:401,headers:{'WWW-Authenticate':'Bearer resource_metadata="https://tools.example.net/.well-known/oauth-protected-resource/mcp", scope="read"'}});
+   assert.equal(token,'Bearer '+(refreshes?refreshed:access));
+   const result=body.method==='initialize'?{protocolVersion:'2025-06-18',capabilities:{tools:{}}}:
+    body.method==='tools/list'?{tools:[{name:'lookup',inputSchema:{type:'object'}}]}:null;
+   return result?Response.json({jsonrpc:'2.0',id:body.id,result}):new Response(null,{status:202});
+  }
+  if(url.pathname==='/.well-known/oauth-protected-resource/mcp')return Response.json({resource,authorization_servers:[issuer]});
+  if(url.pathname==='/.well-known/oauth-authorization-server/auth')return Response.json({
+   issuer,authorization_endpoint:issuer+'/authorize',token_endpoint:'https://token.example.net/token',
+   registration_endpoint:issuer+'/register',code_challenge_methods_supported:['S256'],authorization_response_iss_parameter_supported:true
+  });
+  if(url.pathname==='/auth/register'){
+   registered++;
+   const body=JSON.parse(init.body);
+   assert.deepEqual(body.redirect_uris,['https://easybook.test'+callback]);
+   assert.equal(body.token_endpoint_auth_method,'none');
+   return Response.json({client_id:'dynamic-client'});
+  }
+  if(url.pathname==='/token'){
+   const body=new URLSearchParams(init.body);
+   assert.equal(body.get('resource'),resource);
+   if(body.get('grant_type')==='refresh_token'){
+    refreshes++;
+    assert.equal(body.get('refresh_token'),refresh);
+    return Response.json({access_token:refreshed,token_type:'Bearer',expires_in:3600});
+   }
+   downloads++;
+   assert.equal(body.get('code'),'code-from-provider');
+   const digest=Buffer.from(await crypto.subtle.digest('SHA-256',new TextEncoder().encode(body.get('code_verifier')))).toString('base64url');
+   assert.equal(digest,challenge);
+   return Response.json({access_token:access,refresh_token:refresh,token_type:'Bearer',expires_in:1});
+  }
+  throw Error('Unexpected OAuth request: '+url);
+ };
+ const config=(body,who=principal)=>aiAPI(request('/api/ai/mcp',body?'PUT':'GET',body),env,who,{fetcher});
+ const start=clientId=>config({oauth:true,label:'OAuth MCP',url:resource,clientId});
+ const useCallback=(state,params={code:'code-from-provider',iss:issuer})=>aiMcpOAuthPage(request(callback+'?'+new URLSearchParams({state,...params})),env,{fetcher});
+ const pending=await (await start()).json();
+ assert.match(pending.state,/^[a-f0-9]{64}$/);
+ assert.equal(registered,1);
+ assert.equal((await config({oauthState:pending.state},{...principal,accountId:'another-account'})).status,400);
+ const redirect=await aiMcpOAuthPage(new Request(pending.authorizationUrl),env,{fetcher});
+ assert.equal(redirect.status,303);
+ const authorization=new URL(redirect.headers.get('Location'));
+ assert.equal(authorization.searchParams.get('code_challenge_method'),'S256');
+ assert.equal(authorization.searchParams.get('scope'),'read');
+ challenge=authorization.searchParams.get('code_challenge');
+ assert.equal((await useCallback(pending.state)).status,200);
+ assert.equal((await useCallback(pending.state)).status,400,'an authorization code callback is single use');
+ assert.equal(downloads,1);
+ assert.deepEqual(await (await config({oauthState:pending.state})).json(),{status:'connected'});
+ const {servers}=await (await config()).json();
+ assert.equal(servers.length,1);
+ assert.deepEqual(servers[0].tools,['lookup']);
+ assert.ok(!JSON.stringify(sqlite.prepare('SELECT * FROM account_ai_mcp_servers').all()).includes(refresh));
+ assert.equal((await config({id:servers[0].id,refresh:true})).status,200);
+ assert.equal(refreshes,1);
+ assert.equal((await config({id:servers[0].id,refresh:true})).status,200);
+ assert.equal(refreshes,1,'a valid refreshed token is reused');
+ const cancelled=await (await start('manual-public-client')).json();
+ assert.equal(registered,1,'manual client ID bypasses registration');
+ assert.equal((await useCallback(cancelled.state,{error:'access_denied',iss:issuer})).status,400);
+ assert.deepEqual(await (await config({oauthState:cancelled.state})).json(),{status:'denied'});
+ const blocked=await (await start('manual-public-client')).json();
+ privateTokenEndpoint=true;
+ assert.equal((await useCallback(blocked.state)).status,400);
+ assert.equal(downloads,1,'the token endpoint is checked for public addresses before exchanging the code');
+ privateTokenEndpoint=false;
+ assert.equal((await config({label:'Second connection',url:resource,token:refreshed})).status,200);
+ assert.equal((await (await config()).json()).servers.length,2,'multiple connections to the same MCP endpoint can coexist');
+ console.log('PASS MCP OAuth discovery, public client registration, PKCE, account-bound status, callback replay, encrypted refresh and rejected private token endpoints');
 }
 
 sqlite.close();console.log('PASS multi-BYOK encryption, provider presets, model discovery, active switching, Anthropic protocol and workspace authorization');

@@ -5,7 +5,14 @@
  const controls=[nav.querySelector('.searchbar'),document.getElementById('createFolder'),document.getElementById('newTop')],names=['DockSearch','DockFolder','DockCompose'];
  const slots=controls.map((element,slot)=>({element,slot,mounted:false,disabled:false,last:'',revision:0,signature:''}));
  let queued=false,dirty=true,content=null;
- function hide(state){state.mounted=false;if(state.element.classList.contains('native-dock-mounted'))state.element.classList.remove('native-dock-mounted');if(state.last!=='closed'){state.last='closed';window.NativeStore.call('ui.glass.dock',{slot:state.slot,visible:false}).catch(()=>{})}}
+ function hide(state){state.mounted=false;if(state.element.classList.contains('native-dock-mounted'))state.element.classList.remove('native-dock-mounted');if(state.last!=='closed'){state.last='closed';state.signature='';window.NativeStore.call('ui.glass.dock',{slot:state.slot,visible:false}).catch(()=>{})}}
+ function dockVisible(){return !nav.hidden&&!document.body.dataset.settingsDetail&&getComputedStyle(nav).display!=='none'}
+ function hideDock(){
+  if(document.activeElement===search)search.blur();
+  document.body.classList.toggle('native-dock-searching',false);
+  slots.forEach(hide);
+ }
+ window.easybookHideDockSurfaces=hideDock;
  function describe(){
   const clone=nav.cloneNode(true);clone.querySelectorAll('.native-dock-mounted').forEach(el=>el.classList.remove('native-dock-mounted'));
   clone.querySelector('#search').setAttribute('value',search.value);
@@ -15,14 +22,15 @@
  }
  slots.forEach((state,i)=>{
   window['easybook'+names[i]+'SurfaceFallback']=()=>{state.disabled=true;hide(state)};
-  window['easybook'+names[i]+'SurfaceReady']=revision=>{if(state.disabled||revision!==state.revision||!state.element.getClientRects().length)return;if(state.slot===0&&document.activeElement===search){hide(state);return}state.mounted=true;if(!state.element.classList.contains('native-dock-mounted'))state.element.classList.add('native-dock-mounted');state.last='';schedule()};
+  window['easybook'+names[i]+'SurfaceReady']=revision=>{if(state.disabled||!dockVisible()||state.last==='closed'||revision!==state.revision||!state.element.getClientRects().length)return;if(state.slot===0&&document.activeElement===search){hide(state);return}state.mounted=true;if(!state.element.classList.contains('native-dock-mounted'))state.element.classList.add('native-dock-mounted');state.last='';schedule()};
   window['easybookSync'+names[i]+'Surface']=schedule;
-  window['easybook'+names[i]+'SurfaceClick']=token=>{const id=['clearSearch','createFolder','newTop'][Number(token.slice(2))],button=document.getElementById(id);if(state.disabled||!state.mounted||!id||!button||button.hidden||button.disabled||document.querySelector('dialog[open]'))return;button.click();dirty=true;schedule()};
+  window['easybook'+names[i]+'SurfaceClick']=token=>{const id=['clearSearch','createFolder','newTop'][Number(token.slice(2))],button=document.getElementById(id);if(state.disabled||!dockVisible()||!state.mounted||!id||!button||button.hidden||button.disabled||document.querySelector('dialog[open]'))return;button.click();dirty=true;schedule()};
  });
- window.easybookDockSearchFocus=()=>{hide(slots[0]);search.focus({preventScroll:true});schedule()};
+ window.easybookDockSearchFocus=()=>{if(!dockVisible()||document.querySelector('dialog[open]'))return false;hide(slots[0]);search.focus({preventScroll:true});schedule();return document.activeElement===search};
  function sync(){
+  if(!dockVisible()){hideDock();return}
   const searchFocused=document.activeElement===search;document.body.classList.toggle('native-dock-searching',searchFocused);
-  const vp=window.visualViewport,blocked=nav.hidden||getComputedStyle(nav).display==='none'||document.querySelector('dialog[open]')||document.documentElement.dataset.glass==='reduced'||matchMedia('(prefers-reduced-transparency:reduce)').matches||Math.abs((vp?.scale||1)-1)>.01;
+  const vp=window.visualViewport,blocked=document.querySelector('dialog[open]')||document.documentElement.dataset.glass==='reduced'||matchMedia('(prefers-reduced-transparency:reduce)').matches||Math.abs((vp?.scale||1)-1)>.01;
   if(dirty||!content){content=describe();dirty=false}
   slots.forEach(state=>{
    const rect=state.element.getBoundingClientRect(),css=getComputedStyle(state.element);
@@ -36,7 +44,7 @@
   });
  }
  function schedule(){if(queued)return;queued=true;requestAnimationFrame(()=>{queued=false;sync();if(slots.some(s=>s.mounted))window.NativeStore.call('ui.glass.invalidate').catch(()=>{})})}
- new MutationObserver(records=>{if(records.some(r=>!(controls.includes(r.target)&&r.attributeName==='class')))dirty=true;schedule()}).observe(document.documentElement,{subtree:true,attributes:true,childList:true,characterData:true});
+ new MutationObserver(records=>{if(nav.hidden||document.body.dataset.settingsDetail)hideDock();if(records.some(r=>!(controls.includes(r.target)&&r.attributeName==='class')))dirty=true;schedule()}).observe(document.documentElement,{subtree:true,attributes:true,childList:true,characterData:true});
  if(window.ResizeObserver){const observer=new ResizeObserver(schedule);observer.observe(nav);controls.forEach(el=>observer.observe(el))}
  for(const type of ['focus','blur','input','change'])search.addEventListener(type,()=>{dirty=true;schedule()});
  for(const type of ['scroll','resize','load','transitionend','animationend'])window.addEventListener(type,schedule,true);

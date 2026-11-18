@@ -31,6 +31,14 @@ try{const page=await browser.newPage({viewport:{width:390,height:844}});await pa
  assert.equal(await page.locator('#activityEntry').evaluate(el=>el===document.activeElement),true);
  await page.evaluate(()=>window.handleBack());
  await page.locator('#settingsHome').waitFor({state:'visible'});
+ assert.equal(await page.locator('#navigation').isVisible(),false);
+ const header=await page.locator('.topbar').evaluate(el=>({
+  background:getComputedStyle(el).backgroundColor,
+  pageBackground:getComputedStyle(document.body).backgroundColor,
+  blur:getComputedStyle(el).backdropFilter
+ }));
+ assert.equal(header.background,header.pageBackground,'settings navigation blends into the page');
+ assert.equal(header.blur,'none','only the back button carries glass material');
  assert.equal(await page.locator('[data-settings-category=sync]').evaluate(el=>el===document.activeElement),true);
  await page.locator('[data-settings-category=performance]').click();
  const performance=page.locator('#fastMode');

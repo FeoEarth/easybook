@@ -9,7 +9,7 @@ const html=readFileSync(path.join(root,'index.html'),'utf8').replace('})().catch
 const mime={'.js':'text/javascript','.mjs':'text/javascript','.css':'text/css','.png':'image/png','.svg':'image/svg+xml'};
 const server=createServer((req,res)=>{try{const url=new URL(req.url,'http://localhost');if(url.pathname==='/'){res.setHeader('Content-Type','text/html');res.end(html);return}const file=path.resolve(root,'.'+url.pathname);if(!file.startsWith(root+'/'))throw Error();res.setHeader('Content-Type',mime[path.extname(file)]||'application/octet-stream');res.end(readFileSync(file))}catch{res.writeHead(404);res.end()}});
 await new Promise(resolve=>server.listen(0,'127.0.0.1',resolve));const origin='http://127.0.0.1:'+server.address().port;
-const browser=await chromium.launch({headless:true});
+const browser=await chromium.launch({headless:true,...(process.env.EASYBOOK_CHROMIUM_PATH?{executablePath:process.env.EASYBOOK_CHROMIUM_PATH}:{})});
 const output='/tmp/easybook-ai-preview';mkdirSync(output,{recursive:true});
 try{
  for(const [name,width,height]of [['desktop',1440,1000],['mobile',390,844]]){
@@ -40,11 +40,25 @@ try{
    throw Error('Unexpected shortcut request: '+route);
   }));
   await page.locator('#'+entry+'Mcp').click();
-  await page.locator('#aiMcpDialog').waitFor({state:'visible'});
+  await page.locator('#aiMcpPage').waitFor({state:'visible'});
+  assert.equal(await page.locator('dialog[open]').count(),0,'MCP settings open as a page');
+  assert.equal(await page.locator('#aiHub').isVisible(),false);
+  assert.equal(await page.locator('#aiMcpTitle').evaluate(el=>el===document.activeElement),true);
+  await page.locator('#aiMcpMarket button').filter({hasText:'Linear'}).click();
+  assert.equal(await page.locator('#aiMcpUrl').inputValue(),'https://mcp.linear.app/mcp/readonly');
+  assert.equal(await page.locator('#aiMcpAuth').inputValue(),'oauth');
+  assert.equal(await page.locator('#aiMcpClient').isVisible(),true);
+  await page.locator('#aiMcpAuth').selectOption('token');
+  await page.locator('#aiMcpToken').fill('test-token');
   await page.evaluate(()=>window.handleBack());
-  await page.locator('#aiMcpDialog').waitFor({state:'hidden'});
+  await page.locator('#aiMcpPage').waitFor({state:'hidden'});
   assert.ok(await page.locator(drawer).isVisible(),'Closing plug-ins returns to conversation history');
   assert.equal(await page.locator('#'+entry+'Search').inputValue(),'读书');
+  await page.goForward();
+  await page.locator('#aiMcpPage').waitFor({state:'visible'});
+  assert.equal(await page.locator('#aiMcpToken').inputValue(),'','History does not restore the token');
+  await page.goBack();
+  await page.locator(drawer).waitFor({state:'visible'});
   for(const nativeBack of [false,true]){
    await page.locator('#'+entry+'Settings').click();
    await page.locator('#aiSettings').waitFor({state:'visible'});
@@ -132,7 +146,7 @@ try{
   await page.evaluate(()=>window.aiHarness.refreshPreferences());
   await page.screenshot({animations:'disabled',path:output+'/'+name+'-ai-settings.png'});
   await page.locator('#aiAddProvider').click();await page.screenshot({animations:'disabled',path:output+'/'+name+'-api-editor.png'});
-  const providerBounds=await page.locator('#aiProviderDialog').boundingBox();assert.ok(providerBounds.x>=0&&providerBounds.x+providerBounds.width<=width+1,'API form fits viewport');await page.locator('#aiProviderClose').click();
+  const providerBounds=await page.locator('#aiProviderPage').boundingBox();assert.ok(providerBounds.x>=0&&providerBounds.x+providerBounds.width<=width+1,'API form fits viewport');await page.locator('#aiProviderClose').click();
   await page.locator('#aiMemoriesOpen').click();await page.waitForFunction(()=>document.getElementById('aiMemoryList').textContent.includes('喜欢简洁中文'));
   await page.screenshot({animations:'disabled',path:output+'/'+name+'-ai-memory.png'});
   assert.deepEqual(errors,[],'No browser runtime errors');await context.close();

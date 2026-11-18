@@ -25,7 +25,7 @@ try{
  const manager=async p=>{await p.evaluate(()=>document.getElementById('folderSettings').click());await p.locator('[data-settings-category="sync"]').click();await p.locator('#serverEntry').click();await p.locator('#serverList .server-row').first().waitFor()};
  await page.goto(app);await ready(page);await note(page,'Official note');await manager(page);
  await page.locator('#serverName').fill('My server');await page.locator('#serverOrigin').fill(custom);await page.locator('#serverAdd').click();
- await page.waitForURL('**/?server_origin=*');await ready(page);await page.waitForFunction(()=>document.getElementById('serverDialog')?.open);
+ await page.waitForURL('**/?server_origin=*');await ready(page);await page.waitForFunction(()=>document.getElementById('serverPage')?.hidden===false);
  assert.match(await page.locator('#serverCurrentSummary').textContent(),/easybook.test/,'permission reload must not select an unknown origin');
  assert.equal(probes.length,0,'permission reload precedes network probing');
  await page.locator('#serverName').fill('My server');await page.locator('#serverAdd').click();await page.locator('.server-row').filter({hasText:'My server'}).waitFor();
@@ -42,7 +42,7 @@ try{
  await page.locator('.server-row').filter({hasText:'Restored'}).locator('[data-server-use]').click();await ready(page);
  await page.waitForFunction(()=>document.getElementById('serverCurrentSummary')?.textContent.includes('Restored'));
  assert.equal(await page.locator('#cards .note').count(),1);assert.match(await page.locator('#cards').textContent(),/Custom note/);
- await manager(page);await page.locator('#serverClose').click();
+ await manager(page);await page.locator('#serverClose').click();await page.locator('#serverPage').waitFor({state:'hidden'});
  const second=await context.newPage();second.on('pageerror',error=>errors.push(error.message));await second.goto(page.url());await ready(second);
  await manager(page);await page.locator('#serverRestore').click();
  await Promise.all([page.waitForFunction(()=>document.getElementById('serverCurrentSummary')?.textContent.includes('easybook.test')),second.waitForFunction(()=>document.getElementById('serverCurrentSummary')?.textContent.includes('easybook.test'))]);

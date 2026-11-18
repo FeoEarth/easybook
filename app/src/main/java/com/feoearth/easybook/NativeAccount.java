@@ -322,6 +322,12 @@ final class NativeAccount {
         finishOperation();message("此设备账户已退出；服务器会话撤销正在后台重试");revocations.execute(this::retryLogout);
     }catch(Exception e){finishOperation();message("本机会话清理未完成，请重试");}});}
     private static boolean same(String a,String b){return MessageDigest.isEqual(a.getBytes(StandardCharsets.UTF_8),b.getBytes(StandardCharsets.UTF_8));}
+    void openMcpOAuth(String url){
+        Uri uri=Uri.parse(url);
+        String state=uri.getQueryParameter("state");
+        if(!"/api/ai/mcp/oauth/authorize".equals(uri.getPath())||state==null||!state.matches("[a-f0-9]{64}")||!uri.getQueryParameterNames().equals(java.util.Collections.singleton("state"))||uri.getFragment()!=null)throw new SecurityException("Invalid MCP authorization destination");
+        browse(url);
+    }
     private void browse(String url){if(!sameOrigin(Uri.parse(url)))throw new SecurityException("Account origin denied");activity.runOnUiThread(()->{if(activity.isDestroyed()||!db.isActiveProfile()||switching)return;try{activity.startActivity(new Intent(Intent.ACTION_VIEW,Uri.parse(url)).addCategory(Intent.CATEGORY_BROWSABLE));}catch(ActivityNotFoundException e){message("未找到可用的系统浏览器");}});}
     static String credentialMessage(String type,boolean register){
         if(type.contains("CANCELLATION")||type.contains("USER_CANCELED"))return "已取消通行密钥验证，可以重新选择登录方式";

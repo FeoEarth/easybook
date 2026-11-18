@@ -1,0 +1,177 @@
+import {boundedJSON,hash} from './mcp-common.mjs';
+
+const callbackPath='/api/ai/mcp/oauth/callback';
+const authorizePath='/api/ai/mcp/oauth/authorize';
+const ttl=10*60*1000;
+const statePattern=/^[a-f0-9]{64}$/;
+const encode=bytes=>btoa(String.fromCharCode(...bytes)).replaceAll('+','-').replaceAll('/','_').replace(/=+$/,'');
+const invalid=(code='mcp_oauth_failed',status=400)=>Object.assign(Error(code),{code,status});
+
+async function json(url,options,{fetcher,safeUrl,checkHost}){
+ url=safeUrl(url);
+ const signal=AbortSignal.timeout(10000);
+ await checkHost(url,fetcher,signal);
+ const response=await fetcher(url,{...options,redirect:'error',signal});
+ if(!response.ok)throw invalid();
+ return boundedJSON(response,32000);
+}
+
+async function discover(resource,context){
+ const {safeUrl,checkHost,fetcher}=context;
+ const signal=AbortSignal.timeout(10000);
+ await checkHost(resource,fetcher,signal);
+ const probe=await fetcher(resource,{method:'POST',redirect:'error',signal,headers:{'Content-Type':'application/json',Accept:'application/json, text/event-stream'},body:JSON.stringify({jsonrpc:'2.0',id:1,method:'initialize',params:{protocolVersion:'2025-06-18',capabilities:{},clientInfo:{name:'Easybook',version:'1.0'}}})});
+ const challenge=probe.headers.get('WWW-Authenticate')||'';
+ void probe.body?.cancel().catch(()=>{});
+ if(probe.status!==401&&probe.status!==403)throw invalid('mcp_oauth_unavailable');
+ const advertised=challenge.match(/\bresource_metadata="([^"]+)"/i)?.[1];
+ const resourceMetadata=advertised?[advertised]:[
+  resource.origin+'/.well-known/oauth-protected-resource'+resource.pathname.replace(/\/$/,''),
+  resource.origin+'/.well-known/oauth-protected-resource'
+ ];
+ let protectedResource;
+ for(const url of resourceMetadata){
+  try{protectedResource=await json(url,{},context);break}catch{}
+ }
+ if(!protectedResource)throw invalid('mcp_oauth_unavailable');
+ const audience=safeUrl(protectedResource.resource);
+ if(audience.href!==resource.href&&audience.href!==resource.origin+'/')throw invalid('mcp_oauth_unavailable');
+ const issuer=safeUrl(protectedResource.authorization_servers?.[0]);
+ const suffix=issuer.pathname.replace(/\/$/,'');
+ let as;
+ for(const url of [issuer.origin+'/.well-known/oauth-authorization-server'+suffix,issuer.origin+suffix+'/.well-known/openid-configuration']){
+  try{as=await json(url,{},context);break}catch{}
+ }
+ if(!as||as.issuer!==protectedResource.authorization_servers[0]||!as.code_challenge_methods_supported?.includes('S256'))throw invalid('mcp_oauth_unavailable');
+ const scope=challenge.match(/\bscope="([^"]+)"/i)?.[1]||
+  (protectedResource.scopes_supported?.length===1?protectedResource.scopes_supported[0]:'');
+ const authorizationEndpoint=safeUrl(as.authorization_endpoint);
+ await checkHost(authorizationEndpoint,fetcher,signal);
+ return {resource:protectedResource.resource,authorizationEndpoint:authorizationEndpoint.href,issuer:as.issuer,
+  requireIssuer:as.authorization_response_iss_parameter_supported===true,
+  tokenEndpoint:safeUrl(as.token_endpoint).href,registrationEndpoint:as.registration_endpoint||'',scope,
+  refresh:!as.grant_types_supported||as.grant_types_supported.includes('refresh_token')};
+}
+
+const setup=new WeakMap();
+function schema(db){
+ let ready=setup.get(db);
+ if(!ready){
+  ready=db.prepare(`CREATE TABLE IF NOT EXISTS account_ai_mcp_oauth_flows(
+   state_hash TEXT PRIMARY KEY,id TEXT NOT NULL,account_id TEXT NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,
+   key_ciphertext TEXT,key_iv TEXT,expires_at INTEGER NOT NULL,status TEXT NOT NULL,origin TEXT NOT NULL
+  )`).run().catch(error=>{setup.delete(db);throw error});
+  setup.set(db,ready);
+ }
+ return ready;
+}
+async function flow(env,request){
+ const url=new URL(request.url),state=url.searchParams.get('state')||'';
+ if(!statePattern.test(state))throw invalid();
+ await schema(env.DB);
+ const stateHash=await hash(state);
+ const row=await env.DB.prepare('SELECT * FROM account_ai_mcp_oauth_flows WHERE state_hash=? AND expires_at>? AND origin=?').bind(stateHash,Date.now(),url.origin).first();
+ if(!row)throw invalid();
+ return {url,row,stateHash};
+}
+
+export async function beginMcpOAuth(env,request,account,input,context){
+ const {safeUrl,seal}=context;
+ if(typeof input.label!=='string'||!input.label.trim()||input.label.trim().length>60||
+    typeof (input.clientId??'')!=='string'||(input.clientId||'').length>512)throw invalid('mcp_invalid_config');
+ const origin=new URL(request.url).origin;
+ if(!origin.startsWith('https://'))throw invalid('mcp_oauth_https');
+ const resource=safeUrl(input.url),metadata=await discover(resource,context);
+ const redirectUri=origin+callbackPath;
+ let clientId=input.clientId?.trim();
+ if(!clientId){
+  if(!metadata.registrationEndpoint)throw invalid('mcp_oauth_client_required');
+  const client=await json(metadata.registrationEndpoint,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({
+   client_name:'Easybook',redirect_uris:[redirectUri],token_endpoint_auth_method:'none',
+   grant_types:metadata.refresh?['authorization_code','refresh_token']:['authorization_code'],response_types:['code']
+  })},context);
+  if(typeof client.client_id!=='string'||!client.client_id||client.client_id.length>512||client.client_secret)throw invalid('mcp_oauth_client_required');
+  clientId=client.client_id;
+ }
+ const verifier=encode(crypto.getRandomValues(new Uint8Array(48)));
+ const challenge=encode(new Uint8Array(await crypto.subtle.digest('SHA-256',new TextEncoder().encode(verifier))));
+ const state=crypto.randomUUID().replaceAll('-','')+crypto.randomUUID().replaceAll('-',''),id=crypto.randomUUID();
+ const authorization=new URL(metadata.authorizationEndpoint);
+ for(const [key,value] of Object.entries({response_type:'code',client_id:clientId,redirect_uri:redirectUri,code_challenge:challenge,code_challenge_method:'S256',state,resource:metadata.resource,scope:metadata.scope})){
+  if(value)authorization.searchParams.set(key,value);
+ }
+ const config={label:input.label.trim(),url:resource.href,resource:metadata.resource,tokenEndpoint:metadata.tokenEndpoint,issuer:metadata.issuer,requireIssuer:metadata.requireIssuer,clientId,redirectUri,verifier,authorization:authorization.href,reconnectId:input.id||'',reconnectRevision:input.reconnectRevision||''};
+ const wrapped=await seal(env,account,id,JSON.stringify(config));
+ await schema(env.DB);
+ await env.DB.prepare('DELETE FROM account_ai_mcp_oauth_flows WHERE expires_at<=?').bind(Date.now()).run();
+ const created=await env.DB.prepare(`INSERT INTO account_ai_mcp_oauth_flows(state_hash,id,account_id,key_ciphertext,key_iv,expires_at,status,origin)
+  SELECT ?,?,?,?,?,?,'pending',? WHERE (SELECT COUNT(*) FROM account_ai_mcp_oauth_flows WHERE account_id=? AND status IN ('pending','processing'))<5 RETURNING id`)
+  .bind(await hash(state),id,account,wrapped.ciphertext,wrapped.iv,Date.now()+ttl,origin,account).first();
+ if(!created)throw invalid('mcp_oauth_pending_limit',429);
+ return {state,authorizationUrl:origin+authorizePath+'?state='+state,expiresIn:ttl/1000};
+}
+
+export async function mcpOAuthStatus(env,request,account){
+ const {row}=await flow(env,request);
+ if(row.account_id!==account)throw invalid();
+ return {status:row.status};
+}
+
+function completion(message,status){
+ return new Response(message,{status,headers:{'Content-Type':'text/plain; charset=utf-8','Cache-Control':'no-store','Referrer-Policy':'no-referrer','Content-Security-Policy':"default-src 'none'; frame-ancestors 'none'",'X-Content-Type-Options':'nosniff'}});
+}
+
+async function exchange(config,params,context){
+ const result=await json(config.tokenEndpoint,{method:'POST',body:new URLSearchParams({...params,client_id:config.clientId,resource:config.resource})},context);
+ if(typeof result.access_token!=='string'||!result.access_token||result.access_token.length>16000||
+    /[^a-zA-Z0-9._~+/=-]/.test(result.access_token)||result.token_type?.toLowerCase()!=='bearer'||
+    (result.refresh_token!==undefined&&(typeof result.refresh_token!=='string'||result.refresh_token.length>16000)))throw invalid();
+ return {accessToken:result.access_token,refreshToken:result.refresh_token||config.refreshToken||'',
+  expiresAt:Number.isFinite(result.expires_in)&&result.expires_in>=0?Date.now()+result.expires_in*1000:0};
+}
+
+export async function handleMcpOAuth(request,env,context){
+ try{
+  const {url,row,stateHash}=await flow(env,request);
+  if(row.status!=='pending')throw invalid();
+  const config=JSON.parse(await context.open(env,row));
+  if(url.pathname===authorizePath)return new Response(null,{status:303,headers:{Location:config.authorization,'Cache-Control':'no-store','Referrer-Policy':'no-referrer'}});
+  const changed=await env.DB.prepare("UPDATE account_ai_mcp_oauth_flows SET status='processing',key_ciphertext=NULL,key_iv=NULL WHERE state_hash=? AND status='pending' RETURNING id").bind(stateHash).first();
+  if(!changed)throw invalid();
+  let status='failed';
+  try{
+   const code=url.searchParams.get('code'),issuer=url.searchParams.get('iss');
+   if((issuer||config.requireIssuer)&&issuer!==config.issuer)throw invalid();
+   if(url.searchParams.get('error'))status='denied';
+   else if(code&&code.length<=4000){
+    const tokens=await exchange(config,{grant_type:'authorization_code',code,code_verifier:config.verifier,redirect_uri:config.redirectUri},context);
+    const secret=JSON.stringify({kind:'oauth',tokenEndpoint:config.tokenEndpoint,clientId:config.clientId,url:config.url,resource:config.resource,...tokens});
+    await context.save(env,row.account_id,config,tokens.accessToken,secret,request.signal);
+    status='connected';
+   }
+  }catch{}
+  await env.DB.prepare('UPDATE account_ai_mcp_oauth_flows SET status=? WHERE state_hash=?').bind(status,stateHash).run();
+  return completion(status==='connected'?'授权完成，请返回 Easybook。':'授权未完成，请返回 Easybook 重试。',status==='connected'?200:400);
+ }catch{return completion('授权请求已失效，请返回 Easybook 重新连接。',400)}
+}
+
+const refreshes=new Map();
+export async function mcpAccessToken(env,row,context){
+ if(!row.key_ciphertext)return '';
+ const value=await context.open(env,row);
+ if(!value.startsWith('{'))return value;
+ const config=JSON.parse(value);
+ if(config.kind!=='oauth')throw invalid();
+ if(!config.expiresAt||config.expiresAt>Date.now()+30000)return config.accessToken;
+ if(!config.refreshToken)throw invalid('mcp_oauth_reconnect',401);
+ const key=row.account_id+':'+row.id;
+ if(!refreshes.has(key))refreshes.set(key,(async()=>{
+  const tokens=await exchange(config,{grant_type:'refresh_token',refresh_token:config.refreshToken},context);
+  const wrapped=await context.seal(env,row.account_id,row.id,JSON.stringify({...config,...tokens}));
+  const change=await env.DB.prepare('UPDATE account_ai_mcp_servers SET key_ciphertext=?,key_iv=? WHERE id=? AND account_id=? AND key_ciphertext=? RETURNING id')
+   .bind(wrapped.ciphertext,wrapped.iv,row.id,row.account_id,row.key_ciphertext).first();
+  if(!change)throw invalid('mcp_changed',409);
+  return tokens.accessToken;
+ })().finally(()=>refreshes.delete(key)));
+ return refreshes.get(key);
+}

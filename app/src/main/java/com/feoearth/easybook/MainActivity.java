@@ -44,6 +44,7 @@ public class MainActivity extends Activity {
     private String pendingExport;
     private String attachmentSpace,attachmentNote,attachmentExportName;private long attachmentGeneration;private File attachmentExport;private boolean aiPickerOpen,aiSpeechOpen;
     private final ExecutorService io = Executors.newSingleThreadExecutor();
+    private final ExecutorService dockIo = Executors.newSingleThreadExecutor();
     private static String operationErrorCode(Exception e){
         if(e instanceof NativeAccount.HttpFailure){
             String code=((NativeAccount.HttpFailure)e).code;
@@ -69,7 +70,32 @@ public class MainActivity extends Activity {
     }
     void accountChanged(){runOnUiThread(()->{if(!destroyed&&!serverSwitching&&repository.isActiveProfile()&&ready&&web!=null&&LOCAL.equals(web.getUrl()))web.evaluateJavascript("window.easybookAccountChanged&&window.easybookAccountChanged()",null);});}
     private static final String LOCAL = "https://appassets.androidplatform.net/index.html";
-    private boolean darkAppearance(){String mode=getPreferences(MODE_PRIVATE).getString("themeMode","auto");return "dark".equals(mode)||(!"light".equals(mode)&&(getResources().getConfiguration().uiMode&Configuration.UI_MODE_NIGHT_MASK)==Configuration.UI_MODE_NIGHT_YES);}
+    private boolean systemDark() { return AppAppearance.systemDark(getResources().getConfiguration()); }
+    private boolean darkAppearance() { return AppAppearance.dark(AppAppearance.mode(this), systemDark()); }
+    private String appearanceBootstrap() {
+        String mode = AppAppearance.mode(this);
+        boolean darkSystem = systemDark();
+        String effective = AppAppearance.dark(mode, darkSystem) ? "dark" : "light";
+        return "window.EasybookAppearance={mode:'"+mode+"',systemDark:"+darkSystem+"};"
+            +"document.documentElement.dataset.theme='"+effective+"';"
+            +"document.documentElement.style.colorScheme='"+effective+"';";
+    }
+    private void refreshAppearance(boolean darkSystem) {
+        boolean dark = AppAppearance.dark(AppAppearance.mode(this), darkSystem);
+        int color = AppAppearance.windowColor(dark);
+        if(security!=null)security.setDark(dark);
+        AppAppearance.applyWindow(getWindow(), dark, color);
+        if(safeArea!=null)safeArea.setBackgroundColor(color);
+        if(web!=null){
+            web.setBackgroundColor(color);
+            web.evaluateJavascript("if(window.EasybookAppearance){window.EasybookAppearance.systemDark="+darkSystem+";window.easybookApplySystemAppearance?.()}", null);
+        }
+        if(nativeGlass!=null)nativeGlass.refreshBackdrop();
+    }
+    @Override public void onConfigurationChanged(Configuration configuration) {
+        super.onConfigurationChanged(configuration);
+        refreshAppearance(AppAppearance.systemDark(configuration));
+    }
     @Override public void onCreate(Bundle state) {
         super.onCreate(state);
         webOta=new WebOtaManager(this);
@@ -91,13 +117,11 @@ public class MainActivity extends Activity {
         };connectivity.registerDefaultNetworkCallback(networkCallback);
         boolean dark = darkAppearance();
         if(security!=null)security.setDark(dark);
-            int color = dark ? 0xff000000 : 0xfff2f2f7;
-        getWindow().setStatusBarColor(color);
-        getWindow().setNavigationBarColor(color);
-        getWindow().getDecorView().setSystemUiVisibility(dark ? 0 : View.SYSTEM_UI_FLAG_LIGHT_STATUS_BAR | View.SYSTEM_UI_FLAG_LIGHT_NAVIGATION_BAR);
+        int color = AppAppearance.windowColor(dark);
+        AppAppearance.applyWindow(getWindow(), dark, color);
         getWindow().setSoftInputMode(WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE);
         if (android.os.Build.VERSION.SDK_INT >= 30) getWindow().setDecorFitsSystemWindows(false);
-        web = new WebView(this); web.setBackgroundColor(color);
+        web = new WebView(this); web.setBackgroundColor(color); AppAppearance.usePageColors(web);
         web.setTag("notes-webview");web.setImportantForAutofill(View.IMPORTANT_FOR_AUTOFILL_NO_EXCLUDE_DESCENDANTS);
         // Insets belong to the container: WebView padding does not reliably constrain
         // CSS position:fixed controls to the Android safe area.
@@ -157,7 +181,9 @@ public class MainActivity extends Activity {
             try{JSONObject envelope=new JSONObject(text);String requestId=envelope.getString("id"),method=envelope.getString("method");JSONObject args=envelope.optJSONObject("args");if(args==null)args=new JSONObject();final JSONObject input=args;final long generation=documentGeneration;
                 if(!requestId.matches("[a-zA-Z0-9-]{1,80}"))return;
                 Runnable operation=()->{try{if(destroyed||serverSwitching||generation!=documentGeneration)throw new SecurityException();repository.assertActiveProfile();security.authorize(method,input,generation);JSONObject output=dispatch(method,input,generation);respond(reply,generation,new JSONObject().put("id",requestId).put("ok",true).put("result",output));}catch(Exception e){try{respond(reply,generation,new JSONObject().put("id",requestId).put("ok",false).put("error",operationErrorMessage(e)).put("code",operationErrorCode(e)));}catch(Exception ignored){}}};
-                if(method.equals("sync")||method.equals("attachment.get")||method.equals("attachment.open")||method.equals("attachment.share")||method.equals("attachment.export"))syncIo.execute(operation);else io.execute(operation);
+                // Dock visibility updates must stay ordered and cannot wait for the storage queue.
+                if(method.equals("ui.glass.dock"))dockIo.execute(operation);
+                else if(method.equals("sync")||method.equals("attachment.get")||method.equals("attachment.open")||method.equals("attachment.share")||method.equals("attachment.export"))syncIo.execute(operation);else io.execute(operation);
             }catch(Exception ignored){}
         });
         web.setWebViewClient(new WebViewClient() {
@@ -201,7 +227,7 @@ public class MainActivity extends Activity {
                 if (LOCAL.equals(u.toString())) {
                     try {
                         boolean legacy=false;
-                        String html=readWebAsset("index.html");boolean glassAvailable=BuildConfig.NATIVE_GLASS_PROTOTYPE&&android.os.Build.VERSION.SDK_INT>=33;html=html.replace("<head>","<head><script>(function(){var t=localStorage.getItem('easybook-theme')||'auto';document.documentElement.dataset.theme=t;document.documentElement.style.colorScheme=t==='auto'?'light dark':t})();</script>");html=html.replace("</head>","<script>localStorage.setItem(\"easybook-fast-mode\",\""+getPreferences(MODE_PRIVATE).getBoolean("fastMode",false)+"\");window.EasybookNativeGlassFallback="+(!glassAvailable)+";</script></head>");if(!legacy)html=html.replace("connect-src 'self' https://easybook-sync.1902521952.workers.dev","connect-src 'self'");
+                        String html=readWebAsset("index.html");boolean glassAvailable=BuildConfig.NATIVE_GLASS_PROTOTYPE&&android.os.Build.VERSION.SDK_INT>=33;html=html.replace("<head>","<head><script>"+appearanceBootstrap()+"</script>");html=html.replace("</head>","<script>localStorage.setItem(\"easybook-fast-mode\",\""+getPreferences(MODE_PRIVATE).getBoolean("fastMode",false)+"\");window.EasybookNativeGlassFallback="+(!glassAvailable)+";</script></head>");if(!legacy)html=html.replace("connect-src 'self' https://easybook-sync.1902521952.workers.dev","connect-src 'self'");
                         html=html.replaceFirst("<script>",java.util.regex.Matcher.quoteReplacement("<script>"+(legacy?"window.EasybookRollbackMode=true;":"")+readAsset("native-api.js")+"</script><script>"));
                          html=html.replace("</body>",nativeUpdateScriptTags()+"</body>");
                         if(BuildConfig.NATIVE_GLASS_PROTOTYPE && android.os.Build.VERSION.SDK_INT>=33&&!getPreferences(MODE_PRIVATE).getBoolean("fastMode",false))html=html.replace("</body>","<script>"+readAsset("native-glass/dock-surface.js")+";"+readAsset("native-glass/toolbar-surface.js")+";"+readAsset("native-glass/format-surface.js")+";"+readAsset("native-glass/move-surface.js")+";"+readAsset("native-glass/sync-surface.js")+";"+readAsset("native-glass/menu.js")+"</script></body>");
@@ -349,6 +375,7 @@ public class MainActivity extends Activity {
                 return new JSONObject().put("accepted",true);
             }
             case "ai.local.cancel":localAiEngine.cancel();return new JSONObject().put("accepted",true);
+            case "ai.mcp.open":nativeAccount.openMcpOAuth(bounded(args,"url",2048));return new JSONObject().put("externalBrowser",true);
             case "ai.mcp":return nativeAccount.ai(new JSONObject(args.toString()).put("action","mcp"));
             case "ai.preferences":return nativeAccount.ai(new JSONObject(args.toString()).put("action","preferences"));
             case "ai.config":return nativeAccount.ai(new JSONObject().put("action","config"));
@@ -468,7 +495,7 @@ public class MainActivity extends Activity {
                 runOnUiThread(()->{if(!destroyed && ready && generation==documentGeneration){glassGeneration=generation;if(!nativeGlass.show(args))web.evaluateJavascript("window.easybookNativeGlassFallback && window.easybookNativeGlassFallback()",null);}});
                 return new JSONObject().put("accepted",true);
             }
-            case "ui.ready":runOnUiThread(()->{if(!destroyed&&generation==documentGeneration){ready=true;if(updateUiReady)webOta.ready();webOta.checkAsync();receiveShare(getIntent());}});return new JSONObject();
+            case "ui.ready":runOnUiThread(()->{if(!destroyed&&generation==documentGeneration){ready=true;refreshAppearance(systemDark());if(updateUiReady)webOta.ready();webOta.checkAsync();receiveShare(getIntent());}});return new JSONObject();
             case "device.theme":{String mode=bounded(args,"value",10);if(!mode.matches("auto|light|dark"))throw new IllegalArgumentException();new DeviceActions().theme(mode);break;}
             case "device.haptic":runOnUiThread(()->web.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP));break;
             case "device.copy":new DeviceActions().copy(bounded(args,"value",100000));break;
@@ -489,11 +516,7 @@ public class MainActivity extends Activity {
     public class DeviceActions {
         public void theme(String value) { runOnUiThread(() -> {
             getPreferences(MODE_PRIVATE).edit().putString("themeMode",value).apply();
-            boolean dark = "dark".equals(value) || (!"light".equals(value) && (getResources().getConfiguration().uiMode & Configuration.UI_MODE_NIGHT_MASK) == Configuration.UI_MODE_NIGHT_YES);
-            if(security!=null)security.setDark(dark);
-            int color = dark ? 0xff000000 : 0xfff2f2f7;
-            web.setBackgroundColor(color); safeArea.setBackgroundColor(color); getWindow().setStatusBarColor(color); getWindow().setNavigationBarColor(color);
-            getWindow().getDecorView().setSystemUiVisibility(dark ? 0 : View.SYSTEM_UI_FLAG_LIGHT_STATUS_BAR | View.SYSTEM_UI_FLAG_LIGHT_NAVIGATION_BAR);
+            refreshAppearance(systemDark());
         }); }
         public void copy(String value) { runOnUiThread(() -> {
             ((ClipboardManager)getSystemService(CLIPBOARD_SERVICE)).setPrimaryClip(ClipData.newPlainText("Easybook", value));
@@ -597,9 +620,9 @@ public class MainActivity extends Activity {
         if (!ready) {super.onBackPressed(); return;}
         web.evaluateJavascript("window.handleBack()", handled -> {if (!"true".equals(handled)) MainActivity.super.onBackPressed();});
     }
-    @Override protected void onResume(){super.onResume();if(nativeAccount!=null){nativeAccount.resume();accountChanged();}}
+    @Override protected void onResume(){super.onResume();refreshAppearance(systemDark());if(nativeAccount!=null){nativeAccount.resume();accountChanged();}}
     @Override protected void onPause() { if(localAiEngine!=null)localAiEngine.cancel();if(security!=null)security.dismissConnection(); if(nativeGlass!=null)nativeGlass.dismiss(true);web.evaluateJavascript("window.EasybookVideo?.pauseAll();window.persistNow && window.persistNow()", null); super.onPause(); }
-    @Override protected void onDestroy() { hideVideoFullscreen(); if(nativeAccount!=null){nativeAccount.cancel();nativeAccount.shutdownAiStream();} if(localAiEngine!=null)localAiEngine.shutdown();if(localAiModels!=null)localAiModels.shutdown();if(localAiRuntime!=null)localAiRuntime.shutdown(); if(security!=null)security.dismissConnection(); if(connectivity!=null&&networkCallback!=null)connectivity.unregisterNetworkCallback(networkCallback); if(nativeGlass!=null){nativeGlass.clearFormatFrame();nativeGlass.dismiss(true);}ready=false; destroyed=true;if(WebViewFeature.isFeatureSupported(WebViewFeature.WEB_MESSAGE_LISTENER))WebViewCompat.removeWebMessageListener(web,"EasybookNative");web.destroy();if(appUpdater!=null)appUpdater.shutdown();io.shutdown();super.onDestroy(); }
+    @Override protected void onDestroy() { hideVideoFullscreen(); if(nativeAccount!=null){nativeAccount.cancel();nativeAccount.shutdownAiStream();} if(localAiEngine!=null)localAiEngine.shutdown();if(localAiModels!=null)localAiModels.shutdown();if(localAiRuntime!=null)localAiRuntime.shutdown(); if(security!=null)security.dismissConnection(); if(connectivity!=null&&networkCallback!=null)connectivity.unregisterNetworkCallback(networkCallback); if(nativeGlass!=null){nativeGlass.clearFormatFrame();nativeGlass.dismiss(true);}ready=false; destroyed=true;if(WebViewFeature.isFeatureSupported(WebViewFeature.WEB_MESSAGE_LISTENER))WebViewCompat.removeWebMessageListener(web,"EasybookNative");web.destroy();if(appUpdater!=null)appUpdater.shutdown();dockIo.shutdown();io.shutdown();super.onDestroy(); }
 }
 
 

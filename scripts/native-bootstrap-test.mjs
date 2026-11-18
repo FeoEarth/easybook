@@ -48,6 +48,9 @@ class NativeHtmlHarness {
  static class android { static class os { static class Build { static class VERSION { static final int SDK_INT=35; } } } }
  static class Preferences { boolean getBoolean(String name,boolean fallback){return fallback;} }
  static Preferences getPreferences(int mode){return new Preferences();}
+ static String appearanceBootstrap(){
+  return "window.EasybookAppearance={mode:'auto',systemDark:true};document.documentElement.dataset.theme='dark';document.documentElement.style.colorScheme='dark';";
+ }
  static String readWebAsset(String name){return input;}
  static String readAsset(String name){if(!name.equals("native-api.js"))throw new IllegalArgumentException(name);return bridge;}
  public static void main(String[] args)throws Exception {
@@ -109,6 +112,17 @@ try{
  // A second injection must also be harmless during real application bootstrap.
  window.eval(nativeAPI);reply(window,bootstrap.id,copy(state));
  await waitFor(()=>messages.some(message=>message.method==='ui.ready'),'native bootstrap reaches ui.ready after the delayed reply');
+ assert.equal(window.document.documentElement.dataset.theme,'dark','Android system theme is used even without a dark WebView media query');
+ const autoTheme=window.document.querySelector('button[data-theme=auto]');
+ const darkTheme=window.document.querySelector('button[data-theme=dark]');
+ assert.equal(autoTheme.getAttribute('aria-pressed'),'true','the stored preference stays on System');
+ window.EasybookAppearance.systemDark=false;window.easybookApplySystemAppearance();
+ assert.equal(window.document.documentElement.dataset.theme,'light');
+ darkTheme.click();
+ window.EasybookAppearance.systemDark=false;window.easybookApplySystemAppearance();
+ assert.equal(window.document.documentElement.dataset.theme,'dark','explicit dark survives system light');
+ assert.equal(darkTheme.getAttribute('aria-pressed'),'true');
+ autoTheme.click();assert.equal(window.document.documentElement.dataset.theme,'light');
  const get=id=>window.document.getElementById(id);
  assert.equal(typeof get('newTop').onclick,'function','native bootstrap installs the New Note click handler');
  get('newTop').click();
@@ -127,14 +141,15 @@ try{
  assert.ok(custom.verified&&use,'the add flow probes a saved server before offering it for use');
  assert.equal(selectedServer,'official','adding and probing preserve the active server');
  assert.deepEqual(messages.filter(message=>message.method==='server.add').at(-1).args,{origin:custom.origin,name:'Private notes',acknowledgeHttp:false});
- get('serverDialog').close();
+ get('serverClose').click();
+ await waitFor(()=>get('serverPage').hidden,'the server page closes');
  // Hold a real commit reply while requesting a switch from an unsaved editor.
  // The server selection must wait for both that commit and the newer edits.
  commitGate=new Promise(resolve=>{releaseCommits=resolve});
  get('newTop').click();get('title').value='切服前的未完成编辑';get('title').dispatchEvent(new window.Event('input'));
  window.easybookRich.editor.commands.insertContent('保留此内容');
  get('serverEntry').click();
- await waitFor(()=>get('serverDialog').open,'the server picker remains available with editor changes pending');
+ await waitFor(()=>!get('serverPage').hidden,'the server picker remains available with editor changes pending');
  const pendingSwitchStart=messages.length;
  get('serverList').querySelector('[data-server-use="'+custom.id+'"]').click();
  await new Promise(resolve=>setTimeout(resolve,25));

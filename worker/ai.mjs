@@ -1,4 +1,4 @@
-import {configureMcp,externalMcpTools,approvedMcpTool,runApprovedMcp} from './ai-external-mcp.mjs';
+import {configureMcp,mcpOAuthPage,externalMcpTools,approvedMcpTool,runApprovedMcp} from './ai-external-mcp.mjs';
 import {readPreferences,writePreferences} from './ai-preferences.mjs';
 import {preferenceContext,MEMORY_INSTRUCTION,parseMemories} from '../shared/ai-preferences.mjs';
 import {boundedJSON,object,READ,WRITE} from './mcp-common.mjs';
@@ -127,6 +127,9 @@ async function anthropicCompletion(key,row,messages,tools,fetcher=fetch,onDelta,
 const completion=(key,row,messages,tools,fetcher,onDelta,signal,maxOutputTokens)=>row.protocol==='anthropic'?anthropicCompletion(key,row,messages,tools,fetcher,onDelta,signal,maxOutputTokens):openAICompletion(key,row,messages,tools,fetcher,onDelta,signal,maxOutputTokens);
 async function discoverModels(key,row,fetcher=fetch){
  const headers=row.protocol==='anthropic'?{'x-api-key':key,'anthropic-version':'2023-06-01'}:{Authorization:'Bearer '+key};const upstream=await fetcher(row.base_url.replace(/\/$/,'')+'/models',{headers,redirect:'manual',signal:AbortSignal.timeout(20000)});let data;try{data=await upstream.json()}catch{data=null}if(!upstream.ok)throw Object.assign(Error('Model discovery failed'),{status:upstream.status===401?401:502,code:upstream.status===401?'provider_key_rejected':'model_discovery_failed'});const items=Array.isArray(data?.data)?data.data:Array.isArray(data?.models)?data.models:[];return [...new Set(items.map(item=>item?.id||item?.name?.replace(/^models\//,'')).filter(model=>typeof model==='string'&&modelPattern.test(model)))].sort().slice(0,500)}
+export const aiMcpOAuthPage=(request,env,{fetcher=fetch}={})=>mcpOAuthPage(request,env,{fetcher,seal,open});
+export const isAiMcpOAuthPage=url=>['/api/ai/mcp/oauth/authorize','/api/ai/mcp/oauth/callback'].includes(url.pathname);
+
 export async function aiAPI(request,env,principal,{workspaceId,fetcher=fetch}={}){
  const url=new URL(request.url),path=url.pathname;
  if(!path.startsWith('/api/ai/'))return null;
@@ -192,7 +195,7 @@ export async function aiAPI(request,env,principal,{workspaceId,fetcher=fetch}={}
     ...(external?[external.server.id,principal.accountId,args.revision]:[])).first();
    if(!claimed)return response({error:'approval_expired'},409);
    let result;try{
-    result=external?await runApprovedMcp(env,external,args.arguments,{open,fetcher,signal:request.signal})
+    result=external?await runApprovedMcp(env,external,args.arguments,{open,seal,fetcher,signal:request.signal})
      :await callTool({env,workspace:workspaceId,client:'easybook-agent:'+principal.accountId,scopes:toolScopes(access.role,'agent')},tool.name,args);
    }
    catch(error){result={error:{code:error.code||'TOOL_ERROR',message:error.code?error.message:'Tool failed'}}}
