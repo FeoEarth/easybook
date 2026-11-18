@@ -44,14 +44,21 @@ async function checkHost(url,fetcher,signal){
  if(ips.some(ip=>!publicAddress(ip)))throw mcpError('mcp_invalid_url',400);
 }
 
-async function rpcResult(response,id){
+const rpcResponseLimit=180000;
+const catalogResponseLimit=4*1024*1024;
+const toolSchemaLimit=64000;
+const catalogSchemaBudget=240000;
+const schemaEncoder=new TextEncoder();
+const schemaBytes=schema=>schemaEncoder.encode(JSON.stringify(schema)).byteLength;
+
+async function rpcResult(response,id,limit=rpcResponseLimit){
  if(!response.ok){
   void response.body?.cancel().catch(()=>{});
   throw Object.assign(mcpError(response.status===401||response.status===403?'mcp_auth_failed':'mcp_request_failed'),{upstreamStatus:response.status});
  }
  const type=response.headers.get('Content-Type')||'';
  if(type.includes('application/json')){
-  const value=await boundedJSON(response,180000);
+  const value=await boundedJSON(response,limit);
   if(value?.jsonrpc==='2.0'&&value.id===id){if(value.error)throw Object.assign(mcpError('mcp_request_failed'),{rpcCode:Number.isSafeInteger(value.error.code)?value.error.code:undefined});return value.result}
  }
  if(type.includes('text/event-stream')){
@@ -62,7 +69,7 @@ async function rpcResult(response,id){
     const chunk=await reader.read();
     if(chunk.done)break;
     size+=chunk.value.byteLength;
-    if(size>180000)throw mcpError('mcp_response_too_large');
+    if(size>limit)throw mcpError('mcp_response_too_large');
     buffer+=decoder.decode(chunk.value,{stream:true});
     for(let match;(match=/\r?\n\r?\n/.exec(buffer));){
      const event=buffer.slice(0,match.index);
@@ -91,7 +98,7 @@ async function withServer(urlValue,token,fetcher,requestSignal,work){
   const response=await fetcher(url,{method:'POST',headers,redirect:'manual',signal,body:JSON.stringify({jsonrpc:'2.0',id:requestId,method,params})});
   if(notice){if(!response.ok)await rpcResult(response);void response.body?.cancel().catch(()=>{});return}
   if(method==='initialize')session=response.headers.get('Mcp-Session-Id');
-  return rpcResult(response,requestId);
+  return rpcResult(response,requestId,method==='tools/list'?catalogResponseLimit:rpcResponseLimit);
  }
  try{
   await checkHost(url,fetcher,signal);
@@ -114,15 +121,18 @@ async function withServer(urlValue,token,fetcher,requestSignal,work){
 async function catalog(url,token,fetcher,signal,id){
  return withServer(url,token,fetcher,signal,async send=>{
   const tools=[];
-  let cursor;
+  let cursor,budget=catalogSchemaBudget;
   for(let page=0;page<4;page++){
    const result=await send('tools/list',cursor?{cursor}:{});
    if(!Array.isArray(result?.tools))throw mcpError('mcp_protocol_error');
    for(const item of result.tools){
-    if(typeof item?.name!=='string'||!item.name||item.name.length>160||!object(item.inputSchema)||item.inputSchema.type!=='object'||JSON.stringify(item.inputSchema).length>10000)continue;
+    if(typeof item?.name!=='string'||!item.name||item.name.length>160||!object(item.inputSchema)||item.inputSchema.type!=='object')continue;
+    const bytes=schemaBytes(item.inputSchema);
+    if(bytes>toolSchemaLimit||bytes>budget)continue;
     if(token&&JSON.stringify(item).includes(token))continue;
     const alias='mcp_'+id.replaceAll('-','')+'_'+(await hash(item.name)).slice(0,20);
     if(tools.some(t=>t.alias===alias))continue;
+    budget-=bytes;
     tools.push({alias,name:item.name,description:typeof item.description==='string'?item.description.slice(0,500):'',inputSchema:item.inputSchema});
     if(tools.length===12)return tools;
    }
@@ -236,10 +246,15 @@ export async function externalMcpTools(env,account){
  const rows=(await env.DB.prepare('SELECT id,label,url,revision,tools_json FROM account_ai_mcp_servers WHERE account_id=? AND enabled=1 ORDER BY label,id').bind(account).all()).results;
  const catalogs=rows.map(row=>JSON.parse(row.tools_json).map(tool=>({...tool,server:row.label,url:row.url,revision:row.revision})));
  const available=new Map();
+ let budget=catalogSchemaBudget;
  for(let index=0;index<12&&available.size<24;index++){
   for(const tools of catalogs){
    const tool=tools[index];
-   if(tool)available.set(tool.alias,tool);
+   if(tool){
+    const bytes=schemaBytes(tool.inputSchema);
+    if(bytes>budget)continue;
+    budget-=bytes;available.set(tool.alias,tool);
+   }
    if(available.size===24)break;
   }
  }

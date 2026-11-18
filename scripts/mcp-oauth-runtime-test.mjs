@@ -8,6 +8,7 @@ export default {async fetch(request,env){
  const resource='https://tools.example.net/mcp',issuer='https://login.example.net',origin='https://easybook.test';
  const incoming=new URL(request.url);
  const malformed=incoming.searchParams.has('malformed'),failCatalog=incoming.searchParams.has('failCatalog');
+ const catalogFormat=incoming.searchParams.get('catalog');
  const steps=[],accessToken='notion-user:oauth-grant:opaque-access-token';
  const returnedToken=malformed?accessToken+String.fromCharCode(13,10)+'X-Injected: yes':accessToken;
  const fixture=async(input,init)=>{
@@ -27,7 +28,14 @@ export default {async fetch(request,env){
   if(auth!=='Bearer '+accessToken)return new Response(null,{status:403});
   if(p.method==='initialize')return Response.json({jsonrpc:'2.0',id:p.id,result:{protocolVersion:'2025-06-18',capabilities:{tools:{}}}});
   if(p.method==='tools/list'&&failCatalog)return new Response(null,{status:503});
-  if(p.method==='tools/list')return Response.json({jsonrpc:'2.0',id:p.id,result:{tools:[{name:'read',inputSchema:{type:'object'}}]}});
+  if(p.method==='tools/list'){
+   const inputSchema={type:'object'};
+   if(catalogFormat)inputSchema.properties={query:{type:'string',description:'a'.repeat(20000)}};
+   const description=catalogFormat==='oversize'?'d'.repeat(4*1024*1024):catalogFormat?'d'.repeat(200000):'';
+   const payload={jsonrpc:'2.0',id:p.id,result:{tools:[{name:'read',description,inputSchema}]}};
+   if(catalogFormat==='event-stream')return new Response('data: '+JSON.stringify(payload)+String.fromCharCode(10,10),{headers:{'Content-Type':'text/event-stream'}});
+   return Response.json(payload);
+  }
   return new Response(null,{status:202});
  };
  const req=(path,body)=>new Request(origin+path,{method:body?'PUT':'GET',body:body&&JSON.stringify(body)});
@@ -76,7 +84,12 @@ try{
  const saved=(await get('/servers')).servers.find(server=>server.label==='needs-refresh');
  assert.ok(saved.authenticated);
  assert.deepEqual(saved.tools,[]);
- assert.deepEqual(await get('/servers?id='+saved.id),{ok:true},'retry uses the grant already saved');
+ for(const format of ['json','event-stream']){
+  assert.deepEqual(await get('/servers?id='+saved.id+'&catalog='+format),{ok:true},
+   'refresh accepts large '+format+' tool lists using the grant already saved');
+ }
+ const oversized=await get('/servers?id='+saved.id+'&catalog=oversize');
+ assert.equal(oversized.error,'mcp_response_too_large');
  assert.deepEqual((await get('/servers')).servers.find(server=>server.id===saved.id).tools,['read']);
  console.log('PASS Workers OAuth requests, token validation and tool refresh after the OAuth grant is saved');
 }finally{await runtime.dispose()}
