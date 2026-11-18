@@ -44,6 +44,15 @@ assert.equal(sql.prepare('SELECT authenticated_at FROM account_sessions WHERE id
 assert.equal((await call('/account/native/token',{method:'POST',body:input})).status,400,'single-use code');
 const nativeHeaders={Authorization:'Easybook-Session '+credentials.token};assert.equal((await call('/account/native/session',{headers:nativeHeaders})).status,200);
 assert.equal(await session(new Request(primary,{headers:{Cookie:ACCOUNT_COOKIE+'='+credentials.token}}),env),null,'native session cannot become a browser cookie');
+const nativeChat=async content=>identityWorker.fetch(new Request(legacy+'/account/native/ai',{
+ method:'POST',headers:{...nativeHeaders,'X-Easybook-Native':'1','Content-Type':'application/json'},
+ body:JSON.stringify({action:'chat',messages:[{role:'user',content}]})
+}),env,{});
+const largeNativeChat=await nativeChat('a'.repeat(1700000));
+assert.deepEqual(await largeNativeChat.json(),{error:'workspace_required'},'A long Android request passes the proxy size check and reaches workspace validation');
+const oversizedNativeChat=await nativeChat('界'.repeat(3000000));
+assert.equal(oversizedNativeChat.status,413);
+assert.deepEqual(await oversizedNativeChat.json(),{error:'payload_too_large'});
 const devices=await (await call('/account/native/sessions',{headers:nativeHeaders})).json();assert.ok(devices.devices.some(d=>d.id===credentials.session_id&&d.current));
 const foreignAccount=crypto.randomUUID(),foreignSession=crypto.randomUUID();sql.prepare('INSERT INTO accounts VALUES(?,?,?,NULL)').run(foreignAccount,'Other account',Date.now());sql.prepare('INSERT INTO account_sessions VALUES(?,?,?,?,?,?,?,NULL)').run(foreignSession,await hash('z'.repeat(64)),foreignAccount,Date.now(),Date.now()+86400000,Date.now(),'Foreign device');
 assert.equal((await call('/account/native/sessions/revoke',{method:'POST',body:{id:foreignSession},headers:nativeHeaders})).status,404,'cannot revoke another account device');

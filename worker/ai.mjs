@@ -1,3 +1,4 @@
+import {AI_CHAT_MAX_BODY_BYTES,AI_CHAT_MAX_MESSAGES,AI_CHAT_MAX_TEXT_CHARS} from '../shared/ai-context-policy.mjs';
 import {configureMcp,mcpOAuthPage,externalMcpTools,approvedMcpTool,runApprovedMcp} from './ai-external-mcp.mjs';
 import {readPreferences,writePreferences} from './ai-preferences.mjs';
 import {preferenceContext,MEMORY_INSTRUCTION,parseMemories} from '../shared/ai-preferences.mjs';
@@ -87,9 +88,9 @@ function toolsFor(role,mode){
 async function ensureAgentApprovalSchema(env){
  await env.DB.prepare('CREATE TABLE IF NOT EXISTS ai_agent_approvals(id TEXT PRIMARY KEY,account_id TEXT NOT NULL,workspace_id TEXT NOT NULL,tool_name TEXT NOT NULL,tool_args TEXT NOT NULL,expires_at INTEGER NOT NULL,consumed_at INTEGER)').run();
 }
-function safeMessages(input,attachments=[]){
- if(!Array.isArray(input)||input.length<1||input.length>40)throw Object.assign(Error('Invalid messages'),{status:400,code:'invalid_messages'});
- let size=0;const result=input.map(message=>{if(!object(message)||!['user','assistant'].includes(message.role)||typeof message.content!=='string')throw Object.assign(Error('Invalid messages'),{status:400,code:'invalid_messages'});size+=message.content.length;if(size>60000)throw Object.assign(Error('Messages too large'),{status:413,code:'messages_too_large'});return {role:message.role,content:message.content}});
+function safeMessages(input,attachments=[],{maxMessages=40,maxChars=60000}={}){
+ if(!Array.isArray(input)||input.length<1||input.length>maxMessages)throw Object.assign(Error('Invalid messages'),{status:400,code:'invalid_messages'});
+ let size=0;const result=input.map(message=>{if(!object(message)||!['user','assistant'].includes(message.role)||typeof message.content!=='string')throw Object.assign(Error('Invalid messages'),{status:400,code:'invalid_messages'});size+=message.content.length;if(size>maxChars)throw Object.assign(Error('Messages too large'),{status:413,code:'messages_too_large'});return {role:message.role,content:message.content}});
  if(!Array.isArray(attachments)||attachments.length>3)throw Object.assign(Error('Invalid AI attachments'),{status:400,code:'invalid_attachments'});
  if(!attachments.length)return result;
  if(result.at(-1).role!=='user')throw Object.assign(Error('Attachments require final user message'),{status:400,code:'invalid_attachments'});
@@ -107,11 +108,18 @@ function safeMessages(input,attachments=[]){
  }
  result[result.length-1].content=parts.length===1?parts[0].text:parts;return result;
 }
+function providerError(status,error){
+ const detail=typeof error?.message==='string'?error.message:'';
+ if(error?.code==='context_length_exceeded'||(status===400&&/maximum context length|prompt is too long|input is too long|context window exceeded/i.test(detail))){
+  return Object.assign(Error('Model context window exceeded'),{status:413,code:'context_length_exceeded'});
+ }
+ return Object.assign(Error(detail||'AI provider request failed'),{status:status===401?401:502,code:status===401?'provider_key_rejected':'provider_error'});
+}
 async function openAICompletion(key,row,messages,tools,fetcher=fetch,onDelta,signal,maxOutputTokens=2000){
  const upstream=await fetcher(row.base_url.replace(/\/$/,'')+'/chat/completions',{method:'POST',redirect:'manual',headers:{Authorization:'Bearer '+key,'Content-Type':'application/json'},body:JSON.stringify({model:row.model,messages,...(tools.length?{tools,tool_choice:'auto'}:{}),max_completion_tokens:maxOutputTokens,...(onDelta?{stream:true}:{})}),signal:providerSignal(signal,!!onDelta)});
  if(onDelta&&upstream.ok&&upstream.headers.get('Content-Type')?.includes('text/event-stream'))return readAIProviderStream(upstream,'openai',onDelta);
  let data;try{data=await upstream.json()}catch{data=null}
- if(!upstream.ok)throw Object.assign(Error(data?.error?.message||'AI provider request failed'),{status:upstream.status===401?401:502,code:upstream.status===401?'provider_key_rejected':'provider_error'});
+ if(!upstream.ok)throw providerError(upstream.status,data?.error);
  const message=data?.choices?.[0]?.message;if(!message||typeof message!=='object')throw Object.assign(Error('Invalid AI provider response'),{status:502,code:'provider_error'});return message;
 }
 function anthropicMessages(messages){
@@ -121,7 +129,7 @@ async function anthropicCompletion(key,row,messages,tools,fetcher=fetch,onDelta,
  const system=messages.filter(message=>message.role==='system').map(message=>message.content).join('\n\n');
  const upstream=await fetcher(row.base_url.replace(/\/$/,'')+'/messages',{method:'POST',redirect:'manual',headers:{'x-api-key':key,'anthropic-version':'2023-06-01','Content-Type':'application/json'},body:JSON.stringify({model:row.model,system,messages:anthropicMessages(messages),...(tools.length?{tools:tools.map(tool=>({name:tool.function.name,description:tool.function.description,input_schema:tool.function.parameters})),tool_choice:{type:'auto'}}:{}),max_tokens:maxOutputTokens,...(onDelta?{stream:true}:{})}),signal:providerSignal(signal,!!onDelta)});
  if(onDelta&&upstream.ok&&upstream.headers.get('Content-Type')?.includes('text/event-stream'))return readAIProviderStream(upstream,'anthropic',onDelta);
- let data;try{data=await upstream.json()}catch{data=null}if(!upstream.ok)throw Object.assign(Error(data?.error?.message||'AI provider request failed'),{status:upstream.status===401?401:502,code:upstream.status===401?'provider_key_rejected':'provider_error'});
+ let data;try{data=await upstream.json()}catch{data=null}if(!upstream.ok)throw providerError(upstream.status,data?.error);
  if(!Array.isArray(data?.content))throw Object.assign(Error('Invalid AI provider response'),{status:502,code:'provider_error'});const text=data.content.filter(block=>block.type==='text').map(block=>block.text||'').join('\n'),calls=data.content.filter(block=>block.type==='tool_use').map(block=>({id:block.id,type:'function',function:{name:block.name,arguments:JSON.stringify(block.input||{})}}));return {role:'assistant',content:text,...(calls.length?{tool_calls:calls}:{})};
 }
 const completion=(key,row,messages,tools,fetcher,onDelta,signal,maxOutputTokens)=>row.protocol==='anthropic'?anthropicCompletion(key,row,messages,tools,fetcher,onDelta,signal,maxOutputTokens):openAICompletion(key,row,messages,tools,fetcher,onDelta,signal,maxOutputTokens);
@@ -201,7 +209,7 @@ export async function aiAPI(request,env,principal,{workspaceId,fetcher=fetch,ide
    catch(error){result={error:{code:error.code||'TOOL_ERROR',message:error.code?error.message:'Tool failed'}}}
    return response({ok:!result?.error,tool:pending.tool_name,result:result?.error?undefined:result,error:result?.error});
   }
-  const input=await boundedJSON(request,1600000);
+  const input=await boundedJSON(request,AI_CHAT_MAX_BODY_BYTES);
   const savedRow=await credential(env,principal.accountId,input?.credentialId||'');
   if(input?.model!==undefined&&input.model!==''&&(typeof input.model!=='string'||!modelPattern.test(input.model)))return response({error:'invalid_credential'},400);
   const row=savedRow&&input?.model?{...savedRow,model:input.model}:savedRow;if(!row)return response({error:'ai_not_configured'},409);
@@ -221,7 +229,7 @@ export async function aiAPI(request,env,principal,{workspaceId,fetcher=fetch,ide
    if(!title)return response({error:'invalid_title'},502);
    return response({title});
   }
-  const messages=safeMessages(input?.messages,input?.attachments||[]),mode=input?.mode==='agent'?'agent':'conversation',scopes=toolScopes(access.role,mode),tools=toolsFor(access.role,mode),key=await open(env,row);
+  const messages=safeMessages(input?.messages,input?.attachments||[],{maxMessages:AI_CHAT_MAX_MESSAGES,maxChars:AI_CHAT_MAX_TEXT_CHARS}),mode=input?.mode==='agent'?'agent':'conversation',scopes=toolScopes(access.role,mode),tools=toolsFor(access.role,mode),key=await open(env,row);
   const run=async(emit=()=>{})=>{
    const external=input.externalTools===true&&access.role!=='reader'?await externalMcpTools(env,principal.accountId):new Map();
    for(const tool of external.values()){

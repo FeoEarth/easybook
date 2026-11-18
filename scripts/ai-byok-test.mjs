@@ -24,6 +24,16 @@ for(const [credentialId,protocol] of [[openaiId,'openai'],[anthropicId,'anthropi
 }
 const tooLongTitle=await aiAPI(request('/api/ai/chat','POST',{purpose:'title',messages:[{role:'user',content:'x'.repeat(6001)}]}),env,principal,{workspaceId:workspace,fetcher:()=>{throw Error('Must not contact provider')}});
 assert.equal(tooLongTitle.status,400);
+// A long chat reaches the provider, while transport and provider limits are actionable.
+const longMessages=Array.from({length:80},(_,i)=>({role:i%2?'assistant':'user',content:'reading '.repeat(3000)}));
+const longReply=await aiAPI(request('/api/ai/chat','POST',{credentialId:openaiId,messages:longMessages}),env,principal,{workspaceId:workspace,fetcher});
+assert.equal(longReply.status,200);
+assert.deepEqual(upstreamBody.messages.slice(1),longMessages);
+const neverFetch=()=>{throw Error('Must not contact provider')};
+const oversizedChat=await aiAPI(request('/api/ai/chat','POST',{credentialId:openaiId,messages:[{role:'user',content:'x'.repeat(4200001)}]}),env,principal,{workspaceId:workspace,fetcher:neverFetch});
+assert.equal(oversizedChat.status,413);assert.deepEqual(await oversizedChat.json(),{error:'messages_too_large'});
+const providerLimit=await aiAPI(request('/api/ai/chat','POST',{credentialId:openaiId,messages:[{role:'user',content:'question'}]}),env,principal,{workspaceId:workspace,fetcher:async()=>Response.json({error:{code:'context_length_exceeded'}},{status:400})});
+assert.equal(providerLimit.status,413);assert.deepEqual(await providerLimit.json(),{error:'context_length_exceeded'});
 const aiImage={type:'image',name:'photo.jpg',mime:'image/jpeg',data:Buffer.from('demo-image-content').toString('base64')};
 result=await aiAPI(request('/api/ai/chat','POST',{messages:[{role:'user',content:'这张图片是什么？'}],attachments:[aiImage]}),env,principal,{workspaceId:workspace,fetcher:anthropicFetcher});
 assert.equal(result.status,200);assert.equal(upstreamBody.messages.at(-1).content[1].type,'image');assert.equal(upstreamBody.messages.at(-1).content[1].source.media_type,'image/jpeg');

@@ -38,7 +38,23 @@ try{
  assert.equal(app.session().messages[1].toolEvents[0].status,'done');
  // Finished tool traces stay open across unrelated UI updates.
  const trace=$('aiHubMessages').querySelector('.ai-tool-activity');trace.open=true;app.render();assert.equal(trace.open,true);
- $('aiHubContext').click();assert.equal($('aiContextPanel').hidden,false);assert.match($('aiContextDetail').textContent,/字符预算/);
+ $('aiHubContext').click();assert.equal($('aiContextPanel').hidden,false);assert.match($('aiContextDetail').textContent,/未识别模型窗口/);
+ const contextWindow=$('aiContextWindow');
+ const setWindow=value=>{contextWindow.value=value;contextWindow.dispatchEvent(new w.Event('change'))};
+ setWindow('256000');assert.match($('aiContextDetail').textContent,/256,000.*手动/);
+ const manualSession=app.session();
+ manualSession.model='different-model';app.render();assert.equal(contextWindow.value,'');
+ manualSession.model='deepseek-chat';app.render();assert.equal(contextWindow.value,'256000');
+ setWindow('9000000');assert.equal(contextWindow.value,'256000');
+ setWindow('16000');
+ const beforeOversized=manualSession.messages.length;
+ app.files([{type:'text',name:'large.txt',text:'中'.repeat(12000)}]);
+ app.cloud(async()=>{assert.fail('An oversized current message must not be silently truncated and sent')});
+ await app.send('分析资料');
+ assert.equal(manualSession.messages.length,beforeOversized);
+ assert.equal($('aiHubAttachments').hidden,false);
+ app.files([]);
+ setWindow('');assert.match($('aiContextDetail').textContent,/未识别模型窗口/);
  assert.equal($('aiHubSend').disabled,true);
  assert.equal($('aiMcpSession').checked,false);
  $('aiMcpSession').click();

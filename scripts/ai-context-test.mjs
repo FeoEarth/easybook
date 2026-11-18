@@ -1,5 +1,7 @@
 import assert from 'node:assert/strict';
-import {fallbackChatTitle,normalizeChatTitle,chatTitleMessages,buildChatContext,recoverChatSession,createChatRun,ServerSentEventDecoder,readServerSentEvents} from '../shared/ai-chat.mjs';
+import {IDBFactory} from 'fake-indexeddb';
+import {AI_CHAT_MAX_BODY_BYTES,AI_CHAT_MAX_TEXT_CHARS,AI_CHAT_MAX_MESSAGES} from '../shared/ai-context-policy.mjs';
+import {fallbackChatTitle,normalizeChatTitle,chatTitleMessages,buildChatContext,buildCloudChatContext,createChatSessionStore,recoverChatSession,createChatRun,ServerSentEventDecoder,readServerSentEvents} from '../shared/ai-chat.mjs';
 const history=[{role:'user',content:'请用中文，创建三篇笔记，保留引用。'}];
 for(let i=0;i<50;i++){
  history.push({role:'assistant',content:'已完成创建 '+i,receipt:{tool:'notes_create',result:{id:'note-'+i}},apiContent:'已执行 notes_create，结果 id=note-'+i});
@@ -53,3 +55,36 @@ assert.ok(Array.from(fallbackChatTitle('请帮我总结当前工作区最近的�
 const manualName='这是用户自己指定的完整长标题，不能擅自修改';
 assert.equal(recoverChatSession({title:manualName,titleSource:'manual',messages:[]}).title,manualName);
 assert.equal(recoverChatSession({title:manualName,titleSource:'ai',messages:[]}).title,manualName);
+
+// The same history is packed differently by model and override, regardless of locale.
+const longHistory=Array.from({length:120},(_,i)=>({role:i%2?'assistant':'user',content:'第'+i+'条消息 '+('原始对话内容 '.repeat(260))}));
+const auto128=buildCloudChatContext(longHistory,{provider:'openai',model:'gpt-4o-2024-08-06'});
+const manual256=buildCloudChatContext(longHistory,{provider:'custom',model:'gpt-4o',windowOverride:256000});
+const auto1m=buildCloudChatContext(longHistory,{provider:'openai',model:'gpt-4.1-mini'});
+assert.equal(auto128.window,128000);assert.equal(auto128.compressed,true);
+assert.equal(manual256.window,256000);assert.ok(manual256.omitted<auto128.omitted);
+assert.ok(auto1m.window>=1000000);assert.deepEqual(auto1m.messages,longHistory);
+const unknown=buildCloudChatContext(longHistory,{provider:'custom',model:'gpt-4o',windowOverride:9999999});
+assert.equal(unknown.window,0);assert.equal(unknown.budget,48000);
+const continuation='继续上次已确认的任务。';
+const withTools=buildCloudChatContext(longHistory,{provider:'openai',model:'gpt-4o',imageCount:2,externalTools:true,continuation});
+assert.ok(withTools.budget<auto128.budget);assert.ok(withTools.used<=withTools.budget);assert.equal(withTools.messages.at(-1).content,continuation);
+const current='当前最重要的要求'.repeat(9000);
+const oversized=buildCloudChatContext([...longHistory,{role:'user',content:current}],{provider:'openai',model:'gpt-4o'});
+assert.equal(oversized.messages.at(-1).content,current);
+const denseWire=buildCloudChatContext([{role:'user',content:'a'.repeat(3000000)+String.fromCharCode(0).repeat(1000000)}],{windowOverride:1050000});
+assert.ok(denseWire.messages.at(-1).content.length<=AI_CHAT_MAX_TEXT_CHARS);
+assert.ok(denseWire.messages.length<=AI_CHAT_MAX_MESSAGES);
+assert.ok(Buffer.byteLength(JSON.stringify({messages:denseWire.messages,attachments:[{data:'A'.repeat(300000)},{data:'A'.repeat(300000)},{data:'A'.repeat(300000)}]}))<AI_CHAT_MAX_BODY_BYTES);
+
+const local=new Map([['old-space',JSON.stringify([{id:'existing',messages:history}])]]);
+const storage={getItem:key=>local.get(key)??null,setItem:(key,value)=>local.set(key,value),removeItem:key=>local.delete(key)};
+const indexedDB=new IDBFactory();
+const store=createChatSessionStore(indexedDB,storage);
+assert.deepEqual(await store.load('old-space'),[{id:'existing',messages:history}]);
+assert.equal(local.has('old-space'),false,'Legacy storage is removed only after migration');
+const largerThanLocalStorage=[{id:'long',messages:[{role:'user',content:'a'.repeat(5500000)}]}];
+await store.save('new-space',largerThanLocalStorage);
+const reloaded=createChatSessionStore(indexedDB,storage);
+assert.deepEqual(await reloaded.load('new-space'),largerThanLocalStorage);
+assert.deepEqual(await reloaded.load('old-space'),[{id:'existing',messages:history}]);

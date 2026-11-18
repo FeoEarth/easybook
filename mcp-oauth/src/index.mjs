@@ -1,3 +1,4 @@
+import {AI_CHAT_MAX_BODY_BYTES} from '../../shared/ai-context-policy.mjs';
 import {requireRestoreAccess} from '../../worker/security-checkpoint.mjs';
 import {modernWorkspaces,V2_SCOPES} from '../../worker/oauth-workspace-policy.mjs';
 import {IDENTITY_ORIGIN,LEGACY_IDENTITY_ORIGIN,identityEnabled,publicOrigin,hasLegacyIdentity,identityHttpsAllowed} from '../../worker/identity-origin.mjs';
@@ -26,7 +27,7 @@ const oauthHandler = {
   const web=await webAccountRoutes(request,env);if(web)return web;
   if(url.pathname==='/account/native/ai'&&request.method==='POST'){
    const {nativeSession}=await import('./native-sessions.mjs');const current=await nativeSession(request,env);if(!current)return Response.json({error:'unauthorized'},{status:401});
-   let input;try{input=await boundedJSON(request,1600000)}catch{return Response.json({error:'invalid_request'},{status:400})}if(!object(input))return Response.json({error:'invalid_request'},{status:400});
+   let input;try{input=await boundedJSON(request,AI_CHAT_MAX_BODY_BYTES)}catch(error){if(error?.code==='PAYLOAD_TOO_LARGE')return Response.json({error:'payload_too_large'},{status:413});return Response.json({error:'invalid_request'},{status:400})}if(!object(input))return Response.json({error:'invalid_request'},{status:400});
    const principal={kind:'account',accountId:current.account_id,sessionId:current.id,authenticatedAt:current.authenticated_at};let target,method='GET',body;
    if(input.action==='config')target='/api/ai/config';
    else if(input.action==='credential'&&['PUT','DELETE'].includes(input.method)){target='/api/ai/config';method=input.method;body=JSON.stringify(input)}

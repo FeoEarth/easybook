@@ -20,6 +20,13 @@ try{
   await page.goto(origin);await page.waitForFunction(()=>window.aiHarness);await page.evaluate(()=>{window.aiHarness.setup();document.activeElement?.blur()});
   await page.evaluate(()=>{const app=window.aiHarness,active=app.session(),now=Date.now();active.title='本周项目行动计划';active.messages=[{role:'user',content:'把本周的工作整理成三件最重要的事。'},{role:'assistant',status:'done',content:'先完善对话体验，再验证上下文管理，最后完成发布前检查。'}];
    ['整理读书笔记与摘录','产品迭代中的想法','下周旅行安排','接口设计与待办事项','一段很长的会话标题，用来确认边栏标题能够正确截断','会议记录整理','年度目标复盘'].forEach((title,i)=>app.sessions().push({id:'history-'+i,title,updatedAt:now-(i<2?0:i<4?86400000:86400000*7),createdAt:now,messages:i===6?[]:[{role:'user',content:'帮我整理'+title},{role:'assistant',status:'done',content:['保留有用的摘录，按主题整理。','把零散的灵感整理成下一步行动。','先确认时间，再安排每天的行程。','先对齐接口边界，再列出待办。','把相关讨论整理为几个清楚的结论。','区分已确定的事项和待跟进的问题。'][i]}],draft:''}));app.select(active.id);document.activeElement?.blur();});
+  await page.locator('#aiHubContext').click();
+  const contextWindow=page.locator('#aiContextWindow');
+  await contextWindow.fill('1000000');await contextWindow.blur();
+  assert.match(await page.locator('#aiContextDetail').textContent(),/1,000,000.*手动/);
+  assert.equal(await page.locator('#aiContextPanel').isVisible(),true);
+  await contextWindow.fill('');await contextWindow.blur();
+  await page.locator('#aiHubContext').click();
   if(name==='desktop'){
    await page.locator('#aiSidebarClose').click();assert.equal(await page.locator('.ai-hub-sidebar').isVisible(),false);
    await page.locator('#aiHubSessions').click();assert.equal(await page.locator('.ai-hub-sidebar').isVisible(),true);
