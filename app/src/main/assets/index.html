@@ -648,6 +648,100 @@ body.keyboard .ai-hub-welcome{display:none}body.keyboard .ai-hub-composer{paddin
 #aiMcpDialog .ai-provider-copy{min-width:0}
 #aiMcpDialog .ai-provider-actions{flex-wrap:wrap}
 #aiMcpSave{margin-top:12px}
+
+/* Settings share a compact list layout across the home, detail pages and dialogs. */
+:is(#settings,#accountSettings,#syncActivity,#aiSettings,#mcpSettings){
+ --settings-radius:18px;
+ --settings-inset:clamp(16px,4vw,26px);
+}
+#settings{
+ max-width:680px;margin-inline:auto;
+ padding:12px max(var(--settings-inset),env(safe-area-inset-right)) max(40px,env(safe-area-inset-bottom)) max(var(--settings-inset),env(safe-area-inset-left));
+}
+body[data-page=settings] .topbar{
+ position:sticky;top:0;z-index:22;
+}
+body[data-page=settings] #foldersButton{flex:none}
+:is(#settingsTitle,.settings-category-header h2,#accountSettings h1,#syncActivity h1,#aiSettings h1,#mcpPageTitle){
+ font-size:clamp(29px,8vw,36px);line-height:1.18;letter-spacing:-.035em;font-weight:720;
+ margin:8px 0 22px;overflow-wrap:anywhere;white-space:normal;
+}
+#settings .workspace-card{
+ display:flex;align-items:center;gap:13px;text-align:start;width:100%;min-height:80px;
+ padding:14px;margin:0 0 22px;border-radius:var(--settings-radius);background:var(--paper);
+}
+#settings .brandmark{
+ width:48px;height:48px;flex:none;border-radius:15px;background:var(--accent);color:var(--on-accent);
+ display:grid;place-items:center;font-size:23px;font-weight:750;
+}
+#settings .workspace-card strong{font-size:18px}
+#settings .workspace-card small{margin-top:4px}
+:is(#settings,#accountSettings,#syncActivity,#aiSettings,#mcpSettings) :is(.settings-group,.sync-group,.workspace-current-card){
+ border-radius:var(--settings-radius);background:var(--paper);
+}
+#settings .settings-group{margin-bottom:16px;padding-inline:14px}
+#settings .settings-label{margin:20px 0 7px;padding-inline:14px}
+#settings .settings-row{min-height:52px;gap:11px}
+:is(#settings,#accountSettings,#syncActivity,#aiSettings,#mcpSettings) :is(.row-text small,.sync-row-meta,.settings-value){
+ color:var(--muted);overflow-wrap:anywhere;
+}
+#settings .settings-home .settings-row strong{font-size:16px;font-weight:550}
+#settings .settings-value{max-width:35%;text-align:end;font-size:13px}
+#settings .settings-value:empty{display:none}
+#settings .settings-category-icon{
+ width:30px;height:30px;border-radius:10px;display:grid;place-items:center;flex:none;
+ background:var(--control-fill,var(--selected));color:var(--accent);
+}
+#settings .settings-category-icon svg{width:17px;height:17px}
+#settings .chevron{width:12px;height:14px;flex:none;color:var(--muted);opacity:.72}
+#settings .settings-theme-options{
+ display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;
+}
+#settings .settings-theme-options button{
+ min-width:0;min-height:44px;padding:8px 4px;display:grid;justify-items:center;gap:7px;
+ overflow-wrap:anywhere;border:1px solid transparent;border-radius:12px;
+}
+#settings .settings-theme-options button.active{border-color:var(--accent)}
+.settings-theme-preview{
+ display:grid;align-content:center;gap:4px;width:min(100%,72px);height:48px;padding:7px;border-radius:8px;
+ background:#f2f0eb;border:1px solid #b4b1ab;
+}
+.settings-theme-preview i{display:block;height:4px;width:76%;border-radius:9px;background:#77716b}
+.settings-theme-preview i:first-child{width:48%;background:#94621b}
+button[data-theme=dark] .settings-theme-preview{background:#272626;border-color:#716e69}
+button[data-theme=dark] .settings-theme-preview i,.settings-theme-preview i:last-child{opacity:.65}
+button[data-theme=auto] .settings-theme-preview{background:linear-gradient(110deg,#f2f0eb 50%,#272626 50%)}
+:is(#accountSettings,#syncActivity,#aiSettings,#mcpSettings) .sync-content{
+ max-width:680px;margin-inline:auto;padding-inline:max(var(--settings-inset),env(safe-area-inset-left)) max(var(--settings-inset),env(safe-area-inset-right));
+}
+:is(#accountSettings,#syncActivity,#aiSettings,#mcpSettings) .sync-nav{
+ padding-inline:max(12px,env(safe-area-inset-left)) max(12px,env(safe-area-inset-right));
+}
+body[data-page=settings] .topbar,
+:is(#accountSettings,#syncActivity,#aiSettings,#mcpSettings) .sync-nav{
+ background:var(--material-fill);backdrop-filter:var(--blur);-webkit-backdrop-filter:var(--blur);
+}
+:is(body[data-page=settings] #foldersButton,.sync-page .sync-back){
+ min-height:44px;padding:5px 12px 5px 7px;border-radius:16px;background:var(--control-fill,var(--paper));
+}
+:is(#settings,#accountSettings,#syncActivity,#aiSettings,#mcpSettings) :is(button,summary,select,input):focus-visible{
+ outline:2px solid var(--accent);outline-offset:-2px;
+}
+:is(#serverDialog,#workspaceSwitchDialog,#pairDialog,#syncSurfaceDialog,#aboutDialog,#legalDocumentDialog,#thirdPartyLicensesDialog,.ai-settings-dialog){
+ border-radius:20px;max-height:85dvh;overflow:auto;
+}
+:is(#serverDialog,#workspaceSwitchDialog,#pairDialog,#syncSurfaceDialog,#aboutDialog,#legalDocumentDialog,#thirdPartyLicensesDialog,.ai-settings-dialog) .dialog-title{
+ gap:12px;align-items:center;
+}
+:is(#serverDialog,#workspaceSwitchDialog,#pairDialog,#syncSurfaceDialog,#aboutDialog,#legalDocumentDialog,#thirdPartyLicensesDialog,.ai-settings-dialog) .dialog-title button{
+ min-width:44px;min-height:44px;
+}
+@media(hover:hover) and (pointer:fine){
+ #settings :is(.settings-home .settings-row,.workspace-card):hover{background:var(--selected)}
+}
+@media(prefers-reduced-motion:reduce){
+ :is(#settings,#accountSettings,#syncActivity,#aiSettings,#mcpSettings) :is(.settings-row,.settings-category-icon,.chevron){transition:none}
+}
 </style></head><body>
 <svg xmlns="http://www.w3.org/2000/svg" style="position:absolute;width:0;height:0;overflow:hidden" aria-hidden="true"><defs>
 <symbol id="i-spark" viewBox="0 0 24 24"><path d="M12 2c.8 5.3 3.7 8.2 9 9-5.3.8-8.2 3.7-9 9-.8-5.3-3.7-8.2-9-9 5.3-.8 8.2-3.7 9-9Z"/><path d="M19 2c.2 1.8 1.2 2.8 3 3-1.8.2-2.8 1.2-3 3-.2-1.8-1.2-2.8-3-3 1.8-.2 2.8-1.2 3-3Z"/></symbol>
@@ -702,9 +796,9 @@ body.keyboard .ai-hub-welcome{display:none}body.keyboard .ai-hub-composer{paddin
 <div class="ai-compose-footnote"><p id="aiHubHint">会话仅保存在本机 · AI 可能会出错</p><button type="button" id="aiHubContext" class="ai-context-button" aria-expanded="false" aria-controls="aiContextPanel">上下文</button></div>
 </div>
 </section>
-<section class="view sync-page account-page" id="accountSettings" hidden="">
+<section class="view sync-page account-page" id="accountSettings" aria-labelledby="accountTitle" hidden="">
 <nav class="sync-nav ui-nav"><button class="sync-back" id="accountBack" aria-label="返回设置"><svg aria-hidden="true"><use href="#i-back"></use></svg><span>设置</span></button></nav>
-<div class="sync-content"><h1>账户与安全</h1>
+<div class="sync-content"><h1 id="accountTitle" tabindex="-1">账户与安全</h1>
 <div class="account-summary"><span class="account-avatar" aria-hidden="true"><svg><use href="#i-account-person"></use></svg></span><div><h2 id="accountDisplayName">登录 Easybook</h2><p id="accountIdentity" hidden=""></p><p class="account-subtitle">管理你的工作区与应用访问权限</p></div></div>
 <p id="accountState" class="account-state" role="status" aria-live="polite">正在读取账户状态…</p>
 <div class="settings-label" id="accountLoginLabel">登录方式</div><div class="settings-group">
@@ -714,7 +808,7 @@ body.keyboard .ai-hub-welcome{display:none}body.keyboard .ai-hub-composer{paddin
 <p class="account-footnote">账户会话与个人工作区同步密钥分别管理。退出账户后，独立同步密钥仍可使用；需要撤销密钥访问时，请轮换密钥。</p>
 <details class="account-diagnostics"><summary>版本与连接信息</summary><p id="accountBuild" class="account-footnote"></p></details>
 <button id="mcpPairEntry" hidden="" aria-hidden="true" tabindex="-1">AI 与 MCP</button>
-</div></section><section class="view" id="settings" hidden><h1 id="settingsTitle" tabindex="-1">设置</h1><div class="workspace-card glass"><span class="brandmark">E</span><div><strong>私人笔记空间</strong><p id="spaceMeta">本机离线保存 · Cloudflare 云端同步</p></div></div><div class="settings-label">账户</div><div class="settings-group"><button class="settings-row" id="accountEntry"><svg><use href="#i-settings"/></svg><span class="row-text"><strong>账户与安全</strong><small>工作区、已登录设备与应用授权</small></span><svg class="chevron"><use href="#i-chevron"/></svg></button></div><div id="workspacePanel" hidden><div class="settings-label">工作区</div><div class="settings-group" id="workspaceList" aria-label="工作区列表"></div><div class="settings-group"><button class="settings-row" id="workspaceCreate"><span class="row-text"><strong>创建工作区</strong><small>添加独立笔记空间，登录后可关联账户</small></span><svg class="chevron" aria-hidden="true"><use href="#i-chevron"/></svg></button><button class="settings-row" id="workspaceRename"><span class="row-text"><strong>重命名当前工作区</strong><small>只修改显示名称，不更换同步密钥</small></span><svg class="chevron" aria-hidden="true"><use href="#i-chevron"/></svg></button><form id="workspaceNameEditor" class="workspace-name-editor" hidden><label for="workspaceName" id="workspaceEditorTitle">工作区名称</label><p id="workspaceEditorHint">名称仅用于识别工作区</p><input id="workspaceName" maxlength="60" autocomplete="off" enterkeyhint="done" required placeholder="我的工作区"><div class="workspace-name-actions"><button type="button" id="workspaceNameCancel">取消</button><button type="submit" id="workspaceNameSave">保存</button></div></form><button class="settings-row" id="workspaceAssociate"><span class="row-text">关联当前工作区到账户</span></button><button class="settings-row" id="workspaceRotate"><span class="row-text"><strong>轮换同步密钥</strong><small>旧密钥立即失效，已有内容保留</small></span></button></div><div class="settings-label">共享与成员</div><div class="settings-group"><button class="settings-row" id="workspaceMembersOpen"><span class="row-text">共享设置与成员列表</span></button></div><div id="workspaceMembersPanel" hidden><p id="workspaceMemberSummary" class="footer-note" role="status"></p><div class="settings-group" id="workspaceMembersList"></div><div class="settings-group" id="workspaceManagerControls"><label class="settings-row"><span class="row-text">成员账户 ID<input id="workspaceMemberId" maxlength="36" autocomplete="off" placeholder="已注册用户的账户 ID" style="display:block;width:100%;min-height:44px;border:0;background:var(--bg);color:var(--ink);padding:8px"></span></label><label class="settings-row"><span class="row-text">成员权限</span><select id="workspaceMemberRole"><option value="reader">Reader · 只读</option><option value="editor">Editor · 编辑</option></select></label><button class="settings-row" id="workspaceMemberSave">添加或更新成员</button><button class="settings-row" id="workspaceShare">转换为共享工作区</button><button class="settings-row" id="workspacePersonal">转换为个人工作区</button><button class="settings-row danger" id="workspaceDelete">删除此工作区…</button><button class="settings-row danger" id="workspaceManagerTransfer">转移管理权…</button></div><button class="settings-row danger" id="workspaceLeave">退出共享工作区…</button></div><p id="workspaceStatus" class="footer-note" role="status"></p></div><div class="settings-label">连接与数据</div><div class="settings-group"><button class="settings-row" id="pairButton"><svg><use href="#i-link"/></svg><span class="row-text"><strong>连接其他设备</strong><small>用同一密钥，在手机和电脑间同步</small></span><svg class="chevron"><use href="#i-chevron"/></svg></button><button class="settings-row" id="activityEntry"><svg><use href="#i-sync"/></svg><span class="row-text"><strong>同步活动</strong><small id="activitySummary">等待同步</small></span><svg class="chevron"><use href="#i-chevron"/></svg></button><button class="settings-row" id="backupButton"><svg><use href="#i-export"/></svg><span class="row-text"><strong>导出备份</strong><small>将全部笔记保存为 JSON 文件</small></span><svg class="chevron"><use href="#i-chevron"/></svg></button><button class="settings-row" id="importButton"><svg><use href="#i-import"/></svg><span class="row-text"><strong>导入备份</strong><small>以新页面导入，保留已有内容</small></span><svg class="chevron"><use href="#i-chevron"/></svg></button><button class="settings-row" id="trashButton"><svg><use href="#i-trash"/></svg><span class="row-text"><strong>回收站</strong><small>删除的笔记可以恢复</small></span><svg class="chevron"><use href="#i-chevron"/></svg></button></div><div class="settings-label">性能</div><div class="settings-group"><button class="settings-row" id="fastMode" role="switch" aria-checked="false"><span class="row-text"><strong>极速模式</strong><small>关闭 Liquid Glass，使用简洁的不透明控件</small></span><span class="fast-mode-indicator" aria-hidden="true"></span></button></div><div class="settings-label">外观</div><div class="settings-group"><div class="settings-row"><span class="row-text"><strong>颜色模式</strong><small>选择应用的显示外观</small></span></div><div class="setting-options" style="padding:10px 0 16px"><button data-theme="auto">跟随系统</button><button data-theme="light">浅色</button><button data-theme="dark">深色</button></div></div><p class="footer-note"><span id="appVersion">Easybook 0.8.34</span><br>仅在应用打开时同步 · 尚未启用端到端加密</p></section>
+</div></section><section class="view" id="settings" hidden><h1 id="settingsTitle" tabindex="-1">设置</h1><button type="button" class="workspace-card" data-settings-category="workspace"><span class="brandmark" aria-hidden="true">E</span><span class="row-text"><strong>工作区与成员</strong><small id="spaceMeta">本机离线保存 · Cloudflare 云端同步</small></span><svg class="chevron" aria-hidden="true"><use href="#i-chevron"/></svg></button><div class="settings-label">账户</div><div class="settings-group"><button class="settings-row" id="accountEntry"><svg><use href="#i-settings"/></svg><span class="row-text"><strong>账户与安全</strong><small>工作区、已登录设备与应用授权</small></span><svg class="chevron"><use href="#i-chevron"/></svg></button></div><div id="workspacePanel" hidden><div class="settings-label">工作区</div><div class="settings-group" id="workspaceList" aria-label="工作区列表"></div><div class="settings-group"><button class="settings-row" id="workspaceCreate"><span class="row-text"><strong>创建工作区</strong><small>添加独立笔记空间，登录后可关联账户</small></span><svg class="chevron" aria-hidden="true"><use href="#i-chevron"/></svg></button><button class="settings-row" id="workspaceRename"><span class="row-text"><strong>重命名当前工作区</strong><small>只修改显示名称，不更换同步密钥</small></span><svg class="chevron" aria-hidden="true"><use href="#i-chevron"/></svg></button><form id="workspaceNameEditor" class="workspace-name-editor" hidden><label for="workspaceName" id="workspaceEditorTitle">工作区名称</label><p id="workspaceEditorHint">名称仅用于识别工作区</p><input id="workspaceName" maxlength="60" autocomplete="off" enterkeyhint="done" required placeholder="我的工作区"><div class="workspace-name-actions"><button type="button" id="workspaceNameCancel">取消</button><button type="submit" id="workspaceNameSave">保存</button></div></form><button class="settings-row" id="workspaceAssociate"><span class="row-text">关联当前工作区到账户</span></button><button class="settings-row" id="workspaceRotate"><span class="row-text"><strong>轮换同步密钥</strong><small>旧密钥立即失效，已有内容保留</small></span></button></div><div class="settings-label">共享与成员</div><div class="settings-group"><button class="settings-row" id="workspaceMembersOpen"><span class="row-text">共享设置与成员列表</span></button></div><div id="workspaceMembersPanel" hidden><p id="workspaceMemberSummary" class="footer-note" role="status"></p><div class="settings-group" id="workspaceMembersList"></div><div class="settings-group" id="workspaceManagerControls"><label class="settings-row"><span class="row-text">成员账户 ID<input id="workspaceMemberId" maxlength="36" autocomplete="off" placeholder="已注册用户的账户 ID" style="display:block;width:100%;min-height:44px;border:0;background:var(--bg);color:var(--ink);padding:8px"></span></label><label class="settings-row"><span class="row-text">成员权限</span><select id="workspaceMemberRole"><option value="reader">Reader · 只读</option><option value="editor">Editor · 编辑</option></select></label><button class="settings-row" id="workspaceMemberSave">添加或更新成员</button><button class="settings-row" id="workspaceShare">转换为共享工作区</button><button class="settings-row" id="workspacePersonal">转换为个人工作区</button><button class="settings-row danger" id="workspaceDelete">删除此工作区…</button><button class="settings-row danger" id="workspaceManagerTransfer">转移管理权…</button></div><button class="settings-row danger" id="workspaceLeave">退出共享工作区…</button></div><p id="workspaceStatus" class="footer-note" role="status"></p></div><div class="settings-label">连接与数据</div><div class="settings-group"><button class="settings-row" id="pairButton"><svg><use href="#i-link"/></svg><span class="row-text"><strong>连接其他设备</strong><small>用同一密钥，在手机和电脑间同步</small></span><svg class="chevron"><use href="#i-chevron"/></svg></button><button class="settings-row" id="activityEntry"><svg><use href="#i-sync"/></svg><span class="row-text"><strong>同步活动</strong><small id="activitySummary">等待同步</small></span><svg class="chevron"><use href="#i-chevron"/></svg></button><button class="settings-row" id="backupButton"><svg><use href="#i-export"/></svg><span class="row-text"><strong>导出备份</strong><small>将全部笔记保存为 JSON 文件</small></span><svg class="chevron"><use href="#i-chevron"/></svg></button><button class="settings-row" id="importButton"><svg><use href="#i-import"/></svg><span class="row-text"><strong>导入备份</strong><small>以新页面导入，保留已有内容</small></span><svg class="chevron"><use href="#i-chevron"/></svg></button><button class="settings-row" id="trashButton"><svg><use href="#i-trash"/></svg><span class="row-text"><strong>回收站</strong><small>删除的笔记可以恢复</small></span><svg class="chevron"><use href="#i-chevron"/></svg></button></div><div class="settings-label">性能</div><div class="settings-group"><button class="settings-row" id="fastMode" role="switch" aria-checked="false"><span class="row-text"><strong>极速模式</strong><small>关闭 Liquid Glass，使用简洁的不透明控件</small></span><span class="fast-mode-indicator" aria-hidden="true"></span></button></div><div class="settings-label">外观</div><div class="settings-group"><div class="settings-row"><span class="row-text"><strong>颜色模式</strong><small>选择应用的显示外观</small></span></div><div class="setting-options" style="padding:10px 0 16px"><button data-theme="auto">跟随系统</button><button data-theme="light">浅色</button><button data-theme="dark">深色</button></div></div><p class="footer-note"><span id="appVersion">Easybook 0.8.34</span><br>仅在应用打开时同步 · 尚未启用端到端加密</p></section>
 <section id="mcpSettings" class="sync-page" aria-labelledby="mcpPageTitle" hidden>
 <nav class="sync-nav ui-nav" aria-label="AI 与 MCP 页面导航"><button id="mcpBack" class="sync-back"><svg aria-hidden="true"><use href="#i-back"/></svg><span>设置</span></button></nav>
 <div class="sync-content"><h1 id="mcpPageTitle" tabindex="-1">AI 与 MCP</h1>
@@ -982,9 +1076,9 @@ function syncError(message){const value=String(message||'');if(/401|凭据|配�
 function pruneQueuedTasks(){const valid=new Set([...notes.filter(n=>n.dirty).flatMap(n=>['note:'+n.id+':'+n.mutation,...(inflight[n.id]?['note:'+n.id+':'+inflight[n.id].mutation]:[])]),...folders.filter(f=>f.dirty).map(f=>'folder:'+f.id+':'+f.updated)]);activity.tasks=activity.tasks.filter(t=>!(/^(note|folder):/.test(t.id)&&['queued','waiting'].includes(t.state)&&!valid.has(t.id)))}
 function renderActivity(){if(!$('syncTasks'))return;pruneQueuedTasks();$('syncPending').textContent=management.pending.length+' 项排序 · '+notes.filter(n=>n.dirty).length+' 篇笔记 · '+folders.filter(f=>f.dirty).length+' 个文件夹待同步 · '+notes.filter(n=>n.dirty&&!scoped(n)).length+' 篇在范围外保留';const view=activity.view(navigator.onLine,busy||nativeSyncRunning);if(management.pending.some(op=>op.blocked))view.state='conflict';if(['done','ready'].includes(view.state)&&(notes.some(n=>n.dirty)||folders.some(f=>f.dirty)||management.pending.length))view.state='waiting';const states={done:'所有内容均已同步',running:'正在同步',offline:'等待网络',waiting:'等待同步',failed:'部分任务失败',conflict:'存在同步冲突',ready:'准备同步'},overallIcon={done:'check',failed:'warning',conflict:'warning',running:'sync'}[view.state]||'cloud';$('activitySummary').textContent=view.state==='done'?'已同步':view.state==='running'?'正在同步':['failed','conflict'].includes(view.state)?'需要处理':states[view.state];$('syncOverall').textContent=states[view.state];$('syncOverviewIcon').innerHTML=syncIcon(overallIcon,view.state==='running'?'sync-spinning':'');document.querySelector('.sync-overview').dataset.state=view.state;$('syncLastSuccess').textContent=activity.lastSuccess?'最近成功同步 '+syncTime(activity.lastSuccess):'尚无成功同步记录';$('syncLastSuccess').title=activity.lastSuccess?new Date(activity.lastSuccess).toLocaleString():'';$('syncNow').disabled=busy||nativeSyncRunning;$('syncNow').querySelector('span').textContent=$('syncNow').disabled?'正在同步…':!navigator.onLine?'等待网络':'立即同步';$('retryAll').hidden=view.failures<2;$('retryAll').disabled=busy;if(!busy&&!nativeSyncRunning){if(syncNetworkWaiting)$('syncOverall').textContent='等待符合策略的网络';else if(syncPolicy.paused||!syncPolicy.autoChange&&!syncPolicy.interval)$('syncOverall').textContent='已暂停自动同步 · 可手动同步';else if(nextAutoSync>Date.now())$('syncOverall').textContent='等待重试';else if(view.state==='done')$('syncOverall').textContent='同步已完成 · 没有新更新';}renderSyncHistory(view.groups)}
 let syncOrigin={tab:'settings',scroll:0},syncLeaving=false;
-function showSyncPage(push=true){if(tab==='sync')return;if(push){syncOrigin={tab,scroll:window.scrollY};history.pushState({...history.state,easybookSync:{origin:syncOrigin}},'')}else syncOrigin=history.state?.easybookSync?.origin||{tab:'settings',scroll:0};switchTab('sync');$('syncBackLabel').textContent=syncOrigin.tab==='settings'?'设置':syncOrigin.tab==='folders'?'文件夹':'备忘录';markQueued();void refreshNativeActivity();renderActivity();$('syncPageTitle').focus({preventScroll:true})}
+function showSyncPage(push=true){if(tab==='sync')return;if(push){syncOrigin=captureSettingsOrigin(document.activeElement?.id||'activityEntry');history.pushState({...history.state,easybookSync:{origin:syncOrigin}},'')}else syncOrigin=history.state?.easybookSync?.origin||{tab:'settings',scroll:0};switchTab('sync');$('syncBackLabel').textContent=syncOrigin.tab==='settings'?'设置':syncOrigin.tab==='folders'?'文件夹':'备忘录';markQueued();void refreshNativeActivity();renderActivity();$('syncPageTitle').focus({preventScroll:true})}
 function leaveSyncPage(){if(tab!=='sync'||syncLeaving)return;syncLeaving=true;if(history.state?.easybookSync&&history.length>1)history.back();else{const state={...history.state};delete state.easybookSync;history.replaceState(state,'');restoreSyncOrigin()}}
-function restoreSyncOrigin(){syncLeaving=false;switchTab(syncOrigin.tab||'settings',true);window.scrollTo(0,syncOrigin.scroll||0);animatePage(true);$('activityEntry').focus({preventScroll:true})}
+function restoreSyncOrigin(){syncLeaving=false;restoreSettingsOrigin(syncOrigin);animatePage(true)}
 window.addEventListener('popstate',event=>{syncLeaving=false;if(event.state?.easybookSync)showSyncPage(false);else if(tab==='sync')restoreSyncOrigin()});$('syncBack').onclick=leaveSyncPage;
 
 async function refreshNativeActivity(){if(!native)return;const space=key;try{const data=await native.call('sync.activity',{key:space});if(space!==key)return;nativeSyncRunning=!!data.running;const tasks=data.tasks||[];if(JSON.stringify(tasks)!==nativeActivitySignature){nativeActivitySignature=JSON.stringify(tasks);activity.replaceNative(tasks)}if(data.policy)syncPolicy=EasybookSyncPolicy.normalize(data.policy);if(data.runtime?.success>activity.lastSuccess){activity.lastSuccess=data.runtime.success;activity.save()}if(data.runtime?.retryAt>nextAutoSync)nextAutoSync=data.runtime.retryAt;renderActivity()}catch{}}
@@ -1046,7 +1140,7 @@ function switchTab(next,preserve=false){
  $('settings').hidden=next!=='settings';$('accountSettings').hidden=next!=='account';$('mcpSettings').hidden=next!=='mcp';$('aiSettings').hidden=next!=='ai';$('aiHub').hidden=next!=='ai-hub';$('syncActivity').hidden=next!=='sync';$('folders').hidden=next!=='folders';$('home').hidden=!isListTab(next);
  $('listMore').hidden=['settings','folders','ai','ai-hub'].includes(next);$('folderSettings').hidden=next!=='folders';$('foldersButton').hidden=next==='folders'||next==='ai'||next==='ai-hub';if(next==='settings')closeSettingsCategory(false);
  $('backLabel').textContent='文件夹';$('foldersButton').setAttribute('aria-label',next==='settings'?'返回文件夹':'文件夹');$('heading').setAttribute('translate',next.startsWith('folder:')?'no':'yes');$('heading').textContent=pageTitle(next);$('createFolder').hidden=next!=='folders';searchEverywhere=preserve?searchEverywhere:false;$('search').value=preserve?listQuery:'';
- syncTabletLayout();const restoreTabletScroll=preserve&&matchMedia('(min-width:600px)').matches&&isListTab(next),savedTabletScroll=listScroll;void renderList().then(()=>{if(restoreTabletScroll&&!current&&tab===next)$('home').scrollTop=savedTabletScroll});window.scrollTo(0,preserve&&!matchMedia('(min-width:600px)').matches?listScroll:0);if(previous!==next){if(!matchMedia('(min-width:600px)').matches)animatePage(next==='folders');const target={folders:$('foldersTitle'),settings:$('settingsTitle'),ai:$('aiPageTitle'),'ai-hub':$('aiHubTitle')}[next]||(isListTab(next)?$('heading'):null);requestAnimationFrame(()=>target?.focus({preventScroll:true}));}if(next==='settings'&&identityV2)void refreshWorkspaces();
+ syncTabletLayout();const restoreTabletScroll=preserve&&matchMedia('(min-width:600px)').matches&&isListTab(next),savedTabletScroll=listScroll;void renderList().then(()=>{if(restoreTabletScroll&&!current&&tab===next)$('home').scrollTop=savedTabletScroll});window.scrollTo(0,preserve&&!matchMedia('(min-width:600px)').matches?listScroll:0);if(previous!==next){if(!matchMedia('(min-width:600px)').matches)animatePage(next==='folders');const target={folders:$('foldersTitle'),settings:$('settingsTitle'),ai:$('aiPageTitle'),'ai-hub':$('aiHubTitle')}[next]||(isListTab(next)?$('heading'):null);requestAnimationFrame(()=>{if(tab===next&&(!target?.hidden)&&(next!=='settings'||!activeSettingsCategory)&&document.activeElement===document.body)target?.focus({preventScroll:true})});}if(next==='settings'&&identityV2)void refreshWorkspaces();
 }
 function goHome(){switchTab(listTab,true);if(!matchMedia('(min-width:600px)').matches)animatePage(true)}window.goHome=goHome;
 function openNote(id){closeContext();resetNoteGestures();const tabletSwitch=window.matchMedia?.('(min-width:840px)').matches;if(current)rich.flushInput();if(!current){if((isListTab(tab)||tab==='folders')){listTab=tab;listQuery=$('search').value;listScroll=matchMedia('(min-width:600px)').matches?$('home').scrollTop:window.scrollY}else{listTab='all';listQuery='';listScroll=0}}const n=notes.find(x=>x.id===id);if(!n||n.purged)return;closeFind();current=id;$('navigation').hidden=!tabletSwitch;$('back').querySelector('span').setAttribute('translate',listTab.startsWith('folder:')?'no':'yes');$('back').querySelector('span').textContent=listTab==='folders'?(listQuery?'搜索结果':'文件夹'):pageTitle(listTab);$('folders').hidden=true;document.body.classList.add('editing');syncTabletLayout();document.querySelectorAll('#cards .note[data-id]').forEach(button=>button.classList.toggle('is-open',button.dataset.id===id));$('settings').hidden=true;$('editor').hidden=false;updateFormatbarVisibility();$('title').readOnly=!!n.deleted;$('title').value=n.title;$('body').value=RichNotes.serialize(n.document);rich.load(n.document);rich.editor.setEditable(!n.deleted,false);renderTasks();void renderAttachments();$('icon').textContent=n.icon;updateEditorMenu(n);$('favoriteButton').querySelector('span').textContent=n.favorite?'取消收藏':'收藏笔记';$('deleteButton').querySelector('span').textContent=n.deleted?'恢复笔记':'移入回收站';$('deleteButton').classList.toggle('danger',!n.deleted);if(tabletSwitch)$('editor').scrollTop=0;else{window.scrollTo(0,0);animatePage()}resize($('title'));resize($('body'));status((notes.some(n=>n.dirty)||folders.some(f=>f.dirty)||management.pending.length)?'已保存 · 等待同步':lastSync?'已同步':'已保存在本机');}
@@ -1152,8 +1246,8 @@ $('confirmCancel').onclick=()=>{$('confirmDialog').close();confirmCallback=null}
 function closeMenu(){$('menuDialog').close()}
 async function exportBackup(){if(native){try{await flushNative();device.exportNotes()}catch{toast('保存未完成，尚未导出')}return}persistNow();await flushLocal();try{const attachments=[];let total=0;for(const id of new Set(notes.flatMap(n=>[...attachmentRefs(n.document).keys()]))){const f=await filePayload(id);if(f.available===false)throw Error('有附件仅保存在原设备，请在原设备导出');total+=f.size;if(f.size>5*1024*1024||total>20*1024*1024)throw Error('JSON备份不包含大附件，请先逐个保存附件到设备');const copy={...f,data:await EasybookAttachments.base64(f.blob)};delete copy.blob;attachments.push(copy)}const blob=new Blob([JSON.stringify({format:'easybook-json-v1',notes:notes.filter(n=>!n.purged),folders:activeFolders(),attachments},null,2)],{type:'application/json'}),a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download='Easybook-backup.json';a.click();setTimeout(()=>URL.revokeObjectURL(a.href),1000)}catch(e){toast(e.message||'备份未导出，原文件已保留')}}
 function importBackupText(text){try{const data=JSON.parse(text);if(data.format!=='easybook-json-v1'||!Array.isArray(data.notes)||data.notes.length>2000)throw Error();const folderMap=new Map();const importedFolders=(Array.isArray(data.folders)?data.folders:[]).map(f=>{if(typeof f.id!=='string'||typeof f.name!=='string'||!f.name.trim()||f.name.length>60)throw Error();const id=uuid();folderMap.set(f.id,id);return {id,name:f.name.trim(),updated:Date.now(),dirty:true}});if(importedFolders.length>2000)throw Error();const imported=data.notes.map(n=>{if(typeof n.title!=='string'||n.title.length>200||!RichNotes.validate(n.document))throw Error();return {id:uuid(),title:n.title,document:n.document,folder_id:folderMap.get(n.folder_id)||'',icon:typeof n.icon==='string'?n.icon.slice(0,16):'📄',favorite:n.favorite?1:0,pinned:n.pinned?1:0,deleted:n.deleted?1:0,version:0,mutation:uuid(),updated:Date.now(),dirty:true}});confirmAction('导入 '+imported.length+' 篇笔记？','将作为新页面加入当前空间，不会替换已有笔记。',async()=>{try{const files=Array.isArray(data.attachments)?data.attachments:[];for(const f of files){if(!/^[a-f0-9]{64}$/.test(f.id)||f.size>5*1024*1024||await hashFile(f.data)!==f.id)throw Error('附件校验失败')}if(native&&files.length){for(const f of files)await native.call('attachment.restore',{key,files:[f]})}else for(const f of files)await localFile(f.id,{...f,dirty:true});}catch{return toast('附件校验或保存失败，未导入笔记')}const previous=notes,previousFolders=folders;notes=[...notes,...imported];folders=[...folders,...importedFolders];if(!persistNow()){notes=previous;folders=previousFolders;return}switchTab('all');void sync();toast('备份已导入')})}catch{toast('无法识别备份，请选择 Easybook JSON 文件')}}window.importBackupText=importBackupText;
-function setTheme(value){if(device)device.theme(value);localStorage.setItem('easybook-theme',value);document.documentElement.dataset.theme=value;document.querySelectorAll('[data-theme]').forEach(b=>{if(b.tagName==='BUTTON')b.classList.toggle('active',b.dataset.theme===value)})}
-function handleBack(){if(document.fullscreenElement){void document.exitFullscreen();return true;}if($('attachmentDialog').open&&window.EasybookPDF?.back?.())return true;if(listMenuOpen){closeListMenu(true);return true}if($('contextDialog').open){closeContext();return true}if($('moveDialog').open){closeMoveSheet();return true}if(!$('findbar').hidden){closeFind();return true}if(selecting){exitSelection();return true}const dialog=document.activeElement?.closest('dialog[open]')||$('aiMcpDialog').open&&$('aiMcpDialog')||document.querySelector('dialog[open]');if(dialog){dialog.close();return true}if(current){goHome();return true}if(tab==='sync'){leaveSyncPage();return true}if(tab==='mcp'){leaveMcpPage();return true}if(tab==='account'){leaveAccountPage();return true}if(tab==='ai'){leaveAiPage();return true}if(tab==='ai-hub'){switchTab('folders');return true}if(tab==='settings'){switchTab('folders',matchMedia('(min-width:600px)').matches);return true}if(tab==='folders'&&!$('search').value)return false;if(!current&&isListTab(tab)&&matchMedia('(min-width:600px)').matches&&!$('search').value)return false;if($('search').value){$('search').value='';renderList();return true}switchTab('folders');return true}window.handleBack=handleBack;
+function setTheme(value){if(device)device.theme(value);localStorage.setItem('easybook-theme',value);document.documentElement.dataset.theme=value;document.querySelectorAll('[data-theme]').forEach(b=>{if(b.tagName==='BUTTON'){const selected=b.dataset.theme===value;b.classList.toggle('active',selected);b.setAttribute('aria-pressed',String(selected))}})}
+function handleBack(){if(document.fullscreenElement){void document.exitFullscreen();return true;}if($('attachmentDialog').open&&window.EasybookPDF?.back?.())return true;if(listMenuOpen){closeListMenu(true);return true}if($('contextDialog').open){closeContext();return true}if($('moveDialog').open){closeMoveSheet();return true}if(!$('findbar').hidden){closeFind();return true}if(selecting){exitSelection();return true}const dialog=document.activeElement?.closest('dialog[open]')||$('aiMcpDialog').open&&$('aiMcpDialog')||document.querySelector('dialog[open]');if(dialog){dialog.close();return true}if(current){goHome();return true}if(tab==='sync'){leaveSyncPage();return true}if(tab==='mcp'){leaveMcpPage();return true}if(tab==='account'){leaveAccountPage();return true}if(tab==='ai'){leaveAiPage();return true}if(tab==='ai-hub'){switchTab('folders');return true}if(tab==='settings'){if(activeSettingsCategory){leaveSettingsCategory();return true}switchTab('folders',matchMedia('(min-width:600px)').matches);return true}if(tab==='folders'&&!$('search').value)return false;if(!current&&isListTab(tab)&&matchMedia('(min-width:600px)').matches&&!$('search').value)return false;if($('search').value){$('search').value='';renderList();return true}switchTab('folders');return true}window.handleBack=handleBack;
 window.setKeyboardVisible=value=>{const visible=!!value,changed=document.body.classList.contains('keyboard')!==visible;document.body.classList.toggle('keyboard',visible);if(changed)window.dispatchEvent(new CustomEvent('easybookkeyboardchange',{detail:{visible}}));window.easybookRich?.revealCaret()};
 function updateViewport(){const vp=window.visualViewport;const inset=vp?Math.max(0,innerHeight-vp.height-vp.offsetTop):0;document.documentElement.style.setProperty('--keyboard-inset',inset+'px');document.documentElement.style.setProperty('--viewport-height',(vp?.height||innerHeight)+'px');document.documentElement.style.setProperty('--visual-viewport-top',(vp?.offsetTop||0)+'px');if(!device)window.setKeyboardVisible(inset>120);window.easybookRich?.revealCaret()}
 window.visualViewport?.addEventListener('resize',updateViewport);window.visualViewport?.addEventListener('scroll',updateViewport);window.addEventListener('resize',updateViewport);updateViewport();
@@ -1181,10 +1275,10 @@ $('copyButton').onclick=()=>{const n=currentNote();closeMenu();void copy(n.title
 $('shareButton').onclick=async()=>{const n=currentNote(),text=n.title+'\n\n'+RichNotes.plain(n.document);closeMenu();if(device){device.share(n.title,text);return}if(navigator.share){try{await navigator.share({title:n.title,text})}catch(e){if(e.name!=='AbortError')void copy(text)}}else void copy(text)};
 $('duplicateButton').onclick=()=>{const n={...currentNote()};closeMenu();newNote((n.title||'无标题').slice(0,190)+' · 副本',n.document,n.icon,false);toast('已创建副本')};
 $('syncButton').onclick=()=>void sync(true);$('trashButton').onclick=()=>switchTab('trash');
-let mcpPairBusy=false,mcpOriginScroll=0;
+let mcpPairBusy=false,mcpOrigin;
 function setMcpFeedback(state,message){$('mcpPairHint').dataset.state=state;$('mcpPairHint').textContent=message;$('mcpPairState').textContent={idle:'等待配对',loading:'正在授权',success:'本次配对成功',error:'配对未完成',unavailable:'暂不支持 Android 配对'}[state];}
-function showMcpPage(push=true){if(native){void native.call('security.mcp').catch(()=>toast('无法打开 AI 与 MCP，请重试'));return;}if(tab==='mcp')return;if(push){mcpOriginScroll=window.scrollY;history.pushState({...history.state,easybookMcp:true},'')}switchTab('mcp');if(!mcpPairBusy){$('mcpPairChallenge').value='';$('mcpPairChallenge').removeAttribute('aria-invalid');setMcpFeedback(native?'unavailable':'idle',native?'Android 安全配对尚未启用。请在 Web 端完成配对；同步密钥不会向 WebView 暴露。':'不要把同步密钥提供给 AI。');$('mcpPairConfirm').disabled=!!native;$('mcpPairChallenge').disabled=!!native;}$('mcpPageTitle').focus({preventScroll:true});}
-function restoreMcpSettings(){switchTab('settings');window.scrollTo(0,mcpOriginScroll);animatePage(true);$('mcpPairEntry').focus({preventScroll:true});}
+function showMcpPage(push=true){if(native){void native.call('security.mcp').catch(()=>toast('无法打开 AI 与 MCP，请重试'));return;}if(tab==='mcp')return;if(push){mcpOrigin=captureSettingsOrigin('mcpSettingsEntry');history.pushState({...history.state,easybookMcp:true,mcpOrigin},'')}else mcpOrigin=history.state?.mcpOrigin;switchTab('mcp');if(!mcpPairBusy){$('mcpPairChallenge').value='';$('mcpPairChallenge').removeAttribute('aria-invalid');setMcpFeedback(native?'unavailable':'idle',native?'Android 安全配对尚未启用。请在 Web 端完成配对；同步密钥不会向 WebView 暴露。':'不要把同步密钥提供给 AI。');$('mcpPairConfirm').disabled=!!native;$('mcpPairChallenge').disabled=!!native;}$('mcpPageTitle').focus({preventScroll:true});}
+function restoreMcpSettings(){restoreSettingsOrigin(mcpOrigin);animatePage(true);}
 function leaveMcpPage(){if(history.state?.easybookMcp)history.back();else restoreMcpSettings();}
 window.addEventListener('popstate',event=>{if(event.state?.easybookMcp)showMcpPage(false);else if(tab==='mcp')restoreMcpSettings();});
 const accountNeedsReauth=error=>/reauth|重新验证|五分钟|recent/i.test(error?.message||String(error||''));
@@ -1211,9 +1305,15 @@ async function refreshMembership(signedIn=true){
 }
 addEventListener('focus',()=>{if(native&&!$('accountSettings').hidden)void refreshAccount()});
 async function refreshAccount(){if(!native)return;try{const value=await native.call('account.status');void refreshMembership(value.signedIn);$('accountQrShow').hidden=value.signedIn;$('accountQrShow').disabled=!!value.busy;$('accountDisplayName').textContent=value.signedIn?'Easybook 账户':'登录 Easybook';$('accountIdentity').hidden=true;$('accountSignedInControls').hidden=!value.signedIn;if(!value.signedIn){$('accountIdentity').dataset.account='';$('accountSecurityPanel').hidden=true;$('accountSecurityRows').replaceChildren();}$('accountLoginLabel').textContent=value.signedIn?'重新验证身份':'登录方式';$('accountPasskeyLoginTitle').textContent=value.signedIn?'使用通行密钥重新验证':'使用通行密钥登录';$('accountBrowserLoginTitle').textContent=value.signedIn?'使用 GitHub 重新验证':'使用 GitHub 登录';$('accountBuild').textContent='账户构建 '+value.build+' · '+String(value.source||'').slice(0,8);$('accountState').textContent=value.feedback||(value.signedIn?'此设备已登录 Easybook 账户':'登录账户后，可关联多个工作区并授权 AI 与 MCP。');for(const id of ['accountPasskeyLogin','accountPasskeyRegister','accountBrowserLogin'])$(id).disabled=value.busy;$('accountSettings').setAttribute('aria-busy',String(!!value.busy));$('accountLogout').hidden=!value.signedIn;$('accountNameRow').hidden=value.signedIn;$('accountRegisterLabel').textContent=value.signedIn?'通行密钥':'创建账户';$('accountRegisterText').textContent=value.signedIn?'添加通行密钥':'创建账户与通行密钥';if(value.signedIn){try{const data=await native.call('account.devices');if($('accountIdentity').dataset.account&&$('accountIdentity').dataset.account!==data.account.id){$('accountSecurityPanel').hidden=true;$('accountSecurityRows').replaceChildren();}$('accountIdentity').dataset.account=data.account.id;$('accountDisplayName').textContent=data.account.name;$('accountIdentity').textContent='账户 ID：'+data.account.id;$('accountIdentity').hidden=false;$('accountState').textContent=value.feedback||'已登录 · 账户与工作区分别管理';$('accountDevices').innerHTML=data.devices.map(d=>'<div class="settings-row"><span class="account-icon account-icon-neutral" aria-hidden="true"><svg><use href="#i-account-device"/></svg></span><span class="row-text"><strong>'+esc(d.current?'当前设备':d.device)+'</strong><small>'+esc(d.current?d.device:'账户登录会话')+'</small></span><button class="account-row-action" data-account-revoke="'+esc(d.id)+'" '+(!d.current&&!data.recently_authenticated?'disabled':'')+'>退出</button></div>').join('')||'<p class="account-empty">暂无其他已登录设备。</p>';if(!data.recently_authenticated)$('accountDevices').insertAdjacentHTML('beforeend','<p>管理其他设备前，请先使用通行密钥重新验证。</p>')}catch{$('accountDevices').textContent='设备列表暂不可用，请重新验证账户。';const latest=await native.call('account.status');if(!latest.signedIn){await refreshAccount();$('accountState').textContent='账户会话已失效，请重新登录或注册';return;}}}else $('accountDevices').innerHTML='<p class="account-empty">登录后可查看和管理设备。</p>'}catch{$('accountState').textContent='账户状态暂不可用，请稍后重试'}}
-function showAccountPage(push=true){if(!native)return;if(push)history.pushState({...history.state,easybookAccount:true},'');switchTab('account');void refreshAccount()}
-function leaveAccountPage(){if(history.state?.easybookAccount&&history.length>1)history.back();else switchTab('settings')}
-window.addEventListener('popstate',event=>{if(event.state?.easybookAccount)showAccountPage(false);else if(tab==='account')switchTab('settings')});
+let accountSettingsOrigin;
+function showAccountPage(push=true,entry='accountEntry'){
+ if(!native||tab==='account')return;
+ if(push){accountSettingsOrigin=captureSettingsOrigin(entry);history.pushState({...history.state,easybookAccount:true,accountSettingsOrigin},'')}
+ else accountSettingsOrigin=history.state?.accountSettingsOrigin;
+ switchTab('account');$('accountTitle').focus({preventScroll:true});void refreshAccount();
+}
+function leaveAccountPage(){if(history.state?.easybookAccount&&history.length>1)history.back();else restoreSettingsOrigin(accountSettingsOrigin)}
+window.addEventListener('popstate',event=>{if(event.state?.easybookAccount)showAccountPage(false);else if(tab==='account')restoreSettingsOrigin(accountSettingsOrigin)});
 window.easybookAccountChanged=async()=>{invalidateAiConfig();if(tab==='account')void refreshAccount();if(identityV2){await retryNativeWorkspaceRegistration();await refreshWorkspaces()}};window.addEventListener('focus',window.easybookAccountChanged);
 let securityBusy=false,auditCursor=null,securityView='';
 async function securityViewLoad(view,cursor=null){if(!native||securityBusy)return;securityBusy=true;securityView=view;$('accountSecurityPanel').hidden=false;$('accountAuditFilters').hidden=view!=='history';$('accountSecurityStatus').textContent='正在读取…';$('accountAuditMore').hidden=true;try{const body={action:view};if(view==='history'){body.workspace=$('accountAuditWorkspace').value;body.category=$('accountAuditCategory').value;if(cursor)body.cursor=cursor}const data=await native.call('account.manage',body);let html='';
@@ -1239,7 +1339,7 @@ $('accountQrShow').onclick=()=>void native?.call('account.qr.show').catch(e=>toa
 $('accountQrScan').onclick=()=>void native?.call('account.qr.scan').catch(e=>toast(e.message||'无法打开相机扫码'));
 $('accountManage').onclick=()=>void native?.call('security.account').catch(()=>toast('无法打开账户设置'));
 $('accountLogout').onclick=()=>confirmAction('退出此设备账户？','账户会话会被撤销。独立工作区同步密钥仍可使用；需要完全撤销密钥访问时，请轮换工作区密钥。',()=>void native.call('account.logout').catch(()=>toast('退出未完成，请重试')));
-$('mcpBack').onclick=leaveMcpPage;$('mcpPairEntry').onclick=()=>{if(identityV2){if(native){showAccountPage();void securityViewLoad('grants')}else window.open(API+'/account','_blank','noopener');return}if(native){void native.call('security.mcp').catch(()=>toast('无法打开 AI 与 MCP，请重试'));return;}showMcpPage();};
+$('mcpBack').onclick=leaveMcpPage;$('mcpPairEntry').onclick=()=>{if(identityV2){if(native){showAccountPage(true,'mcpSettingsEntry');void securityViewLoad('grants')}else window.open(API+'/account','_blank','noopener');return}if(native){void native.call('security.mcp').catch(()=>toast('无法打开 AI 与 MCP，请重试'));return;}showMcpPage();};
 $('mcpPairChallenge').oninput=()=>{$('mcpPairChallenge').removeAttribute('aria-invalid');};
 $('mcpPairForm').onsubmit=async event=>{event.preventDefault();if(mcpPairBusy)return;if(native)return toast('Android 安全配对尚未启用');const challenge=$('mcpPairChallenge').value.trim();if(!/^[A-Za-z0-9_-]{24,128}$/.test(challenge)){setMcpFeedback('error','请输入完整的配对码（24–128 位字母、数字、下划线或连字符）。');$('mcpPairChallenge').setAttribute('aria-invalid','true');$('mcpPairChallenge').focus();return}const button=$('mcpPairConfirm');mcpPairBusy=true;button.disabled=true;button.textContent='正在授权…';$('mcpPairForm').setAttribute('aria-busy','true');$('mcpPairChallenge').readOnly=true;setMcpFeedback('loading','正在验证工作区…');const hint=$('mcpPairHint');hint.textContent='正在验证工作区…';try{const proof=await fetch('/api/mcp/attest',{method:'POST',headers:{Authorization:'Bearer '+key,'Content-Type':'application/json'},body:JSON.stringify({challenge})});if(!proof.ok)throw Error('工作区验证失败（HTTP '+proof.status+'）');const payload=await proof.json();if(typeof payload.assertion!=='string')throw Error('工作区验证响应无效');hint.textContent='正在提交客户端授权…';const done=await fetch('https://easybook-mcp-oauth.1902521952.workers.dev/pairing/complete',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({challenge,assertion:payload.assertion})});if(!done.ok)throw Error('客户端授权失败（HTTP '+done.status+'）');$('mcpPairChallenge').value='';setMcpFeedback('success','当前客户端已获得工作区只读授权。可返回 AI 客户端继续使用。');toast('AI 工作区只读授权成功')}catch(e){const message=e instanceof TypeError?'网络或跨域请求失败':e?.message||'未知错误';setMcpFeedback('error','配对失败：'+message+'。请检查网络；若配对码已过期，请获取新码后重试。')}finally{mcpPairBusy=false;button.disabled=!!native;button.textContent='授权当前工作区';$('mcpPairForm').setAttribute('aria-busy','false');$('mcpPairChallenge').readOnly=false}};
 async function browserAccount(){if(webAuth)return webAuth.session();const r=await fetch(API+'/api/workspaces/session',{cache:'no-store'});if(!r.ok)throw Error('账户状态不可用');return r.json()}
@@ -1553,12 +1653,24 @@ async function refreshAiConfig({force=false}={}){
  const settled=request.finally(()=>{if(aiConfigPromise===settled)aiConfigPromise=null});aiConfigPromise=settled;return settled
 }
 function toggleAiProvider(){const custom=['custom','custom-anthropic'].includes($('aiProvider').value);$('aiProviderNameRow').hidden=!custom;$('aiBaseUrlRow').hidden=!custom;$('aiProviderName').required=custom;$('aiBaseUrl').required=custom}
-let aiSettingsOrigin='settings',aiHistoryReturn=null;
-function showAiPage(){if(tab!=='ai')aiSettingsOrigin=tab==='ai-hub'?'ai-hub':'settings';$('aiBack').querySelector('span').textContent=aiHistoryReturn?'会话':aiSettingsOrigin==='ai-hub'?'对话':'设置';switchTab('ai');void refreshAiConfig().catch(()=>{});void refreshAiPreferences().catch(()=>{});void refreshAiLocal()}
+let aiSettingsOrigin,aiHistoryReturn=null;
+function showAiPage(push=true){
+ if(tab==='ai')return;
+ if(push){
+  aiSettingsOrigin=captureSettingsOrigin(tab==='settings'?'aiEntry':document.activeElement?.id);
+  history.pushState({...history.state,easybookAi:true,aiSettingsOrigin,aiHistoryReturn},'');
+ }else{aiSettingsOrigin=history.state?.aiSettingsOrigin;aiHistoryReturn=history.state?.aiHistoryReturn||null;}
+ $('aiBack').querySelector('span').textContent=aiHistoryReturn?'会话':aiSettingsOrigin?.tab==='ai-hub'?'对话':'设置';
+ switchTab('ai');void refreshAiConfig().catch(()=>{});void refreshAiPreferences().catch(()=>{});void refreshAiLocal();
+}
 function leaveAiPage(){
+ if(history.state?.easybookAi)history.back();else restoreAiSettingsOrigin();
+}
+function restoreAiSettingsOrigin(){
  const source=aiHistoryReturn;
- switchTab(aiSettingsOrigin);
- if(aiSettingsOrigin!=='ai-hub'||!source)return;
+ aiHistoryReturn=null;
+ restoreSettingsOrigin(aiSettingsOrigin);
+ if(aiSettingsOrigin?.tab!=='ai-hub'||!source)return;
  const desktop=aiHistoryDesktop.matches;
  if(desktop){
   $('aiHub').dataset.sidebar='expanded';
@@ -1571,9 +1683,9 @@ function leaveAiPage(){
  const list=desktop?$('aiSidebarList'):$('aiSessionDialog').querySelector('.ai-session-content');
  list.scrollTop=source.scroll;
  $(desktop?'aiSidebarSettings':'aiSessionSettings').focus({preventScroll:true});
- aiHistoryReturn=null;
 }
 $('aiBack').onclick=leaveAiPage;
+window.addEventListener('popstate',event=>{if(event.state?.easybookAi)showAiPage(false);else if(tab==='ai')restoreAiSettingsOrigin()});
 $('aiProvider').onchange=()=>{const value=$('aiProvider').value;toggleAiProvider();if(!$('aiProfile').value&&aiDefaults[value]){$('aiModel').value='';if(!$('aiLabel').value)$('aiLabel').value=aiDefaults[value][1]}};
 $('aiProfile').onchange=()=>fillAiProfile(aiProfiles.find(value=>value.id===$('aiProfile').value));
 let aiProviderRevision=0;
@@ -2511,7 +2623,7 @@ $('join').onclick=async()=>{if(native)return;const next=$('pairKey').value.trim(
 $('backupButton').onclick=exportBackup;$('importButton').onclick=()=>{if(device)device.importNotes();else $('importFile').click()};$('importFile').onchange=async e=>{const f=e.target.files[0];if(f){if(f.size>10000000)toast('备份不能超过 10 MB');else importBackupText(await f.text())}e.target.value=''};
 for(const b of document.querySelectorAll('button[data-theme]'))b.onclick=()=>{haptic();setTheme(b.dataset.theme)};
 window.receiveSharedText=text=>newNote('分享的文本',String(text).slice(0,60000),'↗️',false);
-$('foldersButton').onclick=()=>{if(tab==='settings'&&activeSettingsCategory){closeSettingsCategory();return}switchTab('folders',tab==='settings'&&matchMedia('(min-width:600px)').matches)};$('folderSettings').onclick=()=>switchTab('settings');$('listMore').onclick=openListMenu;$('formatButton').onclick=()=>openFormats('paragraph');$('editorShare').onclick=()=>$('shareButton').click();
+$('foldersButton').onclick=()=>{if(tab==='settings'&&activeSettingsCategory){leaveSettingsCategory();return}switchTab('folders',tab==='settings'&&matchMedia('(min-width:600px)').matches)};$('folderSettings').onclick=()=>switchTab('settings');$('listMore').onclick=openListMenu;$('formatButton').onclick=()=>openFormats('paragraph');$('editorShare').onclick=()=>$('shareButton').click();
 document.querySelector('.footer-note').addEventListener('contextmenu',async e=>{if(!window.NativeStore)return;e.preventDefault();try{const r=await window.nativeMigrationStatus();$('migrationReport').textContent=r.reports.map(x=>`${x.state} · ${x.spaces} 个空间 / ${x.notes} 篇笔记 / ${x.folders} 个文件夹 · 保留副本 ${x.preservedCopies}`).join('\n')||'尚无旧版笔记迁移记录';$('migrationReport').textContent+='\n凭据：'+(r.security?.paired?'Keystore 已就绪':'需要重新配对')+' · 网页凭据：'+(r.rendererCredentials||'待核验');$('rollbackMigrationButton').hidden=!native;$('dataRecovery').showModal()}catch{toast('状态读取未完成，请重试')}});
 $('retryMigrationButton').onclick=()=>{if(native)location.reload();else void window.retryNativeMigration()};
 $('rollbackMigrationButton').onclick=()=>{$('dataRecovery').close();confirmAction('恢复安全迁移检查点？','仅恢复原生加密凭据检查点，不覆盖笔记，不将密钥写回网页存储。',()=>{void window.rollbackNativeMigration().catch(()=>toast('回滚未完成，仍使用原生数据，请重试'))})};
@@ -2782,7 +2894,17 @@ appReleaseGroup.innerHTML=native?'<button class="settings-row" id="appUpdateEntr
 if(native)appReleaseGroup.querySelector('button').onclick=async()=>{const button=$('appUpdateEntry'),status=$('appUpdateStatus');if(button.disabled)return;button.disabled=true;status.textContent='正在检查…';try{const result=await native.call('device.update',{action:'check'});status.textContent=result.updateAvailable?'发现新版本 '+result.latest:'当前已是最新版本';if(result.updateAvailable&&confirm('发现 '+result.latest+'，是否前往下载更新？'))await native.call('device.update',{action:'open'})}catch{status.textContent='检查失败，请确认网络后重试';toast('暂时无法检查更新')}finally{button.disabled=false}};else appReleaseGroup.querySelector('button').onclick=()=>window.open('https://github.com/FeoEarth/easybook/releases/latest/download/Easybook-0.8.34.apk','_blank','noopener');
 legalAnchor.after(legalLabel,legalGroup);
 const settingsHome=document.createElement('div');settingsHome.id='settingsHome';settingsHome.className='settings-home';
-settingsHome.innerHTML='<div class="settings-group"><button class="settings-row" data-settings-category="account"><span class="settings-category-icon"><svg aria-hidden="true"><use href="#i-settings"/></svg></span><span class="row-text"><strong>账户与安全</strong><small>登录方式、设备和账户管理</small></span><svg class="chevron" aria-hidden="true"><use href="#i-chevron"/></svg></button><button class="settings-row" data-settings-category="workspace"><span class="settings-category-icon"><svg aria-hidden="true"><use href="#i-account-person"/></svg></span><span class="row-text"><strong>工作区与成员</strong><small>切换工作区、共享设置和成员权限</small></span><svg class="chevron" aria-hidden="true"><use href="#i-chevron"/></svg></button><button class="settings-row" data-settings-category="ai"><span class="settings-category-icon"><svg aria-hidden="true"><use href="#i-link"/></svg></span><span class="row-text"><strong>AI 与 MCP</strong><small>BYOK、Agent、应用授权和操作审批</small></span><svg class="chevron" aria-hidden="true"><use href="#i-chevron"/></svg></button><button class="settings-row" data-settings-category="sync"><span class="settings-category-icon"><svg aria-hidden="true"><use href="#i-sync"/></svg></span><span class="row-text"><strong>同步与数据</strong><small>设备连接、同步活动、备份和回收站</small></span><svg class="chevron" aria-hidden="true"><use href="#i-chevron"/></svg></button><button class="settings-row" data-settings-category="appearance"><span class="settings-category-icon"><svg aria-hidden="true"><use href="#i-list"/></svg></span><span class="row-text"><strong>外观与性能</strong><small>颜色模式和极速模式</small></span><svg class="chevron" aria-hidden="true"><use href="#i-chevron"/></svg></button><button class="settings-row" data-settings-category="about"><span class="settings-category-icon"><svg aria-hidden="true"><use href="#i-note"/></svg></span><span class="row-text"><strong>关于 Easybook</strong><small>版本、项目许可和第三方组件</small></span><svg class="chevron" aria-hidden="true"><use href="#i-chevron"/></svg></button></div></div>';
+const settingsGroups=[
+ [['account','账户与安全','i-account-shield'],['sync','同步与数据','i-sync']],
+ [['appearance','外观','i-list'],['performance','性能','i-settings'],['ai','AI 与 MCP','i-link']],
+ [['about','关于 Easybook','i-note']]
+];
+settingsHome.append($('settings').querySelector('.workspace-card'));
+for(const items of settingsGroups){
+ const group=document.createElement('div');group.className='settings-group';
+ group.innerHTML=items.map(([id,title,icon])=>`<button type="button" class="settings-row" data-settings-category="${id}"><span class="settings-category-icon"><svg aria-hidden="true"><use href="#${icon}"/></svg></span><span class="row-text"><strong>${title}</strong></span><span class="settings-value"></span><svg class="chevron" aria-hidden="true"><use href="#i-chevron"/></svg></button>`).join('');
+ settingsHome.append(group);
+}
 $('settingsTitle').after(settingsHome);
 const settingsPanels=new Map();let activeSettingsCategory='';
 function settingsPanel(id,title,nodes){const panel=document.createElement('section');panel.id='settingsCategory-'+id;panel.className='settings-category-panel';panel.hidden=true;panel.innerHTML='<div class="settings-category-header"><h2 tabindex="-1">'+title+'</h2></div>';for(const node of nodes)panel.append(node);$('settings').append(panel);settingsPanels.set(id,panel)}
@@ -2790,13 +2912,21 @@ const accountGroup=$('accountEntry').parentElement,accountLabel=accountGroup.pre
 const aiGroup=document.createElement('div');aiGroup.className='settings-group';
 const aiEntry=document.createElement('button');aiEntry.className='settings-row';aiEntry.id='aiEntry';aiEntry.innerHTML='<svg aria-hidden="true"><use href="#i-account-person"/></svg><span class="row-text"><strong>AI 提供商与 BYOK</strong><small>管理提供商、模型和账户同步密钥</small></span><svg class="chevron" aria-hidden="true"><use href="#i-chevron"/></svg>';aiGroup.append(aiEntry);aiEntry.onclick=()=>showAiPage();
 const mcpSettingsEntry=document.createElement('button');mcpSettingsEntry.className='settings-row';mcpSettingsEntry.id='mcpSettingsEntry';mcpSettingsEntry.innerHTML='<svg aria-hidden="true"><use href="#i-link"/></svg><span class="row-text"><strong>MCP 与已连接应用</strong><small>客户端配对、工作区授权和访问范围</small></span><svg class="chevron" aria-hidden="true"><use href="#i-chevron"/></svg>';aiGroup.append(mcpSettingsEntry);mcpSettingsEntry.onclick=()=>$('mcpPairEntry').click();
-const approvalEntry=document.createElement('button');approvalEntry.className='settings-row';approvalEntry.id='aiApprovalEntry';approvalEntry.innerHTML='<svg aria-hidden="true"><use href="#i-account-shield"/></svg><span class="row-text"><strong>操作审批</strong><small>核对 AI 请求的高风险操作</small></span><svg class="chevron" aria-hidden="true"><use href="#i-chevron"/></svg>';aiGroup.append(approvalEntry);approvalEntry.onclick=()=>{if(native){showAccountPage();void securityViewLoad('approvals')}else window.open(API+'/account','_blank','noopener')};
+const approvalEntry=document.createElement('button');approvalEntry.className='settings-row';approvalEntry.id='aiApprovalEntry';approvalEntry.innerHTML='<svg aria-hidden="true"><use href="#i-account-shield"/></svg><span class="row-text"><strong>操作审批</strong><small>核对 AI 请求的高风险操作</small></span><svg class="chevron" aria-hidden="true"><use href="#i-chevron"/></svg>';aiGroup.append(approvalEntry);approvalEntry.onclick=()=>{if(native){showAccountPage(true,'aiApprovalEntry');void securityViewLoad('approvals')}else window.open(API+'/account','_blank','noopener')};
 const connectionGroup=$('pairButton').parentElement,connectionLabel=connectionGroup.previousElementSibling;
 const performanceGroup=$('fastMode').parentElement,performanceLabel=performanceGroup.previousElementSibling;
 const appearanceGroup=document.querySelector('button[data-theme]').closest('.settings-group'),appearanceLabel=appearanceGroup.previousElementSibling;
 const settingsFooter=$('appVersion').closest('.footer-note');
 settingsPanel('account','账户与安全',[accountLabel,accountGroup]);
-settingsPanel('workspace','工作区与成员',[$('workspacePanel')]);
+const workspaceSettings=$('workspacePanel');
+if(identityV2){
+ settingsPanel('workspace','工作区与成员',[workspaceSettings]);
+}else{
+ const workspaceAvailability=document.createElement('p');
+ workspaceAvailability.className='footer-note';
+ workspaceAvailability.textContent='当前连接使用本机工作区。';
+ settingsPanel('workspace','工作区与成员',[workspaceAvailability,workspaceSettings]);
+}
 settingsPanel('ai','AI 与 MCP',[aiGroup]);
 const serverGroup=document.createElement('div');serverGroup.className='settings-group';serverGroup.innerHTML='<button class="settings-row" id="serverEntry"><svg aria-hidden="true"><use href="#i-sync"/></svg><span class="row-text"><strong>同步服务器</strong><small id="serverCurrentSummary"></small></span><svg class="chevron" aria-hidden="true"><use href="#i-chevron"/></svg></button>';
 connectionLabel.before(serverGroup);
@@ -2864,11 +2994,65 @@ if(serverController){serverController.setHooks({stop:pauseForServerSwitch,flush:
 if(native&&(serverProfile.httpKeyOnly||serverProfile.http)){$('accountEntry').disabled=true;$('accountEntry').querySelector('small').textContent='私网 HTTP 仅支持已有工作区的密钥同步'}
 
 settingsPanel('sync','同步与数据',[serverGroup,connectionLabel,connectionGroup]);
-settingsPanel('appearance','外观与性能',[performanceLabel,performanceGroup,appearanceLabel,appearanceGroup]);
+settingsPanel('appearance','外观',[appearanceLabel,appearanceGroup]);
+settingsPanel('performance','性能',[performanceLabel,performanceGroup]);
+const themeOptions=appearanceGroup.querySelector('.setting-options');
+themeOptions.classList.add('settings-theme-options');
+for(const button of themeOptions.querySelectorAll('button'))button.insertAdjacentHTML('afterbegin','<span class="settings-theme-preview" aria-hidden="true"><i></i><i></i><i></i></span>');
+new MutationObserver(updateSettingsValues).observe(document.documentElement,{attributes:true,attributeFilter:['data-theme','data-fast']});
+function updateSettingsValues(){
+ const theme=themeOptions.querySelector('button.active');
+ settingsHome.querySelector('[data-settings-category="appearance"] .settings-value').textContent=theme?.textContent||'';
+ settingsHome.querySelector('[data-settings-category="performance"] .settings-value').textContent=$('fastMode').getAttribute('aria-checked')==='true'?'已开启':'';
+}
 settingsPanel('about','关于 Easybook',[appReleaseLabel,appReleaseGroup,legalLabel,legalGroup,settingsFooter]);
-function openSettingsCategory(id){const panel=settingsPanels.get(id);if(!panel)return;activeSettingsCategory=id;settingsHome.hidden=true;$('settingsTitle').hidden=true;for(const value of settingsPanels.values())value.hidden=value!==panel;$('backLabel').textContent='设置';$('foldersButton').setAttribute('aria-label','返回设置');document.documentElement.scrollTop=0;panel.querySelector('h2').focus({preventScroll:true})}
-function closeSettingsCategory(focus=true){if(!settingsHome)return;activeSettingsCategory='';settingsHome.hidden=false;$('settingsTitle').hidden=false;for(const panel of settingsPanels.values())panel.hidden=true;$('backLabel').textContent='文件夹';$('foldersButton').setAttribute('aria-label','返回文件夹');document.documentElement.scrollTop=0;if(focus)$('settingsTitle').focus({preventScroll:true})}
-settingsHome.onclick=event=>{const entry=event.target.closest('[data-settings-category]');if(entry)openSettingsCategory(entry.dataset.settingsCategory)};
+let settingsHomeScroll=0,settingsCategoryEntry='';
+function openSettingsCategory(id,push=false){
+ const panel=settingsPanels.get(id);if(!panel)return;
+ if(push){
+  settingsHomeScroll=window.scrollY;settingsCategoryEntry=id;
+  history.pushState({...history.state,easybookSettingsCategory:id},'');
+ }
+ activeSettingsCategory=id;settingsHome.hidden=true;$('settingsTitle').hidden=true;
+ for(const value of settingsPanels.values())value.hidden=value!==panel;
+ $('backLabel').textContent='设置';$('foldersButton').setAttribute('aria-label','返回设置');
+ window.scrollTo(0,0);panel.querySelector('h2').focus({preventScroll:true});
+}
+function closeSettingsCategory(focus=true){
+ activeSettingsCategory='';settingsHome.hidden=false;$('settingsTitle').hidden=false;
+ for(const panel of settingsPanels.values())panel.hidden=true;
+ $('backLabel').textContent='文件夹';$('foldersButton').setAttribute('aria-label','返回文件夹');
+ updateSettingsValues();
+ if(focus){
+  window.scrollTo(0,settingsHomeScroll);
+  (settingsHome.querySelector(`[data-settings-category="${settingsCategoryEntry}"]`)||$('settingsTitle')).focus({preventScroll:true});
+ }
+}
+function leaveSettingsCategory(){
+ if(history.state?.easybookSettingsCategory)history.back();else closeSettingsCategory();
+}
+function captureSettingsOrigin(entry){
+ return {tab,category:tab==='settings'?activeSettingsCategory:'',scroll:window.scrollY,entry};
+}
+function restoreSettingsOrigin(origin){
+ const destination=origin?.tab||'settings';
+ switchTab(destination,true);
+ if(origin?.category)openSettingsCategory(origin.category);
+ window.scrollTo(0,origin?.scroll||0);
+ const entry=origin?.entry&&$(origin.entry);
+ if(entry?.getClientRects().length)entry.focus({preventScroll:true});
+}
+window.addEventListener('popstate',event=>{
+ if(tab!=='settings')return;
+ const category=event.state?.easybookSettingsCategory;
+ if(category&&category!==activeSettingsCategory)openSettingsCategory(category);
+ else if(!category&&activeSettingsCategory)closeSettingsCategory();
+});
+settingsHome.onclick=event=>{
+ const entry=event.target.closest('[data-settings-category]');
+ if(entry)openSettingsCategory(entry.dataset.settingsCategory,true);
+};
+updateSettingsValues();
 document.body.insertAdjacentHTML('beforeend','<dialog id="aboutDialog" class="ui-material" aria-labelledby="aboutTitle" style="width:min(560px,calc(100% - 24px))"><div class="dialog-title"><h2 id="aboutTitle">关于 Easybook</h2><button id="aboutClose" aria-label="关闭关于 Easybook">×</button></div><p><strong>Easybook 0.8.4</strong></p><p>参考系统备忘录体验的轻量笔记应用，支持本机离线保存、Android 与 Web 使用，以及 Cloudflare 工作区同步。</p><p>Easybook 源代码以 <strong>AGPL-3.0-only</strong> 许可。第三方组件继续适用各自许可证；第三方 SPDX 标识不会改变 Easybook 自身许可。</p></dialog><dialog id="legalDocumentDialog" class="ui-material" aria-labelledby="legalDocumentTitle" style="width:min(900px,calc(100% - 24px));max-height:90dvh"><div class="dialog-title"><h2 id="legalDocumentTitle">法律说明</h2><button id="legalDocumentClose" aria-label="关闭法律说明">×</button></div><pre id="legalDocumentText" aria-live="polite" style="white-space:pre-wrap;overflow-wrap:anywhere;user-select:text;font-size:12px;line-height:1.6;overflow:auto;max-height:70dvh;margin:10px 0">正在载入…</pre></dialog>');
 $('aboutDialog').querySelector('strong').textContent=$('appVersion').textContent;
 $('aboutClose').onclick=()=>$('aboutDialog').close();
@@ -2911,7 +3095,7 @@ $('thirdPartyLicensesEntry').onclick=async()=>{
  }catch(error){if(request===noticeRequest&&dlg.open)content.textContent='许可证暂时无法读取，请稍后重试。\n'+String(error.message||error)}
 };
 
-if(native){$('pairKey').remove();$('pairDialog').remove();$('join')?.remove();}switchTab('all');if(identityV2)void refreshWorkspaces();if(history.state?.easybookSync)showSyncPage(false);if(history.state?.easybookMcp&&!native)showMcpPage(false);if(history.state?.easybookAccount&&native)showAccountPage(false);if(window.NativeStore)void window.NativeStore.call('ui.ready');void resumeAfterNetwork();scheduleRemote();if(serverController?.pendingOrigin)void openServerManager();setInterval(()=>{if(tab==='sync'&&!document.hidden)void refreshNativeActivity()},2000);window.addEventListener('online',()=>void resumeAfterNetwork());window.addEventListener('offline',()=>{activity.pause();status('离线 · 已存本机','offline')});document.addEventListener('visibilitychange',()=>{rich.flushInput();persistNow();if(!document.hidden){void resumeAfterNetwork()}else clearTimeout(remoteTimer)});window.addEventListener('pagehide',()=>{rich.flushInput();persistNow()});
+if(native){$('pairKey').remove();$('pairDialog').remove();$('join')?.remove();}switchTab('all');if(identityV2)void refreshWorkspaces();if(history.state?.easybookSync)showSyncPage(false);if(history.state?.easybookMcp&&!native)showMcpPage(false);if(history.state?.easybookAccount&&native)showAccountPage(false);if(history.state?.easybookAi)showAiPage(false);if(tab==='all'&&history.state?.easybookSettingsCategory){switchTab('settings');openSettingsCategory(history.state.easybookSettingsCategory);}if(window.NativeStore)void window.NativeStore.call('ui.ready');void resumeAfterNetwork();scheduleRemote();if(serverController?.pendingOrigin)void openServerManager();setInterval(()=>{if(tab==='sync'&&!document.hidden)void refreshNativeActivity()},2000);window.addEventListener('online',()=>void resumeAfterNetwork());window.addEventListener('offline',()=>{activity.pause();status('离线 · 已存本机','offline')});document.addEventListener('visibilitychange',()=>{rich.flushInput();persistNow();if(!document.hidden){void resumeAfterNetwork()}else clearTimeout(remoteTimer)});window.addEventListener('pagehide',()=>{rich.flushInput();persistNow()});
 })().catch(error=>{console.error('Easybook startup failed',error);document.body.innerHTML='<main style="padding:70px 24px">页面未能加载，笔记保留在本机，请重新打开应用。</main>'});
 </script><script>
 // Lightweight runtime localization keeps the shared Android/Web UI in one file.
@@ -2923,7 +3107,7 @@ const en={
 '文件夹':'Folders','备忘录':'Notes','设置':'Settings','取消':'Cancel','全选':'Select All','完成':'Done','搜索':'Search','搜索备忘录':'Search Notes','新建备忘录':'New Note','标题':'Title','开始输入':'Start writing','无备忘录':'No Notes','回收站':'Recently Deleted','返回':'Back','关闭':'Close','保存':'Save','删除':'Delete','恢复':'Restore','编辑':'Edit','移动':'Move','共享':'Share','复制':'Copy','重试':'Retry','继续':'Continue','确认':'Confirm','稍后':'Later','立即同步':'Sync Now','准备同步':'Ready to Sync','尚无成功同步记录':'No successful sync yet','等待同步':'Waiting to sync','离线 · 已存本机':'Offline · Saved on this device',
 '账户':'Account','账户与安全':'Account & Security','登录方式、设备和账户管理':'Sign-in methods, devices, and account management','工作区':'Workspace','工作区与成员':'Workspaces & Members','切换工作区、共享设置和成员权限':'Switch workspaces, sharing settings, and member permissions','AI 与 MCP':'AI & MCP','同步与数据':'Sync & Data','设备连接、同步活动、备份和回收站':'Device connections, sync activity, backups, and recently deleted','外观与性能':'Appearance & Performance','颜色模式和极速模式':'Color theme and performance mode','关于 Easybook':'About Easybook','版本、项目许可和第三方组件':'Version, project license, and third-party components',
 '连接与数据':'Connections & Data','连接其他设备':'Connect Another Device','用同一密钥，在手机和电脑间同步':'Use the same key to sync across phone and computer','同步活动':'Sync Activity','导出备份':'Export Backup','将全部笔记保存为 JSON 文件':'Save all notes as a JSON file','导入备份':'Import Backup','以新页面导入，保留已有内容':'Import as new notes and keep existing content','删除的笔记可以恢复':'Deleted notes can be restored',
-'性能':'Performance','极速模式':'Performance Mode','关闭 Liquid Glass，使用简洁的不透明控件':'Turn off Liquid Glass and use simple opaque controls','外观':'Appearance','颜色模式':'Color Theme','选择应用的显示外观':'Choose how the app looks','跟随系统':'System','浅色':'Light','深色':'Dark','语言':'Language','选择应用界面语言':'Choose the app interface language','自动（跟随系统）':'Automatic (System)','简体中文':'Simplified Chinese','English':'English',
+'当前连接使用本机工作区。':'This connection uses the local workspace.','已开启':'On','性能':'Performance','极速模式':'Performance Mode','关闭 Liquid Glass，使用简洁的不透明控件':'Turn off Liquid Glass and use simple opaque controls','外观':'Appearance','颜色模式':'Color Theme','选择应用的显示外观':'Choose how the app looks','跟随系统':'System','浅色':'Light','深色':'Dark','语言':'Language','选择应用界面语言':'Choose the app interface language','自动（跟随系统）':'Automatic (System)','简体中文':'Simplified Chinese','English':'English',
 '返回设置':'Back to Settings','返回文件夹':'Back to Folders','列表更多操作':'More list actions','折叠或展开文件夹侧栏':'Toggle folder sidebar','已选择 0 项':'0 Selected','同步页面导航':'Sync navigation','同步设置':'Sync Settings','自动同步':'Automatic Sync','暂停自动同步':'Pause Automatic Sync','恢复自动同步':'Resume Automatic Sync','网络':'Network','任何网络':'Any Network','仅 Wi-Fi':'Wi-Fi Only','同步范围':'Sync Scope','全部文件夹':'All Folders',
 '创建工作区':'Create Workspace','添加独立笔记空间，登录后可关联账户':'Add a separate note space and link it to an account after signing in','当前工作区':'Current Workspace','添加工作区':'Add Workspace','管理当前工作区':'Manage Current Workspace','工作区名称':'Workspace Name','我的工作区':'My Workspace','保存':'Save','共享与成员':'Sharing & Members','成员与权限':'Members & Permissions',
 '使用通行密钥登录':'Sign in with a Passkey','使用 GitHub 登录':'Sign in with GitHub','使用二维码登录':'Sign in with QR Code','创建账户':'Create Account','账户名称':'Account Name','你的名称':'Your name','已登录设备':'Signed-in Devices','账户管理':'Account Management','安全活动':'Security Activity','操作审批':'Action Approvals','退出此设备账户':'Sign Out on This Device','删除账户…':'Delete Account…',
