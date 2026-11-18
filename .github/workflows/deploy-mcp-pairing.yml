@@ -17,6 +17,7 @@ on:
       - 'shared/**'
       - 'scripts/cloudflare-release.mjs'
       - 'scripts/oauth-release-smoke.mjs'
+      - 'scripts/mcp-oauth-runtime-test.mjs'
       - '.github/workflows/deploy-mcp-pairing.yml'
 permissions:
   contents: read
@@ -52,6 +53,7 @@ jobs:
           node scripts/mcp-upload-test.mjs
           node scripts/mcp-pairing-release-test.mjs
           node scripts/ai-byok-test.mjs
+          node scripts/mcp-oauth-runtime-test.mjs
           # Migration is applied via authorized Cloudflare; candidate smoke verifies runtime D1 readiness.
       - name: Upload OAuth candidate only
         id: candidate

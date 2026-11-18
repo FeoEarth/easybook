@@ -8,6 +8,8 @@ const identityStatePrefix='ea1db00c';
 export const isIdentityMcpOAuthState=state=>statePattern.test(state||'')&&state.startsWith(identityStatePrefix);
 const encode=bytes=>btoa(String.fromCharCode(...bytes)).replaceAll('+','-').replaceAll('/','_').replace(/=+$/,'');
 const invalid=(code='mcp_oauth_failed',status=400)=>Object.assign(Error(code),{code,status});
+// Notion and other Workers OAuth Provider servers use three colon-delimited token segments.
+const bearerToken=/^[a-zA-Z0-9._~+/=-]+(?::[a-zA-Z0-9._~+/=-]+){0,2}$/;
 
 async function json(url,options,{fetcher,safeUrl,checkHost},errorCode='mcp_oauth_failed'){
  url=safeUrl(url);
@@ -149,9 +151,9 @@ async function exchange(config,params,context){
   if(config.clientAuth==='client_secret_post')body.set('client_secret',config.clientSecret);
  }
  const result=await json(config.tokenEndpoint,{method:'POST',headers,body},context,'mcp_oauth_token_failed');
- if(typeof result.access_token!=='string'||!result.access_token||result.access_token.length>16000||
-    /[^a-zA-Z0-9._~+/=-]/.test(result.access_token)||result.token_type?.toLowerCase()!=='bearer'||
-    (result.refresh_token!==undefined&&(typeof result.refresh_token!=='string'||result.refresh_token.length>16000)))throw invalid();
+ if(typeof result?.access_token!=='string'||result.access_token.length>16000||!bearerToken.test(result.access_token)||
+    typeof result.token_type!=='string'||result.token_type.toLowerCase()!=='bearer'||
+    (result.refresh_token!=null&&(typeof result.refresh_token!=='string'||result.refresh_token.length>16000)))throw invalid('mcp_oauth_token_format');
  return {accessToken:result.access_token,refreshToken:result.refresh_token||config.refreshToken||'',
   expiresAt:Number.isFinite(result.expires_in)&&result.expires_in>=0?Date.now()+result.expires_in*1000:0};
 }
@@ -178,11 +180,18 @@ export async function handleMcpOAuth(request,env,context){
    }
   }catch(error){
    const code=error?.code;
-   status=['mcp_oauth_issuer_mismatch','mcp_oauth_token_failed','mcp_no_tools','mcp_unreachable','mcp_protocol_error','mcp_auth_failed','mcp_changed','mcp_server_limit'].includes(code)?code:'failed';
+   status=['mcp_oauth_issuer_mismatch','mcp_oauth_token_failed','mcp_oauth_token_format','mcp_no_tools','mcp_unreachable','mcp_protocol_error','mcp_auth_failed','mcp_changed','mcp_server_limit'].includes(code)?code:'failed';
    console.warn(JSON.stringify({event:'mcp_oauth_callback_failed',code:status}));
   }
   await env.DB.prepare('UPDATE account_ai_mcp_oauth_flows SET status=? WHERE state_hash=?').bind(status,stateHash).run();
-  return completion(status==='connected'?'授权完成，请返回 Easybook。':'授权未完成，请返回 Easybook 重试。',status==='connected'?200:400);
+  const message={
+   connected:'授权完成，请返回 Easybook。',
+   denied:'已取消授权，请返回 Easybook。',
+   mcp_oauth_token_format:'服务方返回的令牌格式无效。请返回 Easybook 查看授权结果。',
+   mcp_oauth_token_failed:'服务方未接受授权码。请返回 Easybook 重新授权。',
+   mcp_auth_failed:'服务方已授权，但 MCP 服务器拒绝了令牌。请返回 Easybook 查看授权结果。'
+  }[status]||'授权未完成。请返回 Easybook 查看授权结果。';
+  return completion(message,status==='connected'?200:400);
  }catch{return completion('授权请求已失效，请返回 Easybook 重新连接。',400)}
 }
 
