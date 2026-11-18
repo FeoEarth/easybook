@@ -1638,6 +1638,8 @@ const aiMcpMessages={
  mcp_oauth_failed:'授权未完成或已过期，请重新连接。',
  mcp_oauth_scope_mismatch:'服务方声明的授权权限与 MCP 地址不匹配，请检查地址或联系服务方。',
  mcp_oauth_registration_failed:'服务方拒绝注册 Easybook，请检查该服务的客户端注册要求。',
+ mcp_response_too_large:'服务方返回的工具信息超过大小限制。',
+ mcp_oauth_save_failed:'服务方授权成功，但 Easybook 未能保存连接，请重试。',
  mcp_oauth_token_format:'服务方返回的令牌格式无效，请联系该服务的提供方。',
  mcp_oauth_token_failed:'服务方未接受授权码或无法颁发令牌，请重新授权。',
  mcp_oauth_issuer_mismatch:'服务方返回的授权来源无法验证，请确认 MCP 地址后重试。',
@@ -1681,11 +1683,12 @@ async function checkAiMcpOAuth(){
   if(aiMcpOAuth!==pending)return;
   if(status==='pending'||status==='processing'){$('aiMcpStatus').textContent='等待授权完成…';return}
   aiMcpOAuth=null;$('aiMcpOAuthActions').hidden=true;
-  if(status==='connected'){
+  if(status==='connected'||status==='tools_pending'){
+   const toolsPending=status==='tools_pending';
    delete $('aiMcpForm').dataset.reconnect;
    $('aiMcpForm').reset();syncAiMcpAuth();
-   $('aiMcpStatus').textContent='MCP 服务器已连接';
-   try{await refreshAiMcp()}catch{$('aiMcpStatus').textContent='已连接，重新进入页面可刷新服务器列表。'}
+   $('aiMcpStatus').textContent=toolsPending?'授权已保存。请在对应服务器旁点击「刷新」读取工具。':'MCP 服务器已连接';
+   try{await refreshAiMcp()}catch{$('aiMcpStatus').textContent='授权已保存，重新进入页面可刷新服务器列表。'}
   }else $('aiMcpStatus').textContent=mcpAuthorizationMessage(status);
  }catch(error){if(aiMcpOAuth===pending)$('aiMcpStatus').textContent=mcpAuthorizationMessage(error.code||error.message)}
  finally{pending.checking=false;$('aiMcpOAuthCheck').disabled=false}
@@ -1709,7 +1712,7 @@ document.addEventListener('visibilitychange',refreshMcpOAuthOnReturn);
 let aiMcpServers=[];
 async function refreshAiMcp(){
  const {servers}=await aiRequest('mcp');aiMcpServers=servers;
- $('aiMcpList').innerHTML=servers.length?servers.map(server=>'<article class="ai-provider-card"><div class="ai-provider-copy"><strong>'+esc(server.label)+'</strong><small>'+esc(server.url)+'</small><small>'+esc(server.tools.join('、'))+'</small></div><div class="ai-provider-actions"><button type="button" data-mcp-action="'+(server.enabled?'disable':'enable')+'" data-mcp-id="'+esc(server.id)+'">'+(server.enabled?'停用':'启用')+'</button><button type="button" data-mcp-action="refresh" data-mcp-id="'+esc(server.id)+'">刷新</button><button type="button" data-mcp-action="oauth" data-mcp-id="'+esc(server.id)+'">OAuth 授权</button><button type="button" data-mcp-action="delete" data-mcp-id="'+esc(server.id)+'">移除</button></div></article>').join(''):'<p class="ai-note">还没有连接第三方 MCP 服务器。</p>';
+ $('aiMcpList').innerHTML=servers.length?servers.map(server=>'<article class="ai-provider-card"><div class="ai-provider-copy"><strong>'+esc(server.label)+'</strong><small>'+esc(server.url)+'</small><small>'+esc(server.tools.length?server.tools.join('、'):'工具尚未发现，点击「刷新」重试')+'</small></div><div class="ai-provider-actions"><button type="button" data-mcp-action="'+(server.enabled?'disable':'enable')+'" data-mcp-id="'+esc(server.id)+'">'+(server.enabled?'停用':'启用')+'</button><button type="button" data-mcp-action="refresh" data-mcp-id="'+esc(server.id)+'">刷新</button><button type="button" data-mcp-action="oauth" data-mcp-id="'+esc(server.id)+'">OAuth 授权</button><button type="button" data-mcp-action="delete" data-mcp-id="'+esc(server.id)+'">移除</button></div></article>').join(''):'<p class="ai-note">还没有连接第三方 MCP 服务器。</p>';
 }
 async function changeAiMcp(action){
  if(aiMcpBusy)return;

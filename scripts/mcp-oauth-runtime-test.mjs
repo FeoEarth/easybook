@@ -6,7 +6,8 @@ const entry=`
 import {aiAPI,aiMcpOAuthPage} from './worker/ai.mjs';
 export default {async fetch(request,env){
  const resource='https://tools.example.net/mcp',issuer='https://login.example.net',origin='https://easybook.test';
- const malformed=new URL(request.url).searchParams.has('malformed');
+ const incoming=new URL(request.url);
+ const malformed=incoming.searchParams.has('malformed'),failCatalog=incoming.searchParams.has('failCatalog');
  const steps=[],accessToken='notion-user:oauth-grant:opaque-access-token';
  const returnedToken=malformed?accessToken+String.fromCharCode(13,10)+'X-Injected: yes':accessToken;
  const fixture=async(input,init)=>{
@@ -25,19 +26,25 @@ export default {async fetch(request,env){
   if(!auth)return new Response(null,{status:401});
   if(auth!=='Bearer '+accessToken)return new Response(null,{status:403});
   if(p.method==='initialize')return Response.json({jsonrpc:'2.0',id:p.id,result:{protocolVersion:'2025-06-18',capabilities:{tools:{}}}});
+  if(p.method==='tools/list'&&failCatalog)return new Response(null,{status:503});
   if(p.method==='tools/list')return Response.json({jsonrpc:'2.0',id:p.id,result:{tools:[{name:'read',inputSchema:{type:'object'}}]}});
   return new Response(null,{status:202});
  };
  const req=(path,body)=>new Request(origin+path,{method:body?'PUT':'GET',body:body&&JSON.stringify(body)});
  const principal={kind:'account',accountId:'synthetic'};
- await env.DB.prepare('CREATE TABLE IF NOT EXISTS accounts(id TEXT PRIMARY KEY)').run();
- await env.DB.prepare("INSERT OR IGNORE INTO accounts VALUES ('synthetic')").run();
- const begin=await aiAPI(req('/api/ai/mcp',{oauth:true,label:'test',url:resource}),env,principal,{fetcher:fixture});
- const setup=await begin.json();
- if(!begin.ok)return Response.json({begin:setup,steps});
- const callback=await aiMcpOAuthPage(req('/api/ai/mcp/oauth/callback?state='+setup.state+'&code=synthetic-code'),env,{fetcher:fixture});
- const status=await aiAPI(req('/api/ai/mcp',{oauthState:setup.state}),env,principal,{fetcher:fixture});
- return Response.json({callback:callback.status,body:await status.json(),steps});
+ if(incoming.pathname==='/setup'){
+  await env.DB.prepare('CREATE TABLE IF NOT EXISTS accounts(id TEXT PRIMARY KEY)').run();
+  await env.DB.prepare("INSERT OR IGNORE INTO accounts VALUES ('synthetic')").run();
+  return aiAPI(req('/api/ai/mcp',{oauth:true,label:incoming.searchParams.get('label')||'test',url:resource}),env,principal,{fetcher:fixture});
+ }
+ const state=incoming.searchParams.get('state');
+ if(incoming.pathname==='/callback'){
+  const result=await aiMcpOAuthPage(req('/api/ai/mcp/oauth/callback?state='+state+'&code=synthetic-code'),env,{fetcher:fixture});
+  return Response.json({status:result.status,message:await result.text(),steps});
+ }
+ if(incoming.pathname==='/status')return aiAPI(req('/api/ai/mcp',{oauthState:state}),env,principal,{fetcher:fixture});
+ const id=incoming.searchParams.get('id');
+ return aiAPI(req('/api/ai/mcp',id?{id,refresh:true}:undefined),env,principal,{fetcher:fixture});
 }};
 `;
 const bundle=await build({stdin:{contents:entry,resolveDir:process.cwd()},bundle:true,write:false,format:'esm',platform:'browser',external:['node:*'],target:'es2022'});
@@ -47,13 +54,29 @@ const runtime=new Miniflare(convertV4MiniflareOptions({
  bindings:{AI_CREDENTIAL_KEY:'a'.repeat(64)},d1Databases:['DB']
 }));
 try{
- const result=await (await runtime.dispatchFetch('https://dev.test/')).json();
- assert.equal(result.callback,200,JSON.stringify(result));
- assert.deepEqual(result.body,{status:'connected'});
+ const get=async path=>(await runtime.dispatchFetch('https://dev.test'+path)).json();
+ const begin=async label=>(await get('/setup?label='+label)).state;
+ const state=await begin('ordinary');
+ const result=await get('/callback?state='+state);
+ assert.equal(result.status,200,JSON.stringify(result));
+ assert.deepEqual(await get('/status?state='+state),{status:'connected'});
  assert.ok(result.steps.some(([name,type,hasCode])=>name==='token-form'&&type.startsWith('application/x-www-form-urlencoded')&&hasCode));
- const malformed=await (await runtime.dispatchFetch('https://dev.test/?malformed')).json();
- assert.equal(malformed.callback,400);
- assert.deepEqual(malformed.body,{status:'mcp_oauth_token_format'});
- assert.equal(malformed.steps.filter(([step,method])=>step==='/mcp'&&method==='POST').length,1,'an invalid token never reaches the MCP resource');
- console.log('PASS OAuth callback, token exchange and MCP catalog save inside the Workers runtime');
+
+ const malformedState=await begin('malformed');
+ const malformed=await get('/callback?state='+malformedState+'&malformed');
+ assert.equal(malformed.status,400);
+ assert.deepEqual(await get('/status?state='+malformedState),{status:'mcp_oauth_token_format'});
+ assert.equal(malformed.steps.filter(([step,method])=>step==='/mcp'&&method==='POST').length,0,'an invalid token never reaches the MCP resource');
+
+ const pendingState=await begin('needs-refresh');
+ const pending=await get('/callback?state='+pendingState+'&failCatalog');
+ assert.equal(pending.status,200);
+ assert.match(pending.message,/授权已保存/);
+ assert.deepEqual(await get('/status?state='+pendingState),{status:'tools_pending'});
+ const saved=(await get('/servers')).servers.find(server=>server.label==='needs-refresh');
+ assert.ok(saved.authenticated);
+ assert.deepEqual(saved.tools,[]);
+ assert.deepEqual(await get('/servers?id='+saved.id),{ok:true},'retry uses the grant already saved');
+ assert.deepEqual((await get('/servers')).servers.find(server=>server.id===saved.id).tools,['read']);
+ console.log('PASS Workers OAuth requests, token validation and tool refresh after the OAuth grant is saved');
 }finally{await runtime.dispose()}

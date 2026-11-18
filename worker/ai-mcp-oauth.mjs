@@ -18,8 +18,12 @@ async function json(url,options,{fetcher,safeUrl,checkHost},errorCode='mcp_oauth
  let response;
  try{response=await fetcher(url,{...options,redirect:'manual',signal})}
  catch{throw invalid(errorCode,502)}
- if(!response.ok){void response.body?.cancel().catch(()=>{});throw invalid(errorCode)}
- return boundedJSON(response,32000);
+ if(!response.ok){
+  void response.body?.cancel().catch(()=>{});
+  throw Object.assign(invalid(errorCode),{upstreamStatus:response.status});
+ }
+ try{return await boundedJSON(response,32000)}
+ catch{throw invalid(errorCode==='mcp_oauth_token_failed'?'mcp_oauth_token_format':errorCode,502)}
 }
 
 async function discover(resource,context){
@@ -158,6 +162,14 @@ async function exchange(config,params,context){
   expiresAt:Number.isFinite(result.expires_in)&&result.expires_in>=0?Date.now()+result.expires_in*1000:0};
 }
 
+function logCallbackIssue(stage,error){
+ const code=typeof error?.code==='string'&&/^mcp_[a-z_]{1,64}$/.test(error.code)?error.code:'unclassified';
+ const phase=['resolve','initialize','notifications/initialized','tools/list'].includes(error?.phase)?error.phase:undefined;
+ const upstreamStatus=Number.isSafeInteger(error?.upstreamStatus)?error.upstreamStatus:undefined;
+ const rpcCode=Number.isSafeInteger(error?.rpcCode)?error.rpcCode:undefined;
+ console.warn(JSON.stringify({event:'mcp_oauth_callback_issue',stage,code,phase,upstreamStatus,rpcCode}));
+}
+
 export async function handleMcpOAuth(request,env,context){
  try{
   const {url,row,stateHash}=await flow(env,request);
@@ -166,32 +178,38 @@ export async function handleMcpOAuth(request,env,context){
   if(url.pathname===authorizePath)return new Response(null,{status:303,headers:{Location:config.authorization,'Cache-Control':'no-store','Referrer-Policy':'no-referrer'}});
   const changed=await env.DB.prepare("UPDATE account_ai_mcp_oauth_flows SET status='processing',key_ciphertext=NULL,key_iv=NULL WHERE state_hash=? AND status='pending' RETURNING id").bind(stateHash).first();
   if(!changed)throw invalid();
-  let status='failed';
+  let status='failed',stage='callback';
   try{
    const code=url.searchParams.get('code'),issuer=url.searchParams.get('iss');
    if(issuer&&issuer!==config.issuer)throw invalid('mcp_oauth_issuer_mismatch');
    if(url.searchParams.get('error'))status='denied';
    else if(code&&code.length<=4000){
     if(config.requireIssuer&&!issuer)throw invalid('mcp_oauth_issuer_mismatch');
+    stage='token';
     const tokens=await exchange(config,{grant_type:'authorization_code',code,code_verifier:config.verifier,redirect_uri:config.redirectUri},context);
     const secret=JSON.stringify({kind:'oauth',tokenEndpoint:config.tokenEndpoint,clientId:config.clientId,clientAuth:config.clientAuth,clientSecret:config.clientSecret,url:config.url,resource:config.resource,...tokens});
-    await context.save(env,row.account_id,config,tokens.accessToken,secret,request.signal);
-    status='connected';
+    stage='save';
+    const result=await context.save(env,row.account_id,config,tokens.accessToken,secret,request.signal);
+    status=result.status;
+    if(result.error)logCallbackIssue('tools',result.error);
    }
   }catch(error){
    const code=error?.code;
-   status=['mcp_oauth_issuer_mismatch','mcp_oauth_token_failed','mcp_oauth_token_format','mcp_no_tools','mcp_unreachable','mcp_protocol_error','mcp_auth_failed','mcp_changed','mcp_server_limit'].includes(code)?code:'failed';
-   console.warn(JSON.stringify({event:'mcp_oauth_callback_failed',code:status}));
+   status=['mcp_oauth_issuer_mismatch','mcp_oauth_token_failed','mcp_oauth_token_format','mcp_changed','mcp_server_limit'].includes(code)?code:
+    stage==='token'?'mcp_oauth_token_failed':stage==='save'?'mcp_oauth_save_failed':'failed';
+   logCallbackIssue(stage,error);
   }
   await env.DB.prepare('UPDATE account_ai_mcp_oauth_flows SET status=? WHERE state_hash=?').bind(status,stateHash).run();
   const message={
    connected:'授权完成，请返回 Easybook。',
+   tools_pending:'授权已保存，暂时未能读取工具。请返回 Easybook，在对应服务器旁点击「刷新」。',
+   mcp_oauth_save_failed:'服务方授权成功，但 Easybook 未能保存连接。请返回 Easybook 重试。',
    denied:'已取消授权，请返回 Easybook。',
    mcp_oauth_token_format:'服务方返回的令牌格式无效。请返回 Easybook 查看授权结果。',
    mcp_oauth_token_failed:'服务方未接受授权码。请返回 Easybook 重新授权。',
    mcp_auth_failed:'服务方已授权，但 MCP 服务器拒绝了令牌。请返回 Easybook 查看授权结果。'
   }[status]||'授权未完成。请返回 Easybook 查看授权结果。';
-  return completion(message,status==='connected'?200:400);
+  return completion(message,status==='connected'||status==='tools_pending'?200:400);
  }catch{return completion('授权请求已失效，请返回 Easybook 重新连接。',400)}
 }
 
