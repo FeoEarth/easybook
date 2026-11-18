@@ -12,6 +12,7 @@ import {IDENTITY_ORIGIN,identityEnabled,identityPath} from './identity-origin.mj
 import {accountConnect} from './account-connect.mjs';
 import {workspaceAPI,workspacePrincipal} from './workspace-api.mjs';
 import {aiAPI,aiMcpOAuthPage,isAiMcpOAuthPage} from './ai.mjs';
+import {isIdentityMcpOAuthState} from './ai-mcp-oauth.mjs';
 import {turnstileConfig} from './turnstile.mjs';
 import {workspaceAccess,WorkspaceError} from './workspace-identity.mjs';
 import {cleanupUploads} from './mcp-uploads.mjs';
@@ -72,7 +73,11 @@ const worker = {
   if(url.pathname==='/api/membership'||url.pathname.startsWith('/api/membership/'))return membershipAPI(request,env);
   if(url.pathname==='/api/turnstile'&&['GET','OPTIONS'].includes(request.method))return turnstileConfig(env,request);
   if(identityV2&&url.pathname.startsWith('/api/workspaces'))return workspaceAPI(request,env);
-  if(identityV2&&request.method==='GET'&&isAiMcpOAuthPage(url))return aiMcpOAuthPage(request,env);
+  if(identityV2&&request.method==='GET'&&isAiMcpOAuthPage(url)){
+   // Native OAuth is prepared by the identity Worker, including when its browser URL is served here.
+   if(env.IDENTITY_SERVICE&&url.origin===publicOrigin(env)&&isIdentityMcpOAuthState(url.searchParams.get('state')))return env.IDENTITY_SERVICE.fetch(request);
+   return aiMcpOAuthPage(request,env);
+  }
   if(identityV2&&url.pathname.startsWith('/api/ai/')){
    try{
     const principal=await workspacePrincipal(request,env,{mutation:!['GET','HEAD'].includes(request.method)});

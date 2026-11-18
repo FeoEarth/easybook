@@ -37,7 +37,7 @@ const oauthHandler = {
    else if(input.action==='chat'){target='/api/ai/chat';method='POST';body=JSON.stringify({messages:input.messages,mode:input.mode,attachments:input.attachments,stream:input.stream===true,externalTools:input.externalTools===true,credentialId:input.credentialId,model:input.model,...(['title','memory'].includes(input.purpose)?{purpose:input.purpose}:{})})}
     else if(input.action==='execute'){target='/api/ai/execute';method='POST';body=JSON.stringify({approvalId:input.approvalId})}
    else return Response.json({error:'invalid_request'},{status:400});
-   const headers={'Content-Type':'application/json'};return aiAPI(new Request(new URL(target,request.url),{method,headers,body,signal:request.signal}),env,principal,{workspaceId:input.workspace||''});
+   const headers={'Content-Type':'application/json'};return aiAPI(new Request(new URL(target,request.url),{method,headers,body,signal:request.signal}),env,principal,{workspaceId:input.workspace||'',identityWorker:true});
   }
   if(identityEnabled(env)&&hasLegacyIdentity(env)&&url.origin===LEGACY_IDENTITY_ORIGIN&&((url.pathname==='/callback'&&url.searchParams.get('state')?.startsWith('account_'))||url.pathname==='/account/login'))return new Response(null,{status:303,headers:{Location:publicOrigin(env)+url.pathname+url.search,'Cache-Control':'no-store','Referrer-Policy':'no-referrer'}});
   if(modernWorkspaces(env)&&(url.pathname==='/pairing/complete'||url.pathname==='/callback'&&!url.searchParams.get('state')?.startsWith('account_')))return new Response('Legacy authorization retired; authorize your Easybook account',{status:410});

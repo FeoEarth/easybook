@@ -4,15 +4,17 @@ const callbackPath='/api/ai/mcp/oauth/callback';
 const authorizePath='/api/ai/mcp/oauth/authorize';
 const ttl=10*60*1000;
 const statePattern=/^[a-f0-9]{64}$/;
+const identityStatePrefix='ea1db00c';
+export const isIdentityMcpOAuthState=state=>statePattern.test(state||'')&&state.startsWith(identityStatePrefix);
 const encode=bytes=>btoa(String.fromCharCode(...bytes)).replaceAll('+','-').replaceAll('/','_').replace(/=+$/,'');
 const invalid=(code='mcp_oauth_failed',status=400)=>Object.assign(Error(code),{code,status});
 
-async function json(url,options,{fetcher,safeUrl,checkHost}){
+async function json(url,options,{fetcher,safeUrl,checkHost},errorCode='mcp_oauth_failed'){
  url=safeUrl(url);
  const signal=AbortSignal.timeout(10000);
  await checkHost(url,fetcher,signal);
  const response=await fetcher(url,{...options,redirect:'error',signal});
- if(!response.ok)throw invalid();
+ if(!response.ok){void response.body?.cancel().catch(()=>{});throw invalid(errorCode)}
  return boundedJSON(response,32000);
 }
 
@@ -43,13 +45,17 @@ async function discover(resource,context){
   try{as=await json(url,{},context);break}catch{}
  }
  if(!as||as.issuer!==protectedResource.authorization_servers[0]||!as.code_challenge_methods_supported?.includes('S256'))throw invalid('mcp_oauth_unavailable');
- const scope=challenge.match(/\bscope="([^"]+)"/i)?.[1]||
-  (protectedResource.scopes_supported?.length===1?protectedResource.scopes_supported[0]:'');
+ const advertisedScopes=challenge.match(/\bscope="([^"]+)"/i)?.[1]?.split(/\s+/).filter(Boolean)||[];
+ const resourceScopes=Array.isArray(protectedResource.scopes_supported)?protectedResource.scopes_supported.filter(scope=>typeof scope==='string'&&/^[!-~]{1,160}$/.test(scope)):[];
+ const scopes=advertisedScopes.length?(resourceScopes.length?advertisedScopes.filter(scope=>resourceScopes.includes(scope)):advertisedScopes):resourceScopes;
+ if(advertisedScopes.length&&resourceScopes.length&&!scopes.length)throw invalid('mcp_oauth_scope_mismatch');
+ const scope=[...new Set(scopes)].join(' ');
  const authorizationEndpoint=safeUrl(as.authorization_endpoint);
  await checkHost(authorizationEndpoint,fetcher,signal);
  return {resource:protectedResource.resource,authorizationEndpoint:authorizationEndpoint.href,issuer:as.issuer,
   requireIssuer:as.authorization_response_iss_parameter_supported===true,
   tokenEndpoint:safeUrl(as.token_endpoint).href,registrationEndpoint:as.registration_endpoint||'',scope,
+  clientAuthMethods:Array.isArray(as.token_endpoint_auth_methods_supported)?as.token_endpoint_auth_methods_supported:['none'],
   refresh:!as.grant_types_supported||as.grant_types_supported.includes('refresh_token')};
 }
 
@@ -83,24 +89,34 @@ export async function beginMcpOAuth(env,request,account,input,context){
  if(!origin.startsWith('https://'))throw invalid('mcp_oauth_https');
  const resource=safeUrl(input.url),metadata=await discover(resource,context);
  const redirectUri=origin+callbackPath;
- let clientId=input.clientId?.trim();
+ let clientId=input.clientId?.trim(),clientSecret='',clientAuth='none';
  if(!clientId){
   if(!metadata.registrationEndpoint)throw invalid('mcp_oauth_client_required');
+  clientAuth=['none','client_secret_post','client_secret_basic'].find(method=>metadata.clientAuthMethods.includes(method));
+  if(!clientAuth)throw invalid('mcp_oauth_client_required');
   const client=await json(metadata.registrationEndpoint,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({
-   client_name:'Easybook',redirect_uris:[redirectUri],token_endpoint_auth_method:'none',
+   client_name:'Easybook',redirect_uris:[redirectUri],token_endpoint_auth_method:clientAuth,
    grant_types:metadata.refresh?['authorization_code','refresh_token']:['authorization_code'],response_types:['code']
-  })},context);
-  if(typeof client.client_id!=='string'||!client.client_id||client.client_id.length>512||client.client_secret)throw invalid('mcp_oauth_client_required');
+  })},context,'mcp_oauth_registration_failed');
+  if(typeof client.client_id!=='string'||!client.client_id||client.client_id.length>512||
+     (client.token_endpoint_auth_method&&client.token_endpoint_auth_method!==clientAuth))throw invalid('mcp_oauth_registration_failed');
   clientId=client.client_id;
- }
+  // Some registrars include a secret even when reporting a public client.
+  if(clientAuth!=='none'){
+   if(typeof client.client_secret!=='string'||!client.client_secret||client.client_secret.length>4096)throw invalid('mcp_oauth_registration_failed');
+   clientSecret=client.client_secret;
+  }
+ }else if(!metadata.clientAuthMethods.includes('none'))throw invalid('mcp_oauth_client_required');
  const verifier=encode(crypto.getRandomValues(new Uint8Array(48)));
  const challenge=encode(new Uint8Array(await crypto.subtle.digest('SHA-256',new TextEncoder().encode(verifier))));
- const state=crypto.randomUUID().replaceAll('-','')+crypto.randomUUID().replaceAll('-',''),id=crypto.randomUUID();
+ const randomState=crypto.randomUUID().replaceAll('-','')+crypto.randomUUID().replaceAll('-','');
+ const state=context.identityWorker?identityStatePrefix+randomState.slice(identityStatePrefix.length):randomState;
+ const id=crypto.randomUUID();
  const authorization=new URL(metadata.authorizationEndpoint);
  for(const [key,value] of Object.entries({response_type:'code',client_id:clientId,redirect_uri:redirectUri,code_challenge:challenge,code_challenge_method:'S256',state,resource:metadata.resource,scope:metadata.scope})){
   if(value)authorization.searchParams.set(key,value);
  }
- const config={label:input.label.trim(),url:resource.href,resource:metadata.resource,tokenEndpoint:metadata.tokenEndpoint,issuer:metadata.issuer,requireIssuer:metadata.requireIssuer,clientId,redirectUri,verifier,authorization:authorization.href,reconnectId:input.id||'',reconnectRevision:input.reconnectRevision||''};
+ const config={label:input.label.trim(),url:resource.href,resource:metadata.resource,tokenEndpoint:metadata.tokenEndpoint,issuer:metadata.issuer,requireIssuer:metadata.requireIssuer,clientId,clientAuth,clientSecret,redirectUri,verifier,authorization:authorization.href,reconnectId:input.id||'',reconnectRevision:input.reconnectRevision||''};
  const wrapped=await seal(env,account,id,JSON.stringify(config));
  await schema(env.DB);
  await env.DB.prepare('DELETE FROM account_ai_mcp_oauth_flows WHERE expires_at<=?').bind(Date.now()).run();
@@ -122,7 +138,15 @@ function completion(message,status){
 }
 
 async function exchange(config,params,context){
- const result=await json(config.tokenEndpoint,{method:'POST',body:new URLSearchParams({...params,client_id:config.clientId,resource:config.resource})},context);
+ const body=new URLSearchParams({...params,resource:config.resource}),headers={};
+ if(config.clientAuth==='client_secret_basic'){
+  const formEncode=value=>new URLSearchParams({value}).toString().slice(6);
+  headers.Authorization='Basic '+btoa(formEncode(config.clientId)+':'+formEncode(config.clientSecret));
+ }else{
+  body.set('client_id',config.clientId);
+  if(config.clientAuth==='client_secret_post')body.set('client_secret',config.clientSecret);
+ }
+ const result=await json(config.tokenEndpoint,{method:'POST',headers,body},context,'mcp_oauth_token_failed');
  if(typeof result.access_token!=='string'||!result.access_token||result.access_token.length>16000||
     /[^a-zA-Z0-9._~+/=-]/.test(result.access_token)||result.token_type?.toLowerCase()!=='bearer'||
     (result.refresh_token!==undefined&&(typeof result.refresh_token!=='string'||result.refresh_token.length>16000)))throw invalid();
@@ -141,15 +165,20 @@ export async function handleMcpOAuth(request,env,context){
   let status='failed';
   try{
    const code=url.searchParams.get('code'),issuer=url.searchParams.get('iss');
-   if((issuer||config.requireIssuer)&&issuer!==config.issuer)throw invalid();
+   if(issuer&&issuer!==config.issuer)throw invalid('mcp_oauth_issuer_mismatch');
    if(url.searchParams.get('error'))status='denied';
    else if(code&&code.length<=4000){
+    if(config.requireIssuer&&!issuer)throw invalid('mcp_oauth_issuer_mismatch');
     const tokens=await exchange(config,{grant_type:'authorization_code',code,code_verifier:config.verifier,redirect_uri:config.redirectUri},context);
-    const secret=JSON.stringify({kind:'oauth',tokenEndpoint:config.tokenEndpoint,clientId:config.clientId,url:config.url,resource:config.resource,...tokens});
+    const secret=JSON.stringify({kind:'oauth',tokenEndpoint:config.tokenEndpoint,clientId:config.clientId,clientAuth:config.clientAuth,clientSecret:config.clientSecret,url:config.url,resource:config.resource,...tokens});
     await context.save(env,row.account_id,config,tokens.accessToken,secret,request.signal);
     status='connected';
    }
-  }catch{}
+  }catch(error){
+   const code=error?.code;
+   status=['mcp_oauth_issuer_mismatch','mcp_oauth_token_failed','mcp_no_tools','mcp_unreachable','mcp_protocol_error','mcp_auth_failed','mcp_changed','mcp_server_limit'].includes(code)?code:'failed';
+   console.warn(JSON.stringify({event:'mcp_oauth_callback_failed',code:status}));
+  }
   await env.DB.prepare('UPDATE account_ai_mcp_oauth_flows SET status=? WHERE state_hash=?').bind(status,stateHash).run();
   return completion(status==='connected'?'授权完成，请返回 Easybook。':'授权未完成，请返回 Easybook 重试。',status==='connected'?200:400);
  }catch{return completion('授权请求已失效，请返回 Easybook 重新连接。',400)}

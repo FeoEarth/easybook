@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import {DatabaseSync} from 'node:sqlite';
 import {readFileSync} from 'node:fs';
 import {aiAPI,aiMcpOAuthPage} from '../worker/ai.mjs';
+import worker from '../worker/index.mjs';
 const sqlite=new DatabaseSync(':memory:');sqlite.exec('PRAGMA foreign_keys=ON');for(const file of ['worker/schema.sql','mcp-oauth/migrations/0002_accounts.sql','worker/migrations/0010-workspace-identity.sql'])sqlite.exec(readFileSync(file,'utf8'));
 const DB={prepare(sql){const statement=sqlite.prepare(sql);let args=[];return {bind(...values){args=values;return this},async first(){return statement.get(...args)||null},async all(){return {results:statement.all(...args)}},async run(){return statement.run(...args)}}},async batch(statements){sqlite.exec('BEGIN');try{const results=[];for(const statement of statements)results.push(await statement.run());sqlite.exec('COMMIT');return results}catch(error){sqlite.exec('ROLLBACK');throw error}}};
 const migration=readFileSync('worker/migrations/0021-ai-profiles.sql','utf8');sqlite.exec(migration);sqlite.exec(migration);const account='11111111-1111-4111-8111-111111111111',workspace='a'.repeat(64),now=Date.now();sqlite.prepare('INSERT INTO accounts(id,display_name,created_at) VALUES(?,?,?)').run(account,'AI test',now);sqlite.prepare("INSERT INTO workspaces(id,name,mode,manager_account_id,created_at) VALUES(?,?,'personal',?,?)").run(workspace,'AI workspace',account,now);
@@ -201,13 +202,13 @@ assert.equal((await aiAPI(request('/api/ai/preferences'),env,{kind:'anonymous'})
   }
   if(url.href===resource){
    const body=JSON.parse(init.body),token=init.headers.get?.('Authorization');
-   if(!token)return new Response(null,{status:401,headers:{'WWW-Authenticate':'Bearer resource_metadata="https://tools.example.net/.well-known/oauth-protected-resource/mcp", scope="read"'}});
+   if(!token)return new Response(null,{status:401,headers:{'WWW-Authenticate':'Bearer resource_metadata="https://tools.example.net/.well-known/oauth-protected-resource/mcp", scope="read write"'}});
    assert.equal(token,'Bearer '+(refreshes?refreshed:access));
    const result=body.method==='initialize'?{protocolVersion:'2025-06-18',capabilities:{tools:{}}}:
     body.method==='tools/list'?{tools:[{name:'lookup',inputSchema:{type:'object'}}]}:null;
    return result?Response.json({jsonrpc:'2.0',id:body.id,result}):new Response(null,{status:202});
   }
-  if(url.pathname==='/.well-known/oauth-protected-resource/mcp')return Response.json({resource,authorization_servers:[issuer]});
+  if(url.pathname==='/.well-known/oauth-protected-resource/mcp')return Response.json({resource,authorization_servers:[issuer],scopes_supported:['read']});
   if(url.pathname==='/.well-known/oauth-authorization-server/auth')return Response.json({
    issuer,authorization_endpoint:issuer+'/authorize',token_endpoint:'https://token.example.net/token',
    registration_endpoint:issuer+'/register',code_challenge_methods_supported:['S256'],authorization_response_iss_parameter_supported:true
@@ -217,11 +218,12 @@ assert.equal((await aiAPI(request('/api/ai/preferences'),env,{kind:'anonymous'})
    const body=JSON.parse(init.body);
    assert.deepEqual(body.redirect_uris,['https://easybook.test'+callback]);
    assert.equal(body.token_endpoint_auth_method,'none');
-   return Response.json({client_id:'dynamic-client'});
+   return Response.json({client_id:'dynamic-client',token_endpoint_auth_method:'none',client_secret:'registrar-ignored-secret'});
   }
   if(url.pathname==='/token'){
    const body=new URLSearchParams(init.body);
    assert.equal(body.get('resource'),resource);
+   assert.equal(body.get('client_secret'),null,'a public registration never sends an unused vendor secret');
    if(body.get('grant_type')==='refresh_token'){
     refreshes++;
     assert.equal(body.get('refresh_token'),refresh);
@@ -271,7 +273,21 @@ assert.equal((await aiAPI(request('/api/ai/preferences'),env,{kind:'anonymous'})
  privateTokenEndpoint=false;
  assert.equal((await config({label:'Second connection',url:resource,token:refreshed})).status,200);
  assert.equal((await (await config()).json()).servers.length,2,'multiple connections to the same MCP endpoint can coexist');
- console.log('PASS MCP OAuth discovery, public client registration, PKCE, account-bound status, callback replay, encrypted refresh and rejected private token endpoints');
+ const canonical='https://easybook.loonxy.com';
+ const identityEnv={...env,AI_CREDENTIAL_KEY:Buffer.alloc(32,11).toString('base64')};
+ const native=await aiAPI(new Request(canonical+'/api/ai/mcp',{
+  method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({oauth:true,label:'Native MCP',url:resource,clientId:'manual-public-client'})
+ }),identityEnv,principal,{fetcher,identityWorker:true});
+ const nativeFlow=await native.json();
+ let routed=0;
+ const webEnv={...env,WORKSPACE_IDENTITY_V2:'true',PUBLIC_ORIGIN:canonical,IDENTITY_SERVICE:{fetch(req){
+  routed++;return aiMcpOAuthPage(req,identityEnv,{fetcher});
+ }}};
+ const nativeRedirect=await worker.fetch(new Request(nativeFlow.authorizationUrl),webEnv);
+ assert.equal(nativeRedirect.status,303,'Android launch is handled by the Worker that encrypted the flow');
+ assert.equal((await worker.fetch(new Request(canonical+callback+'?state='+nativeFlow.state+'&error=access_denied'),webEnv)).status,400);
+ assert.equal(routed,2,'both launch and callback use the identity Worker');
+ console.log('PASS MCP OAuth discovery, least-privilege scope, public client registration, PKCE, account-bound status, callback replay, encrypted refresh, private endpoint rejection and native Worker affinity');
 }
 
 sqlite.close();console.log('PASS multi-BYOK encryption, provider presets, model discovery, active switching, Anthropic protocol and workspace authorization');

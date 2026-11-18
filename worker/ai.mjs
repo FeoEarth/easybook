@@ -130,12 +130,12 @@ async function discoverModels(key,row,fetcher=fetch){
 export const aiMcpOAuthPage=(request,env,{fetcher=fetch}={})=>mcpOAuthPage(request,env,{fetcher,seal,open});
 export const isAiMcpOAuthPage=url=>['/api/ai/mcp/oauth/authorize','/api/ai/mcp/oauth/callback'].includes(url.pathname);
 
-export async function aiAPI(request,env,principal,{workspaceId,fetcher=fetch}={}){
+export async function aiAPI(request,env,principal,{workspaceId,fetcher=fetch,identityWorker=false}={}){
  const url=new URL(request.url),path=url.pathname;
  if(!path.startsWith('/api/ai/'))return null;
  try{
   if(principal?.kind!=='account')return response({error:'account_required'},403);
-  if(path==='/api/ai/mcp')return response(await configureMcp(request,env,principal,{fetcher,seal,open}));
+  if(path==='/api/ai/mcp')return response(await configureMcp(request,env,principal,{fetcher,seal,open,identityWorker}));
   if(path==='/api/ai/preferences'){
    if(request.method==='GET')return response(await readPreferences(env,principal.accountId));
    if(request.method==='PUT'){const input=await boundedJSON(request,50000);if(!object(input))return response({error:'invalid_request'},400);const next=await writePreferences(env,principal.accountId,input);return next?response(next):response({error:'preferences_conflict'},409)}

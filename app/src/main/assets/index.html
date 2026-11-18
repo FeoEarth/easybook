@@ -1632,6 +1632,10 @@ const aiMcpMessages={
  mcp_oauth_unavailable:'此服务未提供兼容的 OAuth 发现信息或 S256 PKCE。',
  mcp_oauth_client_required:'此服务需要预注册的公共 OAuth 客户端 ID。',
  mcp_oauth_failed:'授权未完成或已过期，请重新连接。',
+ mcp_oauth_scope_mismatch:'服务方声明的授权权限与 MCP 地址不匹配，请检查地址或联系服务方。',
+ mcp_oauth_registration_failed:'服务方拒绝注册 Easybook，请检查该服务的客户端注册要求。',
+ mcp_oauth_token_failed:'服务方未接受授权码或无法颁发令牌，请重新授权。',
+ mcp_oauth_issuer_mismatch:'服务方返回的授权来源无法验证，请确认 MCP 地址后重试。',
  mcp_oauth_https:'OAuth 需要 HTTPS 服务器。',
  mcp_oauth_pending_limit:'等待授权的连接过多，请稍后重试。',
  mcp_oauth_reconnect:'OAuth 会话已过期，请重新授权。',
@@ -1692,7 +1696,11 @@ $('aiMcpAuthorize').onclick=async()=>{
   else window.open(pending.authorizationUrl,'_blank','noopener,noreferrer');
  }catch{$('aiMcpStatus').textContent='无法打开系统浏览器，请复制授权链接并在浏览器中打开。'}
 };
-window.addEventListener('focus',()=>{if(!$('aiMcpPage').hidden&&aiMcpOAuth)void checkAiMcpOAuth()});
+function refreshMcpOAuthOnReturn(){
+ if(!document.hidden&&!$('aiMcpPage').hidden&&aiMcpOAuth)void checkAiMcpOAuth();
+}
+window.addEventListener('focus',refreshMcpOAuthOnReturn);
+document.addEventListener('visibilitychange',refreshMcpOAuthOnReturn);
 let aiMcpServers=[];
 async function refreshAiMcp(){
  const {servers}=await aiRequest('mcp');aiMcpServers=servers;
@@ -1723,6 +1731,7 @@ $('aiMcpForm').onsubmit=event=>{
       destination.search!=='?state='+result.state||(!native&&destination.origin!==new URL(API).origin))throw Error('mcp_oauth_failed');
    aiMcpOAuth=result;$('aiMcpOAuthActions').hidden=false;
    $('aiMcpStatus').textContent='打开授权页面，完成后返回 Easybook。';
+   if(!$('aiMcpPage').hidden)$('aiMcpAuthorize').focus();
   }).catch(error=>$('aiMcpStatus').textContent=mcpAuthorizationMessage(error.code||error.message))
    .finally(()=>{aiMcpBusy=false;$('aiMcpSave').disabled=false});
   return;
