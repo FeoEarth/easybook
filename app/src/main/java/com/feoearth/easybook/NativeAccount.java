@@ -239,7 +239,7 @@ final class NativeAccount {
         }finally{connection.disconnect();NativeTransport.release(db,connection);}
     }
     JSONObject ai(JSONObject args)throws Exception{
-        String action=args.getString("action");if(!java.util.Arrays.asList("config","credential","models","select","chat","execute","preferences").contains(action))throw new SecurityException("AI action denied");
+        String action=args.getString("action");if(!java.util.Arrays.asList("config","credential","models","select","chat","execute","preferences","mcp").contains(action))throw new SecurityException("AI action denied");
         if(action.equals("preferences")&&!java.util.Arrays.asList("GET","PUT").contains(args.optString("method")))throw new SecurityException("AI preferences method denied");
         if(action.equals("credential")&&!java.util.Arrays.asList("PUT","DELETE").contains(args.optString("method")))throw new SecurityException("AI credential method denied");
         if(args.has("workspace")&&!args.optString("workspace").matches("[a-f0-9]{64}"))throw new SecurityException("Invalid workspace");

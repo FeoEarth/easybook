@@ -39,10 +39,10 @@ async function otaManifest(v2=false) {
  const digest=async value=>Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256',new TextEncoder().encode(value)))).map(v=>v.toString(16).padStart(2,'0')).join('');
  const [htmlHash,editorHash]=await Promise.all([digest(html),digest(editor)]);
  const files=[{name:'index.html',url:'/ota/index.html',sha256:htmlHash},{name:'editor.js',url:'/ota/editor.js',sha256:editorHash}];
- if(!v2)return {schema:1,revision:htmlHash.slice(0,16)+'-'+editorHash.slice(0,16),minNativeVersionCode:104,files};
+ if(!v2)return {schema:1,revision:htmlHash.slice(0,16)+'-'+editorHash.slice(0,16),minNativeVersionCode:105,files};
  const updateHash=await digest(nativeUpdate);
  files.push({name:'native_update.js',url:'/ota/native_update.js',sha256:updateHash});
- return {schema:2,revision:htmlHash.slice(0,16)+'-'+editorHash.slice(0,16)+'-'+updateHash.slice(0,16),minNativeVersionCode:104,files};
+ return {schema:2,revision:htmlHash.slice(0,16)+'-'+editorHash.slice(0,16)+'-'+updateHash.slice(0,16),minNativeVersionCode:105,files};
 }
 const worker = {
  async scheduled(controller,env){if(await runSecurityAdmin(env))return;const results=await Promise.allSettled([cleanupUploads(env,10),runAttachmentPurges(env,10),runWorkspacePurges(env,5),maintainIdentity(env)]);if(results.some(r=>r.status==='rejected'))throw Error('Scheduled maintenance incomplete')},

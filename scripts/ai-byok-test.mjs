@@ -124,4 +124,67 @@ assert.equal((await prefRequest({...prefs,version:oldVersion,memories:[{id:'late
 assert.deepEqual((await (await extract()).json()).memories,[]);assert.equal(memoryCalls,1,'Disabled automatic memory makes no provider request');
 assert.equal((await aiAPI(request('/api/ai/preferences'),env,{kind:'anonymous'})).status,403);
 
+// Third-party MCP is opt-in and always sends arguments only after approval.
+{
+ const endpoint='https://mcp.example.net/tools',token='fixture-mcp-secret-token',remoteName='lookup';
+ let remoteCalls=0,privateDns=false,redirected=false;
+ const mcpFetcher=async(url,init)=>{
+  const target=new URL(url),headers=new Headers(init.headers);
+  if(target.hostname==='cloudflare-dns.com'){
+   assert.equal(headers.has('Authorization'),false);
+   const type=target.searchParams.get('type');
+   return Response.json({Status:0,Answer:type==='A'?[{type:1,data:privateDns?'127.0.0.1':'8.8.8.8'}]:[]});
+  }
+  if(target.href===endpoint){
+   assert.equal(init.redirect,'error');
+   assert.equal(headers.get('Authorization'),'Bearer '+token);
+   if(redirected)return new Response(null,{status:302,headers:{Location:'https://other.example.net'}});
+   if(init.method==='DELETE')return new Response(null,{status:204});
+   const payload=JSON.parse(init.body);
+   if(payload.method==='initialize')return Response.json({jsonrpc:'2.0',id:payload.id,result:{protocolVersion:'2025-06-18',capabilities:{tools:{}}}},{headers:{'Mcp-Session-Id':'fixture-id'}});
+   assert.equal(headers.get('Mcp-Session-Id'),'fixture-id');
+   assert.equal(headers.get('MCP-Protocol-Version'),'2025-06-18');
+   if(payload.method==='notifications/initialized')return new Response(null,{status:202});
+   if(payload.method==='tools/list'){
+    const event={jsonrpc:'2.0',id:payload.id,result:{tools:[{name:remoteName,inputSchema:{type:'object',properties:{query:{type:'string'}}}}]}};
+    return new Response('event: message\r\ndata: '+JSON.stringify(event)+'\r\n\r\n',{headers:{'Content-Type':'text/event-stream'}});
+   }
+   assert.equal(payload.method,'tools/call');
+   assert.deepEqual(payload.params,{name:remoteName,arguments:{query:'test'}});
+   remoteCalls++;
+   return Response.json({jsonrpc:'2.0',id:payload.id,result:{content:[{type:'text',text:'found '+token}]}});
+  }
+  assert.equal(target.hostname,'api.openai.com');
+  const modelRequest=JSON.parse(init.body);
+  assert.ok(!init.body.includes(token));
+  const tool=modelRequest.tools?.find(t=>t.function.name.startsWith('mcp_'));
+  return Response.json({choices:[{message:tool?{role:'assistant',tool_calls:[{id:'remote-call',type:'function',function:{name:tool.function.name,arguments:'{"query":"test"}'}}]}:{role:'assistant',content:'no external tools'}}]});
+ };
+ const call=(path,method,body,p=principal,workspaceId=workspace)=>aiAPI(request('/api/ai/'+path,method,body),env,p,{workspaceId,fetcher:mcpFetcher});
+ const save=()=>call('mcp','PUT',{url:endpoint,label:'查找工具',token});
+ privateDns=true;assert.equal((await save()).status,400);privateDns=false;
+ redirected=true;assert.equal((await save()).status,502);redirected=false;
+ assert.equal((await save()).status,200);
+ const listed=await (await call('mcp','GET')).json(),server=listed.servers[0];
+ assert.deepEqual(server.tools,[remoteName]);assert.ok(!JSON.stringify(listed).includes(token));
+ assert.ok(!JSON.stringify(sqlite.prepare('SELECT * FROM account_ai_mcp_servers').all()).includes(token));
+ assert.deepEqual(await (await call('mcp','GET',undefined,{...principal,accountId:'another-account'})).json(),{servers:[]});
+ const chat=(externalTools,mode='conversation')=>call('chat','POST',{credentialId:openaiId,messages:[{role:'user',content:'查找'}],externalTools,mode});
+ assert.equal((await (await chat(false)).json()).message.content,'no external tools');
+ const approved=await (await chat(true)).json();
+ assert.deepEqual(approved.approval.external,{server:'查找工具',tool:remoteName,host:'mcp.example.net'});
+ assert.equal(remoteCalls,0);
+ const execute=approvalId=>call('execute','POST',{approvalId});
+ const executed=await (await execute(approved.approval.id)).json();
+ assert.deepEqual(executed.result,{text:'found [redacted]'});
+ assert.equal((await execute(approved.approval.id)).status,409);
+ assert.equal(remoteCalls,1);
+ const second=await (await chat(true,'agent')).json();
+ assert.equal((await call('mcp','PUT',{id:server.id,enabled:false})).status,200);
+ assert.equal((await execute(second.approval.id)).status,403);
+ assert.equal(remoteCalls,1);
+ assert.equal((await call('mcp','DELETE',{id:server.id})).status,200);
+ console.log('PASS external MCP discovery, session headers, private addresses, single-use approval, credential redaction and config revocation');
+}
+
 sqlite.close();console.log('PASS multi-BYOK encryption, provider presets, model discovery, active switching, Anthropic protocol and workspace authorization');

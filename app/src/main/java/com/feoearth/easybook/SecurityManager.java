@@ -48,6 +48,7 @@ public final class SecurityManager {
             case "workspace.action":fields=fields("action","name","account","id","accountId","role","mode","confirm","version","turnstileToken","kind","expiresHours","decision","token");break;
             case "conflict.resolve":fields=fields("id","choice");break;
             case "account.manage":fields=fields("action","id","workspace","cursor","category","choices","confirm");break;
+            case "ai.mcp":fields=fields("method","config");break;
             case "ai.preferences":fields=fields("method","preferences");break;
             case "membership.open":case "membership.status":fields=Collections.emptySet();break;
             case "ai.config":fields=fields("method");break;
@@ -57,8 +58,8 @@ public final class SecurityManager {
             case "ai.credential":fields=fields("method","credentialId","label","provider","providerName","baseUrl","model","apiKey","active","models");break;
             case "ai.models":fields=fields("method","credentialId","refresh");break;
             case "ai.select":fields=fields("method","credentialId");break;
-            case "ai.chat":fields=fields("method","messages","workspace","mode","attachments","credentialId","model","purpose");break;
-            case "ai.stream.start":fields=fields("id","messages","workspace","mode","attachments","credentialId","model","purpose");break;
+            case "ai.chat":fields=fields("method","messages","workspace","mode","attachments","credentialId","model","purpose","externalTools");break;
+            case "ai.stream.start":fields=fields("id","messages","workspace","mode","attachments","credentialId","model","purpose","externalTools");break;
             case "ai.stream.cancel":fields=fields("id");break;
             case "ai.execute":fields=fields("method","approvalId","workspace");break;
             case "ai.attachment.pick":case "ai.speech":fields=Collections.emptySet();break;

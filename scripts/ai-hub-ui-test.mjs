@@ -40,6 +40,17 @@ try{
  const trace=$('aiHubMessages').querySelector('.ai-tool-activity');trace.open=true;app.render();assert.equal(trace.open,true);
  $('aiHubContext').click();assert.equal($('aiContextPanel').hidden,false);assert.match($('aiContextDetail').textContent,/字符预算/);
  assert.equal($('aiHubSend').disabled,true);
+ assert.equal($('aiMcpSession').checked,false);
+ $('aiMcpSession').click();
+ const remoteProposal={id:'remote',tool:'mcp_fixture',arguments:{query:'docs'},external:{server:'团队查询',tool:'lookup',host:'tools.example.net'},expiresAt:Date.now()+60000};
+ app.cloud(async body=>{assert.equal(body.externalTools,true);return {message:{content:'等待批准'},approval:remoteProposal}});
+ await app.send('查找资料');
+ assert.match($('aiHubMessages').textContent,/团队查询.*tools\.example\.net/);
+ assert.match($('aiHubMessages').textContent,/"query": "docs"/);
+ app.execute(async(path,options)=>{assert.equal(path,'execute');assert.equal(options.body.approvalId,'remote');return {ok:true,result:{text:'external-result'}}});
+ app.cloud(async body=>{assert.ok(body.messages.some(m=>m.content.includes('external-result')));return {message:{content:'使用查询结果完成任务'}}});
+ await app.approve(true);
+ assert.equal(app.session().messages.at(-1).content,'使用查询结果完成任务');
  app.seed([{role:'user',content:'测试摘要'},{role:'assistant',status:'done',content:'<img src=x onerror=alert(1)> **真实内容**'}]);
  app.select(app.session().id);
  const preview=$('aiSidebarList').querySelector('.ai-session-preview');

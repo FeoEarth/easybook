@@ -24,9 +24,38 @@ try{
    await page.locator('#aiSidebarClose').click();assert.equal(await page.locator('.ai-hub-sidebar').isVisible(),false);
    await page.locator('#aiHubSessions').click();assert.equal(await page.locator('.ai-hub-sidebar').isVisible(),true);
    assert.equal(await page.locator('#aiSessionDialog').evaluate(el=>el.open),false,'Desktop toggle must not open duplicate drawer');
+   assert.equal(await page.locator('#aiSidebarSearch').isVisible(),false);
+   await page.locator('#aiSidebarSearchToggle').click();
    await page.locator('#aiSidebarSearch').fill('读书');assert.equal(await page.locator('#aiSidebarList [data-ai-session]').count(),1);
    await page.locator('#aiSidebarSearch').fill('');await page.locator('#aiSidebarSearch').blur();
   }
+  const entry=name==='mobile'?'aiSession':'aiSidebar';
+  const drawer=name==='mobile'?'#aiSessionDialog':'#aiHubSidebar';
+  if(name==='mobile'){await page.locator('#aiHubSessions').click();await page.locator('#aiSessionSearchToggle').click()}
+  await page.locator('#'+entry+'Search').fill('读书');
+  const sessionId=await page.evaluate(()=>window.aiHarness.session().id);
+  await page.evaluate(()=>window.aiHarness.execute(async route=>{
+   if(route==='mcp')return {servers:[]};
+   if(route==='preferences')return {version:1,autoMemory:true,useMemory:true,instructions:'',memories:[]};
+   throw Error('Unexpected shortcut request: '+route);
+  }));
+  await page.locator('#'+entry+'Mcp').click();
+  await page.locator('#aiMcpDialog').waitFor({state:'visible'});
+  await page.evaluate(()=>window.handleBack());
+  await page.locator('#aiMcpDialog').waitFor({state:'hidden'});
+  assert.ok(await page.locator(drawer).isVisible(),'Closing plug-ins returns to conversation history');
+  assert.equal(await page.locator('#'+entry+'Search').inputValue(),'读书');
+  for(const nativeBack of [false,true]){
+   await page.locator('#'+entry+'Settings').click();
+   await page.locator('#aiSettings').waitFor({state:'visible'});
+   if(nativeBack)await page.evaluate(()=>window.handleBack());else await page.locator('#aiBack').click();
+   assert.ok(await page.locator(drawer).isVisible(),'Both Back controls restore conversation history');
+   assert.equal(await page.locator('#'+entry+'Search').inputValue(),'读书');
+   assert.equal(await page.evaluate(()=>window.aiHarness.session().id),sessionId);
+  }
+  await page.locator('#'+entry+'SearchToggle').click();
+  assert.equal(await page.locator('#'+entry+'Search').isVisible(),false);
+  if(name==='mobile')await page.locator('#aiSessionClose').click();
   if(name==='mobile'){
    await page.evaluate(()=>{const app=window.aiHarness;app.session().title='总结当前工作区最近的内容，并列出重点和后续待办事项';app.session().model='deepseek-v4.1-flash';app.seed([{role:'assistant',status:'done',content:'## 重点\n\n坦白说，目前没有实质内容可总结。当前工作区的数据不足以支持进一步归纳。\n\n接下来我可以帮你：\n\n1. 把空笔记改名为有意义的标题并补上正文；\n2. 创建文件夹结构；\n3. 从零建立一份主题笔记或待办清单。'}]);document.documentElement.dataset.platform='android';document.activeElement?.blur();});
 
@@ -90,11 +119,11 @@ try{
   const compose=await page.locator('#aiHubForm').boundingBox();assert.ok(compose.x>=0&&compose.x+compose.width<=width&&compose.y+compose.height<=height,'Composer stays in viewport');
   await page.evaluate(()=>window.aiHarness.theme('dark'));await page.screenshot({animations:'disabled',path:output+'/'+name+'-dark.png'});
   if(name==='mobile'){
-   await page.locator('#aiHubSessions').click();await page.locator('#aiSessionSearch').fill('读书');assert.equal(await page.locator('#aiSessionList [data-ai-session]').count(),1);await page.locator('#aiSessionSearch').fill('');await page.locator('#aiSessionSearch').blur();await page.screenshot({animations:'disabled',path:output+'/mobile-history.png'});await page.evaluate(()=>window.aiHarness.theme('light'));await page.screenshot({animations:'disabled',path:output+'/mobile-history-light.png'});
+   await page.locator('#aiHubSessions').click();await page.locator('#aiSessionSearchToggle').click();await page.locator('#aiSessionSearch').fill('读书');assert.equal(await page.locator('#aiSessionList [data-ai-session]').count(),1);await page.locator('#aiSessionSearchToggle').click();await page.screenshot({animations:'disabled',path:output+'/mobile-history.png'});await page.evaluate(()=>window.aiHarness.theme('light'));await page.screenshot({animations:'disabled',path:output+'/mobile-history-light.png'});
    await page.setViewportSize({width:320,height:480});
    await page.evaluate(()=>new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve))));
    const drawer=await page.locator('#aiSessionDialog').boundingBox();assert.ok(drawer.x>=0&&drawer.x+drawer.width<=320&&drawer.y+drawer.height<=480,'History sheet fits narrow keyboard viewport');
-   await page.locator('#aiSessionSearch').fill('读书');assert.equal(await page.locator('#aiSessionList [data-ai-session]').count(),1);await page.locator('#aiSessionSearch').fill('');
+   await page.locator('#aiSessionSearchToggle').click();await page.locator('#aiSessionSearch').fill('读书');assert.equal(await page.locator('#aiSessionList [data-ai-session]').count(),1);await page.locator('#aiSessionSearch').fill('');
    await page.locator('#aiSessionClose').click();
    await page.setViewportSize({width,height:480});assert.ok(await page.locator('#aiHubSend').isVisible(),'Composer survives short viewport / keyboard');
   }

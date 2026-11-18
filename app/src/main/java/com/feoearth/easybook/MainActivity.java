@@ -45,6 +45,10 @@ public class MainActivity extends Activity {
     private String attachmentSpace,attachmentNote,attachmentExportName;private long attachmentGeneration;private File attachmentExport;private boolean aiPickerOpen,aiSpeechOpen;
     private final ExecutorService io = Executors.newSingleThreadExecutor();
     private static String operationErrorCode(Exception e){
+        if(e instanceof NativeAccount.HttpFailure){
+            String code=((NativeAccount.HttpFailure)e).code;
+            if(code.matches("mcp_[a-z_]{1,48}"))return code;
+        }
         if(e instanceof WebOtaManager.OtaException)return ((WebOtaManager.OtaException)e).code;
         if(e instanceof NativeServerController.Failure)return "SERVER_FAILED";
         if(e instanceof CredentialVault.KeyUnavailable)return "CREDENTIAL_UNAVAILABLE";
@@ -345,6 +349,7 @@ public class MainActivity extends Activity {
                 return new JSONObject().put("accepted",true);
             }
             case "ai.local.cancel":localAiEngine.cancel();return new JSONObject().put("accepted",true);
+            case "ai.mcp":return nativeAccount.ai(new JSONObject(args.toString()).put("action","mcp"));
             case "ai.preferences":return nativeAccount.ai(new JSONObject(args.toString()).put("action","preferences"));
             case "ai.config":return nativeAccount.ai(new JSONObject().put("action","config"));
             case "ai.credential":return nativeAccount.ai(new JSONObject(args.toString()).put("action","credential"));
