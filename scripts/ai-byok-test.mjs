@@ -135,6 +135,73 @@ assert.equal((await prefRequest({...prefs,version:oldVersion,memories:[{id:'late
 assert.deepEqual((await (await extract()).json()).memories,[]);assert.equal(memoryCalls,1,'Disabled automatic memory makes no provider request');
 assert.equal((await aiAPI(request('/api/ai/preferences'),env,{kind:'anonymous'})).status,403);
 
+// The search plugin shares the approval flow and works independently of third-party MCP.
+{
+ let searches=0,closed=0,exposed=false,challengePage=true;
+ const binding={},searchEnv={...env,WEB_SEARCH_BROWSER:binding};
+ const launchSearchBrowser=async actual=>{
+  assert.equal(actual,binding);
+  searches++;
+  return {
+   async close(){closed++},
+   async newPage(){
+    return {
+     async setRequestInterception(enabled){assert.equal(enabled,true)},
+     on(event,handler){
+      assert.equal(event,'request');
+      handler({url:()=> 'https://duckduckgo.com/search.js',resourceType:()=> 'script',async continue(){},async abort(){assert.fail('Search scripts must load')}});
+      handler({url:()=> 'https://example.com/track',resourceType:()=> 'fetch',async continue(){assert.fail('Third-party requests must be blocked')},async abort(){}});
+     },
+     async goto(url,options){
+      assert.equal(url,'https://duckduckgo.com/?q=current+public+docs');
+      assert.equal(options.waitUntil,'domcontentloaded');
+      return {ok:()=>!challengePage};
+     },
+     url:()=> 'https://duckduckgo.com/?q=current+public+docs',
+     async waitForSelector(selector){assert.match(selector,/result/)},
+     async evaluate(){return [{url:'https://example.com/docs',title:'Docs',description:'Search snippet'}]}
+    };
+   }
+  };
+ };
+ const modelFetcher=async(url,init)=>{
+  assert.equal(new URL(url).hostname,'api.openai.com');
+  const payload=JSON.parse(init.body);
+  exposed=payload.tools.some(tool=>tool.function.name==='web_search');
+  return Response.json({choices:[{message:exposed?{role:'assistant',tool_calls:[{id:'search-call',type:'function',function:{name:'web_search',arguments:'{"query":"current public docs"}'}}]}:{role:'assistant',content:'No web search'}}]});
+ };
+ const api=(path,method,body,p=principal)=>aiAPI(request('/api/ai/'+path,method,body),searchEnv,p,{workspaceId:workspace,fetcher:modelFetcher,launchSearchBrowser});
+ const chat=(mode='conversation')=>api('chat','POST',{credentialId:openaiId,mode,messages:[{role:'user',content:'请联网搜索'}]});
+ assert.deepEqual((await (await api('mcp','GET')).json()).webSearch,{available:true,enabled:false});
+ await chat();assert.equal(exposed,false);
+ assert.equal((await api('mcp','PUT',{webSearch:true})).status,200);
+ assert.deepEqual((await (await api('mcp','GET',undefined,{...principal,accountId:otherAccount})).json()).webSearch,{available:true,enabled:false});
+ await chat(null);assert.equal(exposed,false,'The note writing request does not expose an approval it cannot display');
+ const proposal=(await (await chat()).json()).approval;
+ assert.equal(proposal.tool,'web_search');assert.equal(searches,0);
+ assert.equal((await api('execute','POST',{approvalId:proposal.id},{...principal,accountId:otherAccount})).status,403);
+ const execution=await api('execute','POST',{approvalId:proposal.id});
+ assert.deepEqual(await execution.json(),{ok:true,tool:'web_search',result:{results:[],browserSearch:true}});
+ assert.equal(searches,1);assert.equal(closed,1,'Browser closes after an unsuccessful search');
+ assert.equal((await api('execute','POST',{approvalId:proposal.id})).status,409);
+ const pending=(await (await chat()).json()).approval;
+ assert.equal((await api('mcp','PUT',{webSearch:false})).status,200);
+ assert.equal((await api('execute','POST',{approvalId:pending.id})).status,409);
+ assert.equal(searches,1);
+ assert.equal((await api('mcp','PUT',{webSearch:true})).status,200);
+ challengePage=false;
+ const match=(await (await chat()).json()).approval;
+ assert.deepEqual(await (await api('execute','POST',{approvalId:match.id})).json(),{
+  ok:true,tool:'web_search',result:{results:[{url:'https://example.com/docs',title:'Docs',description:'Search snippet'}]}
+ });
+ assert.equal(closed,2,'Browser closes after reading successful results');
+ sqlite.prepare("UPDATE account_rate_limits SET count=20 WHERE bucket LIKE 'ai-web-search:%'").run();
+ const capped=(await (await chat()).json()).approval;
+ assert.equal((await (await api('execute','POST',{approvalId:capped.id})).json()).error.code,'web_search_limit');
+ assert.equal(searches,2,'Usage above the daily limit does not reach the search service');
+ await api('mcp','PUT',{webSearch:false});
+}
+
 // Third-party MCP is opt-in and always sends arguments only after approval.
 {
  const endpoint='https://mcp.example.net/tools',token='fixture-mcp-secret-token',remoteName='lookup';
@@ -179,7 +246,7 @@ assert.equal((await aiAPI(request('/api/ai/preferences'),env,{kind:'anonymous'})
  const listed=await (await call('mcp','GET')).json(),server=listed.servers[0];
  assert.deepEqual(server.tools,[remoteName]);assert.ok(!JSON.stringify(listed).includes(token));
  assert.ok(!JSON.stringify(sqlite.prepare('SELECT * FROM account_ai_mcp_servers').all()).includes(token));
- assert.deepEqual(await (await call('mcp','GET',undefined,{...principal,accountId:'another-account'})).json(),{servers:[]});
+ assert.deepEqual(await (await call('mcp','GET',undefined,{...principal,accountId:'another-account'})).json(),{servers:[],webSearch:{available:false,enabled:false}});
  const chat=(externalTools,mode='conversation')=>call('chat','POST',{credentialId:openaiId,messages:[{role:'user',content:'查找'}],externalTools,mode});
  assert.equal((await (await chat(false)).json()).message.content,'no external tools');
  const approved=await (await chat(true)).json();

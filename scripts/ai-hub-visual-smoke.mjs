@@ -3,6 +3,7 @@ import {createServer} from 'node:http';
 import {readFileSync,mkdirSync} from 'node:fs';
 import path from 'node:path';
 import {chromium} from 'playwright';
+import {readRenderedSearch} from '../worker/ai-web-search.mjs';
 import {hooks} from './fixtures/ai-hub-harness.mjs';
 const root=path.resolve('app/src/main/assets');
 const html=readFileSync(path.join(root,'index.html'),'utf8').replace('})().catch(error=>',hooks+'\n})().catch(error=>');
@@ -12,6 +13,22 @@ await new Promise(resolve=>server.listen(0,'127.0.0.1',resolve));const origin='h
 const browser=await chromium.launch({headless:true,...(process.env.EASYBOOK_CHROMIUM_PATH?{executablePath:process.env.EASYBOOK_CHROMIUM_PATH}:{})});
 const output='/tmp/easybook-ai-preview';mkdirSync(output,{recursive:true});
 try{
+ const crawlerPage=await browser.newPage();
+ const searchTarget='/l/?uddg='+encodeURIComponent('https://example.com/docs?a=1&b=2')+'&amp;rut=tracking';
+ await crawlerPage.setContent(`<main id="results"></main><script>
+ const card=(url,title,description='',type='result')=>'<article data-testid="'+type+'"><h2><a data-testid="result-title-a" href="'+url+'">'+title+'</a></h2><div data-result="snippet">'+description+'</div></article>';
+ setTimeout(()=>document.getElementById('results').innerHTML=card('${searchTarget}','Public <strong>documentation</strong> &amp; notes','Find &#20013; &lt;examples&gt;')+
+  card('https://ads.example/','Ad','','ad')+card('javascript:alert(1)','Unsafe')+
+  card('${searchTarget}','Duplicate')+card('https://example.org/actual','Direct'),30);
+ </script>`);
+ await crawlerPage.waitForSelector('[data-testid="result"]');
+ assert.deepEqual(await readRenderedSearch(crawlerPage),[
+  {url:'https://example.com/docs?a=1&b=2',title:'Public documentation & notes',description:'Find 中 <examples>'},
+  {url:'https://example.org/actual',title:'Direct',description:''}
+ ]);
+ await crawlerPage.evaluate(()=>document.body.insertAdjacentHTML('afterbegin','<form id="challenge-form"></form>'));
+ assert.deepEqual(await readRenderedSearch(crawlerPage),[],'A challenge page is handed off to the user');
+ await crawlerPage.close();
  for(const [name,width,height]of [['desktop',1440,1000],['mobile',390,844]]){
   const context=await browser.newContext({viewport:{width,height},serviceWorkers:'block',locale:'zh-CN'});
   await context.route('**/*',route=>route.request().url().startsWith(origin)?route.continue():route.abort());
@@ -41,16 +58,28 @@ try{
   if(name==='mobile'){await page.locator('#aiHubSessions').click();await page.locator('#aiSessionSearchToggle').click()}
   await page.locator('#'+entry+'Search').fill('读书');
   const sessionId=await page.evaluate(()=>window.aiHarness.session().id);
-  await page.evaluate(()=>window.aiHarness.execute(async route=>{
-   if(route==='mcp')return {servers:[]};
-   if(route==='preferences')return {version:1,autoMemory:true,useMemory:true,instructions:'',memories:[]};
-   throw Error('Unexpected shortcut request: '+route);
-  }));
+  await page.evaluate(()=>{
+   let enabled=false;
+   window.aiHarness.execute(async(route,options)=>{
+    if(route==='mcp'){
+     if(options?.method==='PUT'){enabled=options.body.webSearch;return {ok:true}}
+     return {servers:[],webSearch:{available:true,enabled}};
+    }
+    if(route==='preferences')return {version:1,autoMemory:true,useMemory:true,instructions:'',memories:[]};
+    throw Error('Unexpected shortcut request: '+route);
+   });
+  });
   await page.locator('#'+entry+'Mcp').click();
   await page.locator('#aiMcpPage').waitFor({state:'visible'});
   assert.equal(await page.locator('dialog[open]').count(),0,'MCP settings open as a page');
   assert.equal(await page.locator('#aiHub').isVisible(),false);
   assert.equal(await page.locator('#aiMcpTitle').evaluate(el=>el===document.activeElement),true);
+  const builtins=page.locator('#aiMcpBuiltins');
+  assert.match(await builtins.textContent(),/Easybook.*始终可用/s);
+  assert.equal(await builtins.locator('[data-mcp-action]').count(),0);
+  const search=page.getByRole('switch',{name:'联网搜索'});
+  await search.click();await page.waitForFunction(()=>document.getElementById('aiWebSearch').getAttribute('aria-checked')==='true');
+  await search.click();await page.waitForFunction(()=>document.getElementById('aiWebSearch').getAttribute('aria-checked')==='false');
   await page.locator('#aiMcpMarket button').filter({hasText:'Linear'}).click();
   assert.equal(await page.locator('#aiMcpUrl').inputValue(),'https://mcp.linear.app/mcp/readonly');
   assert.equal(await page.locator('#aiMcpAuth').inputValue(),'oauth');

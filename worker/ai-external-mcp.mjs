@@ -1,3 +1,5 @@
+import {webSearchAvailable} from './ai-web-search.mjs';
+import {readPreferences,writePreferences} from './ai-preferences.mjs';
 import {boundedJSON,object,hash} from './mcp-common.mjs';
 import {beginMcpOAuth,handleMcpOAuth,mcpAccessToken,mcpOAuthStatus} from './ai-mcp-oauth.mjs';
 
@@ -195,7 +197,8 @@ export async function configureMcp(request,env,principal,options){
  const account=principal.accountId;
  if(request.method==='GET'){
   const rows=(await env.DB.prepare('SELECT * FROM account_ai_mcp_servers WHERE account_id=? ORDER BY label,id').bind(account).all()).results;
-  return {servers:rows.map(view)};
+  const prefs=await readPreferences(env,account);
+  return {servers:rows.map(view),webSearch:{available:webSearchAvailable(env),enabled:prefs.webSearch}};
  }
  const input=await boundedJSON(request,4096);
  if(!object(input)||input.id!==undefined&&!serverId.test(input.id))throw mcpError('mcp_invalid_config',400);
@@ -206,6 +209,13 @@ export async function configureMcp(request,env,principal,options){
   return {ok:true};
  }
  if(request.method!=='PUT')throw mcpError('mcp_invalid_config',400);
+ if(Object.hasOwn(input,'webSearch')){
+  if(typeof input.webSearch!=='boolean'||Object.keys(input).length!==1)throw mcpError('mcp_invalid_config',400);
+  if(input.webSearch&&!webSearchAvailable(env))throw mcpError('web_search_unavailable',503);
+  const prefs=await readPreferences(env,account);
+  if(prefs.webSearch!==input.webSearch&&!await writePreferences(env,account,{...prefs,webSearch:input.webSearch}))throw mcpError('preferences_conflict',409);
+  return {ok:true};
+ }
  if(input.oauthState){
   const statusUrl=new URL(request.url);
   statusUrl.searchParams.set('state',input.oauthState);

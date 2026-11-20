@@ -376,6 +376,13 @@ public class MainActivity extends Activity {
             }
             case "ai.local.cancel":localAiEngine.cancel();return new JSONObject().put("accepted",true);
             case "ai.mcp.open":nativeAccount.openMcpOAuth(bounded(args,"url",2048));return new JSONObject().put("externalBrowser",true);
+            case "ai.web.search.open":{
+                String query=bounded(args,"query",400).trim();
+                if(query.isEmpty())throw new IllegalArgumentException("Search query required");
+                Uri url=Uri.parse("https://duckduckgo.com/").buildUpon().appendQueryParameter("q",query).build();
+                runOnUiThread(()->{if(!destroyed&&generation==documentGeneration)try{startActivity(new Intent(Intent.ACTION_VIEW,url));}catch(ActivityNotFoundException error){new DeviceActions().copy(url.toString());}});
+                return new JSONObject().put("externalBrowser",true);
+            }
             case "ai.mcp":return nativeAccount.ai(new JSONObject(args.toString()).put("action","mcp"));
             case "ai.preferences":return nativeAccount.ai(new JSONObject(args.toString()).put("action","preferences"));
             case "ai.config":return nativeAccount.ai(new JSONObject().put("action","config"));
