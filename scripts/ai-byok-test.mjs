@@ -412,6 +412,46 @@ assert.equal(webSearchQuota(monthStart,{permanent:1,expires_at:0}).kind,'member'
  assert.ok(parallelCalls>=4);
 }
 
+// Dynamic research can request different result counts and search repeatedly
+// in a single AI answer, while preserving independent Parallel and account quotas.
+{
+ const all=Array.from({length:28},(_,i)=>({url:'https://example.org/research/'+i,title:'Source '+i,excerpts:['Public evidence '+i]}));
+ let modelRounds=0,parallelQueries=[];
+ const fetcher=async(url,init={})=>{
+  const target=new URL(url);
+  if(target.hostname==='cloudflare-dns.com')return Response.json({Status:0,Answer:[{type:1,data:'93.184.216.34'}]});
+  if(target.hostname==='mcp.parallel.ai'){
+   if(init.method==='DELETE')return new Response(null,{status:204});
+   const rpc=JSON.parse(init.body);
+   if(rpc.method==='initialize')return Response.json({jsonrpc:'2.0',id:rpc.id,result:{protocolVersion:'2025-06-18',capabilities:{tools:{}}}});
+   if(rpc.method==='notifications/initialized')return new Response(null,{status:202});
+   assert.equal(rpc.method,'tools/call');
+   parallelQueries.push(rpc.params.arguments.objective);
+   return Response.json({jsonrpc:'2.0',id:rpc.id,result:{content:[{type:'text',text:JSON.stringify({results:all})}]}});
+  }
+  assert.equal(target.hostname,'api.openai.com');
+  const payload=JSON.parse(init.body),last=payload.messages.at(-1),turn=++modelRounds;
+  if(turn===1||turn===2){
+   assert.equal(last.role,turn===1?'user':'tool');
+   return Response.json({choices:[{message:{role:'assistant',tool_calls:[{id:'research-'+turn,type:'function',function:{name:'web_search',arguments:JSON.stringify({query:turn===1?'APEC Shenzhen':'APEC meetings',maxResults:turn===1?4:22})}}]}}]});
+  }
+  return Response.json({choices:[{message:{role:'assistant',content:'已综合不同查询结果与来源。'}}]});
+ };
+ const api=(path,method,body)=>aiAPI(request('/api/ai/'+path,method,body),env,principal,{workspaceId:workspace,fetcher});
+ assert.equal((await api('mcp','PUT',{parallelSearch:true})).status,200);
+ assert.equal((await api('mcp','GET')).status,200);
+ const usedBefore=sqlite.prepare("SELECT count FROM account_rate_limits WHERE bucket LIKE 'ai-web-search:month:%'").get().count;
+ const result=await (await api('chat','POST',{credentialId:openaiId,mode:'conversation',messages:[{role:'user',content:'比较 APEC 的多方资料'}]})).json();
+ assert.equal(result.approval,undefined);
+ assert.equal(result.message.content,'已综合不同查询结果与来源。');
+ assert.equal(result.webSearches.length,2,'Research continues after the first search without starting a new reply');
+ assert.deepEqual(result.webSearches.map(item=>item.result.results.length),[4,22],'Each search has its own model-selected result count');
+ assert.deepEqual(parallelQueries,['APEC Shenzhen','APEC meetings']);
+ assert.equal(result.webSearch.result.results.length,22,'Legacy search receipt remains available');
+ assert.equal(sqlite.prepare("SELECT count FROM account_rate_limits WHERE bucket LIKE 'ai-web-search:month:%'").get().count,usedBefore,'Parallel research uses no Easybook browser quota');
+ assert.equal((await api('mcp','PUT',{parallelSearch:false})).status,200);
+}
+
 // Third-party MCP is opt-in and always sends arguments only after approval.
 {
  const endpoint='https://mcp.example.net/tools',token='fixture-mcp-secret-token',remoteName='lookup';

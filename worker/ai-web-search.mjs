@@ -1,12 +1,14 @@
 import puppeteer from '@cloudflare/puppeteer';
-import {WEB_SEARCH_RESULT_LIMIT} from '../shared/ai-context-policy.mjs';
-import {hash,schema,str,validate} from './mcp-common.mjs';
+import {hash,schema,str,int,validate} from './mcp-common.mjs';
 
 export const WEB_SEARCH='web_search';
-const parameters=schema({query:str(400,1)},['query']);
+export const WEB_SEARCH_MAX_RESULTS=30;
+export const WEB_SEARCH_DEFAULT_RESULTS=12;
+const parameters=schema({query:str(400,1),maxResults:int(WEB_SEARCH_MAX_RESULTS,3)},['query']);
+export const webSearchResultLimit=args=>args?.maxResults??WEB_SEARCH_DEFAULT_RESULTS;
 export const webSearchTool={type:'function',function:{
  name:WEB_SEARCH,
- description:'Search publicly available websites for current information. Use only when the user asks to search or needs current public information. Provide a short public query without private notes, attachments, personal data or secrets. Easybook applies the user’s web search permission before sending the query.',
+ description:'Search public web sources for current information. Choose maxResults between 3 and 30 according to task complexity; refine the query or search again only when evidence is insufficient. Avoid repeating identical queries. Use brief public keywords, never personal notes, attachments or secrets. Each browser search counts against the user quota; Easybook checks approval before executing.',
  parameters
 }};
 
@@ -46,7 +48,7 @@ async function inspectResults(page,site){
  const {status,entries}=await page.evaluate(({link,empty,challenge,wiby})=>{
   if(document.querySelector(challenge))return {status:'blocked',entries:[]};
   const text=(value,limit)=>value?.textContent?.replace(/\s+/g,' ').trim().slice(0,limit)||'';
-  const entries=[...document.querySelectorAll(link)].slice(0,25).flatMap(anchor=>{
+  const entries=[...document.querySelectorAll(link)].slice(0,50).flatMap(anchor=>{
    if(anchor.closest('.result--ad, [data-testid="ad"]'))return [];
    const card=wiby?anchor.parentElement:anchor.closest('[data-testid="result"], .result');
    if(!card)return [];
@@ -66,7 +68,7 @@ async function inspectResults(page,site){
 }
 
 export async function readRenderedSearch(page){
- return (await inspectResults(page,duckduckgo)).results.slice(0,WEB_SEARCH_RESULT_LIMIT);
+ return (await inspectResults(page,duckduckgo)).results.slice(0,WEB_SEARCH_MAX_RESULTS);
 }
 
 const commonWords=new Set(['and','are','can','for','from','how','the','this','was','what','when','where','which','who','with','would']);
@@ -185,7 +187,7 @@ export async function webSearchUsage(env,account,now=Date.now()){
 }
 
 export async function runWebSearch(env,account,args,signal,launchBrowser=binding=>puppeteer.launch(binding,{keep_alive:30000})){
- const query=webSearchQuery(args);
+ const query=webSearchQuery(args),maxResults=webSearchResultLimit(args);
  signal?.throwIfAborted();
  if(!webSearchAvailable(env))return searchFailure('unavailable');
  const now=Date.now();
@@ -210,11 +212,11 @@ export async function runWebSearch(env,account,args,signal,launchBrowser=binding
    browser=await launchBrowser(env.WEB_SEARCH_BROWSER);
    searchSignal.throwIfAborted();
    const primary=await crawlSearchPage(browser,duckduckgo,query,searchSignal,deadline);
-   if(primary.results.length)return {results:primary.results.slice(0,WEB_SEARCH_RESULT_LIMIT),source:'duckduckgo'};
+   if(primary.results.length)return {results:primary.results.slice(0,maxResults),source:'duckduckgo'};
    const keywords=englishKeywords(query);
    if(keywords.length&&deadline-Date.now()>1500){
     const backup=await crawlSearchPage(browser,wiby,query,searchSignal,deadline);
-    const results=relevantResults(backup.results,keywords).slice(0,WEB_SEARCH_RESULT_LIMIT);
+    const results=relevantResults(backup.results,keywords).slice(0,maxResults);
     if(results.length)return {results,source:'wiby'};
    }
    return searchFailure(primary.status);
