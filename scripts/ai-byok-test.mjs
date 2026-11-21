@@ -223,6 +223,10 @@ assert.equal(webSearchQuota(monthStart,{permanent:1,expires_at:0}).kind,'member'
  };
  const api=(path,method,body,p=principal)=>aiAPI(request('/api/ai/'+path,method,body),searchEnv,p,{workspaceId:workspace,fetcher:modelFetcher,launchSearchBrowser});
  const chat=(mode='conversation')=>api('chat','POST',{credentialId:openaiId,mode,messages:[{role:'user',content:'请联网搜索'}]});
+ const initialUsage=(await (await api('mcp','GET')).json()).usage.webSearch;
+ assert.equal(initialUsage.tier,'free');assert.equal(initialUsage.period,'day');
+ assert.equal(initialUsage.limit,15);assert.equal(initialUsage.used,0);assert.equal(initialUsage.remaining,15);
+ assert.ok(initialUsage.resetAt>Date.now());
  assert.deepEqual((await (await api('mcp','GET')).json()).webSearch,{available:true,enabled:false,approval:'ask'});
  await chat();assert.equal(exposed,false);
  assert.equal((await api('mcp','PUT',{webSearch:true})).status,200);
@@ -267,6 +271,8 @@ assert.equal(webSearchQuota(monthStart,{permanent:1,expires_at:0}).kind,'member'
  assert.deepEqual(visits.splice(0),['duckduckgo'],'Skip Wiby for non-English queries');
  assert.match(profiles.at(-1).params.acceptLanguage,/^zh-CN/);
  assert.equal(sqlite.prepare("SELECT count FROM account_rate_limits WHERE bucket LIKE 'ai-web-search:%'").get().count,5,'One quota charge per approved query');
+ const usedFive=(await (await api('mcp','GET')).json()).usage.webSearch;
+ assert.equal(usedFive.used,5);assert.equal(usedFive.remaining,10,'Reading usage must not deduct quota');
  assert.equal((await api('mcp','PUT',{webSearchApproval:'always'})).status,200);
  assert.equal((await (await api('mcp','GET')).json()).webSearch.approval,'always');
  assert.equal((await (await api('mcp','GET',undefined,{...principal,accountId:otherAccount})).json()).webSearch.approval,'ask');
@@ -286,6 +292,8 @@ assert.equal(webSearchQuota(monthStart,{permanent:1,expires_at:0}).kind,'member'
  assert.equal((await (await chat()).json()).approval.tool,'web_search');
  // Free users keep their existing daily bucket, but the limit is now 15.
  sqlite.prepare("UPDATE account_rate_limits SET count=15 WHERE bucket LIKE 'ai-web-search:%'").run();
+ const fullFreeUsage=(await (await api('mcp','GET')).json()).usage.webSearch;
+ assert.equal(fullFreeUsage.used,15);assert.equal(fullFreeUsage.remaining,0);
  const capped=(await (await chat()).json()).approval;
  assert.equal((await (await api('execute','POST',{approvalId:capped.id})).json()).error.code,'web_search_limit');
  assert.equal(searches,7,'Free daily quota is enforced before launching the browser');
@@ -296,9 +304,14 @@ assert.equal(webSearchQuota(monthStart,{permanent:1,expires_at:0}).kind,'member'
  assert.equal((await searchOnce()).result.source,'duckduckgo');
  assert.equal(searches,8,'Membership bypasses an exhausted daily quota');
  assert.equal(sqlite.prepare("SELECT count FROM account_rate_limits WHERE bucket LIKE 'ai-web-search:month:%'").get().count,1);
+ const memberUsage=(await (await api('mcp','GET')).json()).usage.webSearch;
+ assert.equal(memberUsage.tier,'member');assert.equal(memberUsage.period,'month');
+ assert.equal(memberUsage.limit,1000);assert.equal(memberUsage.used,1);assert.equal(memberUsage.remaining,999);
  sqlite.prepare("UPDATE account_rate_limits SET count=999 WHERE bucket LIKE 'ai-web-search:month:%'").run();
  assert.equal((await searchOnce()).result.source,'duckduckgo','The 1000th monthly search is allowed');
  assert.equal(sqlite.prepare("SELECT count FROM account_rate_limits WHERE bucket LIKE 'ai-web-search:month:%'").get().count,1000);
+ const memberFull=(await (await api('mcp','GET')).json()).usage.webSearch;
+ assert.equal(memberFull.used,1000);assert.equal(memberFull.remaining,0);
  const memberCap=await searchOnce();
  assert.equal(memberCap.error.code,'web_search_limit');
  assert.match(memberCap.error.message,/本月/);
@@ -309,6 +322,8 @@ assert.equal(webSearchQuota(monthStart,{permanent:1,expires_at:0}).kind,'member'
  const expiredCap=await searchOnce();
  assert.equal(expiredCap.error.code,'web_search_limit');
  assert.match(expiredCap.error.message,/今日/);
+ const expiredUsage=(await (await api('mcp','GET')).json()).usage.webSearch;
+ assert.equal(expiredUsage.tier,'free');assert.equal(expiredUsage.remaining,0);
  assert.equal(searches,9);
 
  // A permanent membership is also entitled even without a future expiry.
@@ -316,6 +331,8 @@ assert.equal(webSearchQuota(monthStart,{permanent:1,expires_at:0}).kind,'member'
  sqlite.prepare("UPDATE account_rate_limits SET count=999 WHERE bucket LIKE 'ai-web-search:month:%'").run();
  assert.equal((await searchOnce()).result.source,'duckduckgo');
  assert.equal(searches,10);
+ const permanentUsage=(await (await api('mcp','GET')).json()).usage.webSearch;
+ assert.equal(permanentUsage.tier,'member');assert.equal(permanentUsage.used,1000);assert.equal(permanentUsage.remaining,0);
  await api('mcp','PUT',{webSearch:false});
 }
 
@@ -363,7 +380,9 @@ assert.equal(webSearchQuota(monthStart,{permanent:1,expires_at:0}).kind,'member'
  const listed=await (await call('mcp','GET')).json(),server=listed.servers[0];
  assert.deepEqual(server.tools,[remoteName]);assert.ok(!JSON.stringify(listed).includes(token));
  assert.ok(!JSON.stringify(sqlite.prepare('SELECT * FROM account_ai_mcp_servers').all()).includes(token));
- assert.deepEqual(await (await call('mcp','GET',undefined,{...principal,accountId:'another-account'})).json(),{servers:[],webSearch:{available:false,enabled:false,approval:'ask'}});
+ const foreignMcp=await (await call('mcp','GET',undefined,{...principal,accountId:'another-account'})).json();
+ assert.deepEqual({servers:foreignMcp.servers,webSearch:foreignMcp.webSearch},{servers:[],webSearch:{available:false,enabled:false,approval:'ask'}});
+ assert.deepEqual({tier:foreignMcp.usage.webSearch.tier,used:foreignMcp.usage.webSearch.used,remaining:foreignMcp.usage.webSearch.remaining},{tier:'free',used:0,remaining:15},'Usage is isolated by authenticated account');
  const chat=(externalTools,mode='conversation')=>call('chat','POST',{credentialId:openaiId,messages:[{role:'user',content:'查找'}],externalTools,mode});
  assert.equal((await (await chat(false)).json()).message.content,'no external tools');
  const approved=await (await chat(true)).json();
