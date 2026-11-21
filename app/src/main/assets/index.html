@@ -933,7 +933,7 @@ body[data-settings-detail] .app{display:block;max-width:720px;height:auto;min-he
 <div class="settings-row"><span class="row-text"><strong>额度重置</strong><small id="aiUsageReset">—</small></span></div>
 </div>
 <p id="aiUsageStatus" class="ai-note" role="status"></p>
-<p class="ai-note">每次已执行的内置自动联网搜索都会计入额度，包括未取得结果的搜索。额度按账户共享；会员不设置每日上限。Parallel MCP 进阶版不占用此额度，但受其匿名速率限制。</p>
+<p class="ai-note">每次已执行的内置自动联网搜索都会计入额度，包括未取得结果的搜索。额度按账户共享；会员不设置每日上限。Parallel MCP 不消耗 Easybook 额度；匿名模式免费但有限流，登录后可能产生 Parallel 账户费用。</p>
 <div class="ai-section-heading"><h2>其他用量</h2></div>
 <div class="settings-group"><div class="settings-row"><span class="row-text"><strong>模型 API（BYOK）</strong><small>模型 Token、费用及提供商限制请到对应模型服务商查看；Easybook 不统计提供商账户的完整用量。</small></span></div></div>
 </div></section>
@@ -945,6 +945,8 @@ body[data-settings-detail] .app{display:block;max-width:720px;height:auto;min-he
  <div class="settings-row"><span class="row-text"><strong>总是允许联网搜索</strong><small id="aiWebSearchApprovalDetail">允许云端对话直接发送公开搜索关键词，此设置随账户同步。</small></span><button type="button" id="aiWebSearchApproval" class="sync-switch" role="switch" aria-label="总是允许联网搜索" aria-describedby="aiWebSearchApprovalDetail" aria-checked="false" disabled><span class="settings-switch-indicator" aria-hidden="true"></span></button></div>
  <div class="settings-row"><span class="row-text"><strong>联网搜索进阶版 · Parallel MCP</strong><small id="aiParallelSearchDetail">预装、默认开启、无需认证。与联网搜索并行；内置额度用尽仍可用，受 Parallel 匿名速率限制。</small></span><button type="button" id="aiParallelSearch" class="sync-switch" role="switch" aria-label="联网搜索进阶版" aria-describedby="aiParallelSearchDetail" aria-checked="false" disabled><span class="settings-switch-indicator" aria-hidden="true"></span></button></div>
  <div class="settings-row"><span class="row-text"><strong>总是允许联网搜索进阶版</strong><small id="aiParallelApprovalDetail">不再逐次询问是否将公开搜索关键词发送至 Parallel MCP。</small></span><button type="button" id="aiParallelApproval" class="sync-switch" role="switch" aria-label="总是允许联网搜索进阶版" aria-describedby="aiParallelApprovalDetail" aria-checked="false" disabled><span class="settings-switch-indicator" aria-hidden="true"></span></button></div>
+<div class="settings-row"><span class="row-text"><strong>Parallel 访问方式</strong><small id="aiParallelModeDetail">匿名搜索免费但受速率限制，登录后可能产生 Parallel 账户费用。</small></span><select id="aiParallelMode" aria-label="Parallel 访问方式" aria-describedby="aiParallelModeDetail" disabled><option value="anonymous">匿名使用（免费）</option><option value="account">使用已登录账户</option></select></div>
+<div class="settings-row"><span class="row-text"><strong>Parallel 账户</strong><small id="aiParallelAccountDetail">未登录 · 默认匿名模式</small></span><span class="ai-provider-actions"><button type="button" id="aiParallelLogin">登录 Parallel</button><button type="button" id="aiParallelLogout" hidden>断开登录</button></span></div>
 </div>
 <div class="ai-section-heading"><h2>已连接的服务器</h2></div>
 <p class="ai-note">在云端会话的「上下文」中打开第三方工具。每次调用都需要确认。</p>
@@ -1732,7 +1734,7 @@ async function checkAiMcpOAuth(){
    const toolsPending=status==='tools_pending';
    delete $('aiMcpForm').dataset.reconnect;
    $('aiMcpForm').reset();syncAiMcpAuth();
-   $('aiMcpStatus').textContent=toolsPending?'授权已保存。请在对应服务器旁点击「刷新」读取工具。':'MCP 服务器已连接';
+   $('aiMcpStatus').textContent=pending.builtin==='parallel'?'Parallel 登录完成，可切换账户或匿名搜索。':toolsPending?'授权已保存。请在对应服务器旁点击「刷新」读取工具。':'MCP 服务器已连接';
    try{await refreshAiMcp()}catch{$('aiMcpStatus').textContent='授权已保存，重新进入页面可刷新服务器列表。'}
   }else $('aiMcpStatus').textContent=mcpAuthorizationMessage(status);
  }catch(error){if(aiMcpOAuth===pending)$('aiMcpStatus').textContent=mcpAuthorizationMessage(error.code||error.message)}
@@ -1767,6 +1769,15 @@ function renderAiWebSearch(){
  parallel.setAttribute('aria-checked',String(enabled));
  parallelApproval.disabled=aiMcpBusy||!enabled;
  parallelApproval.setAttribute('aria-checked',String(aiParallelSearchState?.approval==='always'));
+ const connected=aiParallelSearchState?.connected===true,mode=connected&&aiParallelSearchState?.mode==='account'?'account':'anonymous';
+ const selector=$('aiParallelMode');
+ selector.disabled=aiMcpBusy||!enabled;
+ selector.value=mode;
+ selector.querySelector('option[value="account"]').disabled=!connected;
+ $('aiParallelLogin').disabled=aiMcpBusy;$('aiParallelLogin').textContent=connected?'重新登录':'登录 Parallel';
+ $('aiParallelLogout').hidden=!connected;$('aiParallelLogout').disabled=aiMcpBusy;
+ $('aiParallelAccountDetail').textContent=connected?(mode==='account'?'已登录 · 正使用 Parallel 账户':'已登录 · 当前使用匿名搜索'):'未登录 · 默认匿名模式';
+ $('aiParallelModeDetail').textContent=mode==='account'?'登录模式可能产生 Parallel 账户费用；可随时切换免费匿名搜索。':'匿名模式免费但有限流；登录可解锁更高限额。';
 }
 async function refreshAiMcp(){
  const space=localSpace,{servers,webSearch,parallelSearch}=await aiRequest('mcp');
@@ -1806,6 +1817,27 @@ $('aiParallelApproval').onclick=()=>{
  if(!aiParallelSearchState?.enabled)return;
  const approval=aiParallelSearchState.approval==='always'?'ask':'always';
  void changeAiMcp(()=>aiRequest('mcp',{method:'PUT',body:{parallelSearchApproval:approval}}));
+};
+$('aiParallelMode').onchange=event=>{
+ const mode=event.target.value;
+ if(mode==='account'&&!aiParallelSearchState?.connected){event.target.value='anonymous';return}
+ void changeAiMcp(()=>aiRequest('mcp',{method:'PUT',body:{parallelMode:mode}}));
+};
+$('aiParallelLogout').onclick=()=>confirmAction('断开 Parallel 账户？','登录令牌会从 Easybook 服务器移除，后续继续使用免费匿名搜索。',()=>changeAiMcp(()=>aiRequest('mcp',{method:'PUT',body:{parallelLogout:true}})));
+$('aiParallelLogin').onclick=async()=>{
+ if(aiMcpBusy)return;
+ aiMcpBusy=true;renderAiWebSearch();$('aiMcpStatus').textContent='正在准备 Parallel OAuth 登录…';
+ try{
+  const pending=await aiRequest('mcp',{method:'PUT',body:{parallelLogin:true}});
+  const destination=new URL(pending.authorizationUrl);
+  if(!/^[a-f0-9]{64}$/.test(pending.state||'')||destination.protocol!=='https:'||
+     destination.username||destination.password||destination.hash||destination.pathname!=='/api/ai/mcp/oauth/authorize'||
+     destination.search!=='?state='+pending.state||(!native&&destination.origin!==new URL(API).origin))throw Error('mcp_oauth_failed');
+  aiMcpOAuth={...pending,builtin:'parallel'};$('aiMcpOAuthActions').hidden=false;
+  $('aiMcpStatus').textContent='登录可能使用 Parallel 付费额度。打开授权页面完成登录；也可随时切换回匿名搜索。';
+  $('aiMcpAuthorize').focus();
+ }catch(error){$('aiMcpStatus').textContent=aiMcpMessages[error.code||error.message]||error.message||'无法发起 Parallel 登录。'}
+ finally{aiMcpBusy=false;renderAiWebSearch()}
 };
 $('aiMcpOpen').onclick=openAiMcp;
 $('aiMcpClose').onclick=leaveSettingsDetail;
@@ -2291,7 +2323,11 @@ function aiWebSearchReceipt(message){
  const sources=webSearchSources(results);
  const links=sources.map(item=>'<li><a href="'+esc(item.pageUrl||item.url)+'" target="_blank" rel="noopener noreferrer" translate="no">'+esc(item.title)+'</a>'+(item.source==='parallel'?' <small>Parallel</small>':item.pageText?' <small>已读取正文</small>':'')+'</li>');
  const provider={duckduckgo:'DuckDuckGo',wiby:'Wiby',parallel:'Parallel MCP',combined:'双来源'}[message.receipt.result.source];
- return '<details><summary>'+esc(message.content)+' · '+sources.length+' 个结果'+(provider?' · '+provider:'')+'</summary>'+(links.length?'<ul>'+links.join('')+'</ul>':'')+'</details>';
+ const d=message.receipt.result.diagnostics,requested=Number.isInteger(d?.requested)?d.requested:0,duplicate=Number.isInteger(d?.duplicatesRemoved)?d.duplicatesRemoved:0;
+ const counts=d?'<p class="ai-note">请求 '+requested+' 条 · 最终 '+sources.length+' 条'+(duplicate?' · 去重 '+duplicate+' 条':'')+
+  (Number.isInteger(d?.duckduckgo?.duckduckgo?.loads)?' · DuckDuckGo 加载更多 '+d.duckduckgo.duckduckgo.loads+' 次':'')+
+  (d.parallel?.mode==='account'?' · Parallel 账户模式（可能计费）':d.parallel?.mode==='anonymous'?' · Parallel 匿名模式':'')+'</p>':'';
+ return '<details><summary>'+esc(message.content)+' · '+sources.length+' 个结果'+(provider?' · '+provider:'')+'</summary>'+counts+(links.length?'<ul>'+links.join('')+'</ul>':'')+'</details>';
 }
 function aiHubMessageHTML(message,index){
  if(message.role==='user')return '<div class="ai-message-body">'+esc(message.content)+'</div>';

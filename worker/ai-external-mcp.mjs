@@ -6,6 +6,12 @@ import {beginMcpOAuth,handleMcpOAuth,mcpAccessToken,mcpOAuthStatus} from './ai-m
 
 export const mcpError=(code,status=502)=>Object.assign(Error(code),{code,status});
 const serverLimit=20;
+export const PARALLEL_MCP_LOGIN='https://mcp.parallel.ai/mcp?login';
+const parallelBuiltinLabel='Easybook · Parallel 登录';
+const isParallelBuiltin=row=>row?.label===parallelBuiltinLabel&&row?.url===PARALLEL_MCP_LOGIN;
+async function parallelRow(env,account){
+ return env.DB.prepare('SELECT * FROM account_ai_mcp_servers WHERE account_id=? AND label=? AND url=?').bind(account,parallelBuiltinLabel,PARALLEL_MCP_LOGIN).first();
+}
 const versions=new Set(['2024-11-05','2025-03-26','2025-06-18','2025-11-25']);
 const latest='2025-06-18';
 const serverId=/^[a-f0-9-]{36}$/;
@@ -15,7 +21,7 @@ function endpoint(value){
  let url;
  try{if(typeof value!=='string'||value.length>1024)throw Error();url=new URL(value)}catch{throw mcpError('mcp_invalid_url',400)}
  const host=url.hostname;
- if(url.protocol!=='https:'||url.username||url.password||url.port||url.search||url.hash||
+ if(url.protocol!=='https:'||url.username||url.password||url.port||(url.search&&url.href!==PARALLEL_MCP_LOGIN)||url.hash||
     !publicHostname(host))throw mcpError('mcp_invalid_url',400);
  return url;
 }
@@ -70,12 +76,15 @@ async function rpcResult(response,id,limit=rpcResponseLimit){
  throw mcpError('mcp_protocol_error');
 }
 
-export async function withServer(urlValue,token,fetcher,requestSignal,work){
+export async function withServer(urlValue,token,fetcher,requestSignal,work,parallelMaxResults){
  const url=endpoint(urlValue);
  const timeout=AbortSignal.timeout(12000);
  const signal=requestSignal?AbortSignal.any([requestSignal,timeout]):timeout;
  const headers=new Headers({'Content-Type':'application/json',Accept:'application/json, text/event-stream'});
  if(token)headers.set('Authorization','Bearer '+token);
+ if(token&&Number.isInteger(parallelMaxResults)&&url.hostname==='mcp.parallel.ai'&&url.pathname==='/mcp'&&parallelMaxResults>=1&&parallelMaxResults<=30){
+  headers.set('x-parallel-mcp-config',JSON.stringify({web_search:{override:{advanced_settings:{max_results:parallelMaxResults}}}}));
+ }
  let id=0,session,phase='resolve';
  async function send(method,params,notice=false){
   phase=method;
@@ -147,6 +156,23 @@ const oauthContext=options=>({...options,safeUrl:endpoint,checkHost,
  save:async(env,account,config,token,secret,signal)=>{
   await schema(env.DB);
   const id=config.reconnectId||crypto.randomUUID(),revision=crypto.randomUUID();
+  if(config.builtin==='parallel'){
+   if(config.url!==PARALLEL_MCP_LOGIN||config.label!==parallelBuiltinLabel)throw mcpError('mcp_invalid_config',400);
+   const wrapped=await options.seal(env,account,id,secret);
+   if(config.reconnectId){
+    const found=await env.DB.prepare('UPDATE account_ai_mcp_servers SET key_ciphertext=?,key_iv=?,revision=? WHERE id=? AND account_id=? AND url=? AND label=? AND revision=? RETURNING id')
+     .bind(wrapped.ciphertext,wrapped.iv,revision,id,account,PARALLEL_MCP_LOGIN,parallelBuiltinLabel,config.reconnectRevision).first();
+    if(!found)throw mcpError('mcp_changed',409);
+   }else{
+    if(await parallelRow(env,account))throw mcpError('mcp_changed',409);
+    await insertServer(env,account,id,parallelBuiltinLabel,PARALLEL_MCP_LOGIN,[],wrapped,revision);
+   }
+   for(let attempt=0;attempt<2;attempt++){
+    const prefs=await readPreferences(env,account);
+    if(await writePreferences(env,account,{...prefs,parallelMode:'account'}))break;
+   }
+   return {status:'connected'};
+  }
   const wrapped=await options.seal(env,account,id,secret);
   if(config.reconnectId){
    const found=await env.DB.prepare("UPDATE account_ai_mcp_servers SET key_ciphertext=?,key_iv=?,tools_json='[]',revision=? WHERE id=? AND account_id=? AND url=? AND revision=? RETURNING id")
@@ -181,7 +207,8 @@ export async function configureMcp(request,env,principal,options){
  if(request.method==='GET'){
   const rows=(await env.DB.prepare('SELECT * FROM account_ai_mcp_servers WHERE account_id=? ORDER BY label,id').bind(account).all()).results;
   const prefs=await readPreferences(env,account);
-  return {servers:rows.map(view),webSearch:{available:webSearchAvailable(env),enabled:prefs.webSearch,approval:prefs.webSearchApproval},parallelSearch:{available:true,enabled:prefs.parallelSearch,approval:prefs.parallelSearchApproval,url:'https://mcp.parallel.ai/mcp'},usage:{webSearch:await webSearchUsage(env,account)}};
+  const builtin=rows.find(isParallelBuiltin);
+  return {servers:rows.filter(row=>!isParallelBuiltin(row)).map(view),webSearch:{available:webSearchAvailable(env),enabled:prefs.webSearch,approval:prefs.webSearchApproval},parallelSearch:{available:true,enabled:prefs.parallelSearch,approval:prefs.parallelSearchApproval,url:'https://mcp.parallel.ai/mcp',mode:!builtin?'anonymous':prefs.parallelMode,connected:!!builtin,billingNotice:'使用 Parallel 账户登录后，搜索可能计入你在 Parallel 的付费额度。'},usage:{webSearch:await webSearchUsage(env,account)}};
  }
  const input=await boundedJSON(request,4096);
  if(!object(input)||input.id!==undefined&&!serverId.test(input.id))throw mcpError('mcp_invalid_config',400);
@@ -193,15 +220,27 @@ export async function configureMcp(request,env,principal,options){
  }
  if(request.method!=='PUT')throw mcpError('mcp_invalid_config',400);
  const searchSetting=Object.keys(input).length===1?Object.keys(input)[0]:'';
- if(Object.hasOwn(input,'webSearch')||Object.hasOwn(input,'webSearchApproval')||Object.hasOwn(input,'parallelSearch')||Object.hasOwn(input,'parallelSearchApproval')){
+ if(input.parallelLogin===true&&Object.keys(input).length===1){
+  const connected=await parallelRow(env,account);
+  return beginMcpOAuth(env,request,account,{label:parallelBuiltinLabel,url:PARALLEL_MCP_LOGIN,builtin:'parallel',...(connected?{id:connected.id,reconnectRevision:connected.revision}:{})},oauthContext(options));
+ }
+ if(input.parallelLogout===true&&Object.keys(input).length===1){
+  await env.DB.prepare('DELETE FROM account_ai_mcp_servers WHERE account_id=? AND label=? AND url=?').bind(account,parallelBuiltinLabel,PARALLEL_MCP_LOGIN).run();
+  const prefs=await readPreferences(env,account);
+  if(prefs.parallelMode!=='anonymous'&&!await writePreferences(env,account,{...prefs,parallelMode:'anonymous'}))throw mcpError('preferences_conflict',409);
+  return {ok:true};
+ }
+ if(Object.hasOwn(input,'webSearch')||Object.hasOwn(input,'webSearchApproval')||Object.hasOwn(input,'parallelSearch')||Object.hasOwn(input,'parallelSearchApproval')||Object.hasOwn(input,'parallelMode')){
   if(!(searchSetting==='webSearch'&&typeof input.webSearch==='boolean')&&
      !(searchSetting==='webSearchApproval'&&['ask','always'].includes(input.webSearchApproval))&&
       !(searchSetting==='parallelSearch'&&typeof input.parallelSearch==='boolean')&&
-      !(searchSetting==='parallelSearchApproval'&&['ask','always'].includes(input.parallelSearchApproval)))throw mcpError('mcp_invalid_config',400);
+      !(searchSetting==='parallelSearchApproval'&&['ask','always'].includes(input.parallelSearchApproval))&&
+      !(searchSetting==='parallelMode'&&['anonymous','account'].includes(input.parallelMode)))throw mcpError('mcp_invalid_config',400);
   if(input.webSearch&&!webSearchAvailable(env))throw mcpError('web_search_unavailable',503);
   const prefs=await readPreferences(env,account);
   if(input.webSearchApproval==='always'&&(!prefs.webSearch||!webSearchAvailable(env)))throw mcpError('web_search_unavailable',503);
    if(input.parallelSearchApproval==='always'&&!prefs.parallelSearch)throw mcpError('web_search_unavailable',503);
+  if(input.parallelMode==='account'&&!await parallelRow(env,account))throw mcpError('mcp_auth_failed',401);
   if(prefs[searchSetting]!==input[searchSetting]&&!await writePreferences(env,account,{...prefs,...input}))throw mcpError('preferences_conflict',409);
   return {ok:true};
  }
@@ -211,6 +250,7 @@ export async function configureMcp(request,env,principal,options){
   return mcpOAuthStatus(env,new Request(statusUrl),account);
  }
  if(input.oauth===true){
+  if(input.label===parallelBuiltinLabel||input.url===PARALLEL_MCP_LOGIN)throw mcpError('mcp_invalid_config',400);
   if(existing&&existing.url!==input.url)throw mcpError('mcp_invalid_config',400);
   if(!existing&&(await env.DB.prepare('SELECT COUNT(*) AS n FROM account_ai_mcp_servers WHERE account_id=?').bind(account).first()).n>=serverLimit)throw mcpError('mcp_server_limit',409);
   return beginMcpOAuth(env,request,account,{...input,reconnectRevision:existing?.revision},oauthContext(options));
@@ -228,7 +268,7 @@ export async function configureMcp(request,env,principal,options){
   if(!change)throw mcpError('mcp_changed',409);
   return {ok:true};
  }
- if(existing||typeof input.label!=='string'||!input.label.trim()||input.label.trim().length>60||typeof (input.token??'')!=='string'||(input.token||'').length>1500||(/[^a-zA-Z0-9._~+/=-]/.test(input.token||'')))throw mcpError('mcp_invalid_config',400);
+ if(existing||input.label===parallelBuiltinLabel||input.url===PARALLEL_MCP_LOGIN||typeof input.label!=='string'||!input.label.trim()||input.label.trim().length>60||typeof (input.token??'')!=='string'||(input.token||'').length>1500||(/[^a-zA-Z0-9._~+/=-]/.test(input.token||'')))throw mcpError('mcp_invalid_config',400);
  const url=endpoint(input.url).href,id=crypto.randomUUID();
  if(input.token&&url.includes(input.token))throw mcpError('mcp_invalid_url',400);
  const {n}=await env.DB.prepare('SELECT COUNT(*) AS n FROM account_ai_mcp_servers WHERE account_id=?').bind(account).first();
@@ -240,10 +280,17 @@ export async function configureMcp(request,env,principal,options){
  return {ok:true};
 }
 
+export async function parallelMcpCredential(env,account,options){
+ await schema(env.DB);
+ const row=await parallelRow(env,account);
+ if(!row)return null;
+ return mcpAccessToken(env,row,oauthContext(options));
+}
+
 export async function externalMcpTools(env,account){
  await schema(env.DB);
  const rows=(await env.DB.prepare('SELECT id,label,url,revision,tools_json FROM account_ai_mcp_servers WHERE account_id=? AND enabled=1 ORDER BY label,id').bind(account).all()).results;
- const catalogs=rows.map(row=>JSON.parse(row.tools_json).map(tool=>({...tool,server:row.label,url:row.url,revision:row.revision})));
+ const catalogs=rows.filter(row=>!isParallelBuiltin(row)).map(row=>JSON.parse(row.tools_json).map(tool=>({...tool,server:row.label,url:row.url,revision:row.revision})));
  const available=new Map();
  let budget=catalogSchemaBudget;
  for(let index=0;index<12&&available.size<24;index++){

@@ -2,7 +2,7 @@ import {enrichWebSearchResults} from './ai-web-sources.mjs';
 import {WEB_SEARCH,webSearchTool,webSearchAvailable,webSearchQuery,webSearchResultLimit,runWebSearch,webSearchUsage} from './ai-web-search.mjs';
 import {runParallelMcpSearch} from './ai-parallel-search.mjs';
 import {AI_CHAT_MAX_BODY_BYTES,AI_CHAT_MAX_MESSAGES,AI_CHAT_MAX_TEXT_CHARS} from '../shared/ai-context-policy.mjs';
-import {configureMcp,mcpOAuthPage,externalMcpTools,approvedMcpTool,runApprovedMcp} from './ai-external-mcp.mjs';
+import {configureMcp,mcpOAuthPage,externalMcpTools,approvedMcpTool,runApprovedMcp,parallelMcpCredential} from './ai-external-mcp.mjs';
 import {readPreferences,writePreferences} from './ai-preferences.mjs';
 import {preferenceContext,MEMORY_INSTRUCTION,parseMemories} from '../shared/ai-preferences.mjs';
 import {boundedJSON,object,READ,WRITE} from './mcp-common.mjs';
@@ -158,7 +158,13 @@ async function searchApprovedWeb(env,account,args,signal,launchBrowser,fetcher){
   primary?(async()=>{const result=await runWebSearch(env,account,{query,maxResults},signal,launchBrowser);
    return result.results?.length?{...result,results:await enrichWebSearchResults(result.results,query,signal,fetcher)}:result;
   })().catch(()=>({results:[],error:{code:'web_search_unavailable',message:'内置联网搜索暂不可用。'}})):Promise.resolve(null),
-  advanced?runParallelMcpSearch(query,signal,fetcher,maxResults).catch(error=>({results:[],error:{code:error?.upstreamStatus===429?'parallel_rate_limited':'parallel_unavailable',message:error?.upstreamStatus===429?'Parallel 匿名访问已限流，请稍后重试。':'联网搜索进阶版暂不可用。'}})):Promise.resolve(null)
+  advanced?(async()=>{
+   const mode=prefs.parallelMode==='account'?'account':'anonymous';
+   const token=mode==='account'?await parallelMcpCredential(env,account,{open,seal,fetcher}):'';
+   if(mode==='account'&&!token)return {results:[],error:{code:'mcp_oauth_reconnect',message:'请重新登录 Parallel，或切换至匿名搜索。'}};
+   return runParallelMcpSearch(query,signal,fetcher,maxResults,{mode,token});
+  })().catch(error=>({results:[],error:{code:error?.upstreamStatus===429?'parallel_rate_limited':error?.code==='mcp_oauth_reconnect'?'mcp_oauth_reconnect':'parallel_unavailable',
+   message:error?.upstreamStatus===429?'Parallel 搜索已限流，请稍后重试。':error?.code==='mcp_oauth_reconnect'?'Parallel 登录已过期，请重新授权或切换匿名模式。':'联网搜索进阶版暂不可用。'}})):Promise.resolve(null)
  ]);
  const baseResults=(first?.results||[]).map(item=>({...item,source:first?.source||'duckduckgo'}));
  const parallelResults=second?.results||[],both=baseResults.length&&parallelResults.length;
@@ -167,11 +173,15 @@ async function searchApprovedWeb(env,account,args,signal,launchBrowser,fetcher){
   if(baseResults[index])candidates.push(baseResults[index]);
   if(parallelResults[index])candidates.push(parallelResults[index]);
  }
- const seen=new Set(),results=candidates.filter(item=>{if(seen.has(item.url))return false;seen.add(item.url);return true}).slice(0,maxResults);
+ const seen=new Set(),unique=candidates.filter(item=>{if(seen.has(item.url))return false;seen.add(item.url);return true}),results=unique.slice(0,maxResults);
  const source=both?'combined':parallelResults.length?'parallel':first?.source||'duckduckgo';
  const providers={primary:primary?{ok:baseResults.length>0,...(first?.error?{error:first.error.code}:{})}:base?{skipped:'quota_exhausted'}:{skipped:'disabled'},parallel:advanced?{ok:parallelResults.length>0,...(second?.error?{error:second.error.code}:{})}:{skipped:'disabled'}};
- if(results.length)return {results,source,providers};
- return {results:[],browserSearch:true,reason:first?.reason||'unavailable',source,providers,error:{code:second?.error?.code||first?.error?.code||'web_search_unavailable',message:advanced?second?.error?.message||'联网搜索进阶版没有返回结果。':first?.error?.message||'暂未取得可用搜索结果。'}};
+ const diagnostics={requested:maxResults,duckduckgo:first?.diagnostics||null,parallel:second?.diagnostics||null,
+   duplicatesRemoved:candidates.length-unique.length,returned:results.length,shortfall:Math.max(0,maxResults-results.length)};
+  console.info(JSON.stringify({event:'ai_search_results',requested:maxResults,returned:results.length,duplicates:diagnostics.duplicatesRemoved,
+   providers:{primary:baseResults.length,parallel:parallelResults.length},parallelMode:prefs.parallelMode||'anonymous'}));
+  if(results.length)return {results,source,providers,diagnostics};
+ return {results:[],browserSearch:true,reason:first?.reason||'unavailable',source,providers,diagnostics,error:{code:second?.error?.code||first?.error?.code||'web_search_unavailable',message:advanced?second?.error?.message||'联网搜索进阶版没有返回结果。':first?.error?.message||'暂未取得可用搜索结果。'}};
 }
 
 export async function aiAPI(request,env,principal,{workspaceId,fetcher=fetch,launchSearchBrowser,identityWorker=false}={}){

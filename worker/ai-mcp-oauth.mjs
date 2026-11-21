@@ -45,7 +45,8 @@ async function discover(resource,context){
  }
  if(!protectedResource)throw invalid('mcp_oauth_unavailable');
  const audience=safeUrl(protectedResource.resource);
- if(audience.href!==resource.href&&audience.href!==resource.origin+'/')throw invalid('mcp_oauth_unavailable');
+ const unqualifiedResource=new URL(resource.href);unqualifiedResource.search='';
+  if(audience.href!==resource.href&&audience.href!==unqualifiedResource.href&&audience.href!==resource.origin+'/')throw invalid('mcp_oauth_unavailable');
  const issuer=safeUrl(protectedResource.authorization_servers?.[0]);
  const suffix=issuer.pathname.replace(/\/$/,'');
  let as;
@@ -124,7 +125,7 @@ export async function beginMcpOAuth(env,request,account,input,context){
  for(const [key,value] of Object.entries({response_type:'code',client_id:clientId,redirect_uri:redirectUri,code_challenge:challenge,code_challenge_method:'S256',state,resource:metadata.resource,scope:metadata.scope})){
   if(value)authorization.searchParams.set(key,value);
  }
- const config={label:input.label.trim(),url:resource.href,resource:metadata.resource,tokenEndpoint:metadata.tokenEndpoint,issuer:metadata.issuer,requireIssuer:metadata.requireIssuer,clientId,clientAuth,clientSecret,redirectUri,verifier,authorization:authorization.href,reconnectId:input.id||'',reconnectRevision:input.reconnectRevision||''};
+ const config={label:input.label.trim(),url:resource.href,resource:metadata.resource,tokenEndpoint:metadata.tokenEndpoint,issuer:metadata.issuer,requireIssuer:metadata.requireIssuer,clientId,clientAuth,clientSecret,redirectUri,verifier,authorization:authorization.href,reconnectId:input.id||'',reconnectRevision:input.reconnectRevision||'',builtin:input.builtin==='parallel'?'parallel':''};
  const wrapped=await seal(env,account,id,JSON.stringify(config));
  await schema(env.DB);
  await env.DB.prepare('DELETE FROM account_ai_mcp_oauth_flows WHERE expires_at<=?').bind(Date.now()).run();

@@ -64,7 +64,7 @@ async function inspectResults(page,site){
   if(!url||!item.title||seen.has(url))continue;
   seen.add(url);results.push({...item,url});
  }
- return {status:status==='results'&&!results.length?'parse_failed':status,results};
+ return {status:status==='results'&&!results.length?'parse_failed':status,results,raw:entries.length,filtered:entries.length-results.length};
 }
 
 export async function readRenderedSearch(page){
@@ -79,7 +79,7 @@ function englishKeywords(query){
 }
 function relevantResults(results,keywords){
  return results.filter(item=>{
-  const words=new Set(searchWords(item.title+' '+new URL(item.url).hostname));
+  const words=new Set(searchWords(item.title+' '+(item.description||'')+' '+new URL(item.url).hostname));
   return keywords.filter(word=>words.has(word)).length>=Math.min(keywords.length,2);
  });
 }
@@ -103,7 +103,39 @@ export async function configureMobileSearchPage(page,browserVersion,query){
  });
 }
 
-async function crawlSearchPage(browser,site,query,signal,deadline){
+// DuckDuckGo initially renders only part of its results. Expand at most three
+// more batches on the same search page; request interception still restricts
+// navigation and assets to the search provider's public hosts.
+export async function expandDuckDuckGoResults(page,initial,target,signal,deadline){
+ let current=initial,loads=0;
+ for(let attempt=0;attempt<3&&current.results.length<target&&deadline-Date.now()>900;attempt++){
+  signal.throwIfAborted();
+  const before=current.raw||current.results.length;
+  const activated=await page.evaluate(()=>{
+   const controls=[...document.querySelectorAll('button,a')];
+   const more=controls.find(node=>node instanceof HTMLElement&&!node.hasAttribute('disabled')&&
+    (node.matches('#more-results, .result--more__btn, [data-testid="more-results"], [data-testid="more-results-button"]')||
+     /^(more results|show more|load more|更多结果|查看更多)$/i.test((node.textContent||'').trim())));
+   if(more){more.click();return true}
+   if(document.scrollingElement&&document.scrollingElement.scrollHeight>document.scrollingElement.clientHeight){
+    document.scrollingElement.scrollTop=document.scrollingElement.scrollHeight;return true;
+   }
+   return false;
+  });
+  if(activated!==true)break;
+  const available=Math.min(1900,deadline-Date.now()-150);
+  if(available<200)break;
+  try{await page.waitForFunction((selector,count)=>document.querySelectorAll(selector).length>count,{timeout:available},duckduckgo.link,before)}
+  catch(error){if(error?.name!=='TimeoutError')break}
+  signal.throwIfAborted();
+  const next=await inspectResults(page,duckduckgo);
+  if(next.results.length<=current.results.length)break;
+  current=next;loads++;
+ }
+ return {...current,loads};
+}
+
+async function crawlSearchPage(browser,site,query,signal,deadline,target=WEB_SEARCH_DEFAULT_RESULTS){
  const started=Date.now();
  let stage='page',status='unavailable',page;
  try{
@@ -132,7 +164,8 @@ async function crawlSearchPage(browser,site,query,signal,deadline){
   try{await page.waitForSelector([site.link,site.empty,challenge].join(', '),{timeout:remaining(2200)})}
   catch(error){if(error.name!=='TimeoutError')throw error}
   signal.throwIfAborted();
-  const outcome=await inspectResults(page,site);
+  let outcome=await inspectResults(page,site);
+  if(site===duckduckgo&&outcome.results.length&&outcome.results.length<target&&deadline-Date.now()>900)outcome=await expandDuckDuckGoResults(page,outcome,target,signal,deadline);
   status=outcome.status;
   return outcome;
  }catch(error){
@@ -211,15 +244,25 @@ export async function runWebSearch(env,account,args,signal,launchBrowser=binding
    searchSignal.throwIfAborted();
    browser=await launchBrowser(env.WEB_SEARCH_BROWSER);
    searchSignal.throwIfAborted();
-   const primary=await crawlSearchPage(browser,duckduckgo,query,searchSignal,deadline);
-   if(primary.results.length)return {results:primary.results.slice(0,maxResults),source:'duckduckgo'};
+   const primary=await crawlSearchPage(browser,duckduckgo,query,searchSignal,deadline,maxResults);
+   let secondary={results:[],raw:0,filtered:0},matched=[];
    const keywords=englishKeywords(query);
-   if(keywords.length&&deadline-Date.now()>1500){
-    const backup=await crawlSearchPage(browser,wiby,query,searchSignal,deadline);
-    const results=relevantResults(backup.results,keywords).slice(0,maxResults);
-    if(results.length)return {results,source:'wiby'};
+   // A partial DDG result page no longer prevents a useful Wiby fallback.
+   // Wiby is constrained to English keywords and ranked conservatively.
+   if(primary.results.length<maxResults&&keywords.length&&deadline-Date.now()>1800){
+    secondary=await crawlSearchPage(browser,wiby,query,searchSignal,deadline,maxResults);
+    matched=relevantResults(secondary.results,keywords);
    }
-   return searchFailure(primary.status);
+   const seen=new Set(),unique=[];
+   for(const item of [...primary.results.map(r=>({...r,source:'duckduckgo'})),...matched.map(r=>({...r,source:'wiby'}))]){
+    if(seen.has(item.url))continue;
+    seen.add(item.url);unique.push(item);
+   }
+   const results=unique.slice(0,maxResults);
+   const diagnostics={requested:maxResults,duckduckgo:{raw:primary.raw||0,accepted:primary.results.length,loads:primary.loads||0},
+    wiby:{raw:secondary.raw||0,accepted:matched.length},duplicatesRemoved:primary.results.length+matched.length-unique.length,returned:results.length};
+   if(results.length)return {results,source:primary.results.length?'duckduckgo':'wiby',diagnostics};
+   return {...searchFailure(primary.status),diagnostics};
   }finally{close();await closing}
  };
  try{

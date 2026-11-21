@@ -3,6 +3,8 @@ on:
   pull_request:
     paths:
       - 'worker/mcp*.mjs'
+      - 'worker/ai*.mjs'
+      - 'scripts/ai-byok-test.mjs'
       - 'worker/index.mjs'
       - 'worker/workspace-*.mjs'
       - 'worker/oauth-*.mjs'
@@ -29,6 +31,8 @@ on:
     branches: [main]
     paths:
       - 'worker/mcp*.mjs'
+      - 'worker/ai*.mjs'
+      - 'scripts/ai-byok-test.mjs'
       - 'worker/index.mjs'
       - 'worker/workspace-*.mjs'
       - 'worker/oauth-*.mjs'
