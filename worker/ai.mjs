@@ -147,7 +147,7 @@ export const isAiMcpOAuthPage=url=>['/api/ai/mcp/oauth/authorize','/api/ai/mcp/o
 // parallel. Parallel has its own anonymous rate limits; it does not consume
 // Cloudflare Browser Rendering quota. Approval snapshots lock recipients.
 async function searchApprovedWeb(env,account,args,signal,launchBrowser,fetcher){
- const query=webSearchQuery({query:args.query,maxResults:args.maxResults}),maxResults=webSearchResultLimit(args),prefs=await readPreferences(env,account);
+ const query=webSearchQuery({query:args.query,...(args.maxResults===undefined?{}:{maxResults:args.maxResults})}),maxResults=webSearchResultLimit(args),prefs=await readPreferences(env,account);
  const allowed=args.providers;
  const base=prefs.webSearch&&webSearchAvailable(env)&&allowed?.primary!==false&&(!args.requireAlways||prefs.webSearchApproval==='always');
  const quota=base?await webSearchUsage(env,account):null;
