@@ -28,6 +28,15 @@ try{
  ]);
  await crawlerPage.evaluate(()=>document.body.insertAdjacentHTML('afterbegin','<form id="challenge-form"></form>'));
  assert.deepEqual(await readRenderedSearch(crawlerPage),[],'A challenge page is handed off to the user');
+ const nativeSearchJava=readFileSync('app/src/main/java/com/feoearth/easybook/WebSearchActivity.java','utf8');
+ const nativeReader=nativeSearchJava.match(/READ_RESULTS = """([\s\S]*?)""";/)[1].replaceAll('\\\\','\\');
+ await crawlerPage.route('https://duckduckgo.com/**',route=>route.fulfill({contentType:'text/html',body:`
+  <article data-testid="result"><a data-testid="result-title-a" href="https://example.com/source">Source</a>
+  <p data-result="snippet">Public snippet</p></article>`}));
+ await crawlerPage.goto('https://duckduckgo.com/?q=fixture');
+ assert.deepEqual(await crawlerPage.evaluate(nativeReader),[{url:'https://example.com/source',title:'Source',description:'Public snippet'}]);
+ await crawlerPage.evaluate(()=>document.body.insertAdjacentHTML('afterbegin','<form id="challenge-form"></form>'));
+ assert.deepEqual(await crawlerPage.evaluate(nativeReader),[],'Android extraction leaves challenge forms alone');
  await crawlerPage.close();
  for(const [name,width,height]of [['desktop',1440,1000],['mobile',390,844]]){
   const context=await browser.newContext({viewport:{width,height},serviceWorkers:'block',locale:'zh-CN'});

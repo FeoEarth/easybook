@@ -43,6 +43,8 @@ public class MainActivity extends Activity {
     private static final ExecutorService syncIo=Executors.newSingleThreadExecutor();
     private String pendingExport;
     private String attachmentSpace,attachmentNote,attachmentExportName;private long attachmentGeneration;private File attachmentExport;private boolean aiPickerOpen,aiSpeechOpen;
+    private String aiSearchToken;
+    private long aiSearchGeneration;
     private final ExecutorService io = Executors.newSingleThreadExecutor();
     private final ExecutorService dockIo = Executors.newSingleThreadExecutor();
     private static String operationErrorCode(Exception e){
@@ -376,6 +378,18 @@ public class MainActivity extends Activity {
             }
             case "ai.local.cancel":localAiEngine.cancel();return new JSONObject().put("accepted",true);
             case "ai.mcp.open":nativeAccount.openMcpOAuth(bounded(args,"url",2048));return new JSONObject().put("externalBrowser",true);
+            case "ai.web.search.assist":{
+                String query=bounded(args,"query",400).trim(),token=bounded(args,"token",70);
+                if(query.isEmpty()||!token.matches("[a-f0-9-]{20,70}"))throw new IllegalArgumentException("Invalid search request");
+                runOnUiThread(()->{
+                    if(destroyed||generation!=documentGeneration||serverSwitching||!repository.isActiveProfile())return;
+                    if(aiSearchToken!=null){deliverAiSearch(token,null);return;}
+                    aiSearchToken=token;aiSearchGeneration=generation;
+                    startActivityForResult(new Intent(this,WebSearchActivity.class)
+                        .putExtra(WebSearchActivity.QUERY,query).putExtra(WebSearchActivity.TOKEN,token),WebSearchActivity.REQUEST);
+                });
+                return new JSONObject().put("accepted",true);
+            }
             case "ai.web.search.open":{
                 String query=bounded(args,"query",400).trim();
                 if(query.isEmpty())throw new IllegalArgumentException("Search query required");
@@ -549,8 +563,22 @@ public class MainActivity extends Activity {
         }); }
     }
     private void notifyJs(String text) { web.evaluateJavascript("window.showNativeMessage && window.showNativeMessage("+JSONObject.quote(text)+")",null); }
+    private void deliverAiSearch(String token,String results){
+        if(destroyed||serverSwitching||!ready||!repository.isActiveProfile()||!LOCAL.equals(web.getUrl()))return;
+        web.evaluateJavascript("window.easybookWebSearchResult&&window.easybookWebSearchResult("
+            +JSONObject.quote(token)+","+(results==null?"null":JSONObject.quote(results))+")",null);
+    }
     @Override protected void onActivityResult(int request, int result, Intent data) {
         super.onActivityResult(request, result, data);
+        if(request==WebSearchActivity.REQUEST){
+            String token=aiSearchToken;aiSearchToken=null;
+            if(token!=null&&aiSearchGeneration==documentGeneration){
+                boolean matched=result==RESULT_OK&&data!=null&&token.equals(data.getStringExtra(WebSearchActivity.TOKEN));
+                String results=matched?data.getStringExtra(WebSearchActivity.RESULTS):null;
+                deliverAiSearch(token,results!=null&&results.length()<=20000?results:null);
+            }
+            return;
+        }
         if(request==85){if(result==RESULT_OK&&data!=null&&nativeAccount!=null&&repository.profile().origin.equals(data.getStringExtra(QrScanActivity.EXTRA_SERVER_ORIGIN)))nativeAccount.approveScannedQr(data.getStringExtra(QrScanActivity.EXTRA_CHALLENGE_ID));return;}
         if(request==87){if(!aiSpeechOpen)return;aiSpeechOpen=false;if(result==RESULT_OK&&data!=null){java.util.ArrayList<String> texts=data.getStringArrayListExtra(android.speech.RecognizerIntent.EXTRA_RESULTS);if(texts!=null&&!texts.isEmpty()&&texts.get(0)!=null)web.evaluateJavascript("window.receiveAiTranscript&&window.receiveAiTranscript("+JSONObject.quote(texts.get(0))+")",null);}return;}
         if(request==86){boolean pendingPicker=aiPickerOpen;aiPickerOpen=false;if(!pendingPicker)return;if(result!=RESULT_OK||data==null||data.getData()==null)return;final Uri aiUri=data.getData();final long aiGeneration=documentGeneration;

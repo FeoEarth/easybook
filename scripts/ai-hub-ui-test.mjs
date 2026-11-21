@@ -99,12 +99,15 @@ try{
  app.cloud(async()=>({message:{content:'请确认搜索'},approval:fallbackProposal}));
  await app.send('再联网搜索一次');
  app.execute(async()=>({ok:true,result:{results:[],browserSearch:true}}));
- app.cloud(async body=>{assert.ok(body.messages.some(m=>m.content.includes('browserSearch')));return {message:{content:'可在浏览器继续搜索'}}});
- await app.approve(true);
+ let resumed=0;app.cloud(async()=>{resumed++;return {message:{content:'不应自动续答'}}});
+ await app.approve(true);assert.equal(resumed,0,'Failed search waits for the user');
  let opened;w.open=url=>{opened=url};
  $('aiHubMessages').querySelector('[data-ai-web-fallback]').click();
  assert.equal(new URL(opened).searchParams.get('q'),'公开搜索关键词');
  assert.equal(new URL(opened).origin,'https://duckduckgo.com');
+ $('aiHubMessages').querySelector('[data-ai-web-end]').click();
+ assert.equal($('aiHubMessages').querySelector('[data-ai-web-fallback]'),null);
+ assert.equal(resumed,0);
  app.seed([{role:'user',content:'测试摘要'},{role:'assistant',status:'done',content:'<img src=x onerror=alert(1)> **真实内容**'}]);
  app.select(app.session().id);
  const preview=$('aiSidebarList').querySelector('.ai-session-preview');

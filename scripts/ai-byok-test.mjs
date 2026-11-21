@@ -161,7 +161,8 @@ assert.equal((await aiAPI(request('/api/ai/preferences'),env,{kind:'anonymous'})
 
 // The search plugin shares the approval flow and works independently of third-party MCP.
 {
- let searches=0,closed=0,exposed=false,challengePage=true;
+ let searches=0,closed=0,exposed=false,primary='blocked',backup='no_results',query='current public docs';
+ const visits=[];
  const binding={},searchEnv={...env,WEB_SEARCH_BROWSER:binding};
  const launchSearchBrowser=async actual=>{
   assert.equal(actual,binding);
@@ -169,21 +170,28 @@ assert.equal((await aiAPI(request('/api/ai/preferences'),env,{kind:'anonymous'})
   return {
    async close(){closed++},
    async newPage(){
+    let address,site,phase;
     return {
      async setRequestInterception(enabled){assert.equal(enabled,true)},
      on(event,handler){
       assert.equal(event,'request');
-      handler({url:()=> 'https://duckduckgo.com/search.js',resourceType:()=> 'script',async continue(){},async abort(){assert.fail('Search scripts must load')}});
       handler({url:()=> 'https://example.com/track',resourceType:()=> 'fetch',async continue(){assert.fail('Third-party requests must be blocked')},async abort(){}});
      },
      async goto(url,options){
-      assert.equal(url,'https://duckduckgo.com/?q=current+public+docs');
+      address=url;
+      const target=new URL(url);
+      site=target.hostname==='wiby.me'?'wiby':'duckduckgo';visits.push(site);
+      assert.equal(target.searchParams.get('q'),query);
       assert.equal(options.waitUntil,'domcontentloaded');
-      return {ok:()=>!challengePage};
+      phase=site==='wiby'?backup:primary;
+      if(phase==='timeout')throw Object.assign(Error('navigation timeout'),{name:'TimeoutError'});
+      return {ok:()=>true,status:()=>phase==='blocked'?202:200};
      },
-     url:()=> 'https://duckduckgo.com/?q=current+public+docs',
-     async waitForSelector(selector){assert.match(selector,/result/)},
-     async evaluate(){return [{url:'https://example.com/docs',title:'Docs',description:'Search snippet'}]}
+     url:()=>address,
+     async waitForSelector(selector){assert.match(selector,/result|tlink/)},
+     async evaluate(){return {status:phase,entries:phase==='results'?[{
+      url:'https://example.com/docs',title:site==='wiby'?'Public docs':'Docs',description:'Search snippet'
+     }]:[]}}
     };
    }
   };
@@ -192,7 +200,7 @@ assert.equal((await aiAPI(request('/api/ai/preferences'),env,{kind:'anonymous'})
   assert.equal(new URL(url).hostname,'api.openai.com');
   const payload=JSON.parse(init.body);
   exposed=payload.tools.some(tool=>tool.function.name==='web_search');
-  return Response.json({choices:[{message:exposed?{role:'assistant',tool_calls:[{id:'search-call',type:'function',function:{name:'web_search',arguments:'{"query":"current public docs"}'}}]}:{role:'assistant',content:'No web search'}}]});
+  return Response.json({choices:[{message:exposed?{role:'assistant',tool_calls:[{id:'search-call',type:'function',function:{name:'web_search',arguments:JSON.stringify({query})}}]}:{role:'assistant',content:'No web search'}}]});
  };
  const api=(path,method,body,p=principal)=>aiAPI(request('/api/ai/'+path,method,body),searchEnv,p,{workspaceId:workspace,fetcher:modelFetcher,launchSearchBrowser});
  const chat=(mode='conversation')=>api('chat','POST',{credentialId:openaiId,mode,messages:[{role:'user',content:'请联网搜索'}]});
@@ -205,7 +213,9 @@ assert.equal((await aiAPI(request('/api/ai/preferences'),env,{kind:'anonymous'})
  assert.equal(proposal.tool,'web_search');assert.equal(searches,0);
  assert.equal((await api('execute','POST',{approvalId:proposal.id},{...principal,accountId:otherAccount})).status,403);
  const execution=await api('execute','POST',{approvalId:proposal.id});
- assert.deepEqual(await execution.json(),{ok:true,tool:'web_search',result:{results:[],browserSearch:true}});
+ const failedSearch=await execution.json();
+ assert.equal(failedSearch.ok,false);assert.equal(failedSearch.result.browserSearch,true);assert.equal(failedSearch.result.reason,'blocked');
+ assert.deepEqual(visits.splice(0),['duckduckgo','wiby']);
  assert.equal(searches,1);assert.equal(closed,1,'Browser closes after an unsuccessful search');
  assert.equal((await api('execute','POST',{approvalId:proposal.id})).status,409);
  const pending=(await (await chat()).json()).approval;
@@ -213,16 +223,31 @@ assert.equal((await aiAPI(request('/api/ai/preferences'),env,{kind:'anonymous'})
  assert.equal((await api('execute','POST',{approvalId:pending.id})).status,409);
  assert.equal(searches,1);
  assert.equal((await api('mcp','PUT',{webSearch:true})).status,200);
- challengePage=false;
+ primary='results';
  const match=(await (await chat()).json()).approval;
  assert.deepEqual(await (await api('execute','POST',{approvalId:match.id})).json(),{
-  ok:true,tool:'web_search',result:{results:[{url:'https://example.com/docs',title:'Docs',description:'Search snippet'}]}
+  ok:true,tool:'web_search',result:{source:'duckduckgo',results:[{url:'https://example.com/docs',title:'Docs',description:'Search snippet'}]}
  });
  assert.equal(closed,2,'Browser closes after reading successful results');
+ assert.deepEqual(visits.splice(0),['duckduckgo']);
+ const searchOnce=async()=>{
+  const approval=(await (await chat()).json()).approval;
+  return (await api('execute','POST',{approvalId:approval.id})).json();
+ };
+ primary='timeout';backup='results';
+ assert.equal((await searchOnce()).result.source,'wiby');
+ assert.deepEqual(visits.splice(0),['duckduckgo','wiby']);
+ primary='no_results';query='Cloudflare Workers documentation';
+ assert.equal((await searchOnce()).result.reason,'no_results','Unrelated backup results are withheld');
+ assert.deepEqual(visits.splice(0),['duckduckgo','wiby']);
+ primary='parse_failed';query='人工智能';
+ assert.equal((await searchOnce()).result.reason,'parse_failed');
+ assert.deepEqual(visits.splice(0),['duckduckgo'],'Skip Wiby for non-English queries');
+ assert.equal(sqlite.prepare("SELECT count FROM account_rate_limits WHERE bucket LIKE 'ai-web-search:%'").get().count,5,'One quota charge per approved query');
  sqlite.prepare("UPDATE account_rate_limits SET count=20 WHERE bucket LIKE 'ai-web-search:%'").run();
  const capped=(await (await chat()).json()).approval;
  assert.equal((await (await api('execute','POST',{approvalId:capped.id})).json()).error.code,'web_search_limit');
- assert.equal(searches,2,'Usage above the daily limit does not reach the search service');
+ assert.equal(searches,5,'Usage above the daily limit does not reach the search service');
  await api('mcp','PUT',{webSearch:false});
 }
 

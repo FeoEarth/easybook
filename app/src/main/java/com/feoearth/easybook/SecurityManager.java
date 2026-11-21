@@ -49,6 +49,7 @@ public final class SecurityManager {
             case "conflict.resolve":fields=fields("id","choice");break;
             case "account.manage":fields=fields("action","id","workspace","cursor","category","choices","confirm");break;
             case "ai.mcp.open":fields=fields("url");break;
+            case "ai.web.search.assist":fields=fields("query","token");break;
             case "ai.web.search.open":fields=fields("query");break;
             case "ai.mcp":fields=fields("method","config");break;
             case "ai.preferences":fields=fields("method","preferences");break;
