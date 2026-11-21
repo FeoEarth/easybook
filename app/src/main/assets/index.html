@@ -1559,7 +1559,7 @@ async function executeAiSandboxApproval(pending,session){
  session.sandboxCalls=(session.sandboxCalls||0)+1;
  if(session.sandboxCalls>6)throw Error('本轮沙箱工具调用次数已达上限，请重新发送明确的新任务');
  const module=await import('/agent-sandbox-client.mjs');
- return module.executeSandboxTool({tool:pending.tool,args:pending.arguments,workspace:localSpace,sessionId:session.id,native});
+ return module.executeSandboxTool({tool:pending.tool,args:pending.arguments,workspace:localSpace,sessionId:session.id,native,authorize:()=>sandboxSessionActive(session)&&currentAiHubSession()===session&&localSpace===pending.workspace&&session.pendingApproval===pending});
 }
 const aiLocalPending=new Map();
 window.easybookLocalAiEvent=event=>{
