@@ -153,7 +153,7 @@ async function searchApprovedWeb(env,account,args,signal,launchBrowser,fetcher){
  const quota=base?await webSearchUsage(env,account):null;
  const primary=base&&quota.remaining>0;
  const advanced=prefs.parallelSearch&&allowed?.parallel!==false;
- if(!primary&&!advanced)return {results:[],browserSearch:true,source:'none',error:{code:'web_search_unavailable',message:'联网搜索已关闭或内置额度用尽，且进阶版未启用。'}};
+ if(!primary&&!advanced){const limited=base&&quota?.remaining===0;return {results:[],browserSearch:true,reason:limited?'limit':'unavailable',source:base?'duckduckgo':'none',error:{code:limited?'web_search_limit':'web_search_unavailable',message:limited?(quota.tier==='member'?'会员本月自动搜索次数已达上限，请在浏览器中继续。':'今日自动搜索次数已达上限，请在浏览器中继续。'):'联网搜索已关闭，且进阶版未启用。'}};}
  const [first,second]=await Promise.all([
   primary?(async()=>{const result=await runWebSearch(env,account,{query},signal,launchBrowser);
    return result.results?.length?{...result,results:await enrichWebSearchResults(result.results,query,signal,fetcher)}:result;
@@ -167,7 +167,7 @@ async function searchApprovedWeb(env,account,args,signal,launchBrowser,fetcher){
  const source=both?'combined':parallelResults.length?'parallel':first?.source||'duckduckgo';
  const providers={primary:primary?{ok:baseResults.length>0,...(first?.error?{error:first.error.code}:{})}:base?{skipped:'quota_exhausted'}:{skipped:'disabled'},parallel:advanced?{ok:parallelResults.length>0,...(second?.error?{error:second.error.code}:{})}:{skipped:'disabled'}};
  if(results.length)return {results,source,providers};
- return {results:[],browserSearch:true,source,providers,error:{code:second?.error?.code||first?.error?.code||'web_search_unavailable',message:advanced?second?.error?.message||'联网搜索进阶版没有返回结果。':first?.error?.message||'暂未取得可用搜索结果。'}};
+ return {results:[],browserSearch:true,reason:first?.reason||'unavailable',source,providers,error:{code:second?.error?.code||first?.error?.code||'web_search_unavailable',message:advanced?second?.error?.message||'联网搜索进阶版没有返回结果。':first?.error?.message||'暂未取得可用搜索结果。'}};
 }
 
 export async function aiAPI(request,env,principal,{workspaceId,fetcher=fetch,launchSearchBrowser,identityWorker=false}={}){
@@ -275,8 +275,8 @@ export async function aiAPI(request,env,principal,{workspaceId,fetcher=fetch,lau
    const quota=settings.webSearch&&webSearchAvailable(env)?await webSearchUsage(env,principal.accountId):null;
    const primaryEnabled=!!quota?.remaining;
    const parallelEnabled=settings.parallelSearch===true;
-   const searchEnabled=(primaryEnabled||parallelEnabled)&&['conversation','agent'].includes(mode);
-   const autoSearch=searchEnabled&&(!primaryEnabled||settings.webSearchApproval==='always')&&(!parallelEnabled||settings.parallelSearchApproval==='always');
+   const searchEnabled=(settings.webSearch&&webSearchAvailable(env)||parallelEnabled)&&['conversation','agent'].includes(mode);
+   const autoSearch=searchEnabled&&(primaryEnabled||parallelEnabled)&&(!primaryEnabled||settings.webSearchApproval==='always')&&(!parallelEnabled||settings.parallelSearchApproval==='always');
    if(searchEnabled)tools.push({...webSearchTool,function:{...webSearchTool.function,description:webSearchTool.function.description+' Easybook 在启用两种搜索来源时并行查询；内置额度耗尽后仍可查询 Parallel MCP。只发送简短公开关键词，不要提供笔记正文或密钥。'}});
    const searchPolicy=searchEnabled?'\n'+webResearchInstruction(autoSearch)+'\nEasybook 内置搜索与 Parallel MCP 进阶搜索各自独立限额。两者启用时并行检索；内置额度用尽时 Parallel 仍可独立工作（可能被 Parallel 匿名限流）。仅引用搜索结果里的真实链接，不把搜索摘要当作已阅读全文。':'';
    const preferences=preferenceContext(settings);
@@ -310,7 +310,7 @@ export async function aiAPI(request,env,principal,{workspaceId,fetcher=fetch,lau
      try{args={query:webSearchQuery(args)}}catch{throw Object.assign(Error('Invalid search query'),{code:'invalid_search_query',status:400})}
     }
     const remote=external.get(name);
-    const providers=name===WEB_SEARCH?{primary:primaryEnabled&&currentSearch.webSearch,parallel:parallelEnabled&&currentSearch.parallelSearch}:null;
+    const providers=name===WEB_SEARCH?{primary:!!(currentSearch.webSearch&&webSearchAvailable(env)),parallel:parallelEnabled&&currentSearch.parallelSearch}:null;
     const serialized=JSON.stringify(remote?{revision:remote.revision,arguments:args}:providers?{...args,providers}:args);if(serialized.length>30000)throw Object.assign(Error('Tool arguments too large'),{code:'tool_arguments_too_large',status:413});
     await ensureAgentApprovalSchema(env);
     await env.DB.prepare('DELETE FROM ai_agent_approvals WHERE expires_at<?').bind(Date.now()-86400000).run();
