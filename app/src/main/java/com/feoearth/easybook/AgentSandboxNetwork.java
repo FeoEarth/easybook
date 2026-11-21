@@ -52,7 +52,15 @@ final class AgentSandboxNetwork {
     }
     private static boolean publicAddressBytes(byte[] bytes){
         int a=bytes[0]&255,b=bytes[1]&255,c=bytes[2]&255;
-        return a!=0&&a!=10&&a!=127&&a<224&&a!=169||a==169&&b!=254;
+        if(a==0||a==10||a==127||a>=224)return false;
+        if(a==100&&b>=64&&b<=127)return false; // CGNAT
+        if(a==169&&b==254)return false;
+        if(a==172&&b>=16&&b<=31)return false;
+        if(a==192&&(b==168||b==0&&c==0||b==0&&c==2||b==88&&c==99))return false;
+        if(a==198&&(b==18||b==19||b==51&&c==100))return false;
+        if(a==203&&b==0&&c==113)return false;
+        if(a==255)return false;
+        return true;
     }
     static JSONObject fetch(Context context,String input)throws Exception {
         if(!enabled(context))throw new SecurityException("Agent 执行环境未启用");
