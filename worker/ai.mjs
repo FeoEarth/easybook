@@ -275,7 +275,7 @@ export async function aiAPI(request,env,principal,{workspaceId,fetcher=fetch,lau
    const quota=settings.webSearch&&webSearchAvailable(env)?await webSearchUsage(env,principal.accountId):null;
    const primaryEnabled=!!quota?.remaining;
    const parallelEnabled=settings.parallelSearch===true;
-   const searchEnabled=(settings.webSearch&&webSearchAvailable(env)||parallelEnabled)&&['conversation','agent'].includes(mode);
+   const searchEnabled=(settings.webSearch&&webSearchAvailable(env)||parallelEnabled)&&['conversation','agent'].includes(input.mode);
    const autoSearch=searchEnabled&&(primaryEnabled||parallelEnabled)&&(!primaryEnabled||settings.webSearchApproval==='always')&&(!parallelEnabled||settings.parallelSearchApproval==='always');
    if(searchEnabled)tools.push({...webSearchTool,function:{...webSearchTool.function,description:webSearchTool.function.description+' Easybook 在启用两种搜索来源时并行查询；内置额度耗尽后仍可查询 Parallel MCP。只发送简短公开关键词，不要提供笔记正文或密钥。'}});
    const searchPolicy=searchEnabled?'\n'+webResearchInstruction(autoSearch)+'\nEasybook 内置搜索与 Parallel MCP 进阶搜索各自独立限额。两者启用时并行检索；内置额度用尽时 Parallel 仍可独立工作（可能被 Parallel 匿名限流）。仅引用搜索结果里的真实链接，不把搜索摘要当作已阅读全文。':'';
