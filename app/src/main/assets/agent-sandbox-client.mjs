@@ -68,7 +68,7 @@ export async function executeSandboxTool({tool,args,workspace,sessionId,native,s
  }
  if(args.language!=='javascript'||typeof args.code!=='string'||!args.code.trim()||args.code.length>10000)throw Error('当前只支持 JavaScript（最长 10000 字符）');
  if(!authorize())throw Error('沙箱会话授权已失效');
- const executionId=crypto.randomUUID(),frameOrigin='https://agent-sandbox.easybook.invalid',channel='easybook-agent-v1';
+ const executionId=crypto.randomUUID(),frameOrigin='https://'+crypto.randomUUID().replaceAll('-','')+'.agent-sandbox.easybook.invalid',channel='easybook-agent-v1';
  return new Promise((resolve,reject)=>{
   let frame,finished=false,committing=false,started=false;
   const cleanup=()=>{
