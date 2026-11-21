@@ -2323,7 +2323,11 @@ function aiWebSearchReceipt(message){
  const sources=webSearchSources(results);
  const links=sources.map(item=>'<li><a href="'+esc(item.pageUrl||item.url)+'" target="_blank" rel="noopener noreferrer" translate="no">'+esc(item.title)+'</a>'+(item.source==='parallel'?' <small>Parallel</small>':item.pageText?' <small>已读取正文</small>':'')+'</li>');
  const provider={duckduckgo:'DuckDuckGo',wiby:'Wiby',parallel:'Parallel MCP',combined:'双来源'}[message.receipt.result.source];
- return '<details><summary>'+esc(message.content)+' · '+sources.length+' 个结果'+(provider?' · '+provider:'')+'</summary>'+(links.length?'<ul>'+links.join('')+'</ul>':'')+'</details>';
+ const d=message.receipt.result.diagnostics,requested=Number.isInteger(d?.requested)?d.requested:0,duplicate=Number.isInteger(d?.duplicatesRemoved)?d.duplicatesRemoved:0;
+ const counts=d?'<p class="ai-note">请求 '+requested+' 条 · 最终 '+sources.length+' 条'+(duplicate?' · 去重 '+duplicate+' 条':'')+
+  (Number.isInteger(d?.duckduckgo?.duckduckgo?.loads)?' · DuckDuckGo 加载更多 '+d.duckduckgo.duckduckgo.loads+' 次':'')+
+  (d.parallel?.mode==='account'?' · Parallel 账户模式（可能计费）':d.parallel?.mode==='anonymous'?' · Parallel 匿名模式':'')+'</p>':'';
+ return '<details><summary>'+esc(message.content)+' · '+sources.length+' 个结果'+(provider?' · '+provider:'')+'</summary>'+counts+(links.length?'<ul>'+links.join('')+'</ul>':'')+'</details>';
 }
 function aiHubMessageHTML(message,index){
  if(message.role==='user')return '<div class="ai-message-body">'+esc(message.content)+'</div>';
