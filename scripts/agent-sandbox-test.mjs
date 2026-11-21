@@ -4,7 +4,8 @@ import vm from 'node:vm';
 
 const workerCode=readFileSync('app/src/main/assets/agent-sandbox-worker.js','utf8');
 new vm.Script(workerCode);
-new vm.Script(readFileSync('app/src/main/assets/index.html','utf8').match(/<script>([\\s\\S]*?)<\\/script>/)[1]);
+const html=readFileSync('app/src/main/assets/index.html','utf8');
+new vm.Script(html.split('<script>')[1].split('</script>')[0]);
 const source=readFileSync('shared/local-ai-protocol.mjs','utf8');
 assert.match(source,/sandbox_execute/);
 assert.match(readFileSync('worker/ai.mjs','utf8'),/localSandbox: true|localSandbox:true/);
