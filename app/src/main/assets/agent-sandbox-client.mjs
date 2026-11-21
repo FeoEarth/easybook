@@ -19,7 +19,11 @@ function database(){
  });
  return dbPending;
 }
-const scopeKey=(workspace,sessionId)=>encodeURIComponent(String(workspace))+':'+encodeURIComponent(String(sessionId));
+async function scopeKey(workspace,sessionId){
+ const bytes=new TextEncoder().encode(String(workspace)+'|'+String(sessionId));
+ const digest=new Uint8Array(await crypto.subtle.digest('SHA-256',bytes));
+ return [...digest].map(value=>value.toString(16).padStart(2,'0')).join('');
+}
 function txPromise(tx){return new Promise((resolve,reject)=>{tx.oncomplete=resolve;tx.onerror=()=>reject(tx.error||Error('文件存储失败'));tx.onabort=()=>reject(tx.error||Error('文件存储中断'))})}
 function checkFiles(files){
  const list=Object.entries(files||{});
@@ -49,12 +53,12 @@ async function writeFiles(scope,files){
 }
 const asError=error=>({code:'sandbox_error',message:String(error?.message||error||'沙箱执行失败').slice(0,800)});
 const toolNames=new Set(['sandbox_execute','sandbox_list_files','sandbox_read_file']);
-export async function executeSandboxTool({tool,args,workspace,sessionId,native,signal}){
+export async function executeSandboxTool({tool,args,workspace,sessionId,native,signal,authorize=()=>true}){
  if(!native||!toolNames.has(tool))throw Error('不支持的沙箱工具');
  const status=await native.call('sandbox.status');
  if(!status.enabled)throw Error('请先在 AI 设置中启用本地执行环境');
  if(signal?.aborted)throw new DOMException('已取消','AbortError');
- const scope=scopeKey(workspace,sessionId);
+ const scope=await scopeKey(workspace,sessionId);
  const files=await readFiles(scope);
  if(tool==='sandbox_list_files')return {ok:true,result:{files:Object.entries(files).map(([path,text])=>({path,bytes:new TextEncoder().encode(text).length}))}};
  if(tool==='sandbox_read_file'){
@@ -62,9 +66,10 @@ export async function executeSandboxTool({tool,args,workspace,sessionId,native,s
   return {ok:true,result:{path:args.path,content:files[args.path].slice(0,16000),truncated:files[args.path].length>16000}};
  }
  if(args.language!=='javascript'||typeof args.code!=='string'||!args.code.trim()||args.code.length>10000)throw Error('当前只支持 JavaScript（最长 10000 字符）');
+ if(!authorize())throw Error('沙箱会话授权已失效');
  const executionId=crypto.randomUUID();
  return new Promise((resolve,reject)=>{
-  let worker,finished=false;
+  let worker,finished=false,committing=false;
   const cleanup=()=>{clearTimeout(timer);signal?.removeEventListener('abort',cancel);worker?.terminate()};
   const end=(ok,value)=>{if(finished)return;finished=true;cleanup();ok?resolve(value):reject(value)};
   const cancel=()=>end(false,new DOMException('已取消','AbortError'));
@@ -81,10 +86,12 @@ export async function executeSandboxTool({tool,args,workspace,sessionId,native,s
      catch(error){if(!finished)worker.postMessage({type:'network-result',requestId:m.requestId,ok:false,error:String(error.message||error).slice(0,800)})}
      return;
     }
-    if(m.type!=='done')return;
+    if(m.type!=='done'||committing)return;
+    committing=true;
     if(!m.ok){end(true,{ok:false,result:{stdout:String(m.output||'').slice(0,16000)},error:asError(m.error)});return}
     try{
      checkFiles(m.files);
+     if(!authorize()||!(await native.call('sandbox.status')).enabled)throw Error('沙箱授权已撤销');
      // Only commit the files of this verified session after successful execution.
      await writeFiles(scope,m.files);
      end(true,{ok:true,result:{stdout:String(m.output||'').slice(0,16000),value:String(m.value||'').slice(0,4000),files:Object.keys(m.files)}});
