@@ -65,6 +65,10 @@ export default {async fetch(request,env){
  const principal={kind:'account',accountId:'synthetic'};
  if(incoming.pathname==='/setup'){
   await env.DB.prepare('CREATE TABLE IF NOT EXISTS accounts(id TEXT PRIMARY KEY)').run();
+  // MCP settings now exposes read-only search usage, backed by the same D1
+  // membership and quota tables that exist in the production database.
+  await env.DB.prepare('CREATE TABLE IF NOT EXISTS account_memberships(account_id TEXT PRIMARY KEY,permanent INTEGER NOT NULL DEFAULT 0,expires_at INTEGER NOT NULL DEFAULT 0)').run();
+  await env.DB.prepare('CREATE TABLE IF NOT EXISTS account_rate_limits(bucket TEXT PRIMARY KEY,count INTEGER NOT NULL,expires_at INTEGER NOT NULL)').run();
   await env.DB.prepare("INSERT OR IGNORE INTO accounts VALUES ('synthetic')").run();
   return aiAPI(req('/api/ai/mcp',{oauth:true,label:incoming.searchParams.get('label')||'test',url:resource}),env,principal,{fetcher:fixture});
  }
@@ -115,7 +119,9 @@ try{
  assert.equal(pending.status,200);
  assert.match(pending.message,/授权已保存/);
  assert.deepEqual(await get('/status?state='+pendingState),{status:'tools_pending'});
- const saved=(await get('/servers')).servers.find(server=>server.label==='needs-refresh');
+ const usageResponse=await get('/servers');
+ assert.deepEqual({tier:usageResponse.usage.webSearch.tier,used:usageResponse.usage.webSearch.used,limit:usageResponse.usage.webSearch.limit},{tier:'free',used:0,limit:15},'MCP GET returns read-only search usage');
+ const saved=usageResponse.servers.find(server=>server.label==='needs-refresh');
  assert.ok(saved.authenticated);
  assert.deepEqual(saved.tools,[]);
  for(const format of ['json','event-stream']){
