@@ -40,7 +40,8 @@ self.onmessage=async event=>{
     return response;
    }
   });
-  const execute=new Object.getPrototypeOf(async function(){}).constructor('sandbox','print','console','"use strict";\n'+code);
+  const AsyncFunction=Object.getPrototypeOf(async function(){}).constructor;
+  const execute=new AsyncFunction('sandbox','print','console','"use strict";\n'+code);
   const value=await execute(sandbox,say,Object.freeze({log:say,error:say,warn:say}));
   self.postMessage({type:'done',id,ok:true,output:logs.join('\n').slice(0,MAX_OUTPUT),value:typeof value==='undefined'?'':String(typeof value==='string'?value:JSON.stringify(value)).slice(0,4000),files:Object.fromEntries(files)});
  }catch(e){self.postMessage({type:'done',id,ok:false,error:errorText(e),output:logs.join('\n').slice(0,MAX_OUTPUT)})}
