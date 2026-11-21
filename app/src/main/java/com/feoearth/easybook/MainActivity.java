@@ -205,16 +205,31 @@ public class MainActivity extends Activity {
                         return new WebResourceResponse("application/javascript","UTF-8",200,"OK",headers,getAssets().open("agent-sandbox-client.mjs"));
                     }catch(IOException error){return new WebResourceResponse("text/plain","UTF-8",404,"Not Found",Collections.emptyMap(),new ByteArrayInputStream(new byte[0]));}
                 }
-                if ("https://appassets.androidplatform.net/agent-sandbox-worker.js".equals(u.toString())&&"GET".equals(r.getMethod())) {
+                // Run generated code on a dedicated synthetic HTTPS origin, never
+                // on appassets, where the Easybook IndexedDB and origin-bound bridge live.
+                if("GET".equals(r.getMethod())&&"https".equals(u.getScheme())&&"agent-sandbox.easybook.invalid".equals(u.getHost())
+                    &&(u.getPort()==-1||u.getPort()==443)&&u.getUserInfo()==null&&u.getQuery()==null&&u.getFragment()==null){
                     if(!AgentSandboxNetwork.enabled(MainActivity.this))return new WebResourceResponse("text/plain","UTF-8",403,"Disabled",Collections.emptyMap(),new ByteArrayInputStream(new byte[0]));
+                    String name,mime,csp;
+                    switch(u.getPath()){
+                        case "/runner.html":
+                            name="agent-sandbox-frame.html";mime="text/html";
+                            csp="default-src 'none'; script-src 'self'; worker-src 'self'; connect-src 'none'; base-uri 'none'; form-action 'none'";break;
+                        case "/frame.js":
+                            name="agent-sandbox-frame.js";mime="application/javascript";
+                            csp="default-src 'none'; script-src 'self'; connect-src 'none'";break;
+                        case "/worker.js":
+                            name="agent-sandbox-worker.js";mime="application/javascript";
+                            csp="default-src 'none'; script-src 'unsafe-eval'; connect-src 'none'";break;
+                        default:
+                            return new WebResourceResponse("text/plain","UTF-8",404,"Not Found",Collections.emptyMap(),new ByteArrayInputStream(new byte[0]));
+                    }
                     try{
                         Map<String,String> headers=new HashMap<>();
                         headers.put("X-Content-Type-Options","nosniff");
                         headers.put("Cache-Control","no-store");
-                        // Only this worker may interpret dynamic code. The main UI
-                        // retains its stricter CSP; worker direct network is denied.
-                        headers.put("Content-Security-Policy","default-src 'none'; script-src 'unsafe-eval'; connect-src 'none'");
-                        return new WebResourceResponse("application/javascript","UTF-8",200,"OK",headers,getAssets().open("agent-sandbox-worker.js"));
+                        headers.put("Content-Security-Policy",csp);
+                        return new WebResourceResponse(mime,"UTF-8",200,"OK",headers,getAssets().open(name));
                     }catch(IOException error){return new WebResourceResponse("text/plain","UTF-8",404,"Not Found",Collections.emptyMap(),new ByteArrayInputStream(new byte[0]));}
                 }
                 if ("https://appassets.androidplatform.net/editor.js".equals(u.toString())) {try{return new WebResourceResponse("application/javascript","UTF-8",new ByteArrayInputStream(readWebAsset("editor.js").getBytes(StandardCharsets.UTF_8)));}catch(IOException e){return new WebResourceResponse("text/plain","UTF-8",new ByteArrayInputStream(new byte[0]));}}
@@ -262,7 +277,9 @@ public class MainActivity extends Activity {
 
                 return new WebResourceResponse("text/plain", "UTF-8", new ByteArrayInputStream(new byte[0]));
             }
-            @Override public boolean shouldOverrideUrlLoading(WebView v, WebResourceRequest r) { Uri uri=r.getUrl();if(!repository.profile().httpKeyOnly&&!r.isForMainFrame()&&"GET".equals(r.getMethod())&&"https".equals(uri.getScheme())&&"challenges.cloudflare.com".equals(uri.getHost())&&(uri.getPort()==-1||uri.getPort()==443)&&uri.getUserInfo()==null)return false;return !r.isForMainFrame() || !LOCAL.equals(uri.toString()); }
+            @Override public boolean shouldOverrideUrlLoading(WebView v, WebResourceRequest r) { Uri uri=r.getUrl();if(!r.isForMainFrame()&&"GET".equals(r.getMethod())&&AgentSandboxNetwork.enabled(MainActivity.this)
+                &&"https://agent-sandbox.easybook.invalid/runner.html".equals(uri.toString()))return false;
+                if(!repository.profile().httpKeyOnly&&!r.isForMainFrame()&&"GET".equals(r.getMethod())&&"https".equals(uri.getScheme())&&"challenges.cloudflare.com".equals(uri.getHost())&&(uri.getPort()==-1||uri.getPort()==443)&&uri.getUserInfo()==null)return false;return !r.isForMainFrame() || !LOCAL.equals(uri.toString()); }
             @Override public void onPageStarted(WebView v,String url,android.graphics.Bitmap icon){if(localAiEngine!=null)localAiEngine.cancel();if(nativeAccount!=null)nativeAccount.cancelAiStream(null);ready=false;updateUiReady=false;documentGeneration++;if(nativeGlass!=null){nativeGlass.clearFormatFrame();nativeGlass.dismiss(true);}}
         });
         web.loadUrl(LOCAL);
