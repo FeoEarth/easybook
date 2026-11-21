@@ -29,12 +29,29 @@ export function parallelSearchResults(payload,maxResults=WEB_SEARCH_DEFAULT_RESU
  return results;
 }
 
+// One MCP request can search up to three concise query angles without extra
+// model round trips. Preserve Chinese text; simplify only overlong English
+// sentences that are likely to have been copied from a user question.
+export function parallelSearchQueries(query){
+ const parts=String(query).split(/[，,；;。！？!?\n]+/u).map(value=>value.trim()).filter(Boolean).slice(0,3);
+ const stop=new Set(['please','find','the','a','an','what','which','about','tell','me','latest','information','could','you']);
+ const searches=parts.map(part=>{
+  const words=part.split(/\s+/);
+  if(/^[\x20-\x7e]+$/.test(part)&&words.length>8){
+   const relevant=words.filter(word=>!stop.has(word.toLowerCase()));
+   return (relevant.length>=3?relevant:words).slice(0,6).join(' ');
+  }
+  return part.slice(0,150);
+ });
+ return [...new Set(searches.length?searches:[String(query).trim().slice(0,150)])];
+}
+
 export async function runParallelMcpSearch(query,signal,fetcher=fetch,maxResults=WEB_SEARCH_DEFAULT_RESULTS,{token='',mode='anonymous'}={}){
  const authenticated=mode==='account'&&!!token;
  // Parallel only honors max_results overrides with OAuth or an API key.
  // Anonymous calls stay header-free and keep Parallel's own default result count.
  const output=await withServer(PARALLEL_MCP_URL,authenticated?token:'',fetcher,signal,send=>send('tools/call',{
-  name:'web_search',arguments:{objective:query,search_queries:[query]}
+  name:'web_search',arguments:{objective:query,search_queries:parallelSearchQueries(query)}
  }),authenticated?maxResults:undefined);
  if(output?.isError)return {results:[],error:{code:'parallel_search_failed',message:'Parallel MCP 返回搜索错误或匿名限流。'}};
  let parsed=output?.structuredContent;
