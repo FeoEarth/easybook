@@ -197,6 +197,14 @@ public class MainActivity extends Activity {
                 if(!r.isForMainFrame()&&"GET".equals(r.getMethod())&&
                     ("https://raw.githubusercontent.com/FeoEarth/easybook/main/THIRD_PARTY_NOTICES.md".equals(u.toString())||
                      "https://raw.githubusercontent.com/FeoEarth/easybook/main/THIRD_PARTY_LICENSES.md".equals(u.toString())))return null;
+                if ("https://appassets.androidplatform.net/agent-sandbox-client.mjs".equals(u.toString())&&"GET".equals(r.getMethod())){
+                    try{
+                        Map<String,String> headers=new HashMap<>();
+                        headers.put("X-Content-Type-Options","nosniff");
+                        headers.put("Cache-Control","no-store");
+                        return new WebResourceResponse("application/javascript","UTF-8",200,"OK",headers,getAssets().open("agent-sandbox-client.mjs"));
+                    }catch(IOException error){return new WebResourceResponse("text/plain","UTF-8",404,"Not Found",Collections.emptyMap(),new ByteArrayInputStream(new byte[0]));}
+                }
                 if ("https://appassets.androidplatform.net/agent-sandbox-worker.js".equals(u.toString())&&"GET".equals(r.getMethod())) {
                     if(!AgentSandboxNetwork.enabled(MainActivity.this))return new WebResourceResponse("text/plain","UTF-8",403,"Disabled",Collections.emptyMap(),new ByteArrayInputStream(new byte[0]));
                     try{
