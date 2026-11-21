@@ -1,6 +1,7 @@
 // Per-session file store and restricted Worker runner for Android Agent.
 // No note database, account tokens, or native bridge objects are given to the Worker.
 const DB_NAME='easybook-agent-sandbox-v1', STORE='files', MAX_TOTAL=524288, MAX_FILES=48;
+const encodedSize=value=>new TextEncoder().encode(value).length;
 const validPath=path=>typeof path==='string'&&path.length>0&&path.length<=180
  &&!path.startsWith('/')&&!path.includes('\\')
  &&!path.split('/').some(part=>!part||part==='.'||part==='..'||part.startsWith('.'))
@@ -30,8 +31,8 @@ function checkFiles(files){
  if(list.length>MAX_FILES)throw Error('沙箱文件超过数量限制');
  let total=0;
  for(const [path,data]of list){
-  if(!validPath(path)||typeof data!=='string'||data.length>131072)throw Error('沙箱文件不合法');
-  total+=data.length;if(total>MAX_TOTAL)throw Error('沙箱空间超过 512 KB');
+  if(!validPath(path)||typeof data!=='string'||encodedSize(data)>131072)throw Error('沙箱文件不合法');
+  total+=encodedSize(data);if(total>MAX_TOTAL)throw Error('沙箱空间超过 512 KB');
  }
 }
 async function readFiles(scope){
