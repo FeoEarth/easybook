@@ -660,10 +660,7 @@ assert.equal(webSearchQuota(monthStart,{permanent:1,expires_at:0}).kind,'member'
   }
   if(u.href==='https://mcp.parallel.ai/.well-known/oauth-protected-resource/mcp')
    return Response.json({resource:base,authorization_servers:[issuer],scopes_supported:['search']});
-  if(u.href===issuer+'/.well-known/oauth-authorization-server'.slice(issuer.length-'https://auth.parallel.ai'.length)){
-   throw Error('Unexpected metadata path');
-  }
-  if(u.href===issuer.replace('/auth','')+'/.well-known/oauth-authorization-server'||u.href===issuer+'/.well-known/oauth-authorization-server')
+  if(u.href===issuer+'/.well-known/oauth-authorization-server')
    return Response.json({issuer,authorization_endpoint:issuer+'/authorize',token_endpoint:issuer+'/token',
     registration_endpoint:issuer+'/register',code_challenge_methods_supported:['S256'],
     token_endpoint_auth_methods_supported:['none']});
