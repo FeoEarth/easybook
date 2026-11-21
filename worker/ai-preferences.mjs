@@ -5,7 +5,8 @@ import {emptyPreferences,normalizePreferences} from '../shared/ai-preferences.mj
 // silently reset them or require an Android editor bundle update.
 const parallelSettings=value=>({
  parallelSearch:value?.parallelSearch!==false,
- parallelSearchApproval:value?.parallelSearchApproval==='always'?'always':'ask'
+ parallelSearchApproval:value?.parallelSearchApproval==='always'?'always':'ask',
+ parallelMode:value?.parallelMode==='account'?'account':'anonymous'
 });
 export async function readPreferences(env,account){
  await env.DB.prepare('CREATE TABLE IF NOT EXISTS account_ai_preferences(account_id TEXT PRIMARY KEY REFERENCES accounts(id) ON DELETE CASCADE,version INTEGER NOT NULL,data_json TEXT NOT NULL)').run();
@@ -20,7 +21,8 @@ export async function writePreferences(env,account,input){
   ...normalizePreferences({...input,webSearch:typeof input.webSearch==='boolean'?input.webSearch:current.webSearch,webSearchApproval:input.webSearchApproval??current.webSearchApproval}),
   ...parallelSettings({
    parallelSearch:typeof input.parallelSearch==='boolean'?input.parallelSearch:current.parallelSearch,
-   parallelSearchApproval:input.parallelSearchApproval??current.parallelSearchApproval
+   parallelSearchApproval:input.parallelSearchApproval??current.parallelSearchApproval,
+   parallelMode:input.parallelMode??current.parallelMode
   }),
   version:current.version+1
  };
