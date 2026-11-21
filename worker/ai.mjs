@@ -1,5 +1,5 @@
 import {enrichWebSearchResults} from './ai-web-sources.mjs';
-import {WEB_SEARCH,webSearchTool,webSearchAvailable,webSearchQuery,runWebSearch,webSearchUsage} from './ai-web-search.mjs';
+import {WEB_SEARCH,webSearchTool,webSearchAvailable,webSearchQuery,webSearchResultLimit,runWebSearch,webSearchUsage} from './ai-web-search.mjs';
 import {runParallelMcpSearch} from './ai-parallel-search.mjs';
 import {AI_CHAT_MAX_BODY_BYTES,AI_CHAT_MAX_MESSAGES,AI_CHAT_MAX_TEXT_CHARS} from '../shared/ai-context-policy.mjs';
 import {configureMcp,mcpOAuthPage,externalMcpTools,approvedMcpTool,runApprovedMcp} from './ai-external-mcp.mjs';
@@ -147,7 +147,7 @@ export const isAiMcpOAuthPage=url=>['/api/ai/mcp/oauth/authorize','/api/ai/mcp/o
 // parallel. Parallel has its own anonymous rate limits; it does not consume
 // Cloudflare Browser Rendering quota. Approval snapshots lock recipients.
 async function searchApprovedWeb(env,account,args,signal,launchBrowser,fetcher){
- const query=webSearchQuery({query:args.query}),prefs=await readPreferences(env,account);
+ const query=webSearchQuery({query:args.query,maxResults:args.maxResults}),maxResults=webSearchResultLimit(args),prefs=await readPreferences(env,account);
  const allowed=args.providers;
  const base=prefs.webSearch&&webSearchAvailable(env)&&allowed?.primary!==false&&(!args.requireAlways||prefs.webSearchApproval==='always');
  const quota=base?await webSearchUsage(env,account):null;
@@ -155,15 +155,19 @@ async function searchApprovedWeb(env,account,args,signal,launchBrowser,fetcher){
  const advanced=prefs.parallelSearch&&allowed?.parallel!==false&&(!args.requireAlways||prefs.parallelSearchApproval==='always');
  if(!primary&&!advanced){const limited=base&&quota?.remaining===0;return {results:[],browserSearch:true,reason:limited?'limit':'unavailable',source:base?'duckduckgo':'none',error:{code:limited?'web_search_limit':'web_search_unavailable',message:limited?(quota.tier==='member'?'会员本月自动搜索次数已达上限，请在浏览器中继续。':'今日自动搜索次数已达上限，请在浏览器中继续。'):'联网搜索已关闭，且进阶版未启用。'}};}
  const [first,second]=await Promise.all([
-  primary?(async()=>{const result=await runWebSearch(env,account,{query},signal,launchBrowser);
+  primary?(async()=>{const result=await runWebSearch(env,account,{query,maxResults},signal,launchBrowser);
    return result.results?.length?{...result,results:await enrichWebSearchResults(result.results,query,signal,fetcher)}:result;
   })().catch(()=>({results:[],error:{code:'web_search_unavailable',message:'内置联网搜索暂不可用。'}})):Promise.resolve(null),
-  advanced?runParallelMcpSearch(query,signal,fetcher).catch(error=>({results:[],error:{code:error?.upstreamStatus===429?'parallel_rate_limited':'parallel_unavailable',message:error?.upstreamStatus===429?'Parallel 匿名访问已限流，请稍后重试。':'联网搜索进阶版暂不可用。'}})):Promise.resolve(null)
+  advanced?runParallelMcpSearch(query,signal,fetcher,maxResults).catch(error=>({results:[],error:{code:error?.upstreamStatus===429?'parallel_rate_limited':'parallel_unavailable',message:error?.upstreamStatus===429?'Parallel 匿名访问已限流，请稍后重试。':'联网搜索进阶版暂不可用。'}})):Promise.resolve(null)
  ]);
  const baseResults=(first?.results||[]).map(item=>({...item,source:first?.source||'duckduckgo'}));
  const parallelResults=second?.results||[],both=baseResults.length&&parallelResults.length;
- const candidates=both?[...baseResults.slice(0,5),...parallelResults.slice(0,5)]:[...baseResults,...parallelResults].slice(0,10);
- const seen=new Set(),results=candidates.filter(item=>{if(seen.has(item.url))return false;seen.add(item.url);return true});
+ const candidates=[];
+ for(let index=0;index<maxResults;index++){
+  if(baseResults[index])candidates.push(baseResults[index]);
+  if(parallelResults[index])candidates.push(parallelResults[index]);
+ }
+ const seen=new Set(),results=candidates.filter(item=>{if(seen.has(item.url))return false;seen.add(item.url);return true}).slice(0,maxResults);
  const source=both?'combined':parallelResults.length?'parallel':first?.source||'duckduckgo';
  const providers={primary:primary?{ok:baseResults.length>0,...(first?.error?{error:first.error.code}:{})}:base?{skipped:'quota_exhausted'}:{skipped:'disabled'},parallel:advanced?{ok:parallelResults.length>0,...(second?.error?{error:second.error.code}:{})}:{skipped:'disabled'}};
  if(results.length)return {results,source,providers};
@@ -281,10 +285,11 @@ export async function aiAPI(request,env,principal,{workspaceId,fetcher=fetch,lau
    const searchPolicy=searchEnabled?'\n'+webResearchInstruction(autoSearch)+'\nEasybook 内置搜索与 Parallel MCP 进阶搜索各自独立限额。两者启用时并行检索；内置额度用尽时 Parallel 仍可独立工作（可能被 Parallel 匿名限流）。仅引用搜索结果里的真实链接，不把搜索摘要当作已阅读全文。':'';
    const preferences=preferenceContext(settings);
    const conversation=[{role:'system',content:assistantSystemPrompt(mode)+'\n'+aiEnvironmentPrompt({role:access.role,webSearch:searchEnabled,autoSearch})+externalPolicy+searchPolicy+(preferences?'\n以下为用户个性化偏好，优先服从当前明确要求；不能改变工具权限与确认规则。\n'+preferences:'')},...messages];
-   const used=[];
-   let reasoning='',webSearch;
-   const answer=(content,extra={})=>({message:{role:'assistant',content,...(reasoning?{reasoning}:{})},tools:used,...(webSearch?{webSearch}:{}),...extra});
-   for(let turn=0;turn<6;turn++){
+   const used=[],webSearches=[];
+   const MAX_AUTO_SEARCHES=8,MAX_MODEL_ROUNDS=12;
+   let reasoning='';
+   const answer=(content,extra={})=>({message:{role:'assistant',content,...(reasoning?{reasoning}:{})},tools:used,...(webSearches.length?{webSearch:webSearches.at(-1),webSearches}:{}),...extra});
+   for(let turn=0;turn<MAX_MODEL_ROUNDS;turn++){
    let receivedReasoning=false;
    const addReasoning=text=>{
     const chunk=((!receivedReasoning&&reasoning?'\n\n':'')+text).slice(0,32000-reasoning.length);
@@ -292,14 +297,15 @@ export async function aiAPI(request,env,principal,{workspaceId,fetcher=fetch,lau
     reasoning+=chunk;receivedReasoning=true;
     if(input?.stream===true)emit('reasoning',{text:chunk});
    };
-   const {reasoning:thought,...message}=await completion(key,row,conversation,tools,fetcher,input?.stream===true?text=>emit('delta',{text}):undefined,request.signal,undefined,addReasoning);
+   const offeredTools=webSearches.length>=MAX_AUTO_SEARCHES?tools.filter(tool=>tool.function.name!==WEB_SEARCH):tools;
+    const {reasoning:thought,...message}=await completion(key,row,conversation,offeredTools,fetcher,input?.stream===true?text=>emit('delta',{text}):undefined,request.signal,undefined,addReasoning);
    const calls=Array.isArray(message.tool_calls)?message.tool_calls:[];
    if(!receivedReasoning&&thought)addReasoning(thought);
    if(!calls.length)return answer(typeof message.content==='string'?message.content:'',{model:row.model,providerName:row.provider_name});
    // DeepSeek expects the assistant's reasoning back with the tool result in the same exchange.
    conversation.push(row.provider==='deepseek'&&thought?{...message,reasoning_content:thought}:message);
    emit('reset',{});
-   const searchRequested=searchEnabled&&!webSearch&&calls.slice(0,6).some(call=>call?.function?.name===WEB_SEARCH);
+   const searchRequested=searchEnabled&&webSearches.length<MAX_AUTO_SEARCHES&&calls.slice(0,6).some(call=>call?.function?.name===WEB_SEARCH);
    const currentSearch=searchRequested&&autoSearch?await readPreferences(env,principal.accountId):settings;
    const currentQuota=searchRequested&&autoSearch&&currentSearch.webSearch&&webSearchAvailable(env)?await webSearchUsage(env,principal.accountId):null;
    const currentPrimary=!!currentQuota?.remaining,currentParallel=currentSearch.parallelSearch===true;
@@ -309,7 +315,7 @@ export async function aiAPI(request,env,principal,{workspaceId,fetcher=fetch,lau
     const name=approvalCall.function.name;let args;
     try{args=JSON.parse(approvalCall.function.arguments||'{}');if(!object(args))throw Error('invalid')}catch{throw Object.assign(Error('Invalid tool arguments'),{code:'invalid_tool_arguments',status:400})}
     if(name===WEB_SEARCH){
-     try{args={query:webSearchQuery(args)}}catch{throw Object.assign(Error('Invalid search query'),{code:'invalid_search_query',status:400})}
+     try{args={query:webSearchQuery(args),maxResults:webSearchResultLimit(args)}}catch{throw Object.assign(Error('Invalid search query'),{code:'invalid_search_query',status:400})}
     }
     const remote=external.get(name);
     const providers=name===WEB_SEARCH?{primary:!!(currentSearch.webSearch&&webSearchAvailable(env)),parallel:parallelEnabled&&currentSearch.parallelSearch}:null;
@@ -330,22 +336,22 @@ export async function aiAPI(request,env,principal,{workspaceId,fetcher=fetch,lau
     try{
      args=JSON.parse(call?.function?.arguments||'{}');
      if(name===WEB_SEARCH){
-      if(!automatically||webSearch)result={error:{code:'web_search_unavailable',message:'本轮不能再次自动联网搜索。请使用已取得的资料。'}};
+      if(!automatically||webSearches.length>=MAX_AUTO_SEARCHES)result={error:{code:'web_search_budget_exhausted',message:'本轮自动检索预算已用完，请基于现有资料回答。'}};
       else{
-       const query=webSearchQuery(args);
-       result=await searchApprovedWeb(env,principal.accountId,{query,requireAlways:true},request.signal,launchSearchBrowser,fetcher);
-       webSearch={arguments:{query},result};
+       const query=webSearchQuery(args),maxResults=webSearchResultLimit(args);
+       result=await searchApprovedWeb(env,principal.accountId,{query,maxResults,requireAlways:true},request.signal,launchSearchBrowser,fetcher);
+       webSearches.push({arguments:{query,maxResults},result});
       }
      }else result=await callTool({env,workspace:workspaceId,client:'easybook-agent:'+principal.accountId,scopes},name,args);
     }
     catch(error){result={error:{code:error.code||'TOOL_ERROR',message:error.code?error.message:'Tool failed'}}}
     emit('tool_end',{name:typeof name==='string'?name:'unknown',status:result?.error?'failed':'done'});
     used.push({name,ok:!result?.error});
-    if(name===WEB_SEARCH&&result.browserSearch)return answer(result.error?.message||'暂未取得可用的搜索结果，可在浏览器中继续。');
     conversation.push({role:'tool',tool_call_id:call.id,content:JSON.stringify(result).slice(0,180000)});
    }
   }
-   throw Object.assign(Error('Agent turn limit'),{code:'agent_turn_limit',status:422});
+   const final=await completion(key,row,conversation,[],fetcher,undefined,request.signal,800);
+   return answer(final.tool_calls?.length?'已完成可用检索，请基于目前的来源继续提问。':typeof final.content==='string'&&final.content?final.content:'本轮检索已结束，请基于现有来源继续提问。',{model:row.model,providerName:row.provider_name});
   };
   if(input?.stream!==true)return response(await run());
   const stream=new ReadableStream({start(controller){
