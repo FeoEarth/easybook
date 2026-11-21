@@ -174,6 +174,16 @@ export function webSearchQuota(now,membership){
  };
 }
 
+// A read-only snapshot for the signed-in account; never increments its quota.
+export async function webSearchUsage(env,account,now=Date.now()){
+ const membership=await env.DB.prepare('SELECT permanent,expires_at FROM account_memberships WHERE account_id=?').bind(account).first();
+ const quota=webSearchQuota(now,membership);
+ const bucket='ai-web-search:'+(quota.kind==='member'?'month:':'')+await hash(account+':'+quota.period);
+ const record=await env.DB.prepare('SELECT count FROM account_rate_limits WHERE bucket=? AND expires_at>?').bind(bucket,now).first();
+ const used=Math.min(quota.limit,Math.max(0,Number(record?.count)||0));
+ return {tier:quota.kind,period:quota.kind==='member'?'month':'day',used,limit:quota.limit,remaining:quota.limit-used,resetAt:quota.expiresAt};
+}
+
 export async function runWebSearch(env,account,args,signal,launchBrowser=binding=>puppeteer.launch(binding,{keep_alive:30000})){
  const query=webSearchQuery(args);
  signal?.throwIfAborted();

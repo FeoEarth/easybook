@@ -1,5 +1,5 @@
 import {assertPublicHost,publicHostname} from './public-http.mjs';
-import {webSearchAvailable} from './ai-web-search.mjs';
+import {webSearchAvailable,webSearchUsage} from './ai-web-search.mjs';
 import {readPreferences,writePreferences} from './ai-preferences.mjs';
 import {boundedJSON,object,hash} from './mcp-common.mjs';
 import {beginMcpOAuth,handleMcpOAuth,mcpAccessToken,mcpOAuthStatus} from './ai-mcp-oauth.mjs';
@@ -181,7 +181,7 @@ export async function configureMcp(request,env,principal,options){
  if(request.method==='GET'){
   const rows=(await env.DB.prepare('SELECT * FROM account_ai_mcp_servers WHERE account_id=? ORDER BY label,id').bind(account).all()).results;
   const prefs=await readPreferences(env,account);
-  return {servers:rows.map(view),webSearch:{available:webSearchAvailable(env),enabled:prefs.webSearch,approval:prefs.webSearchApproval}};
+  return {servers:rows.map(view),webSearch:{available:webSearchAvailable(env),enabled:prefs.webSearch,approval:prefs.webSearchApproval},usage:{webSearch:await webSearchUsage(env,account)}};
  }
  const input=await boundedJSON(request,4096);
  if(!object(input)||input.id!==undefined&&!serverId.test(input.id))throw mcpError('mcp_invalid_config',400);
