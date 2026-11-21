@@ -207,7 +207,7 @@ public class MainActivity extends Activity {
                 }
                 // Run generated code on a dedicated synthetic HTTPS origin, never
                 // on appassets, where the Easybook IndexedDB and origin-bound bridge live.
-                if("GET".equals(r.getMethod())&&"https".equals(u.getScheme())&&"agent-sandbox.easybook.invalid".equals(u.getHost())
+                if("GET".equals(r.getMethod())&&"https".equals(u.getScheme())&&u.getHost()!=null&&u.getHost().matches("[a-f0-9]{32}\\.agent-sandbox\\.easybook\\.invalid")
                     &&(u.getPort()==-1||u.getPort()==443)&&u.getUserInfo()==null&&u.getQuery()==null&&u.getFragment()==null){
                     if(!AgentSandboxNetwork.enabled(MainActivity.this))return new WebResourceResponse("text/plain","UTF-8",403,"Disabled",Collections.emptyMap(),new ByteArrayInputStream(new byte[0]));
                     String name,mime,csp;
@@ -278,7 +278,7 @@ public class MainActivity extends Activity {
                 return new WebResourceResponse("text/plain", "UTF-8", new ByteArrayInputStream(new byte[0]));
             }
             @Override public boolean shouldOverrideUrlLoading(WebView v, WebResourceRequest r) { Uri uri=r.getUrl();if(!r.isForMainFrame()&&"GET".equals(r.getMethod())&&AgentSandboxNetwork.enabled(MainActivity.this)
-                &&"https://agent-sandbox.easybook.invalid/runner.html".equals(uri.toString()))return false;
+                &&uri.getHost()!=null&&uri.getHost().matches("[a-f0-9]{32}\\.agent-sandbox\\.easybook\\.invalid")&&"/runner.html".equals(uri.getPath()))return false;
                 if(!repository.profile().httpKeyOnly&&!r.isForMainFrame()&&"GET".equals(r.getMethod())&&"https".equals(uri.getScheme())&&"challenges.cloudflare.com".equals(uri.getHost())&&(uri.getPort()==-1||uri.getPort()==443)&&uri.getUserInfo()==null)return false;return !r.isForMainFrame() || !LOCAL.equals(uri.toString()); }
             @Override public void onPageStarted(WebView v,String url,android.graphics.Bitmap icon){if(localAiEngine!=null)localAiEngine.cancel();if(nativeAccount!=null)nativeAccount.cancelAiStream(null);ready=false;updateUiReady=false;documentGeneration++;if(nativeGlass!=null){nativeGlass.clearFormatFrame();nativeGlass.dismiss(true);}}
         });
