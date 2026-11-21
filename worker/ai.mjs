@@ -88,6 +88,21 @@ function toolsFor(role,mode){
  const scopes=toolScopes(role,mode);
  return registry.filter(t=>!t.risk&&scopes.includes(t.scope)&&!['access_request_permissions','operations_request_confirmation'].includes(t.name)).map(t=>({type:'function',function:{name:t.name,description:t.description,parameters:t.inputSchema}}));
 }
+const SANDBOX_TOOLS=[
+ {type:'function',function:{name:'sandbox_execute',description:'在 Android 本地隔离沙箱运行 JavaScript，支持 sandbox.readFile/writeFile/deleteFile/listFiles/fetchText(url)、print(...)。执行前由用户确认。不允许直接访问笔记或凭证。',parameters:{type:'object',properties:{language:{type:'string',enum:['javascript']},code:{type:'string'}},required:['language','code'],additionalProperties:false}}},
+ {type:'function',function:{name:'sandbox_list_files',description:'列出此会话沙箱文件，执行前由用户确认。',parameters:{type:'object',properties:{},additionalProperties:false}}},
+ {type:'function',function:{name:'sandbox_read_file',description:'读取此会话沙箱文件，执行前由用户确认。',parameters:{type:'object',properties:{path:{type:'string'}},required:['path'],additionalProperties:false}}}
+];
+const SANDBOX_NAMES=new Set(SANDBOX_TOOLS.map(tool=>tool.function.name));
+function validateSandboxTool(name,args){
+ if(!SANDBOX_NAMES.has(name)||!object(args))throw Object.assign(Error('Invalid sandbox tool'),{status:400,code:'invalid_sandbox_tool'});
+ if(name==='sandbox_execute'){
+  if(args.language!=='javascript'||typeof args.code!=='string'||!args.code.trim()||args.code.length>10000||Object.keys(args).some(key=>!['language','code'].includes(key)))throw Object.assign(Error('Invalid sandbox code'),{status:400,code:'invalid_sandbox_code'});
+ }else if(name==='sandbox_list_files'){
+  if(Object.keys(args).length)throw Object.assign(Error('Invalid sandbox arguments'),{status:400,code:'invalid_sandbox_args'});
+ }else if(typeof args.path!=='string'||!args.path||args.path.length>180||args.path.includes('..')||args.path.startsWith('/')||Object.keys(args).some(key=>key!=='path'))throw Object.assign(Error('Invalid sandbox path'),{status:400,code:'invalid_sandbox_args'});
+ return args;
+}
 async function ensureAgentApprovalSchema(env){
  await env.DB.prepare('CREATE TABLE IF NOT EXISTS ai_agent_approvals(id TEXT PRIMARY KEY,account_id TEXT NOT NULL,workspace_id TEXT NOT NULL,tool_name TEXT NOT NULL,tool_args TEXT NOT NULL,expires_at INTEGER NOT NULL,consumed_at INTEGER)').run();
 }
@@ -280,6 +295,8 @@ export async function aiAPI(request,env,principal,{workspaceId,fetcher=fetch,lau
   }
   const messages=safeMessages(input?.messages,input?.attachments||[],{maxMessages:AI_CHAT_MAX_MESSAGES,maxChars:AI_CHAT_MAX_TEXT_CHARS}),mode=input?.mode==='agent'?'agent':'conversation',scopes=toolScopes(access.role,mode),tools=toolsFor(access.role,mode),key=await open(env,row);
   const run=async(emit=()=>{})=>{
+   const localSandbox=mode==='agent'&&input?.localSandbox===true;
+   if(localSandbox)tools.push(...SANDBOX_TOOLS);
    const external=input.externalTools===true&&access.role!=='reader'?await externalMcpTools(env,principal.accountId):new Map();
    for(const tool of external.values()){
     tools.push({type:'function',function:{name:tool.alias,description:'第三方 MCP '+tool.server+' / '+tool.name+'。调用前会在应用内确认。'+tool.description,parameters:tool.inputSchema}});
@@ -320,16 +337,22 @@ export async function aiAPI(request,env,principal,{workspaceId,fetcher=fetch,lau
    const currentQuota=searchRequested&&autoSearch&&currentSearch.webSearch&&webSearchAvailable(env)?await webSearchUsage(env,principal.accountId):null;
    const currentPrimary=!!currentQuota?.remaining,currentParallel=currentSearch.parallelSearch===true;
    const automatically=autoSearch&&(currentPrimary||currentParallel)&&(!currentPrimary||currentSearch.webSearchApproval==='always')&&(!currentParallel||currentSearch.parallelSearchApproval==='always');
-   const approvalCall=calls.slice(0,6).find(call=>(searchRequested&&!automatically&&call?.function?.name===WEB_SEARCH)||external.has(call?.function?.name)||registry.some(t=>t.name===call?.function?.name&&!t.risk&&WRITE.includes(t.scope)&&scopes.includes(t.scope)));
+   const approvalCall=calls.slice(0,6).find(call=>(localSandbox&&SANDBOX_NAMES.has(call?.function?.name))||(searchRequested&&!automatically&&call?.function?.name===WEB_SEARCH)||external.has(call?.function?.name)||registry.some(t=>t.name===call?.function?.name&&!t.risk&&WRITE.includes(t.scope)&&scopes.includes(t.scope)));
    if(approvalCall){
     const name=approvalCall.function.name;let args;
     try{args=JSON.parse(approvalCall.function.arguments||'{}');if(!object(args))throw Error('invalid')}catch{throw Object.assign(Error('Invalid tool arguments'),{code:'invalid_tool_arguments',status:400})}
+    if(localSandbox&&SANDBOX_NAMES.has(name))args=validateSandboxTool(name,args);
     if(name===WEB_SEARCH){
      try{args={query:webSearchQuery(args),maxResults:webSearchResultLimit(args)}}catch{throw Object.assign(Error('Invalid search query'),{code:'invalid_search_query',status:400})}
     }
     const remote=external.get(name);
     const providers=name===WEB_SEARCH?{primary:!!(currentSearch.webSearch&&webSearchAvailable(env)),parallel:parallelEnabled&&currentSearch.parallelSearch}:null;
     const serialized=JSON.stringify(remote?{revision:remote.revision,arguments:args}:providers?{...args,providers}:args);if(serialized.length>30000)throw Object.assign(Error('Tool arguments too large'),{code:'tool_arguments_too_large',status:413});
+    if(localSandbox&&SANDBOX_NAMES.has(name)){
+     const expiresAt=Date.now()+300000;
+     emit('tool_start',{name});emit('tool_end',{name,status:'approval'});
+     return answer('本地沙箱操作等待用户确认。',{approval:{id:crypto.randomUUID(),tool:name,arguments:args,localSandbox:true,expiresAt}});
+    }
     await ensureAgentApprovalSchema(env);
     await env.DB.prepare('DELETE FROM ai_agent_approvals WHERE expires_at<?').bind(Date.now()-86400000).run();
     const id=crypto.randomUUID(),expiresAt=Date.now()+300000;

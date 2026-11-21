@@ -1,2 +1,2 @@
 import {build} from 'esbuild';
-await build({entryPoints:['worker/index.mjs'],bundle:true,minify:true,format:'esm',platform:'neutral',external:['node:*'],outfile:'worker/deploy.mjs'});
+await build({entryPoints:['worker/index.mjs'],bundle:true,minify:true,format:'esm',platform:'neutral',mainFields:['module','main'],external:['node:*'],outfile:'worker/deploy.mjs'});
