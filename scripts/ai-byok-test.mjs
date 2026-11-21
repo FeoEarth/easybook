@@ -371,6 +371,7 @@ assert.equal(webSearchQuota(monthStart,{permanent:1,expires_at:0}).kind,'member'
   assert.equal(target.hostname,'api.openai.com');
   const request=JSON.parse(init.body);
   if(request.messages.at(-1)?.role==='tool')return Response.json({choices:[{message:{role:'assistant',content:'已使用进阶搜索来源。'}}]});
+  if(!request.tools?.some(tool=>tool.function.name==='web_search'))return Response.json({choices:[{message:{role:'assistant',content:'No web search'}}]});
   return Response.json({choices:[{message:{role:'assistant',tool_calls:[{id:'parallel-search',type:'function',function:{name:'web_search',arguments:JSON.stringify({query:searchQuery})}}]}}]});
  };
  assert.deepEqual(parallelSearchResults({results:[{url:source,title:'Result',excerpts:['text']},{url:'file:///private',title:'Bad'}]}).map(x=>x.url),[source]);
@@ -407,7 +408,7 @@ assert.equal(webSearchQuota(monthStart,{permanent:1,expires_at:0}).kind,'member'
  assert.equal((await call('mcp','PUT',{parallelSearch:false})).status,200);
  const unavailable=await (await chat()).json();
  assert.equal(unavailable.approval,undefined);
- assert.equal(unavailable.message.content,'', 'No search tool is offered once both providers are disabled');
+ assert.equal(unavailable.message.content,'No web search','No search tool is offered once both providers are disabled');
  assert.ok(parallelCalls>=4);
 }
 
