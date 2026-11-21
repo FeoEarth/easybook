@@ -2,8 +2,10 @@ import assert from 'node:assert/strict';
 import {DatabaseSync} from 'node:sqlite';
 import {readFileSync} from 'node:fs';
 import {aiAPI,aiMcpOAuthPage} from '../worker/ai.mjs';
+import {webSearchQuota} from '../worker/ai-web-search.mjs';
 import worker from '../worker/index.mjs';
 const sqlite=new DatabaseSync(':memory:');sqlite.exec('PRAGMA foreign_keys=ON');for(const file of ['worker/schema.sql','mcp-oauth/migrations/0002_accounts.sql','worker/migrations/0010-workspace-identity.sql'])sqlite.exec(readFileSync(file,'utf8'));
+sqlite.exec('CREATE TABLE IF NOT EXISTS account_memberships(account_id TEXT PRIMARY KEY,permanent INTEGER NOT NULL DEFAULT 0,expires_at INTEGER NOT NULL DEFAULT 0)');
 const DB={prepare(sql){const statement=sqlite.prepare(sql);let args=[];return {bind(...values){args=values;return this},async first(){return statement.get(...args)||null},async all(){return {results:statement.all(...args)}},async run(){return statement.run(...args)}}},async batch(statements){sqlite.exec('BEGIN');try{const results=[];for(const statement of statements)results.push(await statement.run());sqlite.exec('COMMIT');return results}catch(error){sqlite.exec('ROLLBACK');throw error}}};
 const migration=readFileSync('worker/migrations/0021-ai-profiles.sql','utf8');sqlite.exec(migration);sqlite.exec(migration);const account='11111111-1111-4111-8111-111111111111',workspace='a'.repeat(64),now=Date.now();sqlite.prepare('INSERT INTO accounts(id,display_name,created_at) VALUES(?,?,?)').run(account,'AI test',now);sqlite.prepare("INSERT INTO workspaces(id,name,mode,manager_account_id,created_at) VALUES(?,?,'personal',?,?)").run(workspace,'AI workspace',account,now);
 const env={DB,AI_CREDENTIAL_KEY:Buffer.alloc(32,7).toString('base64')},principal={kind:'account',accountId:account,authenticatedAt:now},secret='sk-test-this-value-must-never-be-returned';const request=(path,method='GET',body)=>new Request('https://easybook.test'+path,{method,headers:{'Content-Type':'application/json'},body:body&&JSON.stringify(body)});
@@ -159,6 +161,16 @@ assert.equal((await prefRequest({...prefs,version:oldVersion,memories:[{id:'late
 assert.deepEqual((await (await extract()).json()).memories,[]);assert.equal(memoryCalls,1,'Disabled automatic memory makes no provider request');
 assert.equal((await aiAPI(request('/api/ai/preferences'),env,{kind:'anonymous'})).status,403);
 
+// UTC calendar months roll over at midnight on the first, not at a rolling 30-day mark.
+const monthEnd=Date.UTC(2026,10,30,23,59,59),monthStart=Date.UTC(2026,11,1);
+const nov=webSearchQuota(monthEnd,{permanent:0,expires_at:monthStart+86400000});
+const dec=webSearchQuota(monthStart,{permanent:0,expires_at:monthStart+86400000});
+assert.equal(nov.kind,'member');assert.equal(nov.limit,1000);assert.equal(nov.period,'2026-11');assert.equal(nov.expiresAt,monthStart);
+assert.equal(dec.period,'2026-12');assert.notEqual(nov.period,dec.period);
+assert.equal(webSearchQuota(monthStart,null).limit,15);
+assert.equal(webSearchQuota(monthStart,{expires_at:monthStart}).kind,'free','Expiry at the boundary is not active');
+assert.equal(webSearchQuota(monthStart,{permanent:1,expires_at:0}).kind,'member');
+
 // The search plugin shares the approval flow and works independently of third-party MCP.
 {
  let searches=0,closed=0,exposed=false,primary='blocked',backup='no_results',query='current public docs';
@@ -272,10 +284,38 @@ assert.equal((await aiAPI(request('/api/ai/preferences'),env,{kind:'anonymous'})
  assert.equal(pendingWrite.approval.tool,'notes_create','Always allow does not authorize writes');
  assert.equal((await api('mcp','PUT',{webSearchApproval:'ask'})).status,200);
  assert.equal((await (await chat()).json()).approval.tool,'web_search');
- sqlite.prepare("UPDATE account_rate_limits SET count=20 WHERE bucket LIKE 'ai-web-search:%'").run();
+ // Free users keep their existing daily bucket, but the limit is now 15.
+ sqlite.prepare("UPDATE account_rate_limits SET count=15 WHERE bucket LIKE 'ai-web-search:%'").run();
  const capped=(await (await chat()).json()).approval;
  assert.equal((await (await api('execute','POST',{approvalId:capped.id})).json()).error.code,'web_search_limit');
- assert.equal(searches,7,'Usage above the daily limit does not reach the search service');
+ assert.equal(searches,7,'Free daily quota is enforced before launching the browser');
+
+ // A newly active subscriber gets a distinct calendar-month quota and NO daily cap.
+ sqlite.prepare('INSERT INTO account_memberships(account_id,permanent,expires_at) VALUES(?,?,?)').run(account,0,Date.now()+86400000);
+ primary='results';
+ assert.equal((await searchOnce()).result.source,'duckduckgo');
+ assert.equal(searches,8,'Membership bypasses an exhausted daily quota');
+ assert.equal(sqlite.prepare("SELECT count FROM account_rate_limits WHERE bucket LIKE 'ai-web-search:month:%'").get().count,1);
+ sqlite.prepare("UPDATE account_rate_limits SET count=999 WHERE bucket LIKE 'ai-web-search:month:%'").run();
+ assert.equal((await searchOnce()).result.source,'duckduckgo','The 1000th monthly search is allowed');
+ assert.equal(sqlite.prepare("SELECT count FROM account_rate_limits WHERE bucket LIKE 'ai-web-search:month:%'").get().count,1000);
+ const memberCap=await searchOnce();
+ assert.equal(memberCap.error.code,'web_search_limit');
+ assert.match(memberCap.error.message,/本月/);
+ assert.equal(searches,9,'Monthly cap does not start the browser');
+
+ // Expired members must immediately return to their free daily allowance.
+ sqlite.prepare('UPDATE account_memberships SET expires_at=? WHERE account_id=?').run(Date.now()-1,account);
+ const expiredCap=await searchOnce();
+ assert.equal(expiredCap.error.code,'web_search_limit');
+ assert.match(expiredCap.error.message,/今日/);
+ assert.equal(searches,9);
+
+ // A permanent membership is also entitled even without a future expiry.
+ sqlite.prepare('UPDATE account_memberships SET permanent=1,expires_at=0 WHERE account_id=?').run(account);
+ sqlite.prepare("UPDATE account_rate_limits SET count=999 WHERE bucket LIKE 'ai-web-search:month:%'").run();
+ assert.equal((await searchOnce()).result.source,'duckduckgo');
+ assert.equal(searches,10);
  await api('mcp','PUT',{webSearch:false});
 }
 

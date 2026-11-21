@@ -151,20 +151,40 @@ const failureMessages={
  unavailable:'自动搜索暂不可用，请在浏览器中继续。',
  limit:'今日自动搜索次数已达上限，请在浏览器中继续。'
 };
-const searchFailure=(reason,code='web_search_'+reason)=>({
- results:[],browserSearch:true,reason,source:'duckduckgo',error:{code,message:failureMessages[reason]}
+const searchFailure=(reason,code='web_search_'+reason,message=failureMessages[reason])=>({
+ results:[],browserSearch:true,reason,source:'duckduckgo',error:{code,message}
 });
 
 export const webSearchAvailable=env=>!!env.WEB_SEARCH_BROWSER;
+const FREE_DAILY_SEARCH_LIMIT=15;
+const MEMBER_MONTHLY_SEARCH_LIMIT=1000;
+
+// Search quotas reset at UTC midnight / the first day of the UTC calendar month.
+// Membership is read from the authoritative subscription state on every search,
+// so upgrades and expirations take effect without a client cache or migration.
+export function webSearchQuota(now,membership){
+ const active=Number(membership?.permanent)===1||Number(membership?.expires_at||0)>now;
+ const date=new Date(now),day=86400000;
+ const period=active?`${date.getUTCFullYear()}-${String(date.getUTCMonth()+1).padStart(2,'0')}`:String(Math.floor(now/day));
+ return {
+  kind:active?'member':'free',
+  limit:active?MEMBER_MONTHLY_SEARCH_LIMIT:FREE_DAILY_SEARCH_LIMIT,
+  period,
+  expiresAt:active?Date.UTC(date.getUTCFullYear(),date.getUTCMonth()+1,1):(Math.floor(now/day)+1)*day
+ };
+}
+
 export async function runWebSearch(env,account,args,signal,launchBrowser=binding=>puppeteer.launch(binding,{keep_alive:30000})){
  const query=webSearchQuery(args);
  signal?.throwIfAborted();
  if(!webSearchAvailable(env))return searchFailure('unavailable');
- const now=Date.now(),day=86400000,period=Math.floor(now/day);
- const bucket='ai-web-search:'+await hash(account+':'+period);
+ const now=Date.now();
+ const membership=await env.DB.prepare('SELECT permanent,expires_at FROM account_memberships WHERE account_id=?').bind(account).first();
+ const quota=webSearchQuota(now,membership);
+ const bucket='ai-web-search:'+(quota.kind==='member'?'month:':'')+await hash(account+':'+quota.period);
  await env.DB.prepare('DELETE FROM account_rate_limits WHERE bucket IN (SELECT bucket FROM account_rate_limits WHERE expires_at<? LIMIT 100)').bind(now).run();
- const credit=await env.DB.prepare('INSERT INTO account_rate_limits(bucket,count,expires_at) VALUES(?,1,?) ON CONFLICT(bucket) DO UPDATE SET count=count+1 WHERE count<20 RETURNING count').bind(bucket,(period+1)*day).first();
- if(!credit)return searchFailure('limit');
+ const credit=await env.DB.prepare('INSERT INTO account_rate_limits(bucket,count,expires_at) VALUES(?,1,?) ON CONFLICT(bucket) DO UPDATE SET count=count+1 WHERE count<? RETURNING count').bind(bucket,quota.expiresAt,quota.limit).first();
+ if(!credit)return searchFailure('limit','web_search_limit',quota.kind==='member'?'会员本月自动搜索次数已达上限，请在浏览器中继续。':'今日自动搜索次数已达上限，请在浏览器中继续。');
  const started=Date.now(),budget=12000,deadline=started+budget;
  const timeout=AbortSignal.timeout(budget);
  const searchSignal=signal?AbortSignal.any([signal,timeout]):timeout;
