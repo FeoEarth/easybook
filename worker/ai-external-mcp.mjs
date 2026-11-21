@@ -70,7 +70,7 @@ async function rpcResult(response,id,limit=rpcResponseLimit){
  throw mcpError('mcp_protocol_error');
 }
 
-async function withServer(urlValue,token,fetcher,requestSignal,work){
+export async function withServer(urlValue,token,fetcher,requestSignal,work){
  const url=endpoint(urlValue);
  const timeout=AbortSignal.timeout(12000);
  const signal=requestSignal?AbortSignal.any([requestSignal,timeout]):timeout;
@@ -181,7 +181,7 @@ export async function configureMcp(request,env,principal,options){
  if(request.method==='GET'){
   const rows=(await env.DB.prepare('SELECT * FROM account_ai_mcp_servers WHERE account_id=? ORDER BY label,id').bind(account).all()).results;
   const prefs=await readPreferences(env,account);
-  return {servers:rows.map(view),webSearch:{available:webSearchAvailable(env),enabled:prefs.webSearch,approval:prefs.webSearchApproval},usage:{webSearch:await webSearchUsage(env,account)}};
+  return {servers:rows.map(view),webSearch:{available:webSearchAvailable(env),enabled:prefs.webSearch,approval:prefs.webSearchApproval},parallelSearch:{available:true,enabled:prefs.parallelSearch,approval:prefs.parallelSearchApproval,url:'https://mcp.parallel.ai/mcp'},usage:{webSearch:await webSearchUsage(env,account)}};
  }
  const input=await boundedJSON(request,4096);
  if(!object(input)||input.id!==undefined&&!serverId.test(input.id))throw mcpError('mcp_invalid_config',400);
@@ -193,12 +193,15 @@ export async function configureMcp(request,env,principal,options){
  }
  if(request.method!=='PUT')throw mcpError('mcp_invalid_config',400);
  const searchSetting=Object.keys(input).length===1?Object.keys(input)[0]:'';
- if(Object.hasOwn(input,'webSearch')||Object.hasOwn(input,'webSearchApproval')){
+ if(Object.hasOwn(input,'webSearch')||Object.hasOwn(input,'webSearchApproval')||Object.hasOwn(input,'parallelSearch')||Object.hasOwn(input,'parallelSearchApproval')){
   if(!(searchSetting==='webSearch'&&typeof input.webSearch==='boolean')&&
-     !(searchSetting==='webSearchApproval'&&['ask','always'].includes(input.webSearchApproval)))throw mcpError('mcp_invalid_config',400);
+     !(searchSetting==='webSearchApproval'&&['ask','always'].includes(input.webSearchApproval))&&
+      !(searchSetting==='parallelSearch'&&typeof input.parallelSearch==='boolean')&&
+      !(searchSetting==='parallelSearchApproval'&&['ask','always'].includes(input.parallelSearchApproval)))throw mcpError('mcp_invalid_config',400);
   if(input.webSearch&&!webSearchAvailable(env))throw mcpError('web_search_unavailable',503);
   const prefs=await readPreferences(env,account);
   if(input.webSearchApproval==='always'&&(!prefs.webSearch||!webSearchAvailable(env)))throw mcpError('web_search_unavailable',503);
+   if(input.parallelSearchApproval==='always'&&!prefs.parallelSearch)throw mcpError('web_search_unavailable',503);
   if(prefs[searchSetting]!==input[searchSetting]&&!await writePreferences(env,account,{...prefs,...input}))throw mcpError('preferences_conflict',409);
   return {ok:true};
  }
