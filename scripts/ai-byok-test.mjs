@@ -230,7 +230,7 @@ assert.equal(webSearchQuota(monthStart,{permanent:1,expires_at:0}).kind,'member'
  assert.ok(initialUsage.resetAt>Date.now());
  const builtins=await (await api('mcp','GET')).json();
  assert.deepEqual(builtins.webSearch,{available:true,enabled:false,approval:'ask'});
- assert.deepEqual(builtins.parallelSearch,{available:true,enabled:true,approval:'ask',url:'https://mcp.parallel.ai/mcp'});
+ assert.deepEqual({available:builtins.parallelSearch.available,enabled:builtins.parallelSearch.enabled,approval:builtins.parallelSearch.approval,url:builtins.parallelSearch.url,mode:builtins.parallelSearch.mode,connected:builtins.parallelSearch.connected},{available:true,enabled:true,approval:'ask',url:'https://mcp.parallel.ai/mcp',mode:'anonymous',connected:false});
  assert.equal((await api('mcp','PUT',{parallelSearch:false})).status,200,'Existing browser-only search behavior can be selected independently');
  await chat();assert.equal(exposed,false);
  assert.equal((await api('mcp','PUT',{webSearch:true})).status,200);
@@ -260,7 +260,7 @@ assert.equal(webSearchQuota(monthStart,{permanent:1,expires_at:0}).kind,'member'
  assert.equal(matched.result.source,'duckduckgo');
  assert.deepEqual(matched.result.results[0],{url:'https://example.com/docs',title:'Docs',description:'Search snippet',source:'duckduckgo'});
  assert.equal(closed,2,'Browser closes after reading successful results');
- assert.deepEqual(visits.splice(0),['duckduckgo']);
+ assert.deepEqual(visits.splice(0),['duckduckgo','wiby'],'When DuckDuckGo is short, the browser checks Wiby before returning');
  assert.deepEqual(profiles.slice(0,3).map(step=>step.method),['Emulation.setDeviceMetricsOverride','Emulation.setTouchEmulationEnabled','Emulation.setUserAgentOverride']);
  assert.match(profiles[2].params.userAgent,/Chrome\/144\.0\.7339\.0 Mobile/);
  assert.equal(profiles[2].params.userAgentMetadata.mobile,true);
