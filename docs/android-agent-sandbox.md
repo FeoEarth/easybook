@@ -18,7 +18,7 @@ Tools:
 
 The script exposes `sandbox.readFile(path)`, `sandbox.writeFile(path,text)`, `sandbox.deleteFile(path)`, `sandbox.listFiles()`, `await sandbox.fetchText(publicHttpsUrl)`, and `print(...)`.
 
-The user-provided code is **not** evaluated in the main WebView or in the native Android bridge. The dedicated Worker response has a worker-only CSP permitting JavaScript interpretation while explicitly denying direct network access; the main UI retains its existing CSP. The Worker never receives notes, account keys, native bridge objects, or whole-file-system handles. It can access only the current session's explicit virtual files. Runtime is included as small JavaScript assets in the APK, not as a heavyweight rootfs or bundled Linux binary.
+The user-provided code is **not** evaluated in the main WebView or in the native Android bridge. Each invocation runs on a new synthetic HTTPS subdomain under `*.agent-sandbox.easybook.invalid` (served exclusively via Android `shouldInterceptRequest`), preventing access to the primary app's origin-bound data and preventing reuse of a previous execution's browser storage. The frame has no access to the native bridge. The dedicated Worker response has a worker-only CSP permitting JavaScript interpretation while explicitly denying direct network access; the main UI retains its existing CSP. The Worker never receives notes, account keys, native bridge objects, or whole-file-system handles. It can access only the current session's explicit virtual files. Runtime is included as small JavaScript assets in the APK, not as a heavyweight rootfs or bundled Linux binary.
 
 ## Storage and network
 
