@@ -3,6 +3,7 @@ import {DatabaseSync} from 'node:sqlite';
 import {readFileSync} from 'node:fs';
 import {aiAPI,aiMcpOAuthPage} from '../worker/ai.mjs';
 import {webSearchQuota} from '../worker/ai-web-search.mjs';
+import {runParallelMcpSearch,parallelSearchResults} from '../worker/ai-parallel-search.mjs';
 import worker from '../worker/index.mjs';
 const sqlite=new DatabaseSync(':memory:');sqlite.exec('PRAGMA foreign_keys=ON');for(const file of ['worker/schema.sql','mcp-oauth/migrations/0002_accounts.sql','worker/migrations/0010-workspace-identity.sql'])sqlite.exec(readFileSync(file,'utf8'));
 sqlite.exec('CREATE TABLE IF NOT EXISTS account_memberships(account_id TEXT PRIMARY KEY,permanent INTEGER NOT NULL DEFAULT 0,expires_at INTEGER NOT NULL DEFAULT 0)');
@@ -227,7 +228,10 @@ assert.equal(webSearchQuota(monthStart,{permanent:1,expires_at:0}).kind,'member'
  assert.equal(initialUsage.tier,'free');assert.equal(initialUsage.period,'day');
  assert.equal(initialUsage.limit,15);assert.equal(initialUsage.used,0);assert.equal(initialUsage.remaining,15);
  assert.ok(initialUsage.resetAt>Date.now());
- assert.deepEqual((await (await api('mcp','GET')).json()).webSearch,{available:true,enabled:false,approval:'ask'});
+ const builtins=await (await api('mcp','GET')).json();
+ assert.deepEqual(builtins.webSearch,{available:true,enabled:false,approval:'ask'});
+ assert.deepEqual(builtins.parallelSearch,{available:true,enabled:true,approval:'ask',url:'https://mcp.parallel.ai/mcp'});
+ assert.equal((await api('mcp','PUT',{parallelSearch:false})).status,200,'Existing browser-only search behavior can be selected independently');
  await chat();assert.equal(exposed,false);
  assert.equal((await api('mcp','PUT',{webSearch:true})).status,200);
  assert.deepEqual((await (await api('mcp','GET',undefined,{...principal,accountId:otherAccount})).json()).webSearch,{available:true,enabled:false,approval:'ask'});
@@ -243,14 +247,18 @@ assert.equal(webSearchQuota(monthStart,{permanent:1,expires_at:0}).kind,'member'
  assert.equal((await api('execute','POST',{approvalId:proposal.id})).status,409);
  const pending=(await (await chat()).json()).approval;
  assert.equal((await api('mcp','PUT',{webSearch:false})).status,200);
- assert.equal((await api('execute','POST',{approvalId:pending.id})).status,409);
+ const revoked=await (await api('execute','POST',{approvalId:pending.id})).json();
+ assert.equal(revoked.ok,false);
+ assert.equal(revoked.error.code,'web_search_unavailable');
  assert.equal(searches,1);
  assert.equal((await api('mcp','PUT',{webSearch:true})).status,200);
  primary='results';
  const match=(await (await chat()).json()).approval;
- assert.deepEqual(await (await api('execute','POST',{approvalId:match.id})).json(),{
-  ok:true,tool:'web_search',result:{source:'duckduckgo',results:[{url:'https://example.com/docs',title:'Docs',description:'Search snippet'}]}
- });
+ const matched=await (await api('execute','POST',{approvalId:match.id})).json();
+ assert.equal(matched.ok,true);
+ assert.equal(matched.tool,'web_search');
+ assert.equal(matched.result.source,'duckduckgo');
+ assert.deepEqual(matched.result.results[0],{url:'https://example.com/docs',title:'Docs',description:'Search snippet',source:'duckduckgo'});
  assert.equal(closed,2,'Browser closes after reading successful results');
  assert.deepEqual(visits.splice(0),['duckduckgo']);
  assert.deepEqual(profiles.slice(0,3).map(step=>step.method),['Emulation.setDeviceMetricsOverride','Emulation.setTouchEmulationEnabled','Emulation.setUserAgentOverride']);
@@ -334,6 +342,74 @@ assert.equal(webSearchQuota(monthStart,{permanent:1,expires_at:0}).kind,'member'
  const permanentUsage=(await (await api('mcp','GET')).json()).usage.webSearch;
  assert.equal(permanentUsage.tier,'member');assert.equal(permanentUsage.used,1000);assert.equal(permanentUsage.remaining,0);
  await api('mcp','PUT',{webSearch:false});
+}
+
+// The preset uses the anonymous Parallel MCP endpoint. Its searches remain
+// available after Easybook's own Browser Rendering quota is exhausted.
+{
+ const endpoint='https://mcp.parallel.ai/mcp',searchQuery='APEC 2026',source='https://example.org/parallel',queries=[];
+ let parallelCalls=0,rateLimited=false;
+ const parallelFetcher=async(url,init={})=>{
+  const target=new URL(url),headers=new Headers(init.headers);
+  if(target.hostname==='cloudflare-dns.com')return Response.json({Status:0,Answer:[{type:1,data:'93.184.216.34'}]});
+  if(target.href===endpoint){
+   assert.equal(headers.get('Authorization'),null,'Anonymous preset never forwards Easybook credentials');
+   if(init.method==='DELETE')return new Response(null,{status:204});
+   const payload=JSON.parse(init.body);
+   if(payload.method==='initialize')return Response.json({jsonrpc:'2.0',id:payload.id,result:{protocolVersion:'2025-06-18',capabilities:{tools:{}}}});
+   if(payload.method==='notifications/initialized')return new Response(null,{status:202});
+   if(payload.method==='tools/call'){
+    assert.equal(payload.params.name,'web_search');
+    assert.deepEqual(payload.params.arguments,{objective:searchQuery,search_queries:[searchQuery]});
+    queries.push(payload.params.arguments);
+    parallelCalls++;
+    if(rateLimited)return Response.json({error:'Rate limit exceeded'},{status:429});
+    return Response.json({jsonrpc:'2.0',id:payload.id,result:{content:[{type:'text',text:JSON.stringify({results:[{url:source,title:'Parallel official result',publish_date:'2026-11-21',excerpts:['Evidence found']},{url:'javascript:alert(1)',title:'Unsafe link',excerpts:['ignore']}]})}]}});
+   }
+   throw Error('Unexpected Parallel RPC');
+  }
+  assert.equal(target.hostname,'api.openai.com');
+  const request=JSON.parse(init.body);
+  if(request.messages.at(-1)?.role==='tool')return Response.json({choices:[{message:{role:'assistant',content:'已使用进阶搜索来源。'}}]});
+  if(!request.tools?.some(tool=>tool.function.name==='web_search'))return Response.json({choices:[{message:{role:'assistant',content:'No web search'}}]});
+  return Response.json({choices:[{message:{role:'assistant',tool_calls:[{id:'parallel-search',type:'function',function:{name:'web_search',arguments:JSON.stringify({query:searchQuery})}}]}}]});
+ };
+ assert.deepEqual(parallelSearchResults({results:[{url:source,title:'Result',excerpts:['text']},{url:'file:///private',title:'Bad'}]}).map(x=>x.url),[source]);
+ const direct=await runParallelMcpSearch(searchQuery,undefined,parallelFetcher);
+ assert.equal(direct.results[0].url,source);
+ assert.equal(direct.results[0].description,'Evidence found');
+ assert.equal(direct.results[0].publishedAt,'2026-11-21');
+ assert.equal(direct.results.length,1);
+ const call=(path,method,body)=>aiAPI(request('/api/ai/'+path,method,body),env,principal,{workspaceId:workspace,fetcher:parallelFetcher});
+ const chat=()=>call('chat','POST',{mode:'conversation',credentialId:openaiId,messages:[{role:'user',content:'搜索 APEC 2026'}]});
+ assert.equal((await call('mcp','PUT',{parallelSearch:true})).status,200);
+ const listed=(await (await call('mcp','GET')).json()).parallelSearch;
+ assert.equal(listed.enabled,true);assert.equal(listed.approval,'ask');
+ const proposal=(await chat()).json();
+ const approval=(await proposal).approval;
+ assert.equal(approval.tool,'web_search');
+ assert.deepEqual(approval.providers,{primary:false,parallel:true});
+ const before=sqlite.prepare("SELECT count FROM account_rate_limits WHERE bucket LIKE 'ai-web-search:month:%'").get().count;
+ const executed=await (await call('execute','POST',{approvalId:approval.id})).json();
+ assert.equal(executed.ok,true);
+ assert.equal(executed.result.source,'parallel');
+ assert.equal(executed.result.results[0].url,source);
+ assert.equal(sqlite.prepare("SELECT count FROM account_rate_limits WHERE bucket LIKE 'ai-web-search:month:%'").get().count,before,'Parallel uses no Easybook quota');
+ assert.equal((await call('mcp','PUT',{parallelSearchApproval:'always'})).status,200);
+ const automatic=await (await chat()).json();
+ assert.equal(automatic.approval,undefined);
+ assert.equal(automatic.webSearch.result.source,'parallel');
+ assert.equal(automatic.message.content,'已使用进阶搜索来源。');
+ rateLimited=true;
+ const limited=await (await chat()).json();
+ assert.equal(limited.webSearch.result.browserSearch,true);
+ assert.equal(limited.webSearch.result.error.code,'parallel_rate_limited');
+ assert.equal(sqlite.prepare("SELECT count FROM account_rate_limits WHERE bucket LIKE 'ai-web-search:month:%'").get().count,before);
+ assert.equal((await call('mcp','PUT',{parallelSearch:false})).status,200);
+ const unavailable=await (await chat()).json();
+ assert.equal(unavailable.approval,undefined);
+ assert.equal(unavailable.message.content,'No web search','No search tool is offered once both providers are disabled');
+ assert.ok(parallelCalls>=4);
 }
 
 // Third-party MCP is opt-in and always sends arguments only after approval.
