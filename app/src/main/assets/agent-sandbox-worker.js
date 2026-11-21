@@ -2,6 +2,7 @@
 // Easybook Android opt-in code sandbox. This worker has no DOM, native bridge or
 // access to Easybook notes. All persisted files are explicitly scoped by the host.
 const MAX_FILE=131072, MAX_TOTAL=524288, MAX_FILES=48, MAX_OUTPUT=16000;
+const encodedSize=value=>new TextEncoder().encode(value).length;
 const pending=new Map();
 let counter=0;
 const validPath=value=>typeof value==='string'&&value.length>0&&value.length<=180&&!value.startsWith('/')&&!value.includes('\\')&&!value.split('/').some(part=>!part||part==='.'||part==='..'||part.startsWith('.'))&&/^[A-Za-z0-9_./-]+$/.test(value);
@@ -23,15 +24,15 @@ self.onmessage=async event=>{
  };
  try{
   for(const [name,data] of Object.entries(message.files||{})){
-   if(!validPath(name)||typeof data!=='string'||data.length>MAX_FILE)throw Error('工作区文件无效');
+   if(!validPath(name)||typeof data!=='string'||encodedSize(data)>MAX_FILE)throw Error('工作区文件无效');
    files.set(name,data);
   }
-  const size=()=>[...files.values()].reduce((sum,value)=>sum+value.length,0);
+  const size=()=>[...files.values()].reduce((sum,value)=>sum+encodedSize(value),0);
   const sandbox=Object.freeze({
    readFile(name){if(!validPath(name))throw Error('路径无效');if(!files.has(name))throw Error('文件不存在');return files.get(name)},
-   writeFile(name,data){if(!validPath(name))throw Error('路径无效');if(typeof data!=='string'||data.length>MAX_FILE)throw Error('文件必须为不超过 128 KB 的文本');if(!files.has(name)&&files.size>=MAX_FILES)throw Error('文件数量超过上限');const previous=files.get(name);files.set(name,data);if(size()>MAX_TOTAL){if(previous===undefined)files.delete(name);else files.set(name,previous);throw Error('沙箱总存储超过 512 KB')};return data.length},
+   writeFile(name,data){if(!validPath(name))throw Error('路径无效');if(typeof data!=='string'||data.length>MAX_FILE)throw Error('文件必须为不超过 128 KB 的文本');if(!files.has(name)&&files.size>=MAX_FILES)throw Error('文件数量超过上限');const previous=files.get(name);files.set(name,data);if(size()>MAX_TOTAL){if(previous===undefined)files.delete(name);else files.set(name,previous);throw Error('沙箱总存储超过 512 KB')};return encodedSize(data)},
    deleteFile(name){if(!validPath(name))throw Error('路径无效');return files.delete(name)},
-   listFiles(){return [...files.entries()].map(([name,value])=>({name,bytes:value.length}))},
+   listFiles(){return [...files.entries()].map(([name,value])=>({name,bytes:encodedSize(value)}))},
    async fetchText(url){
     if(typeof url!=='string'||url.length>2048)throw Error('URL 无效');
     const requestId=id+':'+(++counter);
