@@ -432,7 +432,7 @@ assert.equal(webSearchQuota(monthStart,{permanent:1,expires_at:0}).kind,'member'
   assert.equal(target.hostname,'api.openai.com');
   const payload=JSON.parse(init.body),last=payload.messages.at(-1),turn=++modelRounds;
   if(turn===1||turn===2){
-   assert.equal(turn===1?last.role:'tool',turn===1?'user':'tool');
+   assert.equal(last.role,turn===1?'user':'tool');
    return Response.json({choices:[{message:{role:'assistant',tool_calls:[{id:'research-'+turn,type:'function',function:{name:'web_search',arguments:JSON.stringify({query:turn===1?'APEC Shenzhen':'APEC meetings',maxResults:turn===1?4:22})}}]}}]});
   }
   return Response.json({choices:[{message:{role:'assistant',content:'已综合不同查询结果与来源。'}}]});
