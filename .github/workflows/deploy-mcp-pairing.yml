@@ -6,9 +6,8 @@ on:
     paths:
       - 'mcp-oauth/**'
       - 'worker/mcp*.mjs'
-      - 'worker/ai.mjs'
-      - 'worker/ai-external-mcp.mjs'
-      - 'worker/ai-mcp-oauth.mjs'
+      # OAuth Worker imports the full shared AI implementation, including search quotas.
+      - 'worker/ai*.mjs'
       - 'worker/migrations/0008-mcp-capabilities.sql'
       - 'worker/migrations/0018-ai-credentials.sql'
       - 'worker/migrations/0021-ai-profiles.sql'
