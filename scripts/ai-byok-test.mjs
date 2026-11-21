@@ -644,4 +644,103 @@ assert.equal(webSearchQuota(monthStart,{permanent:1,expires_at:0}).kind,'member'
  console.log('PASS MCP OAuth discovery, least-privilege scope, public client registration, PKCE, account-bound status, callback replay, encrypted refresh, private endpoint rejection and native Worker affinity');
 }
 
+// Optional Parallel OAuth is bound to the Easybook account, hidden from
+// third-party MCP catalogs, stored encrypted, and only used when selected.
+{
+ const base='https://mcp.parallel.ai/mcp',login=base+'?login',issuer='https://auth.parallel.ai';
+ const callback='/api/ai/mcp/oauth/callback';
+ const token='parallel-login-secret-token';
+ let registered=0,protectedCalls=0,anonymousCalls=0,clientCalls=0,modelRounds=0;
+ const parallelFetcher=async(input,init={})=>{
+  const u=new URL(input),headers=new Headers(init.headers);
+  if(u.hostname==='cloudflare-dns.com')return Response.json({Status:0,Answer:[{type:1,data:'93.184.216.34'}]});
+  if(u.href===login){
+   assert.equal(init.method,'POST');
+   return new Response(null,{status:401,headers:{'WWW-Authenticate':'Bearer resource_metadata="https://mcp.parallel.ai/.well-known/oauth-protected-resource/mcp"'}});
+  }
+  if(u.href==='https://mcp.parallel.ai/.well-known/oauth-protected-resource/mcp')
+   return Response.json({resource:base,authorization_servers:[issuer],scopes_supported:['search']});
+  if(u.href===issuer+'/.well-known/oauth-authorization-server'.slice(issuer.length-'https://auth.parallel.ai'.length)){
+   throw Error('Unexpected metadata path');
+  }
+  if(u.href===issuer.replace('/auth','')+'/.well-known/oauth-authorization-server'||u.href===issuer+'/.well-known/oauth-authorization-server')
+   return Response.json({issuer,authorization_endpoint:issuer+'/authorize',token_endpoint:issuer+'/token',
+    registration_endpoint:issuer+'/register',code_challenge_methods_supported:['S256'],
+    token_endpoint_auth_methods_supported:['none']});
+  if(u.href===issuer+'/register'){
+   registered++;
+   const requestBody=JSON.parse(init.body);
+   assert.deepEqual(requestBody.redirect_uris,['https://easybook.test'+callback]);
+   return Response.json({client_id:'parallel-public-client',token_endpoint_auth_method:'none'});
+  }
+  if(u.href===issuer+'/token'){
+   assert.equal(new URLSearchParams(init.body).get('resource'),base);
+   return Response.json({access_token:token,token_type:'Bearer',expires_in:3600,refresh_token:'parallel-refresh-secret'});
+  }
+  if(u.href===base){
+   if(init.method==='DELETE')return new Response(null,{status:204});
+   const authenticated=headers.get('Authorization')==='Bearer '+token;
+   if(authenticated){
+    protectedCalls++;
+    const config=JSON.parse(headers.get('x-parallel-mcp-config'));
+    assert.equal(config.web_search.override.advanced_settings.max_results,22);
+   }else{anonymousCalls++;assert.equal(headers.has('x-parallel-mcp-config'),false)}
+   const body=JSON.parse(init.body);
+   if(body.method==='initialize')return Response.json({jsonrpc:'2.0',id:body.id,result:{protocolVersion:'2025-06-18',capabilities:{tools:{}}}});
+   if(body.method==='notifications/initialized')return new Response(null,{status:202});
+   assert.equal(body.method,'tools/call');
+   clientCalls++;
+   return Response.json({jsonrpc:'2.0',id:body.id,result:{content:[{type:'text',text:JSON.stringify({results:Array.from({length:authenticated?26:10},(_,i)=>({
+    url:'https://example.com/parallel-'+i,title:'Parallel source '+i,excerpts:['Public evidence'] }))})}]}});
+  }
+  if(u.hostname==='api.openai.com'){
+   const requestBody=JSON.parse(init.body);
+   if(requestBody.messages.at(-1)?.role==='tool')return Response.json({choices:[{message:{role:'assistant',content:'Sources collected.'}}]});
+   modelRounds++;
+   return Response.json({choices:[{message:{role:'assistant',tool_calls:[{id:'parallel-model-'+modelRounds,type:'function',function:{name:'web_search',arguments:JSON.stringify({query:'Parallel authenticated 2026',maxResults:22})}}]}}]});
+  }
+  throw Error('Unexpected Parallel OAuth URL '+u.href);
+ };
+ const config=(body,method='PUT')=>aiAPI(request('/api/ai/mcp',body?method:'GET',body),env,principal,{fetcher:parallelFetcher});
+ assert.equal((await config()).status,200);
+ assert.equal((await (await config()).json()).parallelSearch.connected,false);
+ const start=await (await config({parallelLogin:true})).json();
+ assert.match(start.state,/^[a-f0-9]{64}$/);
+ assert.equal(registered,1);
+ const launch=await aiMcpOAuthPage(new Request(start.authorizationUrl),env,{fetcher:parallelFetcher});
+ assert.equal(launch.status,303);
+ const destination=new URL(launch.headers.get('Location'));
+ assert.equal(destination.searchParams.get('redirect_uri'),'https://easybook.test'+callback);
+ assert.equal((await aiMcpOAuthPage(request(callback+'?state='+start.state+'&code=parallel-auth-code'),env,{fetcher:parallelFetcher})).status,200);
+ assert.deepEqual(await (await config({oauthState:start.state})).json(),{status:'connected'});
+ const view=await (await config()).json();
+ assert.equal(view.parallelSearch.connected,true);assert.equal(view.parallelSearch.mode,'account');
+ assert.equal(view.servers.some(row=>row.label.includes('Parallel 登录')),false,'Built-in OAuth is not a duplicate external MCP');
+ const stored=sqlite.prepare("SELECT key_ciphertext FROM account_ai_mcp_servers WHERE url=?").get(login);
+ assert.ok(stored?.key_ciphertext);
+ assert.ok(!JSON.stringify(sqlite.prepare("SELECT * FROM account_ai_mcp_servers WHERE url=?").get(login)).includes(token));
+ const call=(body)=>aiAPI(request('/api/ai/chat','POST',body),env,principal,{workspaceId:workspace,fetcher:parallelFetcher});
+ assert.equal((await config({parallelSearch:true})).status,200);
+ assert.equal((await config({parallelSearchApproval:'always'})).status,200);
+ const args={credentialId:openaiId,mode:'conversation',messages:[{role:'user',content:'Search public sources'}]};
+ const accountSearch=await (await call(args)).json();
+ assert.equal(accountSearch.webSearch.result.results.length,22);
+ assert.equal(accountSearch.webSearch.result.diagnostics.parallel.mode,'account');
+ assert.ok(protectedCalls>0);
+ assert.equal((await config({parallelMode:'anonymous'})).status,200);
+ const anonSearch=await (await call(args)).json();
+ assert.equal(anonSearch.webSearch.result.results.length,10);
+ assert.equal(anonSearch.webSearch.result.diagnostics.parallel.mode,'anonymous');
+ assert.ok(anonymousCalls>0);
+ assert.equal((await config({parallelMode:'account'})).status,200);
+ assert.equal((await config({parallelLogout:true})).status,200);
+ const disconnected=await (await config()).json();
+ assert.equal(disconnected.parallelSearch.connected,false);
+ assert.equal(disconnected.parallelSearch.mode,'anonymous');
+ assert.equal((await config({parallelMode:'account'})).status,401);
+ assert.equal(sqlite.prepare("SELECT COUNT(*) AS total FROM account_ai_mcp_servers WHERE url=?").get(login).total,0);
+ assert.ok(clientCalls>=2);
+ console.log('PASS Parallel optional OAuth login, encrypted account tokens, billing-mode selection, result override and logout');
+}
+
 sqlite.close();console.log('PASS multi-BYOK encryption, provider presets, model discovery, active switching, Anthropic protocol and workspace authorization');
