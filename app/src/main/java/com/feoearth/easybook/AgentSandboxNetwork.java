@@ -7,6 +7,10 @@ import java.io.InputStream;
 import java.net.IDN;
 import java.net.InetAddress;
 import java.net.URI;
+import java.net.Socket;
+import java.net.InetSocketAddress;
+import java.io.IOException;
+import javax.net.ssl.SSLSocketFactory;
 import javax.net.ssl.HttpsURLConnection;
 import java.nio.charset.StandardCharsets;
 
@@ -62,6 +66,56 @@ final class AgentSandboxNetwork {
         if(a==255)return false;
         return true;
     }
+    /**
+     * Pin the actual TCP destination to an already validated public address.
+     * This prevents a second DNS resolution from switching to a private IP.
+     * Fail closed if an HTTPS stack requests an unpinned socket path.
+     */
+    private static SSLSocketFactory pinnedFactory(String hostname,InetAddress[] verified){
+        SSLSocketFactory delegate=(SSLSocketFactory)SSLSocketFactory.getDefault();
+        return new SSLSocketFactory(){
+            @Override public String[] getDefaultCipherSuites(){return delegate.getDefaultCipherSuites();}
+            @Override public String[] getSupportedCipherSuites(){return delegate.getSupportedCipherSuites();}
+            private boolean valid(InetAddress address){
+                if(!publicAddress(address))return false;
+                for(InetAddress pinned:verified)if(pinned.equals(address))return true;
+                return false;
+            }
+            private Socket connected(InetAddress address,int port)throws IOException{
+                if(port!=443||!valid(address))throw new IOException("Blocked unverified HTTPS destination");
+                Socket plain=new Socket();
+                plain.connect(new InetSocketAddress(address,port),8000);
+                return plain;
+            }
+            @Override public Socket createSocket(String host,int port)throws IOException{
+                if(!hostname.equalsIgnoreCase(host))throw new IOException("HTTPS host mismatch");
+                Socket raw=connected(verified[0],port);
+                return delegate.createSocket(raw,hostname,port,true);
+            }
+            @Override public Socket createSocket(String host,int port,InetAddress local,int localPort)throws IOException{
+                throw new IOException("Unpinned bound HTTPS socket denied");
+            }
+            @Override public Socket createSocket(InetAddress address,int port)throws IOException{
+                Socket raw=connected(address,port);
+                return delegate.createSocket(raw,hostname,port,true);
+            }
+            @Override public Socket createSocket(InetAddress address,int port,InetAddress local,int localPort)throws IOException{
+                throw new IOException("Unpinned bound HTTPS socket denied");
+            }
+            @Override public Socket createSocket(Socket socket,String host,int port,boolean autoClose)throws IOException{
+                if(!hostname.equalsIgnoreCase(host)||port!=443)throw new IOException("HTTPS host mismatch");
+                if(socket!=null&&socket.isConnected()){
+                    if(!valid(socket.getInetAddress()))throw new IOException("Unverified HTTPS socket destination");
+                    return delegate.createSocket(socket,hostname,port,autoClose);
+                }
+                Socket raw=connected(verified[0],port);
+                return delegate.createSocket(raw,hostname,port,true);
+            }
+            @Override public Socket createSocket()throws IOException{
+                throw new IOException("Unpinned HTTPS socket denied");
+            }
+        };
+    }
     static JSONObject fetch(Context context,String input)throws Exception {
         if(!enabled(context))throw new SecurityException("Agent 执行环境未启用");
         if(input==null||input.length()>2048)throw new SecurityException("URL 过长");
@@ -74,9 +128,12 @@ final class AgentSandboxNetwork {
             ||host.matches("[0-9.]+")||host.equals("localhost")||host.endsWith(".localhost")||host.endsWith(".local")
             ||host.endsWith(".internal")||host.endsWith(".lan")||host.endsWith(".home")||host.endsWith(".test"))
             throw new SecurityException("不允许访问本地或私有主机");
-        for(InetAddress address:InetAddress.getAllByName(host))if(!publicAddress(address))
+        InetAddress[] verified=InetAddress.getAllByName(host);
+        if(verified.length==0)throw new SecurityException("无法解析 HTTPS 主机");
+        for(InetAddress address:verified)if(!publicAddress(address))
             throw new SecurityException("不允许访问私有网络地址");
         HttpsURLConnection connection=(HttpsURLConnection)uri.toURL().openConnection();
+        connection.setSSLSocketFactory(pinnedFactory(host,verified));
         connection.setInstanceFollowRedirects(false);connection.setConnectTimeout(8000);connection.setReadTimeout(8000);
         connection.setRequestProperty("Accept","text/plain, application/json, text/*;q=0.8");
         connection.setUseCaches(false);
