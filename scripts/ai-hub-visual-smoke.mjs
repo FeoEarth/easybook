@@ -97,11 +97,11 @@ try{
   await page.locator('#'+entry+'Search').fill('读书');
   const sessionId=await page.evaluate(()=>window.aiHarness.session().id);
   await page.evaluate(()=>{
-   let enabled=false;
+   let enabled=false,approval='ask';
    window.aiHarness.execute(async(route,options)=>{
     if(route==='mcp'){
-     if(options?.method==='PUT'){enabled=options.body.webSearch;return {ok:true}}
-     return {servers:[],webSearch:{available:true,enabled}};
+     if(options?.method==='PUT'){if('webSearch' in options.body)enabled=options.body.webSearch;else approval=options.body.webSearchApproval;return {ok:true}}
+     return {servers:[],webSearch:{available:true,enabled,approval}};
     }
     if(route==='preferences')return {version:1,autoMemory:true,useMemory:true,instructions:'',memories:[]};
     throw Error('Unexpected shortcut request: '+route);
@@ -115,8 +115,11 @@ try{
   const builtins=page.locator('#aiMcpBuiltins');
   assert.match(await builtins.textContent(),/Easybook.*始终可用/s);
   assert.equal(await builtins.locator('[data-mcp-action]').count(),0);
-  const search=page.getByRole('switch',{name:'联网搜索'});
+  const search=page.getByRole('switch',{name:'联网搜索',exact:true});
   await search.click();await page.waitForFunction(()=>document.getElementById('aiWebSearch').getAttribute('aria-checked')==='true');
+  const always=page.locator('#aiWebSearchApproval');
+  await always.click();await page.waitForFunction(()=>document.getElementById('aiWebSearchApproval').getAttribute('aria-checked')==='true');
+  await always.click();await page.waitForFunction(()=>document.getElementById('aiWebSearchApproval').getAttribute('aria-checked')==='false');
   await search.click();await page.waitForFunction(()=>document.getElementById('aiWebSearch').getAttribute('aria-checked')==='false');
   await page.locator('#aiMcpMarket button').filter({hasText:'Linear'}).click();
   assert.equal(await page.locator('#aiMcpUrl').inputValue(),'https://mcp.linear.app/mcp/readonly');

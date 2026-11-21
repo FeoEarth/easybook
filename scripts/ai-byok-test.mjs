@@ -205,15 +205,16 @@ assert.equal((await aiAPI(request('/api/ai/preferences'),env,{kind:'anonymous'})
  const modelFetcher=async(url,init)=>{
   assert.equal(new URL(url).hostname,'api.openai.com');
   const payload=JSON.parse(init.body);
+  if(payload.messages.at(-1)?.role==='tool')return Response.json({choices:[{message:{role:'assistant',content:'已使用来源'}}]});
   exposed=payload.tools.some(tool=>tool.function.name==='web_search');
   return Response.json({choices:[{message:exposed?{role:'assistant',tool_calls:[{id:'search-call',type:'function',function:{name:'web_search',arguments:JSON.stringify({query})}}]}:{role:'assistant',content:'No web search'}}]});
  };
  const api=(path,method,body,p=principal)=>aiAPI(request('/api/ai/'+path,method,body),searchEnv,p,{workspaceId:workspace,fetcher:modelFetcher,launchSearchBrowser});
  const chat=(mode='conversation')=>api('chat','POST',{credentialId:openaiId,mode,messages:[{role:'user',content:'请联网搜索'}]});
- assert.deepEqual((await (await api('mcp','GET')).json()).webSearch,{available:true,enabled:false});
+ assert.deepEqual((await (await api('mcp','GET')).json()).webSearch,{available:true,enabled:false,approval:'ask'});
  await chat();assert.equal(exposed,false);
  assert.equal((await api('mcp','PUT',{webSearch:true})).status,200);
- assert.deepEqual((await (await api('mcp','GET',undefined,{...principal,accountId:otherAccount})).json()).webSearch,{available:true,enabled:false});
+ assert.deepEqual((await (await api('mcp','GET',undefined,{...principal,accountId:otherAccount})).json()).webSearch,{available:true,enabled:false,approval:'ask'});
  await chat(null);assert.equal(exposed,false,'The note writing request does not expose an approval it cannot display');
  const proposal=(await (await chat()).json()).approval;
  assert.equal(proposal.tool,'web_search');assert.equal(searches,0);
@@ -254,10 +255,27 @@ assert.equal((await aiAPI(request('/api/ai/preferences'),env,{kind:'anonymous'})
  assert.deepEqual(visits.splice(0),['duckduckgo'],'Skip Wiby for non-English queries');
  assert.match(profiles.at(-1).params.acceptLanguage,/^zh-CN/);
  assert.equal(sqlite.prepare("SELECT count FROM account_rate_limits WHERE bucket LIKE 'ai-web-search:%'").get().count,5,'One quota charge per approved query');
+ assert.equal((await api('mcp','PUT',{webSearchApproval:'always'})).status,200);
+ assert.equal((await (await api('mcp','GET')).json()).webSearch.approval,'always');
+ assert.equal((await (await api('mcp','GET',undefined,{...principal,accountId:otherAccount})).json()).webSearch.approval,'ask');
+ primary='results';
+ const automatic=await (await chat()).json();
+ assert.equal(automatic.approval,undefined);
+ assert.equal(automatic.message.content,'已使用来源');
+ assert.equal(automatic.webSearch.result.results[0].url,'https://example.com/docs');
+ primary='blocked';query='人工智能';
+ const handoff=await (await chat()).json();
+ assert.equal(handoff.approval,undefined);
+ assert.equal(handoff.webSearch.result.browserSearch,true);
+ assert.equal(searches,7);
+ const pendingWrite=await (await aiAPI(request('/api/ai/chat','POST',{credentialId:openaiId,mode:'agent',messages:[{role:'user',content:'新建笔记'}]}),searchEnv,principal,{workspaceId:workspace,fetcher:async()=>Response.json({choices:[{message:{role:'assistant',tool_calls:[{id:'write',type:'function',function:{name:'notes_create',arguments:'{"title":"Safety check"}'}}]}}]})})).json();
+ assert.equal(pendingWrite.approval.tool,'notes_create','Always allow does not authorize writes');
+ assert.equal((await api('mcp','PUT',{webSearchApproval:'ask'})).status,200);
+ assert.equal((await (await chat()).json()).approval.tool,'web_search');
  sqlite.prepare("UPDATE account_rate_limits SET count=20 WHERE bucket LIKE 'ai-web-search:%'").run();
  const capped=(await (await chat()).json()).approval;
  assert.equal((await (await api('execute','POST',{approvalId:capped.id})).json()).error.code,'web_search_limit');
- assert.equal(searches,5,'Usage above the daily limit does not reach the search service');
+ assert.equal(searches,7,'Usage above the daily limit does not reach the search service');
  await api('mcp','PUT',{webSearch:false});
 }
 
@@ -305,7 +323,7 @@ assert.equal((await aiAPI(request('/api/ai/preferences'),env,{kind:'anonymous'})
  const listed=await (await call('mcp','GET')).json(),server=listed.servers[0];
  assert.deepEqual(server.tools,[remoteName]);assert.ok(!JSON.stringify(listed).includes(token));
  assert.ok(!JSON.stringify(sqlite.prepare('SELECT * FROM account_ai_mcp_servers').all()).includes(token));
- assert.deepEqual(await (await call('mcp','GET',undefined,{...principal,accountId:'another-account'})).json(),{servers:[],webSearch:{available:false,enabled:false}});
+ assert.deepEqual(await (await call('mcp','GET',undefined,{...principal,accountId:'another-account'})).json(),{servers:[],webSearch:{available:false,enabled:false,approval:'ask'}});
  const chat=(externalTools,mode='conversation')=>call('chat','POST',{credentialId:openaiId,messages:[{role:'user',content:'查找'}],externalTools,mode});
  assert.equal((await (await chat(false)).json()).message.content,'no external tools');
  const approved=await (await chat(true)).json();

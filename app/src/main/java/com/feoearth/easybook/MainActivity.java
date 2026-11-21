@@ -149,6 +149,7 @@ public class MainActivity extends Activity {
         setContentView(safeArea);
         safeArea.requestApplyInsets();
         WebSettings s = web.getSettings();
+        s.setSupportZoom(false);
         web.setWebChromeClient(new WebChromeClient(){
             @Override public android.graphics.Bitmap getDefaultVideoPoster(){return android.graphics.Bitmap.createBitmap(1,1,android.graphics.Bitmap.Config.ARGB_8888);}
             @Override public void onShowCustomView(View view,CustomViewCallback callback){

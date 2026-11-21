@@ -95,7 +95,13 @@ try{
   url:'https://example.com/source-'+(i+2)+'/?ref='+'a'.repeat(1700),
   title:'来源 '+(i+2),description:'摘录'.repeat(350)
  }))];
- app.execute(async(path,options)=>{assert.equal(path,'execute');assert.equal(options.body.approvalId,'search');return {ok:true,result:{results:searchResults}}});
+ const approvalRequests=[];
+ app.execute(async(path,options)=>{
+  approvalRequests.push(path);
+  if(path==='mcp'){assert.equal(options.body.webSearchApproval,'always');return {ok:true}}
+  assert.equal(path,'execute');assert.equal(options.body.approvalId,'search');
+  return {ok:true,result:{results:searchResults}};
+ });
  app.cloud(async body=>{
   const receipt=body.messages.find(m=>m.content.includes('https://example.com/docs'));
   assert.match(receipt.content,/source-10/);
@@ -105,10 +111,16 @@ try{
   assert.equal(evidence.result.results[0].publishedAt,'2026-11-21');
   return {message:{content:'根据公开参考文档，搜索已完成。'}};
  });
- await app.approve(true);
+ $('aiHubMessages').querySelector('[data-ai-approve-always]').click();
+ await wait(()=>app.session().messages.at(-1).content==='根据公开参考文档，搜索已完成。');
+ assert.deepEqual(approvalRequests,['mcp','execute']);
  assert.equal($('aiHubMessages').querySelector('a[href="https://example.com/actual"]').textContent,'参考文档');
  assert.match($('aiHubMessages').textContent,/已读取正文/);
  assert.equal($('aiHubMessages').querySelectorAll('a[href^="https://example.com/"]').length,10);
+ app.cloud(async()=>({message:{content:'已自动查找'},webSearch:{arguments:{query:'公开资料'},result:{results:[{url:'https://example.org/auto',title:'自动来源'}]}}}));
+ await app.send('直接搜索公开资料');
+ assert.equal(app.session().pendingApproval,null);
+ assert.equal($('aiHubMessages').querySelector('a[href="https://example.org/auto"]').textContent,'自动来源');
  const fallbackProposal={...searchProposal,id:'search-fallback'};
  app.cloud(async()=>({message:{content:'请确认搜索'},approval:fallbackProposal}));
  await app.send('再联网搜索一次');

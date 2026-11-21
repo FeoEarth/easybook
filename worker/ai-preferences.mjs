@@ -6,7 +6,7 @@ export async function readPreferences(env,account){
 }
 export async function writePreferences(env,account,input){
  const current=await readPreferences(env,account);if(input?.version!==current.version)return null;
- const next={...normalizePreferences({...input,webSearch:typeof input.webSearch==='boolean'?input.webSearch:current.webSearch}),version:current.version+1};
+ const next={...normalizePreferences({...input,webSearch:typeof input.webSearch==='boolean'?input.webSearch:current.webSearch,webSearchApproval:input.webSearchApproval??current.webSearchApproval}),version:current.version+1};
  const result=await env.DB.prepare('INSERT INTO account_ai_preferences(account_id,version,data_json) VALUES(?,?,?) ON CONFLICT(account_id) DO UPDATE SET version=excluded.version,data_json=excluded.data_json WHERE account_ai_preferences.version=? RETURNING version').bind(account,next.version,JSON.stringify(next),current.version).first();
  return result?next:null;
 }

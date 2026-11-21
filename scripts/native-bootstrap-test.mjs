@@ -107,6 +107,7 @@ try{
  }
  window.document.dispatchEvent(new window.Event('DOMContentLoaded'));
  assert.ok(bootstrap,'the real app has issued bootstrap through the native bridge');
+ assert.match(window.document.querySelector('meta[name="viewport"]').content,/maximum-scale=1,user-scalable=no/,'Android locks page zoom before bootstrap returns');
  assert.ok(window.EasybookI18n,'the later localization script ran before bootstrap returned');
  assert.equal(window.document.getElementById('newTop').onclick,null,'bootstrap gates installation of application handlers');
  // A second injection must also be harmless during real application bootstrap.

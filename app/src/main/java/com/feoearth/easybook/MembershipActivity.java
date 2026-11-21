@@ -31,6 +31,7 @@ public final class MembershipActivity extends Activity {
   try{NoteRepository db=NoteRepository.get(this,ServerProfiles.get(this).active());String origin=db.profile().origin;
    if(db.profile().httpKeyOnly)throw new SecurityException();String token=NativeAccount.token(db);
    web=new WebView(this);AppAppearance.usePageColors(web);web.getSettings().setJavaScriptEnabled(true);web.getSettings().setDomStorageEnabled(true);CookieManager.getInstance().setAcceptCookie(true);CookieManager.getInstance().setAcceptThirdPartyCookies(web,false);web.getSettings().setAllowFileAccess(false);web.getSettings().setAllowContentAccess(false);web.getSettings().setMixedContentMode(WebSettings.MIXED_CONTENT_NEVER_ALLOW);
+   web.getSettings().setSupportZoom(false);
    web.setWebViewClient(new WebViewClient(){@Override public boolean shouldOverrideUrlLoading(WebView view,WebResourceRequest r){return !db.isActiveProfile()||!ServerAccountUrls.sameOrigin(origin,r.getUrl().toString())||!"/membership".equals(r.getUrl().getPath());}
     @Override public void onPageFinished(WebView view,String url){
      if(db.isActiveProfile()&&ServerAccountUrls.sameOrigin(origin,url)&&"/membership".equals(android.net.Uri.parse(url).getPath()))applyAppearance(getResources().getConfiguration());

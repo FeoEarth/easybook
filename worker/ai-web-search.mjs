@@ -6,7 +6,7 @@ export const WEB_SEARCH='web_search';
 const parameters=schema({query:str(400,1)},['query']);
 export const webSearchTool={type:'function',function:{
  name:WEB_SEARCH,
- description:'Search publicly available websites for current information. Use only when the user asks to search or needs current public information. Provide a short public query without private notes, attachments, personal data or secrets. Easybook confirms the query with the user before sending it.',
+ description:'Search publicly available websites for current information. Use only when the user asks to search or needs current public information. Provide a short public query without private notes, attachments, personal data or secrets. Easybook applies the user’s web search permission before sending the query.',
  parameters
 }};
 

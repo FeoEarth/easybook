@@ -181,7 +181,7 @@ export async function configureMcp(request,env,principal,options){
  if(request.method==='GET'){
   const rows=(await env.DB.prepare('SELECT * FROM account_ai_mcp_servers WHERE account_id=? ORDER BY label,id').bind(account).all()).results;
   const prefs=await readPreferences(env,account);
-  return {servers:rows.map(view),webSearch:{available:webSearchAvailable(env),enabled:prefs.webSearch}};
+  return {servers:rows.map(view),webSearch:{available:webSearchAvailable(env),enabled:prefs.webSearch,approval:prefs.webSearchApproval}};
  }
  const input=await boundedJSON(request,4096);
  if(!object(input)||input.id!==undefined&&!serverId.test(input.id))throw mcpError('mcp_invalid_config',400);
@@ -192,11 +192,14 @@ export async function configureMcp(request,env,principal,options){
   return {ok:true};
  }
  if(request.method!=='PUT')throw mcpError('mcp_invalid_config',400);
- if(Object.hasOwn(input,'webSearch')){
-  if(typeof input.webSearch!=='boolean'||Object.keys(input).length!==1)throw mcpError('mcp_invalid_config',400);
+ const searchSetting=Object.keys(input).length===1?Object.keys(input)[0]:'';
+ if(Object.hasOwn(input,'webSearch')||Object.hasOwn(input,'webSearchApproval')){
+  if(!(searchSetting==='webSearch'&&typeof input.webSearch==='boolean')&&
+     !(searchSetting==='webSearchApproval'&&['ask','always'].includes(input.webSearchApproval)))throw mcpError('mcp_invalid_config',400);
   if(input.webSearch&&!webSearchAvailable(env))throw mcpError('web_search_unavailable',503);
   const prefs=await readPreferences(env,account);
-  if(prefs.webSearch!==input.webSearch&&!await writePreferences(env,account,{...prefs,webSearch:input.webSearch}))throw mcpError('preferences_conflict',409);
+  if(input.webSearchApproval==='always'&&(!prefs.webSearch||!webSearchAvailable(env)))throw mcpError('web_search_unavailable',503);
+  if(prefs[searchSetting]!==input[searchSetting]&&!await writePreferences(env,account,{...prefs,...input}))throw mcpError('preferences_conflict',409);
   return {ok:true};
  }
  if(input.oauthState){
