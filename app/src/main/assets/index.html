@@ -933,7 +933,7 @@ body[data-settings-detail] .app{display:block;max-width:720px;height:auto;min-he
 <div class="settings-row"><span class="row-text"><strong>额度重置</strong><small id="aiUsageReset">—</small></span></div>
 </div>
 <p id="aiUsageStatus" class="ai-note" role="status"></p>
-<p class="ai-note">每次已执行的自动联网搜索都会计入额度，包括未取得结果的搜索。额度按账户共享；会员不设置每日上限。</p>
+<p class="ai-note">每次已执行的内置自动联网搜索都会计入额度，包括未取得结果的搜索。额度按账户共享；会员不设置每日上限。Parallel MCP 进阶版不占用此额度，但受其匿名速率限制。</p>
 <div class="ai-section-heading"><h2>其他用量</h2></div>
 <div class="settings-group"><div class="settings-row"><span class="row-text"><strong>模型 API（BYOK）</strong><small>模型 Token、费用及提供商限制请到对应模型服务商查看；Easybook 不统计提供商账户的完整用量。</small></span></div></div>
 </div></section>
@@ -943,6 +943,8 @@ body[data-settings-detail] .app{display:block;max-width:720px;height:auto;min-he
  <div class="settings-row"><span class="row-text"><strong>Easybook</strong><small>读取笔记、文件夹和待办。Agent 修改工作区前需要确认。</small></span><small class="ai-mcp-fixed">始终可用</small></div>
  <div class="settings-row"><span class="row-text"><strong>联网搜索</strong><small id="aiWebSearchDetail">由浏览器加载公开搜索页，搜索前需要确认关键词。</small></span><button type="button" id="aiWebSearch" class="sync-switch" role="switch" aria-label="联网搜索" aria-describedby="aiWebSearchDetail" aria-checked="false" disabled><span class="settings-switch-indicator" aria-hidden="true"></span></button></div>
  <div class="settings-row"><span class="row-text"><strong>总是允许联网搜索</strong><small id="aiWebSearchApprovalDetail">允许云端对话直接发送公开搜索关键词，此设置随账户同步。</small></span><button type="button" id="aiWebSearchApproval" class="sync-switch" role="switch" aria-label="总是允许联网搜索" aria-describedby="aiWebSearchApprovalDetail" aria-checked="false" disabled><span class="settings-switch-indicator" aria-hidden="true"></span></button></div>
+ <div class="settings-row"><span class="row-text"><strong>联网搜索进阶版 · Parallel MCP</strong><small id="aiParallelSearchDetail">预装、默认开启、无需认证。与联网搜索并行；内置额度用尽仍可用，受 Parallel 匿名速率限制。</small></span><button type="button" id="aiParallelSearch" class="sync-switch" role="switch" aria-label="联网搜索进阶版" aria-describedby="aiParallelSearchDetail" aria-checked="false" disabled><span class="settings-switch-indicator" aria-hidden="true"></span></button></div>
+ <div class="settings-row"><span class="row-text"><strong>总是允许联网搜索进阶版</strong><small id="aiParallelApprovalDetail">不再逐次询问是否将公开搜索关键词发送至 Parallel MCP。</small></span><button type="button" id="aiParallelApproval" class="sync-switch" role="switch" aria-label="总是允许联网搜索进阶版" aria-describedby="aiParallelApprovalDetail" aria-checked="false" disabled><span class="settings-switch-indicator" aria-hidden="true"></span></button></div>
 </div>
 <div class="ai-section-heading"><h2>已连接的服务器</h2></div>
 <p class="ai-note">在云端会话的「上下文」中打开第三方工具。每次调用都需要确认。</p>
@@ -1752,7 +1754,7 @@ function refreshMcpOAuthOnReturn(){
 }
 window.addEventListener('focus',refreshMcpOAuthOnReturn);
 document.addEventListener('visibilitychange',refreshMcpOAuthOnReturn);
-let aiMcpServers=[],aiWebSearchState=null;
+let aiMcpServers=[],aiWebSearchState=null,aiParallelSearchState=null;
 function renderAiWebSearch(){
  const button=$('aiWebSearch'),approval=$('aiWebSearchApproval'),always=aiWebSearchState?.approval==='always';
  approval.disabled=aiMcpBusy||!always&&(!aiWebSearchState?.available||!aiWebSearchState.enabled);
@@ -1760,11 +1762,17 @@ function renderAiWebSearch(){
  button.disabled=aiMcpBusy||!aiWebSearchState?.available;
  button.setAttribute('aria-checked',String(aiWebSearchState?.enabled===true));
  $('aiWebSearchDetail').textContent=aiWebSearchState?.available===false?'当前服务器未提供联网搜索。':always?'通过浏览器读取公开搜索页，已设为总是允许。':'通过浏览器读取公开搜索页。每次发送关键词前都需要确认。';
+ const parallel=$('aiParallelSearch'),parallelApproval=$('aiParallelApproval'),enabled=aiParallelSearchState?.enabled===true;
+ parallel.disabled=aiMcpBusy||!aiParallelSearchState?.available;
+ parallel.setAttribute('aria-checked',String(enabled));
+ parallelApproval.disabled=aiMcpBusy||!enabled;
+ parallelApproval.setAttribute('aria-checked',String(aiParallelSearchState?.approval==='always'));
 }
 async function refreshAiMcp(){
- const space=localSpace,{servers,webSearch}=await aiRequest('mcp');
+ const space=localSpace,{servers,webSearch,parallelSearch}=await aiRequest('mcp');
  if(space!==localSpace)return;
  aiWebSearchState=webSearch||{available:false,enabled:false};
+ aiParallelSearchState=parallelSearch||{available:false,enabled:false};
  aiMcpServers=servers;renderAiWebSearch();
  $('aiMcpList').innerHTML=servers.length?servers.map(server=>'<article class="ai-provider-card"><div class="ai-provider-copy"><strong>'+esc(server.label)+'</strong><small>'+esc(server.url)+'</small><small>'+esc(server.tools.length?server.tools.join('、'):'工具尚未发现，点击「刷新」重试')+'</small></div><div class="ai-provider-actions"><button type="button" data-mcp-action="'+(server.enabled?'disable':'enable')+'" data-mcp-id="'+esc(server.id)+'">'+(server.enabled?'停用':'启用')+'</button><button type="button" data-mcp-action="refresh" data-mcp-id="'+esc(server.id)+'">刷新</button><button type="button" data-mcp-action="oauth" data-mcp-id="'+esc(server.id)+'">OAuth 授权</button><button type="button" data-mcp-action="delete" data-mcp-id="'+esc(server.id)+'">移除</button></div></article>').join(''):'<p class="ai-note">还没有连接第三方 MCP 服务器。</p>';
 }
@@ -1777,7 +1785,7 @@ async function changeAiMcp(action){
  finally{aiMcpBusy=false;$('aiMcpSave').disabled=false;$('aiMcpList').inert=false;renderAiWebSearch()}
 }
 function openAiMcp(event){
- aiWebSearchState=null;renderAiWebSearch();
+ aiWebSearchState=null;aiParallelSearchState=null;renderAiWebSearch();
  openSettingsDetail('aiMcpPage',event?.currentTarget);void changeAiMcp(async()=>{});
 }
 $('aiWebSearch').onclick=()=>{
@@ -1788,6 +1796,16 @@ $('aiWebSearch').onclick=()=>{
 $('aiWebSearchApproval').onclick=()=>{
  const approval=aiWebSearchState?.approval==='always'?'ask':'always';
  void changeAiMcp(()=>aiRequest('mcp',{method:'PUT',body:{webSearchApproval:approval}}));
+};
+$('aiParallelSearch').onclick=()=>{
+ if(!aiParallelSearchState?.available)return;
+ const enabled=!aiParallelSearchState.enabled;
+ void changeAiMcp(()=>aiRequest('mcp',{method:'PUT',body:{parallelSearch:enabled}}));
+};
+$('aiParallelApproval').onclick=()=>{
+ if(!aiParallelSearchState?.enabled)return;
+ const approval=aiParallelSearchState.approval==='always'?'ask':'always';
+ void changeAiMcp(()=>aiRequest('mcp',{method:'PUT',body:{parallelSearchApproval:approval}}));
 };
 $('aiMcpOpen').onclick=openAiMcp;
 $('aiMcpClose').onclick=leaveSettingsDetail;
@@ -2216,6 +2234,7 @@ function webSearchSources(items){
   if(!['https:','http:'].includes(url.protocol)||url.username||url.password||seen.has(url.href))return [];
   seen.add(url.href);
   const source={url:url.href,title:item.title.slice(0,300),description:typeof item.description==='string'?item.description.slice(0,700):''};
+  if(['parallel','duckduckgo','wiby'].includes(item.source))source.source=item.source;
   if(typeof item.pageText==='string'&&item.pageText.trim()&&typeof item.pageUrl==='string'&&item.pageUrl.length<=2000){
    try{
     const pageUrl=new URL(item.pageUrl);
@@ -2270,8 +2289,8 @@ function aiWebSearchReceipt(message){
  const results=message.receipt.result?.results;
  if(!Array.isArray(results))return '';
  const sources=webSearchSources(results);
- const links=sources.map(item=>'<li><a href="'+esc(item.pageUrl||item.url)+'" target="_blank" rel="noopener noreferrer" translate="no">'+esc(item.title)+'</a>'+(item.pageText?' <small>已读取正文</small>':'')+'</li>');
- const provider={duckduckgo:'DuckDuckGo',wiby:'Wiby'}[message.receipt.result.source];
+ const links=sources.map(item=>'<li><a href="'+esc(item.pageUrl||item.url)+'" target="_blank" rel="noopener noreferrer" translate="no">'+esc(item.title)+'</a>'+(item.source==='parallel'?' <small>Parallel</small>':item.pageText?' <small>已读取正文</small>':'')+'</li>');
+ const provider={duckduckgo:'DuckDuckGo',wiby:'Wiby',parallel:'Parallel MCP',combined:'双来源'}[message.receipt.result.source];
  return '<details><summary>'+esc(message.content)+' · '+sources.length+' 个结果'+(provider?' · '+provider:'')+'</summary>'+(links.length?'<ul>'+links.join('')+'</ul>':'')+'</details>';
 }
 function aiHubMessageHTML(message,index){
@@ -2361,7 +2380,8 @@ function renderAiHub(){
   if(card._aiSignature!==signature){
    const args=pending.arguments||{},search=pending.tool==='web_search';
    const preview=(search?[args.query]:[args.title,args.text]).filter(Boolean).join('\n\n');
-   const instruction=search?'确认后将此关键词发送给联网搜索服务。选择「总是允许」后，云端对话可直接搜索，可在 MCP 设置中撤销。':pending.external?'参数将发送至 '+pending.external.host+'。请核对后确认。':'请核对本次修改。确认后执行，并自动继续任务。';
+   const recipients=search?[pending.providers?.primary?'DuckDuckGo / Cloudflare':null,pending.providers?.parallel?'Parallel MCP':null].filter(Boolean).join('、'):'';
+   const instruction=search?'确认后将公开关键词发送至：'+(recipients||'已启用的搜索服务')+'。选择「总是允许」仅授权本次列出的来源，可在插件设置中撤销。':pending.external?'参数将发送至 '+pending.external.host+'。请核对后确认。':'请核对本次修改。确认后执行，并自动继续任务。';
    card.innerHTML='<strong>'+esc(pending.external?pending.external.server+' · '+pending.external.tool:aiToolLabel(pending.tool))+'</strong><small>'+esc(instruction)+'</small>'+(preview?'<div class="ai-approval-preview">'+esc(preview)+'</div>':'')+'<details><summary>查看完整参数</summary><pre>'+esc(JSON.stringify(args,null,2))+'</pre></details><div class="ai-approval-actions"><button type="button" data-ai-reject'+(aiHubBusy?' disabled':'')+'>取消</button><button type="button" data-ai-approve'+(aiHubBusy?' disabled':'')+'>'+(aiHubBusy?'正在执行…':'确认并继续')+'</button>'+(search?'<button type="button" data-ai-approve-always'+(aiHubBusy?' disabled':'')+'>总是允许</button>':'')+'</div>';card._aiSignature=signature;
   }
  }else card?.remove();
@@ -2630,7 +2650,8 @@ async function confirmAiHubAction(accept,always=false){
  try{
   if(always){
    if(!isSearch||pending.local)return;
-   await aiRequest('mcp',{method:'PUT',body:{webSearchApproval:'always'}});
+   if(pending.providers?.primary)await aiRequest('mcp',{method:'PUT',body:{webSearchApproval:'always'}});
+   if(pending.providers?.parallel)await aiRequest('mcp',{method:'PUT',body:{parallelSearchApproval:'always'}});
    if(workspace!==localSpace||session.pendingApproval!==pending)return;
   }
   const result=pending.local?await executeLocalAiApproval(pending):await aiRequest('execute',{method:'POST',body:{approvalId:pending.id}}).catch(error=>{
@@ -3762,7 +3783,7 @@ const en={
 '在应用内继续搜索':'Continue search in Easybook','结束搜索':'End search','已结束联网搜索':'Web search ended','已导入联网搜索来源':'Imported web search sources','搜索站限制了自动访问，请在浏览器中继续。':'The search site blocked automated access. Continue in the browser.','自动搜索超时，请在浏览器中继续。':'The automated search timed out. Continue in the browser.','搜索站没有返回符合条件的结果。':'The search returned no matching results.','自动搜索未能读取结果页，可在浏览器中继续。':'The result page could not be read. Continue in the browser.','自动搜索暂不可用，请在浏览器中继续。':'Automated search is unavailable. Continue in the browser.',
 
 '正在思考':'Thinking','思考过程':'Reasoning','思考已中断':'Reasoning interrupted',
-'正在读取账户配额…':'Loading account limits…','正在读取账户用量…':'Loading account usage…','今日已使用':'Used today','本月已使用':'Used this month','用量由服务器实时统计，重置时间按设备时区显示。':'Live server usage. Reset time is shown in your device time zone.','此服务器暂不支持用量查询。':'This server does not support usage reporting.','暂时无法读取用量，请重试。':'Unable to load usage. Try again.','外挂程式':'Plugins','用量与限制':'Usage & Limits','联网搜索用量':'Web Search Usage','剩余额度':'Remaining Searches','额度重置':'Resets At','其他用量':'Other Usage','会员账户 · 每月 1000 次':'Member · 1,000/month','普通账户 · 每天 15 次':'Standard · 15/day','查看联网搜索用量、剩余额度与重置时间':'View search usage, remaining allowance and reset time','每次已执行的自动联网搜索都会计入额度，包括未取得结果的搜索。额度按账户共享；会员不设置每日上限。':'Each automatic search counts toward your allowance, including searches without results. Usage is shared across devices; members have no daily cap.','模型 API（BYOK）':'Model APIs (BYOK)','模型 Token、费用及提供商限制请到对应模型服务商查看；Easybook 不统计提供商账户的完整用量。':'Check your model provider for token usage, charges, and provider limits. Easybook does not track complete provider usage.','预装插件':'Built-in Plugins','联网搜索':'Web Search','始终可用':'Always Available','已连接的服务器':'Connected Servers','读取笔记、文件夹和待办。Agent 修改工作区前需要确认。':'Read notes, folders, and tasks. Agent changes require approval.','通过浏览器读取公开搜索页。每次发送关键词前都需要确认。':'A browser reads the public search page. Approve the query before it is sent.','由浏览器加载公开搜索页，搜索前需要确认关键词。':'Search public pages after approving the query.','当前服务器未提供联网搜索。':'Web search is unavailable on this server.','在云端会话的「上下文」中打开第三方工具。每次调用都需要确认。':'Enable third-party tools under Context in cloud chats. Every call requires approval.','确认后将此关键词发送给联网搜索服务。':'Approval sends this query to the web search service.','请确认本次联网搜索的关键词。':'Review the web search query.','已取消联网搜索。':'Web search cancelled.','在浏览器中搜索':'Search in Browser','暂未取得可用结果，可在浏览器中继续搜索。':'No usable results. Continue the search in your browser.',
+'正在读取账户配额…':'Loading account limits…','正在读取账户用量…':'Loading account usage…','今日已使用':'Used today','本月已使用':'Used this month','用量由服务器实时统计，重置时间按设备时区显示。':'Live server usage. Reset time is shown in your device time zone.','此服务器暂不支持用量查询。':'This server does not support usage reporting.','暂时无法读取用量，请重试。':'Unable to load usage. Try again.','联网搜索进阶版 · Parallel MCP':'Advanced Web Search · Parallel MCP','联网搜索进阶版':'Advanced Web Search','总是允许联网搜索进阶版':'Always Allow Advanced Search','不再逐次询问是否将公开搜索关键词发送至 Parallel MCP。':'Send public search queries to Parallel MCP without asking each time.','预装、默认开启、无需认证。与联网搜索并行；内置额度用尽仍可用，受 Parallel 匿名速率限制。':'Built-in, on by default, no sign-in. Searches alongside regular Web Search and works after its quota runs out, subject to Parallel anonymous limits.','外挂程式':'Plugins','用量与限制':'Usage & Limits','联网搜索用量':'Web Search Usage','剩余额度':'Remaining Searches','额度重置':'Resets At','其他用量':'Other Usage','会员账户 · 每月 1000 次':'Member · 1,000/month','普通账户 · 每天 15 次':'Standard · 15/day','查看联网搜索用量、剩余额度与重置时间':'View search usage, remaining allowance and reset time','每次已执行的自动联网搜索都会计入额度，包括未取得结果的搜索。额度按账户共享；会员不设置每日上限。':'Each automatic search counts toward your allowance, including searches without results. Usage is shared across devices; members have no daily cap.','模型 API（BYOK）':'Model APIs (BYOK)','模型 Token、费用及提供商限制请到对应模型服务商查看；Easybook 不统计提供商账户的完整用量。':'Check your model provider for token usage, charges, and provider limits. Easybook does not track complete provider usage.','预装插件':'Built-in Plugins','联网搜索':'Web Search','始终可用':'Always Available','已连接的服务器':'Connected Servers','读取笔记、文件夹和待办。Agent 修改工作区前需要确认。':'Read notes, folders, and tasks. Agent changes require approval.','通过浏览器读取公开搜索页。每次发送关键词前都需要确认。':'A browser reads the public search page. Approve the query before it is sent.','由浏览器加载公开搜索页，搜索前需要确认关键词。':'Search public pages after approving the query.','当前服务器未提供联网搜索。':'Web search is unavailable on this server.','在云端会话的「上下文」中打开第三方工具。每次调用都需要确认。':'Enable third-party tools under Context in cloud chats. Every call requires approval.','确认后将此关键词发送给联网搜索服务。':'Approval sends this query to the web search service.','请确认本次联网搜索的关键词。':'Review the web search query.','已取消联网搜索。':'Web search cancelled.','在浏览器中搜索':'Search in Browser','暂未取得可用结果，可在浏览器中继续搜索。':'No usable results. Continue the search in your browser.',
 
 '文件夹':'Folders','备忘录':'Notes','设置':'Settings','取消':'Cancel','全选':'Select All','完成':'Done','搜索':'Search','搜索备忘录':'Search Notes','新建备忘录':'New Note','标题':'Title','开始输入':'Start writing','无备忘录':'No Notes','回收站':'Recently Deleted','返回':'Back','关闭':'Close','保存':'Save','删除':'Delete','恢复':'Restore','编辑':'Edit','移动':'Move','共享':'Share','复制':'Copy','重试':'Retry','继续':'Continue','确认':'Confirm','稍后':'Later','立即同步':'Sync Now','准备同步':'Ready to Sync','尚无成功同步记录':'No successful sync yet','等待同步':'Waiting to sync','离线 · 已存本机':'Offline · Saved on this device',
 '账户':'Account','账户与安全':'Account & Security','登录方式、设备和账户管理':'Sign-in methods, devices, and account management','工作区':'Workspace','工作区与成员':'Workspaces & Members','切换工作区、共享设置和成员权限':'Switch workspaces, sharing settings, and member permissions','AI 与 MCP':'AI & MCP','同步与数据':'Sync & Data','设备连接、同步活动、备份和回收站':'Device connections, sync activity, backups, and recently deleted','外观与性能':'Appearance & Performance','颜色模式和极速模式':'Color theme and performance mode','关于 Easybook':'About Easybook','版本、项目许可和第三方组件':'Version, project license, and third-party components',
