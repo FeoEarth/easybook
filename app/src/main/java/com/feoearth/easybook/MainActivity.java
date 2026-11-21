@@ -394,8 +394,10 @@ public class MainActivity extends Activity {
                 String id=bounded(args,"id",70);
                 if(!id.matches("[a-f0-9-]{20,70}"))throw new IllegalArgumentException("Invalid AI stream ID");
                 nativeAccount.startAiStream(new JSONObject(args.toString()).put("action","chat").put("stream",true),event->runOnUiThread(()->{
-                    if(!destroyed&&!serverSwitching&&repository.isActiveProfile()&&ready&&generation==documentGeneration&&LOCAL.equals(web.getUrl()))
-                        web.evaluateJavascript("window.easybookByokEvent&&window.easybookByokEvent("+event.toString()+")",null);
+                    if(!destroyed&&!serverSwitching&&repository.isActiveProfile()&&ready&&generation==documentGeneration&&LOCAL.equals(web.getUrl())){
+                        String callback="reasoning".equals(event.optString("type"))?"window.easybookByokReasoning":"window.easybookByokEvent";
+                        web.evaluateJavascript(callback+"&&"+callback+"("+event.toString()+")",null);
+                    }
                 }));
                 return new JSONObject().put("accepted",true);
             }

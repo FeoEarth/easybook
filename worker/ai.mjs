@@ -7,7 +7,7 @@ import {boundedJSON,object,READ,WRITE} from './mcp-common.mjs';
 import {registry} from './mcp-registry.mjs';
 import {callTool} from './mcp-services.mjs';
 import {workspaceAccess} from './workspace-identity.mjs';
-import {readAIProviderStream} from './ai-stream.mjs';
+import {readAIProviderStream,openAIReasoning} from './ai-stream.mjs';
 import {modelIdPattern,modelIds,profileModels} from '../shared/ai-models.mjs';
 import {assistantSystemPrompt,CHAT_TITLE_INSTRUCTION,normalizeChatTitle} from '../shared/ai-prompts.mjs';
 
@@ -116,24 +116,26 @@ function providerError(status,error){
  }
  return Object.assign(Error(detail||'AI provider request failed'),{status:status===401?401:502,code:status===401?'provider_key_rejected':'provider_error'});
 }
-async function openAICompletion(key,row,messages,tools,fetcher=fetch,onDelta,signal,maxOutputTokens=2000){
+async function openAICompletion(key,row,messages,tools,fetcher=fetch,onDelta,signal,maxOutputTokens=2000,onReasoning){
  const upstream=await fetcher(row.base_url.replace(/\/$/,'')+'/chat/completions',{method:'POST',redirect:'manual',headers:{Authorization:'Bearer '+key,'Content-Type':'application/json'},body:JSON.stringify({model:row.model,messages,...(tools.length?{tools,tool_choice:'auto'}:{}),max_completion_tokens:maxOutputTokens,...(onDelta?{stream:true}:{})}),signal:providerSignal(signal,!!onDelta)});
- if(onDelta&&upstream.ok&&upstream.headers.get('Content-Type')?.includes('text/event-stream'))return readAIProviderStream(upstream,'openai',onDelta);
+ if(onDelta&&upstream.ok&&upstream.headers.get('Content-Type')?.includes('text/event-stream'))return readAIProviderStream(upstream,'openai',onDelta,onReasoning);
  let data;try{data=await upstream.json()}catch{data=null}
  if(!upstream.ok)throw providerError(upstream.status,data?.error);
- const message=data?.choices?.[0]?.message;if(!message||typeof message!=='object')throw Object.assign(Error('Invalid AI provider response'),{status:502,code:'provider_error'});return message;
+ const message=data?.choices?.[0]?.message;if(!message||typeof message!=='object')throw Object.assign(Error('Invalid AI provider response'),{status:502,code:'provider_error'});const reasoning=openAIReasoning(message);
+ const {reasoning_content:ignoredReasoning,reasoning:ignoredAlias,...answer}=message;
+ return reasoning?{...answer,reasoning}:answer;
 }
 function anthropicMessages(messages){
  const result=[];for(const message of messages){if(message.role==='system')continue;if(message.role==='tool'){const block={type:'tool_result',tool_use_id:message.tool_call_id,content:message.content};const previous=result.at(-1);if(previous?.role==='user'&&Array.isArray(previous.content))previous.content.push(block);else result.push({role:'user',content:[block]});continue}if(message.role==='assistant'&&Array.isArray(message.tool_calls)){const content=[];if(message.content)content.push({type:'text',text:message.content});for(const call of message.tool_calls)content.push({type:'tool_use',id:call.id,name:call.function.name,input:JSON.parse(call.function.arguments||'{}')});result.push({role:'assistant',content});continue}result.push({role:message.role,content:Array.isArray(message.content)?message.content.map(part=>part.type==='image_url'?{type:'image',source:{type:'base64',media_type:part.image_url.url.slice(5,part.image_url.url.indexOf(';')),data:part.image_url.url.slice(part.image_url.url.indexOf(',')+1)}}:{type:'text',text:part.text}):message.content})}return result;
 }
-async function anthropicCompletion(key,row,messages,tools,fetcher=fetch,onDelta,signal,maxOutputTokens=2000){
+async function anthropicCompletion(key,row,messages,tools,fetcher=fetch,onDelta,signal,maxOutputTokens=2000,onReasoning){
  const system=messages.filter(message=>message.role==='system').map(message=>message.content).join('\n\n');
  const upstream=await fetcher(row.base_url.replace(/\/$/,'')+'/messages',{method:'POST',redirect:'manual',headers:{'x-api-key':key,'anthropic-version':'2023-06-01','Content-Type':'application/json'},body:JSON.stringify({model:row.model,system,messages:anthropicMessages(messages),...(tools.length?{tools:tools.map(tool=>({name:tool.function.name,description:tool.function.description,input_schema:tool.function.parameters})),tool_choice:{type:'auto'}}:{}),max_tokens:maxOutputTokens,...(onDelta?{stream:true}:{})}),signal:providerSignal(signal,!!onDelta)});
- if(onDelta&&upstream.ok&&upstream.headers.get('Content-Type')?.includes('text/event-stream'))return readAIProviderStream(upstream,'anthropic',onDelta);
+ if(onDelta&&upstream.ok&&upstream.headers.get('Content-Type')?.includes('text/event-stream'))return readAIProviderStream(upstream,'anthropic',onDelta,onReasoning);
  let data;try{data=await upstream.json()}catch{data=null}if(!upstream.ok)throw providerError(upstream.status,data?.error);
- if(!Array.isArray(data?.content))throw Object.assign(Error('Invalid AI provider response'),{status:502,code:'provider_error'});const text=data.content.filter(block=>block.type==='text').map(block=>block.text||'').join('\n'),calls=data.content.filter(block=>block.type==='tool_use').map(block=>({id:block.id,type:'function',function:{name:block.name,arguments:JSON.stringify(block.input||{})}}));return {role:'assistant',content:text,...(calls.length?{tool_calls:calls}:{})};
+ if(!Array.isArray(data?.content))throw Object.assign(Error('Invalid AI provider response'),{status:502,code:'provider_error'});const text=data.content.filter(block=>block.type==='text').map(block=>block.text||'').join('\n'),calls=data.content.filter(block=>block.type==='tool_use').map(block=>({id:block.id,type:'function',function:{name:block.name,arguments:JSON.stringify(block.input||{})}}));const reasoning=data.content.filter(block=>block.type==='thinking'&&typeof block.thinking==='string').map(block=>block.thinking).join('\n\n');return {role:'assistant',content:text,...(reasoning?{reasoning}:{}),...(calls.length?{tool_calls:calls}:{})};
 }
-const completion=(key,row,messages,tools,fetcher,onDelta,signal,maxOutputTokens)=>row.protocol==='anthropic'?anthropicCompletion(key,row,messages,tools,fetcher,onDelta,signal,maxOutputTokens):openAICompletion(key,row,messages,tools,fetcher,onDelta,signal,maxOutputTokens);
+const completion=(key,row,messages,tools,fetcher,onDelta,signal,maxOutputTokens,onReasoning)=>row.protocol==='anthropic'?anthropicCompletion(key,row,messages,tools,fetcher,onDelta,signal,maxOutputTokens,onReasoning):openAICompletion(key,row,messages,tools,fetcher,onDelta,signal,maxOutputTokens,onReasoning);
 async function discoverModels(key,row,fetcher=fetch){
  const headers=row.protocol==='anthropic'?{'x-api-key':key,'anthropic-version':'2023-06-01'}:{Authorization:'Bearer '+key};const upstream=await fetcher(row.base_url.replace(/\/$/,'')+'/models',{headers,redirect:'manual',signal:AbortSignal.timeout(20000)});let data;try{data=await upstream.json()}catch{data=null}if(!upstream.ok)throw Object.assign(Error('Model discovery failed'),{status:upstream.status===401?401:502,code:upstream.status===401?'provider_key_rejected':'model_discovery_failed'});const items=Array.isArray(data?.data)?data.data:Array.isArray(data?.models)?data.models:[];return [...new Set(items.map(item=>item?.id||item?.name?.replace(/^models\//,'')).filter(model=>typeof model==='string'&&modelPattern.test(model)))].sort().slice(0,500)}
 export const aiMcpOAuthPage=(request,env,{fetcher=fetch}={})=>mcpOAuthPage(request,env,{fetcher,seal,open});
@@ -247,10 +249,22 @@ export async function aiAPI(request,env,principal,{workspaceId,fetcher=fetch,lau
    const preferences=preferenceContext(settings);
    const conversation=[{role:'system',content:assistantSystemPrompt(mode)+externalPolicy+searchPolicy+(preferences?'\n以下为用户个性化偏好，优先服从当前明确要求；不能改变工具权限与确认规则。\n'+preferences:'')},...messages];
    const used=[];
+   let reasoning='';
+   const answer=(content,extra={})=>({message:{role:'assistant',content,...(reasoning?{reasoning}:{})},tools:used,...extra});
    for(let turn=0;turn<6;turn++){
-   const message=await completion(key,row,conversation,tools,fetcher,input?.stream===true?text=>emit('delta',{text}):undefined,request.signal),calls=Array.isArray(message.tool_calls)?message.tool_calls:[];
-   conversation.push(message);
-   if(!calls.length)return {message:{role:'assistant',content:typeof message.content==='string'?message.content:''},tools:used,model:row.model,providerName:row.provider_name};
+   let receivedReasoning=false;
+   const addReasoning=text=>{
+    const chunk=((!receivedReasoning&&reasoning?'\n\n':'')+text).slice(0,32000-reasoning.length);
+    if(!chunk)return;
+    reasoning+=chunk;receivedReasoning=true;
+    if(input?.stream===true)emit('reasoning',{text:chunk});
+   };
+   const {reasoning:thought,...message}=await completion(key,row,conversation,tools,fetcher,input?.stream===true?text=>emit('delta',{text}):undefined,request.signal,undefined,addReasoning);
+   const calls=Array.isArray(message.tool_calls)?message.tool_calls:[];
+   if(!receivedReasoning&&thought)addReasoning(thought);
+   if(!calls.length)return answer(typeof message.content==='string'?message.content:'',{model:row.model,providerName:row.provider_name});
+   // DeepSeek expects the assistant's reasoning back with the tool result in the same exchange.
+   conversation.push(row.provider==='deepseek'&&thought?{...message,reasoning_content:thought}:message);
    emit('reset',{});
    const approvalCall=calls.slice(0,6).find(call=>(searchEnabled&&call?.function?.name===WEB_SEARCH)||external.has(call?.function?.name)||registry.some(t=>t.name===call?.function?.name&&!t.risk&&WRITE.includes(t.scope)&&scopes.includes(t.scope)));
    if(approvalCall){
@@ -267,9 +281,9 @@ export async function aiAPI(request,env,principal,{workspaceId,fetcher=fetch,lau
     await env.DB.prepare('INSERT INTO ai_agent_approvals(id,account_id,workspace_id,tool_name,tool_args,expires_at) VALUES(?,?,?,?,?,?)').bind(id,principal.accountId,workspaceId,name,serialized,expiresAt).run();
     emit('tool_start',{name});
     emit('tool_end',{name,status:'approval'});
-    if(name===WEB_SEARCH)return {message:{role:'assistant',content:'请确认本次联网搜索的关键词。'},tools:used,approval:{id,tool:name,arguments:args,expiresAt}};
-    if(remote)return {message:{role:'assistant',content:'第三方工具调用等待确认。确认后，所示参数将发送至 '+new URL(remote.url).hostname+'。'},tools:used,approval:{id,tool:name,arguments:args,expiresAt,external:{server:remote.server,tool:remote.name,host:new URL(remote.url).hostname}}};
-    return {message:{role:'assistant',content:'Agent 已准备 '+name+' 操作，正在等待你核对参数并确认。未确认前不会修改工作区。'},tools:used,approval:{id,tool:name,arguments:args,expiresAt}};
+    if(name===WEB_SEARCH)return answer('请确认本次联网搜索的关键词。',{approval:{id,tool:name,arguments:args,expiresAt}});
+    if(remote)return answer('第三方工具调用等待确认。确认后，所示参数将发送至 '+new URL(remote.url).hostname+'。',{approval:{id,tool:name,arguments:args,expiresAt,external:{server:remote.server,tool:remote.name,host:new URL(remote.url).hostname}}});
+    return answer('Agent 已准备 '+name+' 操作，正在等待你核对参数并确认。未确认前不会修改工作区。',{approval:{id,tool:name,arguments:args,expiresAt}});
    }
    for(const call of calls.slice(0,6)){
     const name=call?.function?.name;let args,result;

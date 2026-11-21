@@ -567,6 +567,13 @@ body[data-page=ai-hub] .app{max-width:none;height:var(--viewport-height,100dvh);
 .ai-jump-latest{position:absolute;bottom:calc(100% + 14px);left:50%;transform:translateX(-50%);width:36px;height:36px;min-height:36px;padding:8px;border:1px solid var(--border);border-radius:50%;background:var(--paper);box-shadow:0 3px 12px #0001}.ai-jump-latest svg{width:18px;height:18px;transform:rotate(180deg)}
 .ai-approval-card{flex:none;padding:18px;border:1px solid color-mix(in srgb,var(--chat-brand) 25%,var(--border));border-radius:16px;background:var(--chat-tint);font-size:14px;line-height:1.6}.ai-approval-card strong{display:block}.ai-approval-card small{display:block;color:var(--muted);font-size:12px;margin-top:5px}.ai-approval-card details{margin-top:12px}.ai-approval-card summary{cursor:pointer;color:var(--muted);font-size:12px}.ai-approval-card pre{max-height:220px;overflow:auto;white-space:pre-wrap;overflow-wrap:anywhere;font-size:12px}.ai-approval-preview{max-height:200px;overflow:auto;margin:12px 0;white-space:pre-wrap;font-size:13px;color:var(--ink)}.ai-approval-actions{display:flex;justify-content:flex-end;gap:8px;margin-top:16px}.ai-approval-actions button{min-height:36px;padding:7px 14px;border:1px solid var(--border);border-radius:9px;background:var(--paper);font-size:13px}.ai-approval-actions [data-ai-approve]{border-color:transparent;background:var(--chat-brand);color:#fff}
 .ai-tool-activity{margin:0 0 14px;border:1px solid var(--border);border-radius:12px;font-size:12px;line-height:1.6;overflow:hidden;background:transparent}.ai-tool-activity summary{display:flex;gap:8px;align-items:center;padding:9px 12px;cursor:pointer;list-style:none;color:var(--muted)}.ai-tool-activity summary:after{content:'⌄';margin-left:auto}.ai-tool-activity summary::-webkit-details-marker{display:none}.ai-tool-steps{padding:0 12px 10px}.ai-tool-step{display:flex;align-items:center;gap:8px;min-height:28px;color:var(--muted)}.ai-tool-step strong{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--ink);font-weight:400}.ai-tool-step small{margin:0!important;font-size:11px}.ai-tool-indicator{display:grid;place-items:center;width:12px;height:12px;flex:none}.ai-tool-step[data-status=running] .ai-tool-indicator{border:1.5px solid var(--chat-brand);border-right-color:transparent;border-radius:50%;animation:ai-tool-spin .8s linear infinite}.ai-tool-step[data-status=done] .ai-tool-indicator{color:var(--green)}.ai-tool-step[data-status=failed] .ai-tool-indicator{color:var(--danger)}
+.ai-reasoning{margin:0 0 12px;color:var(--muted);font-size:13px;line-height:1.6}
+.ai-reasoning>summary{display:flex;align-items:center;gap:8px;min-height:36px;width:fit-content;list-style:none;cursor:pointer;font-weight:550}
+.ai-reasoning>summary::-webkit-details-marker{display:none}
+.ai-reasoning>summary svg{width:14px;height:14px;transition:transform .18s ease}
+.ai-reasoning[open]>summary svg{transform:rotate(90deg)}
+.ai-reasoning-body{max-height:280px;overflow:auto;overscroll-behavior:contain;border-inline-start:2px solid var(--line);padding:2px 12px;overflow-wrap:anywhere}
+.ai-reasoning-body>:first-child{margin-top:0}.ai-reasoning-body>:last-child{margin-bottom:0}
 .ai-thinking{display:inline-flex;align-items:center;gap:5px;min-height:28px;color:var(--muted);font-size:13px}.ai-thinking:before{content:'';width:7px;height:7px;border-radius:50%;background:var(--chat-brand);animation:ai-thinking-pulse .8s ease-in-out infinite alternate}
 @keyframes ai-tool-spin{to{transform:rotate(360deg)}}@keyframes ai-thinking-pulse{to{opacity:.2}}
 /* Native history surface. The same hierarchy serves the desktop rail and mobile sheet. */
@@ -1788,6 +1795,7 @@ $('aiMcpList').onclick=event=>{
  else void changeAiMcp(()=>aiRequest('mcp',{method:'PUT',body:action==='refresh'?{id,refresh:true}:{id,enabled:action==='enable'}}));
 };
 const aiNativeStreams=new Map();
+window.easybookByokReasoning=event=>aiNativeStreams.get(event?.id)?.onReasoning(event.text||'');
 window.easybookByokEvent=event=>{
  const pending=aiNativeStreams.get(event?.id);if(!pending)return;
  if(event.type==='delta'){pending.progress(event.text||'');return}
@@ -1797,14 +1805,14 @@ window.easybookByokEvent=event=>{
  if(event.type==='done')pending.resolve(event.result);
  else pending.reject(Error(aiErrorMessage(event.error||'ai_unavailable')));
 };
-async function aiStreamRequest(body,{progress=()=>{},reset=()=>{},onTool=()=>{},signal}={}){
+async function aiStreamRequest(body,{progress=()=>{},reset=()=>{},onTool=()=>{},onReasoning=()=>{},signal}={}){
  if(native){
   const id=uuid();
   return new Promise((resolve,reject)=>{
    if(signal?.aborted){reject(new DOMException('已停止生成','AbortError'));return}
    const abort=()=>{aiNativeStreams.delete(id);void native.call('ai.stream.cancel',{id}).catch(()=>{});reject(new DOMException('已停止生成','AbortError'))};
    const settle=callback=>value=>{signal?.removeEventListener('abort',abort);callback(value)};
-   aiNativeStreams.set(id,{progress,reset,onTool,resolve:settle(resolve),reject:settle(reject)});
+   aiNativeStreams.set(id,{progress,reset,onTool,onReasoning,resolve:settle(resolve),reject:settle(reject)});
    signal?.addEventListener('abort',abort,{once:true});
    void native.call('ai.stream.start',{id,...(workspaceCurrent?{workspace:workspaceCurrent}:{}),...body}).catch(error=>{const pending=aiNativeStreams.get(id);if(pending){aiNativeStreams.delete(id);pending.reject(error)}});
   });
@@ -1821,7 +1829,7 @@ async function aiStreamRequest(body,{progress=()=>{},reset=()=>{},onTool=()=>{},
   if(signal?.aborted)throw new DOMException('已停止生成','AbortError');
   if(event.data.length>1500000)throw Error('AI 数据流异常');
   if(!event.data)continue;const data=JSON.parse(event.data),type=event.event;
-  if(type==='delta')progress(data.text||'');else if(type==='reset')reset();else if(type==='tool_start'||type==='tool_end')onTool({type,...data});else if(type==='done'){result=data;finished=true;break}else if(type==='error')throw Error(aiErrorMessage(data.error));
+  if(type==='delta')progress(data.text||'');else if(type==='reasoning')onReasoning(data.text||'');else if(type==='reset')reset();else if(type==='tool_start'||type==='tool_end')onTool({type,...data});else if(type==='done'){result=data;finished=true;break}else if(type==='error')throw Error(aiErrorMessage(data.error));
  }
  if(signal?.aborted)throw new DOMException('已停止生成','AbortError');
  if(!finished)throw Error('AI 回复意外中断，请重试');return result;
@@ -1894,8 +1902,32 @@ function aiMarkdownHTML(content){
  return host.innerHTML;
 }
 function updateAiContextStatus(){const turns=aiConversation.filter(message=>message.role==='user').length;$('aiContextStatus').textContent=(turns?turns+' 轮对话':'尚未开始对话')+' · '+(aiContextCompressed?'已智能压缩':'完整上下文')}
+function aiReasoningHTML(message){
+ if(typeof message.reasoning!=='string'||!message.reasoning.trim())return '';
+ const live=!!message.streaming&&!!message.reasoningActive;
+ const label=live?'正在思考':message.status==='stopped'||message.status==='error'?'思考已中断':'思考过程';
+ return '<details class="ai-reasoning" data-phase="'+(live?'thinking':'complete')+'"'+(live?' open':'')+'><summary><span'+(live?' class="ai-thinking"':'')+'>'+label+'</span><svg aria-hidden="true"><use href="#i-chevron"/></svg></summary><div class="ai-reasoning-body" translate="no">'+aiMarkdownHTML(message.reasoning)+'</div></details>';
+}
+function captureAiReasoning(node){
+ const details=node.querySelector('.ai-reasoning');
+ if(!details)return null;
+ const body=details.querySelector('.ai-reasoning-body');
+ return {phase:details.dataset.phase,open:details.open,focused:document.activeElement===details.querySelector('summary'),scrollTop:body.scrollTop,atBottom:body.scrollHeight-body.clientHeight-body.scrollTop<24};
+}
+function restoreAiReasoning(node,previous){
+ const details=node.querySelector('.ai-reasoning');
+ if(!details)return;
+ const live=details.dataset.phase==='thinking';
+ if(previous?.phase===details.dataset.phase)details.open=previous.open;
+ if(previous?.focused)details.querySelector('summary').focus({preventScroll:true});
+ if(!details.open)return;
+ const body=details.querySelector('.ai-reasoning-body');
+ body.scrollTop=live&&(!previous||previous.atBottom)?body.scrollHeight:previous?.scrollTop||0;
+}
 function renderAiMessages(){
- $('aiMessages').innerHTML=aiConversation.length?aiConversation.map((m,index)=>'<div class="ai-message '+m.role+'">'+(m.role==='assistant'?aiMarkdownHTML(m.content):esc(m.content))+(m.tools?.length?'<small>使用工具：'+esc(m.tools.join('、'))+'</small>':'')+(m.role==='assistant'&&!m.streaming?'<div class="ai-message-actions"><button type="button" data-ai-apply="'+index+'">替换当前笔记</button></div>':'')+'</div>').join(''):'<p class="ai-empty">让 AI 针对当前笔记进行总结、整理、润色，或输入你的要求。Agent 能力复用 Easybook MCP。</p>';
+ const panel=$('aiMessages'),previous=Array.from(panel.children,captureAiReasoning);
+ panel.innerHTML=aiConversation.length?aiConversation.map((m,index)=>'<div class="ai-message '+m.role+'">'+(m.role==='assistant'?aiReasoningHTML(m)+aiMarkdownHTML(m.content):esc(m.content))+(m.tools?.length?'<small>使用工具：'+esc(m.tools.join('、'))+'</small>':'')+(m.role==='assistant'&&!m.streaming&&m.content?'<div class="ai-message-actions"><button type="button" data-ai-apply="'+index+'">替换当前笔记</button></div>':'')+'</div>').join(''):'<p class="ai-empty">让 AI 针对当前笔记进行总结、整理、润色，或输入你的要求。Agent 能力复用 Easybook MCP。</p>';
+ Array.from(panel.children).forEach((node,index)=>restoreAiReasoning(node,previous[index]));
  updateAiContextStatus();
 }
 function invalidateAiConfig(){aiConfigured=null;aiConfigPromise=null}
@@ -2045,13 +2077,13 @@ async function sendAiMessage(content,label=content){
    const data=await aiLocalGenerate(aiWriterLocalModel,payload,text=>{partial.content=text;refresh()});partial.content=data.message.content;
   }else{
    partial={role:'assistant',content:'',streaming:true};aiConversation.push(partial);aiWriterStreamAbort=new AbortController();
-   const data=await aiStreamRequest({messages:payload,credentialId:aiWriterProfileId||activeAiProfile()?.id,model:aiWriterModel||activeAiProfile()?.model},{signal:aiWriterStreamAbort.signal,progress:text=>{partial.content+=text;refresh()},reset:()=>{partial.content='';refresh()}});
-   partial.content=data.message?.content||'已完成';partial.tools=(data.tools||[]).map(t=>t.name);
+   const data=await aiStreamRequest({messages:payload,credentialId:aiWriterProfileId||activeAiProfile()?.id,model:aiWriterModel||activeAiProfile()?.model},{signal:aiWriterStreamAbort.signal,progress:text=>{partial.reasoningActive=false;partial.content+=text;refresh()},onReasoning:text=>{partial.reasoningActive=true;partial.reasoning=(partial.reasoning||'')+text;refresh()},reset:()=>{partial.reasoningActive=false;partial.content='';refresh()}});
+   partial.reasoning=data.message?.reasoning||partial.reasoning;partial.content=data.message?.content||(partial.reasoning?'':'已完成');partial.tools=(data.tools||[]).map(t=>t.name);
   }
   if(partial)delete partial.streaming;
   if(content===label){const options={localModel:aiWriterLocalModel,credentialId:aiWriterProfileId||activeAiProfile()?.id,model:aiWriterModel||activeAiProfile()?.model,workspace:localSpace};if(aiWriterLocalModel)await autoRememberAi(content,options);else void autoRememberAi(content,options)}
   if(frame)cancelAnimationFrame(frame);renderAiMessages();$('aiMessages').lastElementChild?.scrollIntoView({behavior:'smooth',block:'nearest'});
- }catch(error){if(frame)cancelAnimationFrame(frame);if(partial){if(partial.content.trim())partial.content+='\n\n*'+(error.name==='AbortError'?'已停止生成':'生成中断')+'*';else{const index=aiConversation.indexOf(partial);if(index>=0)aiConversation.splice(index,1)}renderAiMessages()}if(error.name!=='AbortError')toast(error.message)}
+ }catch(error){if(frame)cancelAnimationFrame(frame);if(partial){partial.streaming=false;partial.status=error.name==='AbortError'?'stopped':'error';if(partial.content.trim())partial.content+='\n\n*'+(error.name==='AbortError'?'已停止生成':'生成中断')+'*';else if(!partial.reasoning){const index=aiConversation.indexOf(partial);if(index>=0)aiConversation.splice(index,1)}renderAiMessages()}if(error.name!=='AbortError')toast(error.message)}
  finally{aiWriterStreamAbort=null;aiBusy=false;$('aiSend').disabled=false;$('aiSend').textContent='发送';document.querySelectorAll('[data-ai-action]').forEach(button=>button.disabled=false)}
 }
 const editorAi=document.createElement('button');editorAi.type='button';editorAi.id='editorAi';editorAi.setAttribute('aria-label','AI 写作工具');editorAi.title='AI 写作工具';editorAi.innerHTML='<svg aria-hidden="true" viewBox="0 0 24 24"><path style="fill:currentColor;stroke:none" fill-rule="evenodd" d="M11.34 1.78Q11.77 1.69 12.28 1.73Q12.8 1.78 13.41 2.11Q14.02 2.44 14.23 2.67Q14.44 2.91 15.05 3.89Q15.66 4.88 16.69 4.73Q17.72 4.59 18.16 4.62Q18.61 4.64 19.1 4.83Q19.59 5.02 19.99 5.37Q20.39 5.72 20.65 6.21Q20.91 6.7 20.95 7.38Q21 8.06 20.58 9.3Q20.16 10.55 21 11.37Q21.84 12.19 22.08 12.59Q22.31 12.98 22.38 13.22Q22.45 13.45 22.45 14.11Q22.45 14.77 22.22 15.3Q21.98 15.84 21.49 16.29Q21 16.73 19.76 17.18Q18.52 17.63 18.42 18.7Q18.33 19.78 18.14 20.32Q17.95 20.86 17.55 21.3Q17.16 21.75 16.83 21.94Q16.5 22.13 16.17 22.22Q15.84 22.31 15.35 22.31Q14.86 22.31 14.58 22.24Q14.3 22.17 13.17 21.47Q12.05 20.77 11.04 21.4Q10.03 22.03 9.7 22.15Q9.38 22.27 8.77 22.29Q8.16 22.31 7.64 22.13Q7.13 21.94 6.77 21.66Q6.42 21.38 6.12 20.86Q5.81 20.34 5.65 18.98Q5.48 17.63 4.5 17.3Q3.52 16.97 3.14 16.78Q2.77 16.59 2.34 16.15Q1.92 15.7 1.73 15.23Q1.55 14.77 1.52 14.25Q1.5 13.73 1.71 13.13Q1.92 12.52 2.88 11.53Q3.84 10.55 3.42 9.3Q3 8.06 3.05 7.38Q3.09 6.7 3.35 6.21Q3.61 5.72 4.01 5.37Q4.41 5.02 4.9 4.83Q5.39 4.64 5.84 4.62Q6.28 4.59 7.31 4.73Q8.34 4.88 8.95 3.89Q9.56 2.91 9.77 2.67Q9.98 2.44 10.45 2.16Q10.92 1.88 11.34 1.78Z M10.2 6.89Q9.28 6.7 8.91 7.41Q8.53 8.11 8.11 8.7Q7.69 9.28 7.17 9.82Q6.66 10.36 6.26 10.66Q5.86 10.97 6.16 11.63Q6.47 12.28 6.66 12.96Q6.84 13.64 6.94 14.34Q7.03 15.05 7.03 15.66Q7.03 16.27 7.66 16.38Q8.3 16.5 8.93 16.73Q9.56 16.97 10.24 17.37Q10.92 17.77 11.46 18.21Q12 18.66 12.49 18.21Q12.98 17.77 13.66 17.37Q14.34 16.97 15 16.73Q15.66 16.5 16.27 16.41Q16.88 16.31 16.85 15.61Q16.83 14.91 16.92 14.2Q17.02 13.5 17.23 12.84Q17.44 12.19 17.77 11.55Q18.09 10.92 17.55 10.52Q17.02 10.13 16.57 9.66Q16.13 9.19 15.7 8.58Q15.28 7.97 15 7.34Q14.72 6.7 13.78 6.89Q12.84 7.08 11.98 7.08Q11.11 7.08 10.2 6.89Z M16.85 18.12Q16.83 17.91 15.98 18.14Q15.14 18.38 14.55 18.7Q13.97 19.03 13.62 19.36Q13.27 19.69 14.06 20.18Q14.86 20.67 15.33 20.67Q15.8 20.67 15.98 20.58Q16.17 20.48 16.43 20.13Q16.69 19.78 16.78 19.05Q16.88 18.33 16.85 18.12Z M7.8 18.07Q7.17 17.91 7.15 18.12Q7.13 18.33 7.22 19.05Q7.31 19.78 7.41 19.97Q7.5 20.16 7.73 20.37Q7.97 20.58 8.16 20.65Q8.34 20.72 8.74 20.7Q9.14 20.67 9.91 20.2Q10.69 19.73 10.62 19.62Q10.55 19.5 9.98 19.1Q9.42 18.7 8.93 18.47Q8.44 18.23 7.8 18.07Z M18.33 6.28Q17.91 6.19 17.13 6.28Q16.36 6.38 16.36 6.45Q16.36 6.52 16.88 7.36Q17.39 8.2 17.86 8.67Q18.33 9.14 18.59 9.3Q18.84 9.47 19.13 8.67Q19.41 7.88 19.38 7.5Q19.36 7.13 19.24 6.91Q19.13 6.7 18.94 6.54Q18.75 6.38 18.33 6.28Z M20.04 12.7Q19.36 12.05 19.17 12.35Q18.98 12.66 18.77 13.31Q18.56 13.97 18.52 14.95Q18.47 15.94 19.31 15.66Q20.16 15.38 20.37 15.21Q20.58 15.05 20.72 14.79Q20.86 14.53 20.88 14.2Q20.91 13.88 20.81 13.62Q20.72 13.36 20.04 12.7Z M6.61 6.26Q5.86 6.19 5.48 6.33Q5.11 6.47 4.95 6.66Q4.78 6.84 4.69 7.08Q4.59 7.31 4.62 7.69Q4.64 8.06 4.9 8.77Q5.16 9.47 5.79 8.88Q6.42 8.3 7.01 7.38Q7.59 6.47 7.59 6.42Q7.59 6.38 7.48 6.35Q7.36 6.33 6.61 6.26Z M4.76 12.42Q4.59 12.09 3.94 12.73Q3.28 13.36 3.19 13.62Q3.09 13.88 3.12 14.2Q3.14 14.53 3.28 14.79Q3.42 15.05 3.63 15.21Q3.84 15.38 4.64 15.63Q5.44 15.89 5.34 14.88Q5.25 13.88 5.09 13.31Q4.92 12.75 4.76 12.42Z M12.02 3.33Q11.67 3.33 11.44 3.42Q11.2 3.52 11.02 3.7Q10.83 3.89 10.43 4.57Q10.03 5.25 10.69 5.37Q11.34 5.48 12 5.48Q12.66 5.48 13.31 5.37Q13.97 5.25 13.57 4.57Q13.17 3.89 12.98 3.7Q12.8 3.52 12.59 3.42Q12.38 3.33 12.02 3.33Z"/></svg>';$('attachmentButton').after(editorAi);
@@ -2120,10 +2152,10 @@ function aiWebSearchReceipt(message){
 function aiHubMessageHTML(message,index){
  if(message.role==='user')return '<div class="ai-message-body">'+esc(message.content)+'</div>';
  const searchReceipt=message.receipt?.tool==='web_search'&&aiWebSearchReceipt(message);
- const body=searchReceipt||(message.receipt?'<details><summary>'+esc(message.content)+'</summary><pre>'+esc(JSON.stringify(message.receipt,null,2))+'</pre></details>':message.content?aiMarkdownHTML(message.content):message.streaming?'<span class="ai-thinking">正在思考</span>':'');
+ const body=searchReceipt||(message.receipt?'<details><summary>'+esc(message.content)+'</summary><pre>'+esc(JSON.stringify(message.receipt,null,2))+'</pre></details>':message.content?aiMarkdownHTML(message.content):message.streaming&&!message.reasoningActive?'<span class="ai-thinking">正在思考</span>':'');
  const notice=message.error?'<div class="ai-message-notice" data-state="'+esc(message.status||'error')+'">'+esc(message.error)+'</div>':'';
  const actions=message.streaming||message.receipt?'':'<div class="ai-message-actions">'+(message.content?'<button type="button" data-ai-copy="'+index+'" aria-label="复制回答"><svg><use href="#i-copy"/></svg>复制</button>':'')+(index===currentAiHubSession().messages.length-1&&!currentAiHubSession().pendingApproval?'<button type="button" data-ai-continue="'+index+'">'+(message.status==='error'?'重试':message.status==='stopped'?'继续回答':currentAiHubSession().mode==='agent'?'继续任务':'重新回答')+'</button>':'')+'</div>';
- return aiToolActivityHTML(message)+'<div class="ai-message-body">'+body+'</div>'+notice+actions;
+ return aiReasoningHTML(message)+aiToolActivityHTML(message)+'<div class="ai-message-body">'+body+'</div>'+notice+actions;
 }
 function aiHubContextModel(session){
  const profile=session.profileId?aiProfiles.find(candidate=>candidate.id===session.profileId):activeAiProfile();
@@ -2184,11 +2216,13 @@ function renderAiHub(){
    let node=nodes.get(message.id);nodes.delete(message.id);
    if(!node){node=document.createElement('article');node.dataset.message=message.id;panel.append(node)}
    node.className='ai-message '+(message.role==='user'?'user':'assistant');
-   const signature=JSON.stringify([message.streaming,message.status,message.error,message.toolEvents,!!session.pendingApproval,index===session.messages.length-1]);
-   if(node._aiContent!==message.content||node._aiSignature!==signature){
+   const signature=JSON.stringify([message.streaming,message.reasoningActive,message.status,message.error,message.toolEvents,!!session.pendingApproval,index===session.messages.length-1]);
+   if(node._aiContent!==message.content||node._aiReasoning!==message.reasoning||node._aiSignature!==signature){
+    const reasoningView=captureAiReasoning(node);
     const previous=node.querySelector('.ai-tool-activity'),wasOpen=previous?.open;
     const tableScroll=Array.from(node.querySelectorAll('.ai-table-scroll')).map(el=>el.scrollLeft);
-    node.innerHTML=aiHubMessageHTML(message,index);node._aiSignature=signature;node._aiContent=message.content;
+    node.innerHTML=aiHubMessageHTML(message,index);node._aiSignature=signature;node._aiContent=message.content;node._aiReasoning=message.reasoning;
+    restoreAiReasoning(node,reasoningView);
     if(previous&&node.querySelector('.ai-tool-activity')&&!message.streaming)node.querySelector('.ai-tool-activity').open=wasOpen;
     node.querySelectorAll('.ai-table-scroll').forEach((el,i)=>el.scrollLeft=tableScroll[i]||0);
    }
@@ -2427,11 +2461,11 @@ async function sendAiHubMessage(content,resumeSession=null,{regenerate=false}={}
    data=await aiLocalGenerate(session.model,payload,text=>{active();partial.content=text;refresh()},{mode:session.mode==='agent'?'agent':'conversation',onTool,signal:run.controller.signal});
   }else{
    // Text attachments already live in apiContent; only images use this-turn wire attachments.
-   data=await aiStreamRequest({messages:payload,credentialId:session.profileId,model:session.model,mode:session.mode==='agent'?'agent':'conversation',externalTools:session.externalTools===true,attachments:images},{signal:run.controller.signal,progress:text=>{active();partial.content+=text;refresh()},reset:()=>{active();partial.content='';refresh()},onTool});
+   data=await aiStreamRequest({messages:payload,credentialId:session.profileId,model:session.model,mode:session.mode==='agent'?'agent':'conversation',externalTools:session.externalTools===true,attachments:images},{signal:run.controller.signal,progress:text=>{active();partial.reasoningActive=false;partial.content+=text;refresh()},onReasoning:text=>{active();partial.reasoningActive=true;partial.reasoning=(partial.reasoning||'')+text;refresh()},reset:()=>{active();partial.reasoningActive=false;partial.content='';refresh()},onTool});
   }
   active();
   if(data.approval)session.pendingApproval=data.approval;
-  partial.content=data.message?.content||'';partial.tools=(data.tools||[]).map(tool=>tool.name);
+  partial.content=data.message?.content||'';partial.reasoning=data.message?.reasoning||partial.reasoning;partial.tools=(data.tools||[]).map(tool=>tool.name);
   partial.status=data.approval?'approval':'done';
   if(localModel){partial.streaming=false;renderAiHub();await generateAiHubTitle(session,run);if(!resumeSession)await autoRememberAi(content,{localModel:session.model,workspace:run.workspace,signal:run.controller.signal})}
  }catch(error){
@@ -3561,6 +3595,7 @@ if(native){$('pairKey').remove();$('pairDialog').remove();$('join')?.remove();}s
 (()=>{
 const STORAGE='easybook-language',supported=['auto','zh-CN','en'];
 const en={
+'正在思考':'Thinking','思考过程':'Reasoning','思考已中断':'Reasoning interrupted',
 '预装插件':'Built-in Plugins','联网搜索':'Web Search','始终可用':'Always Available','已连接的服务器':'Connected Servers','读取笔记、文件夹和待办。Agent 修改工作区前需要确认。':'Read notes, folders, and tasks. Agent changes require approval.','通过浏览器读取公开搜索页。每次发送关键词前都需要确认。':'A browser reads the public search page. Approve the query before it is sent.','由浏览器加载公开搜索页，搜索前需要确认关键词。':'Search public pages after approving the query.','当前服务器未提供联网搜索。':'Web search is unavailable on this server.','在云端会话的「上下文」中打开第三方工具。每次调用都需要确认。':'Enable third-party tools under Context in cloud chats. Every call requires approval.','确认后将此关键词发送给联网搜索服务。':'Approval sends this query to the web search service.','请确认本次联网搜索的关键词。':'Review the web search query.','已取消联网搜索。':'Web search cancelled.','在浏览器中搜索':'Search in Browser','暂未取得可用结果，可在浏览器中继续搜索。':'No usable results. Continue the search in your browser.',
 
 '文件夹':'Folders','备忘录':'Notes','设置':'Settings','取消':'Cancel','全选':'Select All','完成':'Done','搜索':'Search','搜索备忘录':'Search Notes','新建备忘录':'New Note','标题':'Title','开始输入':'Start writing','无备忘录':'No Notes','回收站':'Recently Deleted','返回':'Back','关闭':'Close','保存':'Save','删除':'Delete','恢复':'Restore','编辑':'Edit','移动':'Move','共享':'Share','复制':'Copy','重试':'Retry','继续':'Continue','确认':'Confirm','稍后':'Later','立即同步':'Sync Now','准备同步':'Ready to Sync','尚无成功同步记录':'No successful sync yet','等待同步':'Waiting to sync','离线 · 已存本机':'Offline · Saved on this device',

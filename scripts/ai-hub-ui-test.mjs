@@ -24,6 +24,26 @@ try{
  app.cloud(async(body,events)=>{payload=body;events.progress('一段');app.render();const stable=$('aiHubMessages').querySelector('[data-message]');events.progress('回答');app.render();assert.equal($('aiHubMessages').querySelector('[data-message]'),stable,'Completed user node survives stream updates');return {message:{content:'一段回答'}}});
  await app.send('总结附件');assert.ok(payload.messages.some(m=>m.content.includes('[附件 draft.txt')));assert.equal(payload.attachments.length,0);assert.equal(app.busy(),false);assert.equal(app.session().messages.at(-1).status,'done');
  assert.equal($('aiHubAttachments').hidden,true);
+ const reason=()=>$('aiHubMessages').querySelector('.ai-reasoning');
+ app.cloud(async(body,events)=>{
+  events.onReasoning('先核对资料。');app.render();
+  assert.equal(reason().open,true);
+  assert.match(reason().textContent,/先核对资料/);
+  reason().open=false;
+  events.onReasoning('再整理。');app.render();
+  assert.equal(reason().open,false,'User can collapse while reasoning is streaming');
+  events.progress('独立的最终回答。');app.render();
+  assert.equal(reason().dataset.phase,'complete');assert.equal(reason().open,false);
+  return {message:{content:'独立的最终回答。',reasoning:'先核对资料。再整理。'}};
+ });
+ await app.send('用思考模型回复');
+ assert.equal(app.session().messages.at(-1).content,'独立的最终回答。');
+ reason().open=true;app.render();assert.equal(reason().open,true);
+ app.cloud(async body=>{
+  assert.ok(!JSON.stringify(body.messages).includes('先核对资料'),'Reasoning is separate from normal conversation history');
+  return {message:{content:'下一轮。'}};
+ });
+ await app.send('继续对话');
  // Errors retain prompt and partial response; resumption uses execution/context history.
  app.cloud(async(body,events)=>{events.progress('保留的部分回答');throw Error('网络中断')});
  await app.send('继续分析');assert.equal(app.session().messages.at(-1).status,'error');assert.match($('aiHubMessages').textContent,/网络中断/);assert.match($('aiHubMessages').textContent,/保留的部分回答/);

@@ -1,8 +1,9 @@
 /** Incremental completion reader for OpenAI-compatible and Anthropic SSE. */
-export async function readAIProviderStream(response,protocol,onDelta=()=>{}){
+export async function readAIProviderStream(response,protocol,onDelta=()=>{},onReasoning=()=>{}){
  const reader=response.body?.getReader();
  if(!reader)throw Error('AI provider did not return a stream');
- const decoder=new TextDecoder();let pending='',total=0,seen=false,content='';
+ const decoder=new TextDecoder();let pending='',total=0,seen=false,content='',reasoning='';
+ const addReasoning=text=>{if(typeof text==='string'&&text){reasoning+=text;onReasoning(text)}};
  const calls=new Map(),blocks=new Map();
  const processEvent=event=>{
   const lines=event.split(/\r?\n/),payload=lines.filter(line=>line.startsWith('data:')).map(line=>line.slice(5).trimStart()).join('\n');
@@ -11,13 +12,16 @@ export async function readAIProviderStream(response,protocol,onDelta=()=>{}){
   if(data.type==='error'||data.error)throw Error(data.error?.message||'AI provider stream error');
   seen=true;
   if(protocol==='anthropic'){
+   if(data.type==='content_block_start'&&data.content_block?.type==='thinking')addReasoning(data.content_block.thinking);
    if(data.type==='content_block_start'&&data.content_block?.type==='tool_use')blocks.set(data.index,{id:data.content_block.id,name:data.content_block.name,args:''});
    if(data.type==='content_block_delta'){
+    if(data.delta?.type==='thinking_delta')addReasoning(data.delta.thinking);
     if(data.delta?.type==='text_delta'&&typeof data.delta.text==='string'){content+=data.delta.text;onDelta(data.delta.text)}
     if(data.delta?.type==='input_json_delta'&&blocks.has(data.index))blocks.get(data.index).args+=data.delta.partial_json||'';
    }
   }else{
    const delta=data.choices?.[0]?.delta;
+   addReasoning(openAIReasoning(delta));
    if(typeof delta?.content==='string'){content+=delta.content;onDelta(delta.content)}
    for(const part of delta?.tool_calls||[]){
     const index=part.index||0,current=calls.get(index)||{id:'',name:'',args:''};
@@ -45,5 +49,10 @@ export async function readAIProviderStream(response,protocol,onDelta=()=>{}){
  }finally{reader.releaseLock()}
  if(!seen)throw Error('Empty AI provider stream');
  const toolCalls=(protocol==='anthropic'?[...blocks.values()]:[...calls.entries()].sort((a,b)=>a[0]-b[0]).map(([,call])=>call)).map(call=>({id:call.id,type:'function',function:{name:call.name,arguments:call.args||'{}'}}));
- return {role:'assistant',content,...(toolCalls.length?{tool_calls:toolCalls}:{})};
+ return {role:'assistant',content,...(reasoning?{reasoning}:{}),...(toolCalls.length?{tool_calls:toolCalls}:{})};
+}
+
+export function openAIReasoning(message){
+ return typeof message?.reasoning_content==='string'&&message.reasoning_content?message.reasoning_content:
+  typeof message?.reasoning==='string'?message.reasoning:'';
 }

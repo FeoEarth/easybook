@@ -73,6 +73,27 @@ let streamRequested=false;
 const streamedOpenai=async(url,init)=>{streamRequested=JSON.parse(init.body).stream===true;return streamResponse('data: '+JSON.stringify({choices:[{delta:{content:'你好'}}]})+'\n\n'+'data: '+JSON.stringify({choices:[{delta:{content:'，世界'}}]})+'\n\n'+'data: [DONE]\n\n')};
 let streamEvents=await readEvents(await aiAPI(request('/api/ai/chat','POST',{messages:[{role:'user',content:'你好'}],stream:true}),env,principal,{workspaceId:workspace,fetcher:streamedOpenai}));
 assert.equal(streamRequested,true);assert.deepEqual(streamEvents.map(event=>event.type),['delta','delta','done']);assert.equal(streamEvents.at(-1).data.message.content,'你好，世界');
+const deepSeek=(await (await aiAPI(request('/api/ai/config','PUT',{label:'DeepSeek reasoning',provider:'deepseek',model:'deepseek-reasoner',apiKey:secret}),env,principal)).json()).id;
+const modelFrames=items=>streamResponse(items.map(item=>'data: '+JSON.stringify(item)+'\n\n').join(''));
+let reasoningRound=0;
+const reasoningFetcher=async(url,init)=>{
+ assert.equal(url,'https://api.deepseek.com/chat/completions');
+ const payload=JSON.parse(init.body);
+ if(reasoningRound++===0)return modelFrames([
+  {choices:[{delta:{reasoning_content:'先查找笔记'}}]},
+  {choices:[{delta:{tool_calls:[{index:0,id:'reasoning-read',function:{name:'notes_list',arguments:'{}'}}]}}]}
+ ]);
+ assert.equal(payload.messages.at(-2).reasoning_content,'先查找笔记');
+ assert.equal(payload.messages.at(-1).role,'tool');
+ return modelFrames([
+  {choices:[{delta:{reasoning_content:'整理已找到的笔记'}}]},
+  {choices:[{delta:{content:'这是最终答复。'}}]}
+ ]);
+};
+streamEvents=await readEvents(await aiAPI(request('/api/ai/chat','POST',{credentialId:deepSeek,messages:[{role:'user',content:'汇总'}],stream:true}),env,principal,{workspaceId:workspace,fetcher:reasoningFetcher}));
+assert.deepEqual(streamEvents.map(event=>event.type),['reasoning','reset','tool_start','tool_end','reasoning','delta','done']);
+assert.deepEqual(streamEvents.at(-1).data.message,{role:'assistant',content:'这是最终答复。',reasoning:'先查找笔记\n\n整理已找到的笔记'});
+await aiAPI(request('/api/ai/select','POST',{credentialId:openaiId}),env,principal);
 const streamedTool=async()=>streamResponse([
  {choices:[{delta:{tool_calls:[{index:0,id:'stream-create',function:{name:'notes_create',arguments:'{"title":"'}}]}}]},
  {choices:[{delta:{tool_calls:[{index:0,function:{arguments:'审批测试"}'}}]}}]}
@@ -96,9 +117,12 @@ const streamedAnthropic=async(url,init)=>{assert.equal(JSON.parse(init.body).str
 streamEvents=await readEvents(await aiAPI(request('/api/ai/chat','POST',{messages:[{role:'user',content:'测试'}],stream:true}),env,principal,{workspaceId:workspace,fetcher:streamedAnthropic}));
 assert.equal(streamEvents.at(-1).data.message.content,'逐字输出');
 assert.deepEqual(streamEvents.map(event=>event.type),['delta','delta','done']);
-const jsonFallback=async()=>Response.json({content:[{type:'text',text:'兼容非流式提供商'}]});
+const jsonFallback=async()=>Response.json({content:[{type:'thinking',thinking:'供应商提供的摘要',signature:'internal-signature'},{type:'redacted_thinking',data:'opaque'},{type:'text',text:'兼容非流式提供商'}]});
 streamEvents=await readEvents(await aiAPI(request('/api/ai/chat','POST',{messages:[{role:'user',content:'测试'}],stream:true}),env,principal,{workspaceId:workspace,fetcher:jsonFallback}));
 assert.equal(streamEvents.at(-1).data.message.content,'兼容非流式提供商');
+assert.deepEqual(streamEvents.map(event=>event.type),['reasoning','done']);
+assert.equal(streamEvents.at(-1).data.message.reasoning,'供应商提供的摘要');
+assert.ok(!JSON.stringify(streamEvents).includes('internal-signature'));
 // One credential owns multiple models; per-chat selection never edits account defaults.
 const catalogSaved=await aiAPI(request('/api/ai/config','PUT',{credentialId:openaiId,label:'Multiple models',provider:'openai',model:'gpt-4.1',models:['gpt-4.1','vendor/reasoning-model']}),env,principal);
 assert.equal(catalogSaved.status,200);assert.deepEqual((await catalogSaved.json()).models,['gpt-4.1','vendor/reasoning-model']);
