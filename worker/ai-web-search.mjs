@@ -79,7 +79,7 @@ function englishKeywords(query){
 }
 function relevantResults(results,keywords){
  return results.filter(item=>{
-  const words=new Set(searchWords(item.title+' '+new URL(item.url).hostname));
+  const words=new Set(searchWords(item.title+' '+(item.description||'')+' '+new URL(item.url).hostname));
   return keywords.filter(word=>words.has(word)).length>=Math.min(keywords.length,2);
  });
 }
