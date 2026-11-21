@@ -172,6 +172,25 @@ assert.equal(webSearchQuota(monthStart,null).limit,15);
 assert.equal(webSearchQuota(monthStart,{expires_at:monthStart}).kind,'free','Expiry at the boundary is not active');
 assert.equal(webSearchQuota(monthStart,{permanent:1,expires_at:0}).kind,'member');
 
+// DuckDuckGo can expand multiple batches without another model call or quota
+// charge, rather than silently treating the first visible page as all results.
+{
+ const {expandDuckDuckGoResults,WEB_SEARCH_MAX_RESULTS}=await import('../worker/ai-web-search.mjs');
+ let count=2,clicks=0;
+ const page={
+  async evaluate(fn,args){
+   if(!args){clicks++;return true}
+   return {status:'results',entries:Array.from({length:count},(_,i)=>({url:'https://example.org/page-'+i,title:'Document '+i,description:'Relevant excerpt'}))};
+  },
+  async waitForFunction(){count+=9}
+ };
+ const initial={status:'results',raw:count,results:[{url:'https://example.org/page-0',title:'Document 0'},{url:'https://example.org/page-1',title:'Document 1'}]};
+ const expanded=await expandDuckDuckGoResults(page,initial,WEB_SEARCH_MAX_RESULTS,new AbortController().signal,Date.now()+10000);
+ assert.equal(expanded.loads,3);
+ assert.equal(clicks,3);
+ assert.equal(expanded.results.length,29,'Search more than 10 entries by loading additional batches');
+}
+
 // The search plugin shares the approval flow and works independently of third-party MCP.
 {
  let searches=0,closed=0,exposed=false,primary='blocked',backup='no_results',query='current public docs';
