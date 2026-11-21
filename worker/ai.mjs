@@ -149,10 +149,10 @@ export const isAiMcpOAuthPage=url=>['/api/ai/mcp/oauth/authorize','/api/ai/mcp/o
 async function searchApprovedWeb(env,account,args,signal,launchBrowser,fetcher){
  const query=webSearchQuery({query:args.query}),prefs=await readPreferences(env,account);
  const allowed=args.providers;
- const base=prefs.webSearch&&webSearchAvailable(env)&&allowed?.primary!==false;
+ const base=prefs.webSearch&&webSearchAvailable(env)&&allowed?.primary!==false&&(!args.requireAlways||prefs.webSearchApproval==='always');
  const quota=base?await webSearchUsage(env,account):null;
  const primary=base&&quota.remaining>0;
- const advanced=prefs.parallelSearch&&allowed?.parallel!==false;
+ const advanced=prefs.parallelSearch&&allowed?.parallel!==false&&(!args.requireAlways||prefs.parallelSearchApproval==='always');
  if(!primary&&!advanced){const limited=base&&quota?.remaining===0;return {results:[],browserSearch:true,reason:limited?'limit':'unavailable',source:base?'duckduckgo':'none',error:{code:limited?'web_search_limit':'web_search_unavailable',message:limited?(quota.tier==='member'?'会员本月自动搜索次数已达上限，请在浏览器中继续。':'今日自动搜索次数已达上限，请在浏览器中继续。'):'联网搜索已关闭，且进阶版未启用。'}};}
  const [first,second]=await Promise.all([
   primary?(async()=>{const result=await runWebSearch(env,account,{query},signal,launchBrowser);
@@ -301,7 +301,9 @@ export async function aiAPI(request,env,principal,{workspaceId,fetcher=fetch,lau
    emit('reset',{});
    const searchRequested=searchEnabled&&!webSearch&&calls.slice(0,6).some(call=>call?.function?.name===WEB_SEARCH);
    const currentSearch=searchRequested&&autoSearch?await readPreferences(env,principal.accountId):settings;
-   const automatically=autoSearch&&(currentSearch.parallelSearch||currentSearch.webSearch&&webSearchAvailable(env))&&(!primaryEnabled||currentSearch.webSearch&&currentSearch.webSearchApproval==='always')&&(!parallelEnabled||currentSearch.parallelSearch&&currentSearch.parallelSearchApproval==='always');
+   const currentQuota=searchRequested&&autoSearch&&currentSearch.webSearch&&webSearchAvailable(env)?await webSearchUsage(env,principal.accountId):null;
+   const currentPrimary=!!currentQuota?.remaining,currentParallel=currentSearch.parallelSearch===true;
+   const automatically=autoSearch&&(currentPrimary||currentParallel)&&(!currentPrimary||currentSearch.webSearchApproval==='always')&&(!currentParallel||currentSearch.parallelSearchApproval==='always');
    const approvalCall=calls.slice(0,6).find(call=>(searchRequested&&!automatically&&call?.function?.name===WEB_SEARCH)||external.has(call?.function?.name)||registry.some(t=>t.name===call?.function?.name&&!t.risk&&WRITE.includes(t.scope)&&scopes.includes(t.scope)));
    if(approvalCall){
     const name=approvalCall.function.name;let args;
@@ -331,7 +333,7 @@ export async function aiAPI(request,env,principal,{workspaceId,fetcher=fetch,lau
       if(!automatically||webSearch)result={error:{code:'web_search_unavailable',message:'本轮不能再次自动联网搜索。请使用已取得的资料。'}};
       else{
        const query=webSearchQuery(args);
-       result=await searchApprovedWeb(env,principal.accountId,{query},request.signal,launchSearchBrowser,fetcher);
+       result=await searchApprovedWeb(env,principal.accountId,{query,requireAlways:true},request.signal,launchSearchBrowser,fetcher);
        webSearch={arguments:{query},result};
       }
      }else result=await callTool({env,workspace:workspaceId,client:'easybook-agent:'+principal.accountId,scopes},name,args);
