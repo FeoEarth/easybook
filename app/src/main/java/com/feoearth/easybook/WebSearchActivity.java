@@ -27,6 +27,8 @@ import java.util.HashSet;
 
 public final class WebSearchActivity extends Activity {
     static final int REQUEST = 88;
+    static final int MAX_RESULT_JSON_CHARS = 65536;
+    private static final int RESULT_LIMIT = 10;
     static final String QUERY = "query", TOKEN = "token", RESULTS = "results";
     private static final String READ_RESULTS = """
         (() => {
@@ -52,11 +54,11 @@ public final class WebSearchActivity extends Activity {
               || link.closest('tr')?.nextElementSibling?.querySelector('.result-snippet');
             const description = clean(snippet,700);
             seen.add(url.href); results.push({url:url.href,title,description});
-            if (results.length === 5) break;
+            if (results.length === SEARCH_RESULT_LIMIT) break;
           }
           return results;
         })()
-        """;
+        """.replace("SEARCH_RESULT_LIMIT", Integer.toString(RESULT_LIMIT));
 
     private WebView web;
     private LinearLayout preview;
@@ -207,12 +209,12 @@ public final class WebSearchActivity extends Activity {
 
     private static JSONArray validatedSources(String raw) throws Exception {
         JSONArray results = new JSONArray();
-        if (raw == null || raw.length() > 20000) return results;
+        if (raw == null || raw.length() > MAX_RESULT_JSON_CHARS) return results;
         Object decoded = new JSONTokener(raw).nextValue();
         if (!(decoded instanceof JSONArray)) return results;
         JSONArray entries = (JSONArray) decoded;
         HashSet<String> seen = new HashSet<>();
-        for (int index = 0; index < Math.min(entries.length(), 5); index++) {
+        for (int index = 0; index < Math.min(entries.length(), RESULT_LIMIT); index++) {
             JSONObject item = entries.optJSONObject(index);
             if (item == null || !(item.opt("url") instanceof String) || !(item.opt("title") instanceof String)) continue;
             String url = item.optString("url"), title = item.optString("title").trim(), description = item.optString("description");

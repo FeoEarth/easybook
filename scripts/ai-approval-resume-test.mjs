@@ -49,7 +49,7 @@ console.log('AI approval continuation: cloud/local, cancellation, failures and n
  const message={id:'receipt',receipt:{tool:'web_search',arguments:{query:'public docs'},result:{browserSearch:true}}};
  const session={id:'chat',messages:[message]};
  let token,requests=0;
- const state={window:{},URL,localSpace:'workspace-a',aiHubBusy:false,currentAiHubSession:()=>session,
+ const state={window:{EasybookAiChat:aiChat},URL,localSpace:'workspace-a',aiHubBusy:false,currentAiHubSession:()=>session,
   native:{async call(method,args){assert.equal(method,'ai.web.search.assist');token=args.token}},
   uuid:()=>crypto.randomUUID(),saveAiHubSessions(){},renderAiHub(){},renderAiHubSessions(){},
   sendAiHubMessage(content,origin,options){assert.equal(origin,session);assert.equal(options.searchResume,true);requests++}

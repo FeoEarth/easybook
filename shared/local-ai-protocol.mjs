@@ -1,4 +1,4 @@
-import {assistantSystemPrompt} from './ai-prompts.mjs';
+import {aiEnvironmentPrompt,assistantSystemPrompt} from './ai-prompts.mjs';
 // Text-only on-device models do not expose a native function-calling API.
 // An exact, bounded action envelope is interpreted only after generation ends.
 const uuid=/^[a-f\d]{8}-[a-f\d]{4}-[a-f\d]{4}-[a-f\d]{4}-[a-f\d]{12}$/i;
@@ -48,7 +48,7 @@ export function localAiPrompt(messages,{mode='conversation',memory='',toolResult
  const agent=mode==='agent';
  const rules=[
   assistantSystemPrompt(mode),
-  '当前在设备端离线运行，不具备联网能力。',
+  aiEnvironmentPrompt({device:true}),
   '需要读取本机工作区时，可以调用工具。回复必须是普通 Markdown，或者仅包含一个工具请求，不可同时输出两者。',
   '工具请求格式：<easybook_tool_call>{"name":"notes_search","arguments":{"query":"关键词"}}</easybook_tool_call>',
   '请求只能有一个 JSON 对象，JSON 必须使用双引号，不能添加解释或代码围栏。收到工具结果后继续分析，必要时再调用。',

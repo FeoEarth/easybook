@@ -1,5 +1,5 @@
 import {AI_CHAT_MAX_MESSAGES,contextWindowOverride,estimateContextTokens,modelContextWindow} from './ai-context-policy.mjs';
-export {contextWindowOverride,MIN_CONTEXT_WINDOW,MAX_CONTEXT_WINDOW} from './ai-context-policy.mjs';
+export {contextWindowOverride,MIN_CONTEXT_WINDOW,MAX_CONTEXT_WINDOW,WEB_SEARCH_RESULT_LIMIT} from './ai-context-policy.mjs';
 export {CHAT_TITLE_INSTRUCTION,normalizeChatTitle,fallbackChatTitle} from './ai-prompts.mjs';
 // Shared chat policy. Transport, rendering and workspace permissions stay separate.
 export {ServerSentEventDecoder,readServerSentEvents} from './vendor/chat-demo/sse.mjs';

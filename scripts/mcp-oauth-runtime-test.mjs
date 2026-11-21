@@ -4,9 +4,32 @@ import {Miniflare,convertV4MiniflareOptions} from 'miniflare';
 
 const entry=`
 import {aiAPI,aiMcpOAuthPage} from './worker/ai.mjs';
+import {enrichWebSearchResults} from './worker/ai-web-sources.mjs';
 export default {async fetch(request,env){
  const resource='https://tools.example.net/mcp',issuer='https://login.example.net',origin='https://easybook.test';
  const incoming=new URL(request.url);
+ if(incoming.pathname==='/source-fixture'){
+  const visits=[];
+  const fetchSource=async (input,init)=>{
+   const url=new URL(input);
+   if(url.hostname==='cloudflare-dns.com')return Response.json({Status:0,Answer:[{type:1,data:url.searchParams.get('name')==='private.example.org'?'10.0.0.4':'93.184.216.34'}]});
+   visits.push({url:url.href,accept:init.headers.Accept,redirect:init.redirect,headerCount:Object.keys(init.headers).length});
+   if(url.hostname==='safe.example.org')return new Response(null,{status:302,headers:{Location:'https://private.example.org/wall'}});
+   if(url.hostname==='unavailable.example.org')return new Response('Blocked',{status:403});
+   if(url.pathname==='/old')return new Response(null,{status:302,headers:{Location:'/actual'}});
+   const text='<html><head><meta property="article:published_time" content="2026-11-21"></head><body>'+
+    '<aside><p>Cookie banners, repeated navigation descriptions and unrelated promotional announcements.</p></aside>'+
+    '<main><article><p>The release includes a reproducible command and its expected results. These details are on the original page and absent from the search snippet.</p>'+
+    '<p>The original documentation reports the date and the measured figures. Title &amp; excerpt should be treated as source material.</p></article></main></body></html>';
+   return new Response(text,{headers:{'Content-Type':'text/html; charset=utf-8'}});
+  };
+  const results=await enrichWebSearchResults([
+   {title:'Documentation',url:'https://docs.example.org/old',description:'Index snippet'},
+   {title:'Redirect',url:'https://safe.example.org/old'},
+   {title:'Unavailable',url:'https://unavailable.example.org/start'}
+  ],'original documentation',request.signal,fetchSource);
+  return Response.json({results,visits});
+ }
  const malformed=incoming.searchParams.has('malformed'),failCatalog=incoming.searchParams.has('failCatalog');
  const catalogFormat=incoming.searchParams.get('catalog');
  const steps=[],accessToken='notion-user:oauth-grant:opaque-access-token';
@@ -63,6 +86,17 @@ const runtime=new Miniflare(convertV4MiniflareOptions({
 }));
 try{
  const get=async path=>(await runtime.dispatchFetch('https://dev.test'+path)).json();
+ const source=await get('/source-fixture');
+ assert.match(source.results[0].pageText,/reproducible command/);
+ assert.match(source.results[0].pageText,/Title & excerpt/);
+ assert.doesNotMatch(source.results[0].pageText,/Cookie banners/);
+ assert.equal(source.results[0].pageUrl,'https://docs.example.org/actual');
+ assert.equal(source.results[0].publishedAt,'2026-11-21');
+ assert.match(source.results[0].retrievedAtUtc,/Z$/);
+ assert.equal(source.results[1].pageText,undefined);
+ assert.equal(source.results[2].pageText,undefined);
+ assert.ok(!source.visits.some(item=>item.url.includes('private.example.org')));
+ assert.ok(source.visits.every(item=>item.headerCount===1&&item.redirect==='manual'));
  const begin=async label=>(await get('/setup?label='+label)).state;
  const state=await begin('ordinary');
  const result=await get('/callback?state='+state);

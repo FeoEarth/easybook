@@ -1,4 +1,5 @@
 import puppeteer from '@cloudflare/puppeteer';
+import {WEB_SEARCH_RESULT_LIMIT} from '../shared/ai-context-policy.mjs';
 import {hash,schema,str,validate} from './mcp-common.mjs';
 
 export const WEB_SEARCH='web_search';
@@ -65,7 +66,7 @@ async function inspectResults(page,site){
 }
 
 export async function readRenderedSearch(page){
- return (await inspectResults(page,duckduckgo)).results.slice(0,5);
+ return (await inspectResults(page,duckduckgo)).results.slice(0,WEB_SEARCH_RESULT_LIMIT);
 }
 
 const commonWords=new Set(['and','are','can','for','from','how','the','this','was','what','when','where','which','who','with','would']);
@@ -179,11 +180,11 @@ export async function runWebSearch(env,account,args,signal,launchBrowser=binding
    browser=await launchBrowser(env.WEB_SEARCH_BROWSER);
    searchSignal.throwIfAborted();
    const primary=await crawlSearchPage(browser,duckduckgo,query,searchSignal,deadline);
-   if(primary.results.length)return {results:primary.results.slice(0,5),source:'duckduckgo'};
+   if(primary.results.length)return {results:primary.results.slice(0,WEB_SEARCH_RESULT_LIMIT),source:'duckduckgo'};
    const keywords=englishKeywords(query);
    if(keywords.length&&deadline-Date.now()>1500){
     const backup=await crawlSearchPage(browser,wiby,query,searchSignal,deadline);
-    const results=relevantResults(backup.results,keywords).slice(0,5);
+    const results=relevantResults(backup.results,keywords).slice(0,WEB_SEARCH_RESULT_LIMIT);
     if(results.length)return {results,source:'wiby'};
    }
    return searchFailure(primary.status);

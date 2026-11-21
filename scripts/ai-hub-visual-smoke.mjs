@@ -29,7 +29,8 @@ try{
  await crawlerPage.evaluate(()=>document.body.insertAdjacentHTML('afterbegin','<form id="challenge-form"></form>'));
  assert.deepEqual(await readRenderedSearch(crawlerPage),[],'A challenge page is handed off to the user');
  const nativeSearchJava=readFileSync('app/src/main/java/com/feoearth/easybook/WebSearchActivity.java','utf8');
- const nativeReader=nativeSearchJava.match(/READ_RESULTS = """([\s\S]*?)""";/)[1].replaceAll('\\\\','\\');
+ const nativeLimit=nativeSearchJava.match(/RESULT_LIMIT = (\d+);/)[1];
+ const nativeReader=nativeSearchJava.match(/READ_RESULTS = """([\s\S]*?)"""/)[1].replace('SEARCH_RESULT_LIMIT',nativeLimit).replaceAll('\\\\','\\');
  await crawlerPage.route('https://duckduckgo.com/**',route=>route.fulfill({contentType:'text/html',body:`
   <article data-testid="result"><a data-testid="result-title-a" href="https://example.com/source">Source</a>
   <p data-result="snippet">Public snippet</p></article>`}));
@@ -37,6 +38,12 @@ try{
  assert.deepEqual(await crawlerPage.evaluate(nativeReader),[{url:'https://example.com/source',title:'Source',description:'Public snippet'}]);
  await crawlerPage.evaluate(()=>document.body.insertAdjacentHTML('afterbegin','<form id="challenge-form"></form>'));
  assert.deepEqual(await crawlerPage.evaluate(nativeReader),[],'Android extraction leaves challenge forms alone');
+ await crawlerPage.evaluate(()=>{
+  document.getElementById('challenge-form').remove();
+  for(let i=0;i<12;i++)document.body.insertAdjacentHTML('beforeend','<article data-testid="result"><a data-testid="result-title-a" href="https://example.net/'+i+'">Source '+i+'</a></article>');
+ });
+ assert.equal((await readRenderedSearch(crawlerPage)).length,10);
+ assert.equal((await crawlerPage.evaluate(nativeReader)).length,10);
  const searchCDP=await crawlerPage.context().newCDPSession(crawlerPage);
  const {product}=await searchCDP.send('Browser.getVersion');
  await configureMobileSearchPage({createCDPSession:async()=>searchCDP},product,'测试关键词');

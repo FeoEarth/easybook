@@ -17,6 +17,7 @@ assert.equal(validateLocalAiAction({name:'notes_pin',arguments:{id:'0c128b87-3b3
 assert.equal(validateLocalAiAction({name:'notes_append',arguments:{id:'0c128b87-3b33-4e74-b89a-adf1c398d165',version:2,text:'## 续写'}},'agent').write,true);
 const prompt=localAiPrompt([{role:'user',content:'查找笔记并制作表格'}],{mode:'agent',toolResults:[{name:'notes_search',result:{notes:[]}}]});
 assert.match(prompt,/notes_search/);assert.match(prompt,/notes_create/);assert.match(prompt,/确认前/);assert.match(prompt,/表格/);assert.match(prompt,/工具 notes_search 返回/);
+assert.match(prompt,/当前 UTC 时间：\d{4}-\d{2}-\d{2}T[\d:.]+Z（设备时钟）/);
 assert.doesNotMatch(localAiPrompt([{role:'user',content:'你好'}]),/Agent 模式可提议写入工具/);
 console.log('Local AI protocol: OK');
 

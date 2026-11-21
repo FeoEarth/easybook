@@ -575,7 +575,7 @@ public class MainActivity extends Activity {
             if(token!=null&&aiSearchGeneration==documentGeneration){
                 boolean matched=result==RESULT_OK&&data!=null&&token.equals(data.getStringExtra(WebSearchActivity.TOKEN));
                 String results=matched?data.getStringExtra(WebSearchActivity.RESULTS):null;
-                deliverAiSearch(token,results!=null&&results.length()<=20000?results:null);
+                deliverAiSearch(token,results!=null&&results.length()<=WebSearchActivity.MAX_RESULT_JSON_CHARS?results:null);
             }
             return;
         }

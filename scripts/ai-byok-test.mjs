@@ -148,7 +148,7 @@ assert.equal((await prefRequest({...prefs,version:0,instructions:'stale overwrit
 assert.equal((await (await aiAPI(request('/api/ai/preferences'),env,{...principal,accountId:otherAccount})).json()).memories.length,0,'Memory is private to the account');
 let preferencePrompt='';
 result=await aiAPI(request('/api/ai/chat','POST',{credentialId:openaiId,messages:[{role:'user',content:'介绍一下'}]}),env,principal,{workspaceId:workspace,fetcher:async(url,init)=>{const b=JSON.parse(init.body);preferencePrompt=b.messages[0].content;return Response.json({choices:[{message:{content:'好'}}]})}});
-assert.equal(result.status,200);assert.match(preferencePrompt,/默认先给结论/);assert.match(preferencePrompt,/偏好中文简洁回复/);
+assert.equal(result.status,200);assert.match(preferencePrompt,/默认先给结论/);assert.match(preferencePrompt,/偏好中文简洁回复/);assert.match(preferencePrompt,/当前 UTC 时间：\d{4}-\d{2}-\d{2}T[\d:.]+Z/);assert.match(preferencePrompt,/当前工作区角色：工作区管理员/);
 let memoryCalls=0;
 const extract=()=>aiAPI(request('/api/ai/chat','POST',{purpose:'memory',credentialId:openaiId,messages:[{role:'user',content:'以后请用中文回答我'}]}),env,principal,{workspaceId:workspace,fetcher:async(url,init)=>{memoryCalls++;const b=JSON.parse(init.body);assert.equal(b.tools,undefined,'Memory extraction has no workspace tools');assert.equal(b.max_completion_tokens,512);return Response.json({choices:[{message:{content:'["偏好中文回答","sk-sensitiveabcdefghijklmnop"]'}}]})}});
 assert.deepEqual((await (await extract()).json()).memories,['偏好中文回答']);
