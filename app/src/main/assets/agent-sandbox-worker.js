@@ -30,7 +30,7 @@ self.onmessage=async event=>{
   const size=()=>[...files.values()].reduce((sum,value)=>sum+encodedSize(value),0);
   const sandbox=Object.freeze({
    readFile(name){if(!validPath(name))throw Error('路径无效');if(!files.has(name))throw Error('文件不存在');return files.get(name)},
-   writeFile(name,data){if(!validPath(name))throw Error('路径无效');if(typeof data!=='string'||data.length>MAX_FILE)throw Error('文件必须为不超过 128 KB 的文本');if(!files.has(name)&&files.size>=MAX_FILES)throw Error('文件数量超过上限');const previous=files.get(name);files.set(name,data);if(size()>MAX_TOTAL){if(previous===undefined)files.delete(name);else files.set(name,previous);throw Error('沙箱总存储超过 512 KB')};return encodedSize(data)},
+   writeFile(name,data){if(!validPath(name))throw Error('路径无效');if(typeof data!=='string'||encodedSize(data)>MAX_FILE)throw Error('文件必须为不超过 128 KB 的文本');if(!files.has(name)&&files.size>=MAX_FILES)throw Error('文件数量超过上限');const previous=files.get(name);files.set(name,data);if(size()>MAX_TOTAL){if(previous===undefined)files.delete(name);else files.set(name,previous);throw Error('沙箱总存储超过 512 KB')};return encodedSize(data)},
    deleteFile(name){if(!validPath(name))throw Error('路径无效');return files.delete(name)},
    listFiles(){return [...files.entries()].map(([name,value])=>({name,bytes:encodedSize(value)}))},
    async fetchText(url){
