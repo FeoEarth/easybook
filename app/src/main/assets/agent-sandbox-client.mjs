@@ -67,39 +67,57 @@ export async function executeSandboxTool({tool,args,workspace,sessionId,native,s
  }
  if(args.language!=='javascript'||typeof args.code!=='string'||!args.code.trim()||args.code.length>10000)throw Error('当前只支持 JavaScript（最长 10000 字符）');
  if(!authorize())throw Error('沙箱会话授权已失效');
- const executionId=crypto.randomUUID();
+ const executionId=crypto.randomUUID(),frameOrigin='https://agent-sandbox.easybook.invalid',channel='easybook-agent-v1';
  return new Promise((resolve,reject)=>{
-  let worker,finished=false,committing=false;
-  const cleanup=()=>{clearTimeout(timer);signal?.removeEventListener('abort',cancel);worker?.terminate()};
+  let frame,finished=false,committing=false,started=false;
+  const cleanup=()=>{
+   clearTimeout(timer);
+   signal?.removeEventListener('abort',cancel);
+   window.removeEventListener('message',onMessage);
+   if(frame){try{frame.contentWindow?.postMessage({sandboxChannel:channel,id:executionId,type:'cancel'},frameOrigin)}catch{}frame.remove();}
+  };
   const end=(ok,value)=>{if(finished)return;finished=true;cleanup();ok?resolve(value):reject(value)};
   const cancel=()=>end(false,new DOMException('已取消','AbortError'));
   const timer=setTimeout(()=>end(true,{ok:false,error:{message:'代码运行超过 30 秒，已终止执行'}}),30000);
+  const send=payload=>{if(!finished&&frame?.contentWindow)frame.contentWindow.postMessage({sandboxChannel:channel,id:executionId,...payload},frameOrigin)};
+  const start=()=>{if(started||finished)return;started=true;send({type:'execute',code:args.code,files})};
+  const onMessage=async event=>{
+   if(finished||!frame||event.source!==frame.contentWindow||event.origin!==frameOrigin)return;
+   const m=event.data||{};
+   if(m.sandboxChannel!==channel)return;
+   if(m.type==='ready'){start();return}
+   if(m.id!==executionId)return;
+   if(m.type==='network'){
+    try{if(!authorize())throw Error('沙箱会话授权已失效');
+     const data=await native.call('sandbox.fetch',{url:m.url});
+     if(!finished&&authorize())send({type:'network-result',requestId:m.requestId,ok:true,text:data.text});
+    }catch(error){if(!finished)send({type:'network-result',requestId:m.requestId,ok:false,error:String(error.message||error).slice(0,800)})}
+    return;
+   }
+   if(m.type!=='done'||committing)return;
+   committing=true;
+   if(!m.ok){end(true,{ok:false,result:{stdout:String(m.output||'').slice(0,16000)},error:asError(m.error)});return}
+   try{
+    checkFiles(m.files);
+    if(!authorize()||!(await native.call('sandbox.status')).enabled)throw Error('沙箱授权已撤销');
+    await writeFiles(scope,m.files);
+    end(true,{ok:true,result:{stdout:String(m.output||'').slice(0,16000),value:String(m.value||'').slice(0,4000),files:Object.keys(m.files)}});
+   }catch(error){end(true,{ok:false,error:asError(error)})}
+  };
   signal?.addEventListener('abort',cancel,{once:true});
+  window.addEventListener('message',onMessage);
   try{
-   worker=new Worker('/agent-sandbox-worker.js');
-   worker.onerror=error=>end(true,{ok:false,error:{message:error.message||'脚本运行环境不可用'}});
-   worker.onmessage=async event=>{
-    const m=event.data||{};
-    if(finished||m.id!==executionId)return;
-    if(m.type==='network'){
-     try{const data=await native.call('sandbox.fetch',{url:m.url});if(!finished)worker.postMessage({type:'network-result',requestId:m.requestId,ok:true,text:data.text})}
-     catch(error){if(!finished)worker.postMessage({type:'network-result',requestId:m.requestId,ok:false,error:String(error.message||error).slice(0,800)})}
-     return;
-    }
-    if(m.type!=='done'||committing)return;
-    committing=true;
-    if(!m.ok){end(true,{ok:false,result:{stdout:String(m.output||'').slice(0,16000)},error:asError(m.error)});return}
-    try{
-     checkFiles(m.files);
-     if(!authorize()||!(await native.call('sandbox.status')).enabled)throw Error('沙箱授权已撤销');
-     // Only commit the files of this verified session after successful execution.
-     await writeFiles(scope,m.files);
-     end(true,{ok:true,result:{stdout:String(m.output||'').slice(0,16000),value:String(m.value||'').slice(0,4000),files:Object.keys(m.files)}});
-    }catch(error){end(true,{ok:false,error:asError(error)})}
-   };
-   worker.postMessage({type:'execute',id:executionId,code:args.code,files});
+   frame=document.createElement('iframe');
+   frame.hidden=true;
+   frame.setAttribute('aria-hidden','true');
+   frame.setAttribute('sandbox','allow-scripts allow-same-origin');
+   frame.src=frameOrigin+'/runner.html';
+   frame.onload=start;
+   frame.onerror=()=>end(true,{ok:false,error:{message:'无法启动独立执行环境'}});
+   document.body.append(frame);
    if(signal?.aborted)cancel();
   }catch(error){end(true,{ok:false,error:asError(error)})}
  });
+
 }
 export function isSandboxTool(name){return toolNames.has(name)}
