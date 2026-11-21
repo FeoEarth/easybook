@@ -162,25 +162,31 @@ assert.equal((await aiAPI(request('/api/ai/preferences'),env,{kind:'anonymous'})
 // The search plugin shares the approval flow and works independently of third-party MCP.
 {
  let searches=0,closed=0,exposed=false,primary='blocked',backup='no_results',query='current public docs';
- const visits=[];
+ const visits=[],profiles=[];
  const binding={},searchEnv={...env,WEB_SEARCH_BROWSER:binding};
  const launchSearchBrowser=async actual=>{
   assert.equal(actual,binding);
   searches++;
   return {
    async close(){closed++},
+   async version(){return 'HeadlessChrome/144.0.7339.0'},
    async newPage(){
-    let address,site,phase;
+    let address,site,phase,onRequest;
     return {
+     async createCDPSession(){return {async send(method,params){profiles.push({method,params})}}},
      async setRequestInterception(enabled){assert.equal(enabled,true)},
-     on(event,handler){
-      assert.equal(event,'request');
-      handler({url:()=> 'https://example.com/track',resourceType:()=> 'fetch',async continue(){assert.fail('Third-party requests must be blocked')},async abort(){}});
-     },
+     on(event,handler){assert.equal(event,'request');onRequest=handler},
      async goto(url,options){
       address=url;
       const target=new URL(url);
       site=target.hostname==='wiby.me'?'wiby':'duckduckgo';visits.push(site);
+      const continued=[],blocked=[];
+      for(const address of [target.origin+'/search-font.woff2','https://example.com/track']){
+       onRequest({url:()=>address,resourceType:()=>address.endsWith('.woff2')?'font':'fetch',
+        async continue(){continued.push(address)},async abort(){blocked.push(address)}});
+      }
+      assert.deepEqual(continued,[target.origin+'/search-font.woff2']);
+      assert.deepEqual(blocked,['https://example.com/track']);
       assert.equal(target.searchParams.get('q'),query);
       assert.equal(options.waitUntil,'domcontentloaded');
       phase=site==='wiby'?backup:primary;
@@ -230,6 +236,9 @@ assert.equal((await aiAPI(request('/api/ai/preferences'),env,{kind:'anonymous'})
  });
  assert.equal(closed,2,'Browser closes after reading successful results');
  assert.deepEqual(visits.splice(0),['duckduckgo']);
+ assert.deepEqual(profiles.slice(0,3).map(step=>step.method),['Emulation.setDeviceMetricsOverride','Emulation.setTouchEmulationEnabled','Emulation.setUserAgentOverride']);
+ assert.match(profiles[2].params.userAgent,/Chrome\/144\.0\.7339\.0 Mobile/);
+ assert.equal(profiles[2].params.userAgentMetadata.mobile,true);
  const searchOnce=async()=>{
   const approval=(await (await chat()).json()).approval;
   return (await api('execute','POST',{approvalId:approval.id})).json();
@@ -243,6 +252,7 @@ assert.equal((await aiAPI(request('/api/ai/preferences'),env,{kind:'anonymous'})
  primary='parse_failed';query='人工智能';
  assert.equal((await searchOnce()).result.reason,'parse_failed');
  assert.deepEqual(visits.splice(0),['duckduckgo'],'Skip Wiby for non-English queries');
+ assert.match(profiles.at(-1).params.acceptLanguage,/^zh-CN/);
  assert.equal(sqlite.prepare("SELECT count FROM account_rate_limits WHERE bucket LIKE 'ai-web-search:%'").get().count,5,'One quota charge per approved query');
  sqlite.prepare("UPDATE account_rate_limits SET count=20 WHERE bucket LIKE 'ai-web-search:%'").run();
  const capped=(await (await chat()).json()).approval;

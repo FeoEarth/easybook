@@ -81,16 +81,39 @@ function relevantResults(results,keywords){
  });
 }
 
+// A single Android Chromium profile keeps the viewport, input and UA fields aligned.
+export async function configureMobileSearchPage(page,browserVersion,query){
+ const version=/(?:HeadlessChrome|Chrome|Chromium)\/(\d+(?:\.\d+)*)/.exec(browserVersion)?.[1];
+ if(!version)throw Error('Chromium version unavailable');
+ const language=/\p{Script=Han}/u.test(query)?'zh-CN':'en-US';
+ const acceptLanguage=language==='zh-CN'?'zh-CN,zh;q=0.9,en;q=0.8':'en-US,en;q=0.9';
+ const cdp=await page.createCDPSession();
+ await cdp.send('Emulation.setDeviceMetricsOverride',{width:412,height:839,screenWidth:412,screenHeight:915,deviceScaleFactor:2.625,mobile:true});
+ await cdp.send('Emulation.setTouchEmulationEnabled',{enabled:true,maxTouchPoints:5});
+ await cdp.send('Emulation.setUserAgentOverride',{
+  userAgent:'Mozilla/5.0 (Linux; Android 14; Pixel 7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/'+version+' Mobile Safari/537.36',
+  acceptLanguage,platform:'Linux armv8l',
+  userAgentMetadata:{
+   brands:[{brand:'Chromium',version:version.split('.')[0]}],fullVersionList:[{brand:'Chromium',version}],
+   platform:'Android',platformVersion:'14.0.0',architecture:'arm',model:'Pixel 7',mobile:true,bitness:'64'
+  }
+ });
+}
+
 async function crawlSearchPage(browser,site,query,signal,deadline){
  const started=Date.now();
  let stage='page',status='unavailable',page;
  try{
   signal.throwIfAborted();
   page=await browser.newPage();
+  if(site===duckduckgo){
+   stage='browser_profile';
+   await configureMobileSearchPage(page,await browser.version(),query);
+  }
   await page.setRequestInterception(true);
   page.on('request',request=>{
    let allowed=false;
-   try{allowed=isSearchHost(new URL(request.url()),site)&&!['image','media','font'].includes(request.resourceType())}catch{}
+   try{allowed=isSearchHost(new URL(request.url()),site)}catch{}
    void (allowed?request.continue():request.abort()).catch(()=>{});
   });
   const url=new URL('/',site.origin);

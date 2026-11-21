@@ -3,7 +3,7 @@ import {createServer} from 'node:http';
 import {readFileSync,mkdirSync} from 'node:fs';
 import path from 'node:path';
 import {chromium} from 'playwright';
-import {readRenderedSearch} from '../worker/ai-web-search.mjs';
+import {configureMobileSearchPage,readRenderedSearch} from '../worker/ai-web-search.mjs';
 import {hooks} from './fixtures/ai-hub-harness.mjs';
 const root=path.resolve('app/src/main/assets');
 const html=readFileSync(path.join(root,'index.html'),'utf8').replace('})().catch(error=>',hooks+'\n})().catch(error=>');
@@ -37,6 +37,16 @@ try{
  assert.deepEqual(await crawlerPage.evaluate(nativeReader),[{url:'https://example.com/source',title:'Source',description:'Public snippet'}]);
  await crawlerPage.evaluate(()=>document.body.insertAdjacentHTML('afterbegin','<form id="challenge-form"></form>'));
  assert.deepEqual(await crawlerPage.evaluate(nativeReader),[],'Android extraction leaves challenge forms alone');
+ const searchCDP=await crawlerPage.context().newCDPSession(crawlerPage);
+ const {product}=await searchCDP.send('Browser.getVersion');
+ await configureMobileSearchPage({createCDPSession:async()=>searchCDP},product,'测试关键词');
+ await crawlerPage.reload();
+ const mobileSearch=await crawlerPage.evaluate(()=>({
+  mobile:navigator.userAgentData.mobile,platform:navigator.userAgentData.platform,language:navigator.language,
+  touch:navigator.maxTouchPoints,screenWidth:screen.width,ua:navigator.userAgent
+ }));
+ assert.deepEqual({...mobileSearch,ua:undefined},{mobile:true,platform:'Android',language:'zh-CN',touch:5,screenWidth:412,ua:undefined});
+ assert.match(mobileSearch.ua,/Android 14; Pixel 7/);
  await crawlerPage.close();
  for(const [name,width,height]of [['desktop',1440,1000],['mobile',390,844]]){
   const context=await browser.newContext({viewport:{width,height},serviceWorkers:'block',locale:'zh-CN'});
