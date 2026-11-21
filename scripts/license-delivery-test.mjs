@@ -75,8 +75,8 @@ const fakeFetch=async(url,options={})=>{
   return localFetch(url,options);
 };
 const fakeTimeout=(callback,delay)=>{assert.equal(delay,4000,'Legal document requests have a four-second timeout');const id=++timerSerial;timers.set(id,callback);return id};
-new Function('document','$','fetch','native','setTimeout','clearTimeout','AbortController','serverProfile','API','serverController','identityV2','MutationObserver',html.slice(snippetStart,snippetEnd))(
-  document,id=>document.getElementById(id),fakeFetch,false,fakeTimeout,id=>timers.delete(id),AbortController,{id:'test-server',name:'Test server'},'https://easybook.test',null,false,dom.window.MutationObserver);
+new Function('document','$','fetch','native','setTimeout','clearTimeout','AbortController','serverProfile','API','serverController','identityV2','MutationObserver','window','history',html.slice(snippetStart,snippetEnd))(
+  document,id=>document.getElementById(id),fakeFetch,false,fakeTimeout,id=>timers.delete(id),AbortController,{id:'test-server',name:'Test server'},'https://easybook.test',null,false,dom.window.MutationObserver,dom.window,dom.window.history);
 for(const id of ['aboutEntry','projectLicenseEntry','thirdPartyNoticesEntry','thirdPartyLicensesEntry'])
   assert.ok(document.getElementById(id)&&document.getElementById('settings').contains(document.getElementById(id)));
 const aboutGroup=document.getElementById('aboutSettingsGroup');
