@@ -253,14 +253,14 @@ export async function runWebSearch(env,account,args,signal,launchBrowser=binding
     secondary=await crawlSearchPage(browser,wiby,query,searchSignal,deadline,maxResults);
     matched=relevantResults(secondary.results,keywords);
    }
-   const seen=new Set(),results=[];
+   const seen=new Set(),unique=[];
    for(const item of [...primary.results.map(r=>({...r,source:'duckduckgo'})),...matched.map(r=>({...r,source:'wiby'}))]){
     if(seen.has(item.url))continue;
-    seen.add(item.url);results.push(item);
-    if(results.length>=maxResults)break;
+    seen.add(item.url);unique.push(item);
    }
+   const results=unique.slice(0,maxResults);
    const diagnostics={requested:maxResults,duckduckgo:{raw:primary.raw||0,accepted:primary.results.length,loads:primary.loads||0},
-    wiby:{raw:secondary.raw||0,accepted:matched.length},duplicatesRemoved:primary.results.length+matched.length-seen.size,returned:results.length};
+    wiby:{raw:secondary.raw||0,accepted:matched.length},duplicatesRemoved:primary.results.length+matched.length-unique.length,returned:results.length};
    if(results.length)return {results,source:primary.results.length?'duckduckgo':'wiby',diagnostics};
    return {...searchFailure(primary.status),diagnostics};
   }finally{close();await closing}
