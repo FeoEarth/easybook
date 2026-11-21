@@ -3,6 +3,7 @@ import {DatabaseSync} from 'node:sqlite';
 import {readFileSync} from 'node:fs';
 import {aiAPI,aiMcpOAuthPage} from '../worker/ai.mjs';
 import {webSearchQuota} from '../worker/ai-web-search.mjs';
+import {runParallelMcpSearch,parallelSearchResults} from '../worker/ai-parallel-search.mjs';
 import worker from '../worker/index.mjs';
 const sqlite=new DatabaseSync(':memory:');sqlite.exec('PRAGMA foreign_keys=ON');for(const file of ['worker/schema.sql','mcp-oauth/migrations/0002_accounts.sql','worker/migrations/0010-workspace-identity.sql'])sqlite.exec(readFileSync(file,'utf8'));
 sqlite.exec('CREATE TABLE IF NOT EXISTS account_memberships(account_id TEXT PRIMARY KEY,permanent INTEGER NOT NULL DEFAULT 0,expires_at INTEGER NOT NULL DEFAULT 0)');
@@ -227,7 +228,10 @@ assert.equal(webSearchQuota(monthStart,{permanent:1,expires_at:0}).kind,'member'
  assert.equal(initialUsage.tier,'free');assert.equal(initialUsage.period,'day');
  assert.equal(initialUsage.limit,15);assert.equal(initialUsage.used,0);assert.equal(initialUsage.remaining,15);
  assert.ok(initialUsage.resetAt>Date.now());
- assert.deepEqual((await (await api('mcp','GET')).json()).webSearch,{available:true,enabled:false,approval:'ask'});
+ const builtins=await (await api('mcp','GET')).json();
+ assert.deepEqual(builtins.webSearch,{available:true,enabled:false,approval:'ask'});
+ assert.deepEqual(builtins.parallelSearch,{available:true,enabled:true,approval:'ask',url:'https://mcp.parallel.ai/mcp'});
+ assert.equal((await api('mcp','PUT',{parallelSearch:false})).status,200,'Existing browser-only search behavior can be selected independently');
  await chat();assert.equal(exposed,false);
  assert.equal((await api('mcp','PUT',{webSearch:true})).status,200);
  assert.deepEqual((await (await api('mcp','GET',undefined,{...principal,accountId:otherAccount})).json()).webSearch,{available:true,enabled:false,approval:'ask'});
@@ -243,14 +247,18 @@ assert.equal(webSearchQuota(monthStart,{permanent:1,expires_at:0}).kind,'member'
  assert.equal((await api('execute','POST',{approvalId:proposal.id})).status,409);
  const pending=(await (await chat()).json()).approval;
  assert.equal((await api('mcp','PUT',{webSearch:false})).status,200);
- assert.equal((await api('execute','POST',{approvalId:pending.id})).status,409);
+ const revoked=await (await api('execute','POST',{approvalId:pending.id})).json();
+ assert.equal(revoked.ok,false);
+ assert.equal(revoked.error.code,'web_search_unavailable');
  assert.equal(searches,1);
  assert.equal((await api('mcp','PUT',{webSearch:true})).status,200);
  primary='results';
  const match=(await (await chat()).json()).approval;
- assert.deepEqual(await (await api('execute','POST',{approvalId:match.id})).json(),{
-  ok:true,tool:'web_search',result:{source:'duckduckgo',results:[{url:'https://example.com/docs',title:'Docs',description:'Search snippet'}]}
- });
+ const matched=await (await api('execute','POST',{approvalId:match.id})).json();
+ assert.equal(matched.ok,true);
+ assert.equal(matched.tool,'web_search');
+ assert.equal(matched.result.source,'duckduckgo');
+ assert.deepEqual(matched.result.results[0],{url:'https://example.com/docs',title:'Docs',description:'Search snippet',source:'duckduckgo'});
  assert.equal(closed,2,'Browser closes after reading successful results');
  assert.deepEqual(visits.splice(0),['duckduckgo']);
  assert.deepEqual(profiles.slice(0,3).map(step=>step.method),['Emulation.setDeviceMetricsOverride','Emulation.setTouchEmulationEnabled','Emulation.setUserAgentOverride']);
