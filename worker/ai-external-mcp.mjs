@@ -250,6 +250,7 @@ export async function configureMcp(request,env,principal,options){
   return mcpOAuthStatus(env,new Request(statusUrl),account);
  }
  if(input.oauth===true){
+  if(input.label===parallelBuiltinLabel||input.url===PARALLEL_MCP_LOGIN)throw mcpError('mcp_invalid_config',400);
   if(existing&&existing.url!==input.url)throw mcpError('mcp_invalid_config',400);
   if(!existing&&(await env.DB.prepare('SELECT COUNT(*) AS n FROM account_ai_mcp_servers WHERE account_id=?').bind(account).first()).n>=serverLimit)throw mcpError('mcp_server_limit',409);
   return beginMcpOAuth(env,request,account,{...input,reconnectRevision:existing?.revision},oauthContext(options));
