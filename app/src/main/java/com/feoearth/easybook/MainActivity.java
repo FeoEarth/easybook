@@ -197,6 +197,18 @@ public class MainActivity extends Activity {
                 if(!r.isForMainFrame()&&"GET".equals(r.getMethod())&&
                     ("https://raw.githubusercontent.com/FeoEarth/easybook/main/THIRD_PARTY_NOTICES.md".equals(u.toString())||
                      "https://raw.githubusercontent.com/FeoEarth/easybook/main/THIRD_PARTY_LICENSES.md".equals(u.toString())))return null;
+                if ("https://appassets.androidplatform.net/agent-sandbox-worker.js".equals(u.toString())&&"GET".equals(r.getMethod())) {
+                    if(!AgentSandboxNetwork.enabled(MainActivity.this))return new WebResourceResponse("text/plain","UTF-8",403,"Disabled",Collections.emptyMap(),new ByteArrayInputStream(new byte[0]));
+                    try{
+                        Map<String,String> headers=new HashMap<>();
+                        headers.put("X-Content-Type-Options","nosniff");
+                        headers.put("Cache-Control","no-store");
+                        // Only this worker may interpret dynamic code. The main UI
+                        // retains its stricter CSP; worker direct network is denied.
+                        headers.put("Content-Security-Policy","default-src 'none'; script-src 'unsafe-eval'; connect-src 'none'");
+                        return new WebResourceResponse("application/javascript","UTF-8",200,"OK",headers,getAssets().open("agent-sandbox-worker.js"));
+                    }catch(IOException error){return new WebResourceResponse("text/plain","UTF-8",404,"Not Found",Collections.emptyMap(),new ByteArrayInputStream(new byte[0]));}
+                }
                 if ("https://appassets.androidplatform.net/editor.js".equals(u.toString())) {try{return new WebResourceResponse("application/javascript","UTF-8",new ByteArrayInputStream(readWebAsset("editor.js").getBytes(StandardCharsets.UTF_8)));}catch(IOException e){return new WebResourceResponse("text/plain","UTF-8",new ByteArrayInputStream(new byte[0]));}}
                 if("https".equals(u.getScheme())&&"appassets.androidplatform.net".equals(u.getHost())&&u.getPath()!=null&&u.getPath().matches("/attachment/[a-f0-9]{64}")){
                     try{
@@ -353,6 +365,9 @@ public class MainActivity extends Activity {
             }
             case "conflict.resolve":repository.resolveConflict(repository.activeSpace(),bounded(args,"id",36),bounded(args,"choice",16));return serverSnapshot(repository.snapshot(repository.activeSpace()));
             case "account.manage":return nativeAccount.manage(args);
+            case "sandbox.status":return AgentSandboxNetwork.status(this);
+            case "sandbox.configure":return AgentSandboxNetwork.configure(this,args);
+            case "sandbox.fetch":return AgentSandboxNetwork.fetch(this,bounded(args,"url",2048));
             case "ai.local.status":return localAiModels.status().put("errors",localAiModels.errors()).put("runtime",localAiRuntime.status());
             case "ai.local.runtime.install":return localAiRuntime.install();
             case "ai.local.runtime.cancel":localAiRuntime.cancel();return localAiRuntime.status();
