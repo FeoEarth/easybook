@@ -16,6 +16,17 @@
 
 **Debian 镜像固定版本：** `debian-13-genericcloud-arm64-20260623-2518.qcow2`，原始文件与 SHA-512 见 [Debian 官方云镜像目录](https://cloud.debian.org/cdimage/cloud/trixie/20260623-2518/) 与 [镜像清单](https://cloud-image-finder.debian.net/i/debian-13-genericcloud-arm64-20260623-2518)。升级镜像应修改固定摘要并重新发布 APK，而非静默替换用户系统。
 
+## 启动诊断（Android 0.8.49 / versionCode 117）
+
+虚拟机进程存在不代表 Debian 已启动。设置中的 Linux 状态现显示启动秒数及分类问题：
+- `ssh_not_listening`: guest 的 SSH 尚未打开；首次启动的 cloud-init 和软件包更新可能需要更长时间
+- `ssh_auth_failed`: guest 拒绝已固定的用户 SSH 密钥；检查 cloud-init 配置/日志
+- `ssh_host_key_mismatch`: 主机密钥不一致，**禁止**自动跳过主机验证
+- `uefi_boot_shell`、`kernel_panic`、`qemu_error`、`cloud_init_error`: 按日志诊断实际启动问题
+- `boot_too_long`: 10 分钟后仍无法连接，明确提示排查，不继续仅显示「等待就绪」
+
+点击「查看启动诊断」才会在本机显示最多最近 60 行 QEMU 串口日志，默认不发送给服务器或 AI，已对疑似私钥片段做遮盖。旧虚拟机镜像、工作目录和笔记不做修改；不自动格式化/重装以免丢失数据。若需直接在 Termux 查看：`tail -n 60 ~/easybook-agent-vm/vm.log`。仅在真实设备日志确定原因后修复具体启动配置。
+
 ## 高级手动安装与风险（旧版流程）
 
 若不使用一键安装，仍可按以下步骤自行准备 QEMU 客体。新安装器已自动完成多数步骤，但 Termux 本身与 Android 权限仍须用户操作。
