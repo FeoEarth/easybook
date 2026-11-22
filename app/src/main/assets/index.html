@@ -918,6 +918,7 @@ body[data-settings-detail] .app{display:block;max-width:720px;height:auto;min-he
  <div class="settings-group"><label class="settings-row"><span class="row-text"><strong>可选 Linux 虚拟机（QEMU）</strong><small>一键配置独立 Debian Linux；首次需要安装并授权 Termux</small></span><input id="aiVmEnabled" type="checkbox"></label></div>
  <p class="ai-note" id="aiVmNote" role="status">正在检测 Termux…</p>
  <div id="aiVmActions" style="display:flex;flex-wrap:wrap;gap:8px;margin:8px 0 12px">
+  <button type="button" id="aiVmAuthorize" hidden>授权 Termux 命令权限</button>
   <button type="button" id="aiVmInstall">安装 Linux 环境</button>
   <button type="button" id="aiVmStart" hidden>启动虚拟机</button>
   <button type="button" id="aiVmStop" hidden>停止虚拟机</button>
@@ -1564,11 +1565,14 @@ function renderAiVmStatus(){
  const v=aiVmStatus||{},phase=v.phase||'not-installed';
  const canUse=!!(aiSandboxStatus?.enabled&&v.enabled&&v.permissionGranted&&v.managementAvailable);
  $('aiVmActions').style.display=v.managementAvailable?'flex':'none';
+ $('aiVmAuthorize').hidden=!(v.managementAvailable&&v.termuxInstalled&&v.termuxPermissionAvailable&&!v.permissionGranted);
+ $('aiVmAuthorize').disabled=false;
  const phases={packages:'正在安装 Linux 依赖',downloading:'正在下载并校验 Debian 镜像',provisioning:'正在配置隔离虚拟磁盘与 SSH',installed:'镜像已安装',failed:'安装失败，请在 Termux 查看 ~/easybook-agent-vm/install.log','not-installed':'尚未安装'};
  let note=v.connectionError?'无法获取 Termux 状态：'+v.connectionError:(phases[phase]||'状态待确认');
  if(!v.managementAvailable)note='一键安装需要新版 Android APK（versionCode 115 或更高），网页热更新无法单独启用此功能。';
  else if(!v.termuxInstalled)note='请先从 F-Droid 安装 Termux 0.109+，再授予 Easybook「在 Termux 中执行命令」权限。';
- else if(!v.permissionGranted)note='请在 Termux 开启 allow-external-apps = true，并在 Android 系统设置授权 Easybook 的 RUN_COMMAND 权限。';
+ else if(!v.termuxPermissionAvailable)note='当前安装的 Termux 没有提供 RUN_COMMAND 权限。请核对是否为官方 F-Droid/GitHub 版，勿直接卸载含有重要文件的 Termux。';
+ else if(!v.permissionGranted)note='点击「授权 Termux 命令权限」，通过 Android 系统弹窗授权；若被系统阻止，请检查系统权限管理器。Termux 内仍需开启 allow-external-apps。';
  else if(!aiSandboxStatus?.enabled)note='请先开启上方的本地代码沙箱。';
  else if(!v.enabled)note='请先启用 QEMU Linux 虚拟机。';
  else if(v.guestBootVerified)note='Debian 虚拟机运行中，SSH 已验证；Agent 可以执行 Python / Shell。';
@@ -1624,6 +1628,16 @@ $('aiVmEnabled').onchange=async event=>{
   if(!aiVmStatus.enabled){for(const session of aiHubSessions)if(session.sandboxBackend==='linux')session.sandboxBackend='javascript';saveAiHubSessions()}
   renderAiHub();
  }catch(error){toast(error.message);control.checked=!control.checked}
+ finally{control.disabled=false}
+};
+$('aiVmAuthorize').onclick=async()=>{
+ const control=$('aiVmAuthorize');control.disabled=true;
+ try{
+  const result=await native.call('sandbox.vm.permission.request');
+  if(result?.permissionGranted)toast('Termux 命令权限已授权');
+  else if(result?.requested)toast('请在 Android 权限弹窗中选择允许');
+  await refreshAiVmStatus();
+ }catch(error){toast(error.message)}
  finally{control.disabled=false}
 };
 for(const [id,action] of [['aiVmInstall','install'],['aiVmStart','start'],['aiVmStop','stop'],['aiVmRemove','remove']]){
