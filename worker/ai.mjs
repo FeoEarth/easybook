@@ -545,7 +545,14 @@ export async function aiAPI(request,env,principal,{workspaceId,fetcher=fetch,lau
    // A failed transient call stays in the queue and is retried automatically
    // in the next request. A retry exhaustion becomes a normal tool error.
    if(pendingCalls||retryPending||segmentExpired()&&webSearches.length||searchesStarted>=MAX_SEARCHES_PER_REQUEST){
-    if(!agentRunId){pendingCalls=calls;nextCall=completedCalls.length;await createQueue();}
+    // When a model batch has already finished, checkpoint with calls=null.
+    // Resuming then runs the model on its completed tool results instead of
+    // replaying or endlessly waiting for an exhausted batch.
+    if(!agentRunId){
+     if(nextCall<calls.length)pendingCalls=calls;
+     else{pendingCalls=null;nextCall=0;}
+     await createQueue();
+    }
     return await partialSegment();
    }
   }
