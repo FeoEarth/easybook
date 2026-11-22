@@ -373,9 +373,9 @@ export async function aiAPI(request,env,principal,{workspaceId,fetcher=fetch,lau
    // The client continues a long task in another request with saved receipts.
    // Queries remain logically concurrent. On provider/browser throttling the
    // queue switches to serial retries without dropping the model's call IDs.
-   // The limit below applies to a single Free Worker invocation, not a task.
-   const MAX_SEARCHES_PER_REQUEST=2;
-   let searchesStarted=0;
+   // Limit concurrent browser work, not searches per request. Several waves
+   // can run in the same model/tool turn until its time budget is reached.
+   const SEARCH_PARALLELISM=2;
    const MAX_SEARCH_ATTEMPTS=4;
    let retryAfterMs=0;
    const shouldRetrySearch=result=>{
@@ -488,8 +488,8 @@ export async function aiAPI(request,env,principal,{workspaceId,fetcher=fetch,lau
     emit('tool_end',{name:typeof name==='string'?name:'unknown',status:result?.error?'failed':'done'});
     return {call,name,result,receipt};
    };
-   // The model's entire batch is kept in D1. Process up to two outstanding
-   // searches here, even if the original model requested dozens at once.
+   // The whole model batch remains in D1. Schedule up to two searches per
+   // wave, then keep draining remaining calls while this Worker has time.
    const offset=pendingCalls?nextCall:0,remaining=calls.slice(offset);
    const selected=[];
    let countSearches=0;
@@ -498,17 +498,16 @@ export async function aiAPI(request,env,principal,{workspaceId,fetcher=fetch,lau
     const call=calls[index];
     if(Object.prototype.hasOwnProperty.call(bufferedResults,index))continue;
     if(call?.function?.name===WEB_SEARCH){
-     if(searchesStarted+countSearches>=MAX_SEARCHES_PER_REQUEST)break;
+     if(countSearches>=SEARCH_PARALLELISM)break;
      countSearches++;
     }
     selected.push({index,call});
-    if(searchesStarted+countSearches>=MAX_SEARCHES_PER_REQUEST)break;
+    if(countSearches>=SEARCH_PARALLELISM)break;
    }
    if(!selected.length&&remaining.length){
     if(!agentRunId){pendingCalls=calls;await createQueue();}
     return await partialSegment();
    }
-   searchesStarted+=countSearches;
    const completedCalls=automatically&&!serializeSearches&&selected.length>1
     &&selected.every(({call})=>call?.function?.name===WEB_SEARCH)
     ?await Promise.all(selected.map(async item=>({...item,result:await executeCall(item.call)})))
@@ -556,10 +555,14 @@ export async function aiAPI(request,env,principal,{workspaceId,fetcher=fetch,lau
    }
    // A failed transient call stays in the queue and is retried automatically
    // in the next request. A retry exhaustion becomes a normal tool error.
-   if(pendingCalls||retryPending||segmentExpired()&&webSearches.length||searchesStarted>=MAX_SEARCHES_PER_REQUEST){
-    // When a model batch has already finished, checkpoint with calls=null.
-    // Resuming then runs the model on its completed tool results instead of
-    // replaying or endlessly waiting for an exhausted batch.
+   // Persist each completed wave while the lease is still held: a later
+   // browser crash or Worker termination cannot erase earlier successes.
+   if(agentRunId&&agentLease){
+    await refreshAgentQueue(env,principal.accountId,workspaceId,agentRunId,agentLease,await encryptState(agentRunId));
+   }
+   if(rateLimited||segmentExpired()){
+    // Only an actual resource/time boundary ends this HTTP segment. Model
+    // planning is never restarted for the remainder of a saved tool batch.
     if(!agentRunId){
      if(nextCall<calls.length)pendingCalls=calls;
      else{pendingCalls=null;nextCall=0;}
@@ -567,6 +570,8 @@ export async function aiAPI(request,env,principal,{workspaceId,fetcher=fetch,lau
     }
     return await partialSegment();
    }
+   // Continue with the next wave (or synthesize once the queue is empty).
+   // Transient non-throttle failures retry without discarding other results.
   }
    }catch(error){
     if(runSignal?.aborted||!webSearches.length&&!agentRunId)throw error;
