@@ -26,6 +26,11 @@ export async function claimAgentQueue(env,account,workspace,id,lease){
   .bind(id,account,workspace,now).first();
  throw Object.assign(Error(exists?'Agent research task is already running':'Agent research task expired'),{code:exists?'agent_queue_busy':'agent_queue_expired',status:exists?409:404});
 }
+export async function refreshAgentQueue(env,account,workspace,id,lease,encrypted){
+ const updated=await env.DB.prepare('UPDATE ai_agent_run_queue SET state_ciphertext=?,state_iv=?,updated_at=? WHERE id=? AND account_id=? AND workspace_id=? AND lease_id=? AND expires_at>? RETURNING id')
+  .bind(encrypted.ciphertext,encrypted.iv,Date.now(),id,account,workspace,lease,Date.now()).first();
+ if(!updated)throw Object.assign(Error('Research task lease was lost'),{code:'agent_queue_conflict',status:409});
+}
 export async function checkpointAgentQueue(env,account,workspace,id,lease,encrypted){
  const now=Date.now();
  const saved=await env.DB.prepare('UPDATE ai_agent_run_queue SET state_ciphertext=?,state_iv=?,lease_id=NULL,lease_until=0,expires_at=?,updated_at=? WHERE id=? AND account_id=? AND workspace_id=? AND lease_id=? AND expires_at>? RETURNING id')
