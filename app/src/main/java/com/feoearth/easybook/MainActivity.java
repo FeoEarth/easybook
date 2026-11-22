@@ -47,6 +47,7 @@ public class MainActivity extends Activity {
     private long aiSearchGeneration;
     private final ExecutorService io = Executors.newSingleThreadExecutor();
     private final ExecutorService dockIo = Executors.newSingleThreadExecutor();
+    private final ExecutorService vmIo = Executors.newSingleThreadExecutor();
     private static String operationErrorCode(Exception e){
         if(e instanceof NativeAccount.HttpFailure){
             String code=((NativeAccount.HttpFailure)e).code;
@@ -185,7 +186,8 @@ public class MainActivity extends Activity {
                 if(!requestId.matches("[a-zA-Z0-9-]{1,80}"))return;
                 Runnable operation=()->{try{if(destroyed||serverSwitching||generation!=documentGeneration)throw new SecurityException();repository.assertActiveProfile();security.authorize(method,input,generation);JSONObject output=dispatch(method,input,generation);respond(reply,generation,new JSONObject().put("id",requestId).put("ok",true).put("result",output));}catch(Exception e){try{respond(reply,generation,new JSONObject().put("id",requestId).put("ok",false).put("error",operationErrorMessage(e)).put("code",operationErrorCode(e)));}catch(Exception ignored){}}};
                 // Dock visibility updates must stay ordered and cannot wait for the storage queue.
-                if(method.equals("ui.glass.dock"))dockIo.execute(operation);
+                if(method.equals("sandbox.vm.execute"))vmIo.execute(operation);
+                else if(method.equals("ui.glass.dock"))dockIo.execute(operation);
                 else if(method.equals("sync")||method.equals("attachment.get")||method.equals("attachment.open")||method.equals("attachment.share")||method.equals("attachment.export"))syncIo.execute(operation);else io.execute(operation);
             }catch(Exception ignored){}
         });
@@ -393,6 +395,27 @@ public class MainActivity extends Activity {
             case "sandbox.status":return AgentSandboxNetwork.status(this);
             case "sandbox.configure":return AgentSandboxNetwork.configure(this,args);
             case "sandbox.fetch":return AgentSandboxNetwork.fetch(this,bounded(args,"url",2048));
+            case "sandbox.vm.status":return AgentVmBridge.status(this);
+            case "sandbox.vm.configure":return AgentVmBridge.configure(this,args);
+            case "sandbox.vm.execute":return AgentVmBridge.run(this,args,repository.activeSpace());
+            case "sandbox.export":{
+                String name=AttachmentStore.cleanName(bounded(args,"name",100));
+                String content=bounded(args,"content",131072);
+                if(content.getBytes(StandardCharsets.UTF_8).length>131072)throw new SecurityException("文件过大");
+                File dir=new File(getCacheDir(),"shared/sandbox");if(!dir.exists()&&!dir.mkdirs())throw new IOException("无法准备导出目录");
+                File output=new File(dir,name);
+                try(FileOutputStream out=new FileOutputStream(output)){out.write(content.getBytes(StandardCharsets.UTF_8));}
+                long exportGeneration=documentGeneration;
+                runOnUiThread(()->{
+                    if(destroyed||exportGeneration!=documentGeneration)return;
+                    attachmentExport=output;attachmentExportName=name;
+                    Intent intent=new Intent(Intent.ACTION_CREATE_DOCUMENT);
+                    intent.addCategory(Intent.CATEGORY_OPENABLE);
+                    intent.setType("text/plain");intent.putExtra(Intent.EXTRA_TITLE,name);
+                    startActivityForResult(intent,84);
+                });
+                return new JSONObject().put("picker",true);
+            }
             case "ai.local.status":return localAiModels.status().put("errors",localAiModels.errors()).put("runtime",localAiRuntime.status());
             case "ai.local.runtime.install":return localAiRuntime.install();
             case "ai.local.runtime.cancel":localAiRuntime.cancel();return localAiRuntime.status();
@@ -700,7 +723,7 @@ public class MainActivity extends Activity {
     }
     @Override protected void onResume(){super.onResume();refreshAppearance(systemDark());if(nativeAccount!=null){nativeAccount.resume();accountChanged();}}
     @Override protected void onPause() { if(localAiEngine!=null)localAiEngine.cancel();if(security!=null)security.dismissConnection(); if(nativeGlass!=null)nativeGlass.dismiss(true);web.evaluateJavascript("window.EasybookVideo?.pauseAll();window.persistNow && window.persistNow()", null); super.onPause(); }
-    @Override protected void onDestroy() { hideVideoFullscreen(); if(nativeAccount!=null){nativeAccount.cancel();nativeAccount.shutdownAiStream();} if(localAiEngine!=null)localAiEngine.shutdown();if(localAiModels!=null)localAiModels.shutdown();if(localAiRuntime!=null)localAiRuntime.shutdown(); if(security!=null)security.dismissConnection(); if(connectivity!=null&&networkCallback!=null)connectivity.unregisterNetworkCallback(networkCallback); if(nativeGlass!=null){nativeGlass.clearFormatFrame();nativeGlass.dismiss(true);}ready=false; destroyed=true;if(WebViewFeature.isFeatureSupported(WebViewFeature.WEB_MESSAGE_LISTENER))WebViewCompat.removeWebMessageListener(web,"EasybookNative");web.destroy();if(appUpdater!=null)appUpdater.shutdown();dockIo.shutdown();io.shutdown();super.onDestroy(); }
+    @Override protected void onDestroy() { hideVideoFullscreen(); if(nativeAccount!=null){nativeAccount.cancel();nativeAccount.shutdownAiStream();} if(localAiEngine!=null)localAiEngine.shutdown();if(localAiModels!=null)localAiModels.shutdown();if(localAiRuntime!=null)localAiRuntime.shutdown(); if(security!=null)security.dismissConnection(); if(connectivity!=null&&networkCallback!=null)connectivity.unregisterNetworkCallback(networkCallback); if(nativeGlass!=null){nativeGlass.clearFormatFrame();nativeGlass.dismiss(true);}ready=false; destroyed=true;if(WebViewFeature.isFeatureSupported(WebViewFeature.WEB_MESSAGE_LISTENER))WebViewCompat.removeWebMessageListener(web,"EasybookNative");web.destroy();if(appUpdater!=null)appUpdater.shutdown();vmIo.shutdownNow();dockIo.shutdown();io.shutdown();super.onDestroy(); }
 }
 
 

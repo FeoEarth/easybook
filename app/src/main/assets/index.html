@@ -838,7 +838,22 @@ body[data-settings-detail] .app{display:block;max-width:720px;height:auto;min-he
 <div class="ai-hub-composer">
 <button type="button" id="aiHubLatest" class="ai-jump-latest" aria-label="回到最新消息" hidden><svg><use href="#i-export"/></svg></button>
 <div id="aiContextPanel" class="ai-context-panel" hidden><strong>对话上下文</strong><p id="aiContextDetail"></p><progress id="aiContextUsage" max="48000" value="0" aria-label="上下文用量"></progress><p>自动保留原始要求、近期完整轮次及已执行操作记录。较早内容使用原文节选，完整会话仍保存在本机。</p><label class="ai-context-window" id="aiContextWindowRow">模型窗口（token）<input id="aiContextWindow" type="number" inputmode="numeric" step="1" placeholder="自动" aria-describedby="aiContextWindowHint"></label><p id="aiContextWindowHint">留空自动识别。手动值仅用于当前 API 配置与模型。预算已为回复、图片和工具预留空间。</p><label class="ai-mcp-session-option"><input type="checkbox" id="aiMcpSession"> 使用第三方 MCP 工具</label>
-<label class="ai-mcp-session-option" id="aiSandboxSessionRow" hidden><input type="checkbox" id="aiSandboxSession"> 使用 Android 本地代码沙箱（仅当前 Agent 会话）</label><button type="button" id="aiContextNew">开启新会话</button></div>
+<label class="ai-mcp-session-option" id="aiSandboxSessionRow" hidden><input type="checkbox" id="aiSandboxSession"> 使用 Android 本地执行环境（仅当前 Agent 会话）</label>
+<div id="aiSandboxControls" hidden>
+<label class="ai-context-window">执行后端 <select id="aiSandboxBackend" class="ai-input"><option value="javascript">内置 JavaScript 沙箱</option><option value="linux">QEMU Linux 虚拟机（高级）</option></select></label>
+<div style="display:flex;gap:8px;flex-wrap:wrap;margin:10px 0">
+<button type="button" id="aiSandboxImport">导入文本文件</button>
+<button type="button" id="aiSandboxReload">查看文件</button>
+<button type="button" id="aiSandboxExport">导出选中文件</button>
+<button type="button" id="aiSandboxDelete">删除文件</button>
+<button type="button" id="aiSandboxClear">清空沙箱</button>
+<button type="button" id="aiSandboxStop" hidden>取消本次执行</button>
+</div>
+<select id="aiSandboxFileList" class="ai-input" aria-label="沙箱文件" style="width:100%;max-width:100%"><option value="">暂无文件</option></select>
+<input id="aiSandboxImportInput" type="file" accept=".txt,.md,.csv,.json,.log,.js,.ts,.xml,.yaml,.yml,text/plain" multiple hidden>
+<small id="aiSandboxFileNote">文件只保存在本机会话的虚拟目录，导入与导出必须由用户主动操作。QEMU 客体无法自动读取这些文件。</small>
+</div>
+<button type="button" id="aiContextNew">开启新会话</button></div>
 <div id="aiHubAttachments" class="ai-hub-attachments" aria-label="待发送附件" hidden></div>
 <form id="aiHubForm" class="ai-compose">
 <button type="button" id="aiHubAttach" class="ai-hub-attach" aria-label="添加附件" title="添加图片、PDF 或文本文件"><svg aria-hidden="true"><use href="#i-plus"/></svg></button>
@@ -900,6 +915,8 @@ body[data-settings-detail] .app{display:block;max-width:720px;height:auto;min-he
  <div class="ai-section-heading"><h2>Agent 执行环境</h2></div>
  <div class="settings-group"><label class="settings-row"><span class="row-text"><strong>启用本地代码沙箱</strong><small>Android · 默认关闭 · 每个 Agent 会话单独选择 · JS Worker</small></span><input id="aiSandboxEnabled" type="checkbox" aria-describedby="aiSandboxNote"></label></div>
  <p class="ai-note" id="aiSandboxNote" role="status">正在检查运行环境…</p>
+ <div class="settings-group"><label class="settings-row"><span class="row-text"><strong>可选 Linux 虚拟机（QEMU）</strong><small>使用 Termux 启动的独立 Linux 客体；需用户先安装与配置镜像</small></span><input id="aiVmEnabled" type="checkbox"></label></div>
+ <p class="ai-note" id="aiVmNote" role="status">正在检测 Termux…</p>
 </section>
 <section id="aiProviderPage" class="sync-page settings-detail" aria-labelledby="aiProviderTitle" hidden><nav class="sync-nav ui-nav"><button class="nav-back glass" type="button" id="aiProviderClose"><svg aria-hidden="true"><use href="#i-back"/></svg><span>设置</span></button></nav><div class="sync-content"><h1 id="aiProviderTitle" tabindex="-1">添加 API</h1><form id="aiConfigForm">
 <div class="settings-group ai-fields">
@@ -1533,14 +1550,18 @@ let aiConfigured=null,aiConfigPromise=null,aiBusy=false,aiConversation=[],aiConv
 const aiMemoryKey='easybook-ai-memory-v1';
 let aiPreferences=window.EasybookAiPreferences.emptyPreferences(),aiPreferencesLoaded=false,aiPreferencesPending=null,aiMemoryEditId='';
 let aiLocalStatus=null;
-let aiSandboxStatus=null;
+let aiSandboxStatus=null,aiVmStatus=null,aiSandboxRunController=null;
 const sandboxSessionActive=session=>!!(native&&aiSandboxStatus?.enabled&&session?.sandboxEnabled&&session.mode==='agent');
 async function refreshAiSandbox(){
  if(!native)return;
  $('aiSandboxSection').hidden=false;
  try{aiSandboxStatus=await native.call('sandbox.status');
   $('aiSandboxEnabled').checked=!!aiSandboxStatus.enabled;
-  $('aiSandboxNote').textContent='JavaScript · 每次执行限时 30 秒 · 文件仅保存在当前会话（最多 512 KB）· 公开 HTTPS 可联网。执行代码前必须确认。非 Linux 虚拟机，Python 和 Shell 尚不可用。';
+  try{aiVmStatus=await native.call('sandbox.vm.status');
+   $('aiVmEnabled').checked=!!aiVmStatus.enabled;
+   $('aiVmNote').textContent=aiVmStatus.ready?'QEMU 连接器已授权；需确保 Termux 内的 Linux 客体正在运行。':aiVmStatus.termuxInstalled?(aiVmStatus.permissionGranted?'需先启用连接器并配置 Linux 客体和 SSH。':'需要在 Android 系统设置中授予 Easybook「在 Termux 中执行命令」。'):'需要安装 Termux 0.109+，并手动配置 QEMU Linux 客体。';
+  }catch(error){aiVmStatus=null;$('aiVmEnabled').disabled=true;$('aiVmNote').textContent='QEMU 后端不可用：'+error.message}
+  $('aiSandboxNote').textContent='JavaScript 沙箱 · 每次执行最长 30 秒 · 会话文件上限 512 KB · 可访问公开 HTTPS。可选 QEMU Linux 客体支持 Python/Shell，需自行安装镜像与 SSH。';
  }catch(error){aiSandboxStatus=null;$('aiSandboxEnabled').disabled=true;$('aiSandboxNote').textContent='执行环境不可用：'+error.message}
  if(tab==='ai-hub')renderAiHub();
 }
@@ -1553,13 +1574,84 @@ $('aiSandboxEnabled').onchange=async event=>{
  }catch(error){toast(error.message);control.checked=!enabled}
  finally{control.disabled=false}
 };
+$('aiVmEnabled').onchange=async event=>{
+ const control=event.target;control.disabled=true;
+ try{aiVmStatus=await native.call('sandbox.vm.configure',{enabled:control.checked});
+  $('aiVmNote').textContent=aiVmStatus.ready?'已启用 QEMU 后端。请在当前 Agent 会话选中 Linux 虚拟机，并先启动 Termux 中的客体。':'QEMU 后端未启用；需要 Termux 权限和 Linux 客体配置。';
+  if(!aiVmStatus.enabled){for(const session of aiHubSessions)if(session.sandboxBackend==='linux')session.sandboxBackend='javascript';saveAiHubSessions()}
+  renderAiHub();
+ }catch(error){toast(error.message);control.checked=!control.checked}
+ finally{control.disabled=false}
+};
+async function refreshAiSandboxFiles(){
+ const session=currentAiHubSession();
+ if(!session||!sandboxSessionActive(session))return;
+ const select=$('aiSandboxFileList'),space=localSpace,id=session.id;
+ try{
+  const module=await import('/agent-sandbox-client.mjs');
+  const files=await module.listSandboxFiles(space,id);
+  if(localSpace!==space||currentAiHubSession()?.id!==id)return;
+  const previous=select.value;
+  select.innerHTML='<option value="">'+(files.length?'选择文件 · '+files.length+' 个':'暂无文件')+'</option>'+files.map(f=>'<option value="'+esc(f.path)+'">'+esc(f.path)+' · '+f.bytes+' B</option>').join('');
+  if(files.some(file=>file.path===previous))select.value=previous;
+  $('aiSandboxFileNote').textContent='会话文件 '+files.length+' 个，最大 48 个、总量 512 KB。只能导入 UTF-8 文本文件，QEMU 客体无法自动读取。';
+ }catch(error){$('aiSandboxFileNote').textContent=error.message}
+}
+$('aiSandboxImport').onclick=()=>$('aiSandboxImportInput').click();
+$('aiSandboxImportInput').onchange=async event=>{
+ const session=currentAiHubSession(),files=event.target.files,space=localSpace,id=session?.id;
+ if(!sandboxSessionActive(session)||!files?.length)return;
+ try{
+  const module=await import('/agent-sandbox-client.mjs');
+  await module.importSandboxFiles(space,id,files);
+  if(space===localSpace&&currentAiHubSession()?.id===id){toast('已导入到当前沙箱');await refreshAiSandboxFiles()}
+ }catch(error){toast(error.message)}finally{event.target.value=''}
+};
+$('aiSandboxReload').onclick=refreshAiSandboxFiles;
+$('aiSandboxExport').onclick=async()=>{
+ const session=currentAiHubSession(),path=$('aiSandboxFileList').value;if(!session||!path)return toast('请先选择文件');
+ try{const module=await import('/agent-sandbox-client.mjs');
+  const file=await module.getSandboxExport(localSpace,session.id,path);
+  await native.call('sandbox.export',{name:file.name,content:file.data});
+ }catch(error){toast(error.message)}
+};
+$('aiSandboxDelete').onclick=()=>{
+ const session=currentAiHubSession(),path=$('aiSandboxFileList').value;if(!session||!path)return toast('请先选择文件');
+ const space=localSpace,id=session.id;
+ confirmAction('删除沙箱文件？','仅删除本机会话中的 '+path+'，无法撤销。',async()=>{
+  try{const module=await import('/agent-sandbox-client.mjs');await module.removeSandboxFile(space,id,path);await refreshAiSandboxFiles()}catch(error){toast(error.message)}
+ });
+};
+$('aiSandboxClear').onclick=()=>{
+ const session=currentAiHubSession();if(!session)return;const space=localSpace,id=session.id;
+ confirmAction('清空当前 Agent 沙箱？','这会删除当前会话内全部虚拟文件，不会影响 Easybook 笔记或虚拟机磁盘。',async()=>{
+  try{const module=await import('/agent-sandbox-client.mjs');await module.clearSandboxFiles(space,id);await refreshAiSandboxFiles()}catch(error){toast(error.message)}
+ });
+};
+$('aiSandboxStop').onclick=()=>{aiSandboxRunController?.abort();toast('已取消等待沙箱结果；QEMU 客体命令可能继续运行直到超时')};
 async function executeAiSandboxApproval(pending,session){
  if(!sandboxSessionActive(session)||pending.workspace!==localSpace||pending.sessionId!==session.id)throw Error('沙箱权限已撤销或会话已切换');
  if(pending.expiresAt<Date.now())throw Error('沙箱调用已过期');
  session.sandboxCalls=(session.sandboxCalls||0)+1;
  if(session.sandboxCalls>6)throw Error('本轮沙箱工具调用次数已达上限，请重新发送明确的新任务');
- const module=await import('/agent-sandbox-client.mjs');
- return module.executeSandboxTool({tool:pending.tool,args:pending.arguments,workspace:localSpace,sessionId:session.id,native,authorize:()=>sandboxSessionActive(session)&&currentAiHubSession()===session&&localSpace===pending.workspace&&session.pendingApproval===pending});
+ const controller=new AbortController();aiSandboxRunController=controller;
+ $('aiSandboxStop').hidden=false;
+ const backend=session.sandboxBackend==='linux'?'linux':'javascript';
+ try{
+  if(pending.tool==='sandbox_execute'&&backend==='linux'){
+   if(!aiVmStatus?.ready)throw Error('QEMU 未授权或 Termux 权限缺失，请先到 AI 设置启用');
+   if(!['python','shell'].includes(pending.arguments?.language))throw Error('QEMU 客体只执行 Python / Shell');
+   const result=await Promise.race([
+    native.call('sandbox.vm.execute',{language:pending.arguments.language,code:pending.arguments.code,sessionId:session.id}),
+    new Promise((_,reject)=>controller.signal.addEventListener('abort',()=>reject(new DOMException('停止等待虚拟机结果','AbortError')),{once:true}))
+   ]);
+   if(!sandboxSessionActive(session)||session.pendingApproval!==pending)throw Error('会话授权已失效');
+   return result;
+  }
+  if(pending.tool==='sandbox_execute'&&pending.arguments?.language!=='javascript')throw Error('内置沙箱只执行 JavaScript。请切换到 QEMU Linux 虚拟机');
+  const module=await import('/agent-sandbox-client.mjs');
+  return module.executeSandboxTool({tool:pending.tool,args:pending.arguments,workspace:localSpace,sessionId:session.id,native,signal:controller.signal,authorize:()=>sandboxSessionActive(session)&&currentAiHubSession()===session&&localSpace===pending.workspace&&session.pendingApproval===pending});
+ }finally{if(aiSandboxRunController===controller)aiSandboxRunController=null;$('aiSandboxStop').hidden=true}
 }
 const aiLocalPending=new Map();
 window.easybookLocalAiEvent=event=>{
@@ -1614,12 +1706,12 @@ function localAiPrepareApproval(action){
  if(action.arguments.folder_id&&!activeFolders().some(folder=>folder.id===action.arguments.folder_id))throw Error('目标文件夹不存在');
  return {local:true,id:uuid(),tool:action.name,arguments:action.arguments,workspace:localSpace,mutation:note?.mutation||'',expiresAt:Date.now()+300000};
 }
-async function aiLocalGenerate(model,messages,progress,{mode='conversation',onTool=()=>{},signal,sandbox=false}={}){
+async function aiLocalGenerate(model,messages,progress,{mode='conversation',onTool=()=>{},signal,sandbox=false,sandboxBackend='javascript'}={}){
  const protocol=window.EasybookLocalAiProtocol,used=[],toolResults=[];
  if(navigator.onLine!==false)await refreshAiPreferences().catch(()=>{});
  for(let round=0;round<5;round++){
   if(signal?.aborted)throw new DOMException('已停止生成','AbortError');
-  const prompt=protocol.localAiPrompt(messages,{mode,memory:aiMemory(),toolResults,sandbox});
+  const prompt=protocol.localAiPrompt(messages,{mode,memory:aiMemory(),toolResults,sandbox,sandboxBackend});
   const data=await aiLocalRaw(model,prompt,text=>{const beginning=text.trimStart();if(!/^(<|\{|```)/.test(beginning))progress?.(text)});
   if(signal?.aborted)throw new DOMException('已停止生成','AbortError');
   const output=data.message.content,action=protocol.parseLocalAiAction(output);
@@ -2423,11 +2515,18 @@ function renderAiHub(){
  $('aiSandboxSessionRow').hidden=!native||!aiSandboxStatus?.enabled||mode!=='agent';
  $('aiSandboxSession').checked=!!session.sandboxEnabled;
  $('aiSandboxSession').disabled=aiHubBusy||!!session.pendingApproval;
+ $('aiSandboxControls').hidden=!sandboxSessionActive(session);
+ const linuxAvailable=!!aiVmStatus?.ready;
+ $('aiSandboxBackend').querySelector('option[value="linux"]').disabled=!linuxAvailable;
+ $('aiSandboxBackend').value=session.sandboxBackend==='linux'&&linuxAvailable?'linux':'javascript';
+ $('aiSandboxBackend').disabled=aiHubBusy||!!session.pendingApproval;
+ for(const name of ['aiSandboxImport','aiSandboxReload','aiSandboxExport','aiSandboxDelete','aiSandboxClear'])
+  $(name).disabled=aiHubBusy||!!session.pendingApproval;
  $('aiHubTitle').textContent=session.title;
  $('aiHubComposerModel').textContent=session.profileId==='__local__'?(aiLocalStatus?.models?.find(m=>m.id===session.model)?.title||session.model)+' · 本地':session.model||activeAiProfile()?.model||'选择模型';
  $('aiHubConversation').setAttribute('aria-pressed',String(mode==='conversation'));
  $('aiHubAgent').setAttribute('aria-pressed',String(mode==='agent'));
- $('aiHubHint').textContent=(session.profileId==='__local__'?'本地模型 · ':'')+(mode==='agent'?'Agent · 写入逐项确认':'对话 · 仅可读取笔记')+(sandboxSessionActive(session)?' · 本地沙箱已启用':'')+' · 仅存本机';
+ $('aiHubHint').textContent=(session.profileId==='__local__'?'本地模型 · ':'')+(mode==='agent'?'Agent · 写入逐项确认':'对话 · 仅可读取笔记')+(sandboxSessionActive(session)?session.sandboxBackend==='linux'&&aiVmStatus?.ready?' · QEMU Linux 已启用':' · 本地沙箱已启用':'')+' · 仅存本机';
  const panel=$('aiHubMessages'),nearBottom=panel.scrollHeight-panel.scrollTop-panel.clientHeight<100;
  // Keep completed DOM nodes, selection, table scroll and expanded tool traces.
  if(panel.dataset.session!==session.id){panel.replaceChildren();panel.dataset.session=session.id}
@@ -2461,7 +2560,7 @@ function renderAiHub(){
    const args=pending.arguments||{},search=pending.tool==='web_search';
    const preview=(search?[args.query]:[args.title,args.text,args.code,args.path]).filter(Boolean).join('\n\n');
    const recipients=search?[pending.providers?.primary?'DuckDuckGo / Cloudflare':null,pending.providers?.parallel?'Parallel MCP':null].filter(Boolean).join('、'):'';
-   const instruction=pending.localSandbox?'确认后将在本机隔离 Worker 中执行。代码可访问此会话沙箱文件，并可通过受控代理访问公开 HTTPS；请核对代码。':search?'确认后将公开关键词发送至：'+(recipients||'已启用的搜索服务')+'。选择「总是允许」仅授权本次列出的来源，可在插件设置中撤销。':pending.external?'参数将发送至 '+pending.external.host+'。请核对后确认。':'请核对本次修改。确认后执行，并自动继续任务。';
+   const instruction=pending.localSandbox?(session.sandboxBackend==='linux'?'将在你自行配置的 QEMU Linux 客体中执行 Python/Shell；请核对命令，虚拟机可联网且客体权限由你配置。':'确认后将在本机隔离 Worker 中执行。代码可访问此会话沙箱文件，并可通过受控代理访问公开 HTTPS；请核对代码。'):search?'确认后将公开关键词发送至：'+(recipients||'已启用的搜索服务')+'。选择「总是允许」仅授权本次列出的来源，可在插件设置中撤销。':pending.external?'参数将发送至 '+pending.external.host+'。请核对后确认。':'请核对本次修改。确认后执行，并自动继续任务。';
    card.innerHTML='<strong>'+esc(pending.external?pending.external.server+' · '+pending.external.tool:aiToolLabel(pending.tool))+'</strong><small>'+esc(instruction)+'</small>'+(preview?'<div class="ai-approval-preview">'+esc(preview)+'</div>':'')+'<details><summary>查看完整参数</summary><pre>'+esc(JSON.stringify(args,null,2))+'</pre></details><div class="ai-approval-actions"><button type="button" data-ai-reject'+(aiHubBusy?' disabled':'')+'>取消</button><button type="button" data-ai-approve'+(aiHubBusy?' disabled':'')+'>'+(aiHubBusy?'正在执行…':'确认并继续')+'</button>'+(search?'<button type="button" data-ai-approve-always'+(aiHubBusy?' disabled':'')+'>总是允许</button>':'')+'</div>';card._aiSignature=signature;
   }
  }else card?.remove();
@@ -2684,10 +2783,10 @@ async function sendAiHubMessage(content,resumeSession=null,{regenerate=false,sea
   const onTool=event=>{active();recordAiToolEvent(partial,event);refresh()};
   let data;
   if(localModel){
-   data=await aiLocalGenerate(session.model,payload,text=>{active();partial.content=text;refresh()},{mode:session.mode==='agent'?'agent':'conversation',onTool,signal:run.controller.signal,sandbox:sandboxSessionActive(session)});
+   data=await aiLocalGenerate(session.model,payload,text=>{active();partial.content=text;refresh()},{mode:session.mode==='agent'?'agent':'conversation',onTool,signal:run.controller.signal,sandbox:sandboxSessionActive(session),sandboxBackend:session.sandboxBackend==='linux'&&aiVmStatus?.ready?'linux':'javascript'});
   }else{
    // Text attachments already live in apiContent; only images use this-turn wire attachments.
-   data=await aiStreamRequest({messages:payload,credentialId:session.profileId,model:session.model,mode:session.mode==='agent'?'agent':'conversation',externalTools:session.externalTools===true,localSandbox:sandboxSessionActive(session),attachments:images},{signal:run.controller.signal,progress:text=>{active();partial.reasoningActive=false;partial.content+=text;refresh()},onReasoning:text=>{active();partial.reasoningActive=true;partial.reasoning=(partial.reasoning||'')+text;refresh()},reset:()=>{active();partial.reasoningActive=false;partial.content='';refresh()},onTool});
+   data=await aiStreamRequest({messages:payload,credentialId:session.profileId,model:session.model,mode:session.mode==='agent'?'agent':'conversation',externalTools:session.externalTools===true,localSandbox:sandboxSessionActive(session),localSandboxBackend:session.sandboxBackend==='linux'&&aiVmStatus?.ready?'linux':'javascript',attachments:images},{signal:run.controller.signal,progress:text=>{active();partial.reasoningActive=false;partial.content+=text;refresh()},onReasoning:text=>{active();partial.reasoningActive=true;partial.reasoning=(partial.reasoning||'')+text;refresh()},reset:()=>{active();partial.reasoningActive=false;partial.content='';refresh()},onTool});
   }
   active();
   if(data.approval){if(data.approval.localSandbox){data.approval.workspace=localSpace;data.approval.sessionId=session.id}session.pendingApproval=data.approval;}
@@ -2870,7 +2969,7 @@ const onAiSessionClick=event=>{
  if(actions){const row=event.currentTarget.querySelector('[data-ai-action-row="'+actions.dataset.aiActions+'"]');if(row){row.hidden=!row.hidden;actions.setAttribute('aria-expanded',String(!row.hidden))}return}
  if(open){if(aiSessionLongPressed){aiSessionLongPressed=false;return}saveAiHubDraft();aiHubCurrent=open.dataset.aiSession;restoreAiHubDraft();renderAiHub();renderAiHubSessions();$('aiSessionDialog').close();return}
  if(rename){const session=aiHubSessions.find(value=>value.id===rename.dataset.aiRename);if(!session)return;aiHubRenameId=session.id;$('aiRenameInput').value=session.title;$('aiRenameDialog').showModal();requestAnimationFrame(()=>$('aiRenameInput').select());return}
- if(remove){const session=aiHubSessions.find(value=>value.id===remove.dataset.aiDelete);if(!session)return;confirmAction('删除此 AI 会话？','会话只会从本机删除，无法撤销。',()=>{const run=aiHubRuns.get(session.id);if(run){run.stop();aiHubRuns.delete(session.id);if(run.local)void native?.call('ai.local.cancel').catch(()=>{})}if(aiHubExecutions.has(session.id))return toast('操作正在执行，请完成后再删除');aiHubSessions=aiHubSessions.filter(value=>value.id!==session.id);if(!aiHubSessions.length)newAiHubSession(false);else if(aiHubCurrent===session.id)aiHubCurrent=aiHubSessions[0].id;restoreAiHubDraft();saveAiHubSessions();renderAiHub();renderAiHubSessions()})}
+ if(remove){const session=aiHubSessions.find(value=>value.id===remove.dataset.aiDelete);if(!session)return;confirmAction('删除此 AI 会话？','会话只会从本机删除，无法撤销。',()=>{const run=aiHubRuns.get(session.id);if(run){run.stop();aiHubRuns.delete(session.id);if(run.local)void native?.call('ai.local.cancel').catch(()=>{})}if(aiHubExecutions.has(session.id))return toast('操作正在执行，请完成后再删除');const deletedSpace=localSpace;void import('/agent-sandbox-client.mjs').then(module=>module.clearSandboxFiles(deletedSpace,session.id)).catch(()=>{});aiHubSessions=aiHubSessions.filter(value=>value.id!==session.id);if(!aiHubSessions.length)newAiHubSession(false);else if(aiHubCurrent===session.id)aiHubCurrent=aiHubSessions[0].id;restoreAiHubDraft();saveAiHubSessions();renderAiHub();renderAiHubSessions()})}
 };
 $('aiSessionList').onclick=onAiSessionClick;$('aiSidebarList').onclick=onAiSessionClick;
 $('aiSessionList').oncontextmenu=event=>{const row=event.target.closest('.ai-session-row');if(!row)return;event.preventDefault();const more=row.querySelector('[data-ai-actions]');if(more?.getAttribute('aria-expanded')!=='true')more?.click();aiSessionLongPressed=true};
@@ -2907,7 +3006,7 @@ $('aiHubMessages').onclick=async event=>{
 };
 $('aiHubMessages').onscroll=()=>{const panel=$('aiHubMessages');$('aiHubLatest').hidden=panel.scrollHeight-panel.scrollTop-panel.clientHeight<100};
 $('aiHubLatest').onclick=()=>{const panel=$('aiHubMessages');panel.scrollTo({top:panel.scrollHeight,behavior:'smooth'})};
-$('aiHubContext').onclick=()=>{const panel=$('aiContextPanel');panel.hidden=!panel.hidden;$('aiHubContext').setAttribute('aria-expanded',String(!panel.hidden));renderAiHubContext(currentAiHubSession())};
+$('aiHubContext').onclick=()=>{const panel=$('aiContextPanel');panel.hidden=!panel.hidden;$('aiHubContext').setAttribute('aria-expanded',String(!panel.hidden));renderAiHubContext(currentAiHubSession());if(!panel.hidden)void refreshAiSandboxFiles()};
 $('aiContextWindow').onchange=event=>{
  const input=event.target,session=currentAiHubSession();
  if(!session)return;
@@ -2925,7 +3024,12 @@ $('aiContextWindow').onchange=event=>{
  renderAiHubContext(session);
 };
 $('aiMcpSession').onchange=event=>{const session=currentAiHubSession();if(!session)return;session.externalTools=event.target.checked;saveAiHubSessions();renderAiHubContext(session)};
-$('aiSandboxSession').onchange=event=>{const session=currentAiHubSession();if(!session)return;session.sandboxEnabled=event.target.checked&&!!aiSandboxStatus?.enabled;session.sandboxCalls=0;saveAiHubSessions();renderAiHub()};
+$('aiSandboxSession').onchange=event=>{const session=currentAiHubSession();if(!session)return;session.sandboxEnabled=event.target.checked&&!!aiSandboxStatus?.enabled;session.sandboxCalls=0;saveAiHubSessions();renderAiHub();if(session.sandboxEnabled)void refreshAiSandboxFiles()};
+$('aiSandboxBackend').onchange=event=>{const session=currentAiHubSession();if(!session)return;
+ if(event.target.value==='linux'&&!aiVmStatus?.ready){toast('请先配置并授权 Termux/QEMU');event.target.value='javascript';return}
+ session.sandboxBackend=event.target.value==='linux'?'linux':'javascript';
+ session.sandboxCalls=0;saveAiHubSessions();renderAiHub();
+};
 $('aiContextNew').onclick=()=>{$('aiContextPanel').hidden=true;$('aiHubContext').setAttribute('aria-expanded','false');newAiHubSession()};
 let aiComposerAnimation=null;
 function resizeAiHubPrompt(){

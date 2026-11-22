@@ -52,6 +52,43 @@ async function writeFiles(scope,files){
  request.onerror=()=>tx.abort();
  await txPromise(tx);
 }
+// Explicit user file operations; never grant notes or arbitrary Android storage.
+export async function listSandboxFiles(workspace,sessionId){
+ const files=await readFiles(await scopeKey(workspace,sessionId));
+ return Object.entries(files).map(([path,content])=>({path,bytes:encodedSize(content)}));
+}
+export async function importSandboxFiles(workspace,sessionId,inputFiles){
+ const scope=await scopeKey(workspace,sessionId),files=await readFiles(scope);
+ const incoming=Array.from(inputFiles||[]).slice(0,8);
+ if(!incoming.length)throw Error('未选择导入文件');
+ for(const file of incoming){
+  if(!file||!Number.isFinite(file.size)||file.size>131072)throw Error('单个文件不能超过 128 KB');
+  const name=String(file.name||'').replace(/[^A-Za-z0-9_.-]/g,'_').replace(/^\\.+/,'').slice(0,80);
+  if(!validPath('input/'+name))throw Error('文件名不受支持');
+  const bytes=new Uint8Array(await file.arrayBuffer());
+  if(bytes.some(value=>value===0))throw Error('只支持 UTF-8 文本文件');
+  const text=new TextDecoder('utf-8',{fatal:true}).decode(bytes);
+  files['input/'+name]=text;
+ }
+ checkFiles(files);
+ await writeFiles(scope,files);
+ return {imported:incoming.length,files:Object.keys(files)};
+}
+export async function getSandboxExport(workspace,sessionId,path){
+ if(!validPath(path))throw Error('文件路径不合法');
+ const files=await readFiles(await scopeKey(workspace,sessionId));
+ if(!Object.hasOwn(files,path))throw Error('文件不存在');
+ return {name:path.split('/').pop(),data:files[path],type:'text/plain;charset=utf-8'};
+}
+export async function removeSandboxFile(workspace,sessionId,path){
+ if(!validPath(path))throw Error('文件路径不合法');
+ const scope=await scopeKey(workspace,sessionId),files=await readFiles(scope);
+ if(!Object.hasOwn(files,path))throw Error('文件不存在');
+ delete files[path];await writeFiles(scope,files);
+}
+export async function clearSandboxFiles(workspace,sessionId){
+ await writeFiles(await scopeKey(workspace,sessionId),{});
+}
 const asError=error=>({code:'sandbox_error',message:String(error?.message||error||'沙箱执行失败').slice(0,800)});
 const toolNames=new Set(['sandbox_execute','sandbox_list_files','sandbox_read_file']);
 export async function executeSandboxTool({tool,args,workspace,sessionId,native,signal,authorize=()=>true}){

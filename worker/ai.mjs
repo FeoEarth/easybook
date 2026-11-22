@@ -89,7 +89,7 @@ function toolsFor(role,mode){
  return registry.filter(t=>!t.risk&&scopes.includes(t.scope)&&!['access_request_permissions','operations_request_confirmation'].includes(t.name)).map(t=>({type:'function',function:{name:t.name,description:t.description,parameters:t.inputSchema}}));
 }
 const SANDBOX_TOOLS=[
- {type:'function',function:{name:'sandbox_execute',description:'在 Android 本地隔离沙箱运行 JavaScript，支持 sandbox.readFile/writeFile/deleteFile/listFiles/fetchText(url)、print(...)。执行前由用户确认。不允许直接访问笔记或凭证。',parameters:{type:'object',properties:{language:{type:'string',enum:['javascript']},code:{type:'string'}},required:['language','code'],additionalProperties:false}}},
+ {type:'function',function:{name:'sandbox_execute',description:'运行 Android 本地沙箱代码：javascript 在独立 Worker 中执行，python/shell 仅在用户配置真正的 QEMU Linux 客体后可执行。仅 javascript 可使用 sandbox.readFile/writeFile/listFiles/fetchText(url)。每次需确认；不直接访问笔记或凭证。',parameters:{type:'object',properties:{language:{type:'string',enum:['javascript','python','shell']},code:{type:'string'}},required:['language','code'],additionalProperties:false}}},
  {type:'function',function:{name:'sandbox_list_files',description:'列出此会话沙箱文件，执行前由用户确认。',parameters:{type:'object',properties:{},additionalProperties:false}}},
  {type:'function',function:{name:'sandbox_read_file',description:'读取此会话沙箱文件，执行前由用户确认。',parameters:{type:'object',properties:{path:{type:'string'}},required:['path'],additionalProperties:false}}}
 ];
@@ -97,7 +97,7 @@ const SANDBOX_NAMES=new Set(SANDBOX_TOOLS.map(tool=>tool.function.name));
 function validateSandboxTool(name,args){
  if(!SANDBOX_NAMES.has(name)||!object(args))throw Object.assign(Error('Invalid sandbox tool'),{status:400,code:'invalid_sandbox_tool'});
  if(name==='sandbox_execute'){
-  if(args.language!=='javascript'||typeof args.code!=='string'||!args.code.trim()||args.code.length>10000||Object.keys(args).some(key=>!['language','code'].includes(key)))throw Object.assign(Error('Invalid sandbox code'),{status:400,code:'invalid_sandbox_code'});
+  if(!['javascript','python','shell'].includes(args.language)||typeof args.code!=='string'||!args.code.trim()||args.code.length>10000||Object.keys(args).some(key=>!['language','code'].includes(key)))throw Object.assign(Error('Invalid sandbox code'),{status:400,code:'invalid_sandbox_code'});
  }else if(name==='sandbox_list_files'){
   if(Object.keys(args).length)throw Object.assign(Error('Invalid sandbox arguments'),{status:400,code:'invalid_sandbox_args'});
  }else if(typeof args.path!=='string'||!args.path||args.path.length>180||args.path.includes('..')||args.path.startsWith('/')||Object.keys(args).some(key=>key!=='path'))throw Object.assign(Error('Invalid sandbox path'),{status:400,code:'invalid_sandbox_args'});
@@ -296,7 +296,14 @@ export async function aiAPI(request,env,principal,{workspaceId,fetcher=fetch,lau
   const messages=safeMessages(input?.messages,input?.attachments||[],{maxMessages:AI_CHAT_MAX_MESSAGES,maxChars:AI_CHAT_MAX_TEXT_CHARS}),mode=input?.mode==='agent'?'agent':'conversation',scopes=toolScopes(access.role,mode),tools=toolsFor(access.role,mode),key=await open(env,row);
   const run=async(emit=()=>{})=>{
    const localSandbox=mode==='agent'&&input?.localSandbox===true;
-   if(localSandbox)tools.push(...SANDBOX_TOOLS);
+   if(localSandbox){
+    const linux=input?.localSandboxBackend==='linux';
+    tools.push(...SANDBOX_TOOLS.map(tool=>tool.function.name==='sandbox_execute'
+      ?{...tool,function:{...tool.function,
+         description:linux?'QEMU Linux 虚拟机客体：仅支持 python 或 shell。客体需用户单独在 Termux 安装和启动；执行前逐项确认，不能访问 Easybook 主应用文件。':'独立 JS 沙箱 Worker：仅支持 javascript。sandbox.readFile/writeFile/listFiles/fetchText 仅访问会话文件与公开 HTTPS，执行前逐项确认。',
+         parameters:{...tool.function.parameters,properties:{...tool.function.parameters.properties,language:{type:'string',enum:linux?['python','shell']:['javascript']}}}}}
+      :tool));
+   }
    const external=input.externalTools===true&&access.role!=='reader'?await externalMcpTools(env,principal.accountId):new Map();
    for(const tool of external.values()){
     tools.push({type:'function',function:{name:tool.alias,description:'第三方 MCP '+tool.server+' / '+tool.name+'。调用前会在应用内确认。'+tool.description,parameters:tool.inputSchema}});

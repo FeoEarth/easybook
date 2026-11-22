@@ -1,5 +1,7 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
  <uses-permission android:name="android.permission.INTERNET"/><uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES"/><uses-permission android:name="android.permission.ACCESS_NETWORK_STATE"/><uses-permission android:name="android.permission.CAMERA"/>
+ <uses-permission android:name="com.termux.permission.RUN_COMMAND"/>
+ <queries><package android:name="com.termux"/></queries>
  <uses-feature android:name="android.hardware.camera" android:required="false"/>
  <application android:enableOnBackInvokedCallback="false" android:label="Easybook" android:icon="@drawable/ic_launcher" android:allowBackup="false" android:fullBackupContent="@xml/backup_rules" android:dataExtractionRules="@xml/data_extraction_rules" android:usesCleartextTraffic="true" android:theme="@android:style/Theme.Material.Light.NoActionBar">
   <uses-native-library android:name="libvndksupport.so" android:required="false"/>
@@ -11,6 +13,7 @@
    <intent-filter><action android:name="android.intent.action.VIEW"/><category android:name="android.intent.category.DEFAULT"/><category android:name="android.intent.category.BROWSABLE"/><data android:scheme="easybook" android:host="account" android:path="/qr/approve"/></intent-filter>
    <intent-filter><action android:name="android.intent.action.SEND"/><category android:name="android.intent.category.DEFAULT"/><data android:mimeType="text/plain"/></intent-filter>
   </activity>
+  <receiver android:name=".AgentVmResultReceiver" android:exported="false"/>
   <activity android:name=".WebSearchActivity" android:exported="false"/>
   <activity android:name=".MembershipActivity" android:exported="false" android:configChanges="uiMode"/>
   <activity android:name=".QrScanActivity" android:exported="false" android:theme="@android:style/Theme.Material.NoActionBar"/>
