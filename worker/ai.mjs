@@ -400,11 +400,14 @@ export async function aiAPI(request,env,principal,{workspaceId,fetcher=fetch,lau
     try{
      completed=await completion(key,row,conversation,tools,fetcher,input?.stream===true?text=>emit('delta',{text}):undefined,runSignal,undefined,addReasoning);
     }catch(error){
-     if(!webSearches.length||runSignal?.aborted)throw error;
-     console.warn(JSON.stringify({event:'ai_search_finalization_failed',code:error?.code||'provider_unavailable',searches:webSearches.length}));
-     const successes=webSearches.filter(item=>item.result?.results?.length).length;
-     await finishQueue();
-     return answer('已完成 '+successes+' 次有效联网检索，但 AI 后续生成遇到问题。已保留检索结果，可以继续回答并使用这些来源。',{model:row.model,providerName:row.provider_name,partial:true});
+     if(runSignal?.aborted||!webSearches.length&&!agentRunId)throw error;
+     console.warn(JSON.stringify({event:'ai_search_finalization_failed',code:error?.code||'provider_unavailable',searches:webSearches.length,agentRunId:!!agentRunId}));
+     if(agentRunId&&agentLease){
+      await releaseAgentQueue(env,principal.accountId,workspaceId,agentRunId,agentLease);
+      agentLease=null;
+      return answer('模型暂时无法继续，原始工具结果和上下文已保存。可以稍后继续同一任务。',{model:row.model,providerName:row.provider_name,partial:true,paused:true,agentRunId});
+     }
+     return answer('模型生成暂时失败，已保存可用搜索来源。',{model:row.model,providerName:row.provider_name,partial:true});
     }
     const {reasoning:thought,...message}=completed;
     calls=Array.isArray(message.tool_calls)?message.tool_calls:[];
@@ -514,12 +517,14 @@ export async function aiAPI(request,env,principal,{workspaceId,fetcher=fetch,lau
    }
   }
    }catch(error){
-    if(runSignal?.aborted||!webSearches.length)throw error;
-    // Even an unexpected error after tool execution must not discard
-    // successful source receipts or turn the entire run into ai_unavailable.
+    if(runSignal?.aborted||!webSearches.length&&!agentRunId)throw error;
     console.error(JSON.stringify({event:'ai_search_run_recovered',name:error?.name||'Error',code:error?.code||'internal',searches:webSearches.length}));
+    if(agentRunId&&agentLease){
+     await releaseAgentQueue(env,principal.accountId,workspaceId,agentRunId,agentLease);
+     agentLease=null;
+    }
     const successes=webSearches.filter(item=>item.result?.results?.length).length;
-    return answer(successes?'已取得 '+successes+' 次有效搜索结果，但继续处理时发生错误。已保留来源，可继续根据这些结果回答。':'联网搜索未取得有效结果，且后续处理发生错误。已保留失败记录，可换来源或稍后重试。',{model:row.model,providerName:row.provider_name,partial:true});
+    return answer(successes?'已取得 '+successes+' 次有效搜索结果。执行中断，原任务可以继续。':'Agent 执行暂时中断，工具调用队列已保留，可稍后继续。',{model:row.model,providerName:row.provider_name,partial:true,...(agentRunId?{paused:true,agentRunId}:{})});
    }finally{
     const browser=browserLease.browser||await browserLease.launching?.catch(()=>null);
     browserLease.browser=null;
