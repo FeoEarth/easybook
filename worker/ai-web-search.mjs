@@ -234,7 +234,9 @@ export async function runWebSearch(env,account,args,signal,launchBrowser=binding
  const timeout=AbortSignal.timeout(budget);
  const searchSignal=signal?AbortSignal.any([signal,timeout]):timeout;
  let browser,closing,abort;
- const close=()=>{if(browser){if(browserLease?.browser===browser)browserLease.browser=null;closing??=browser.close().catch(()=>{})}};
+ // A shared browser is owned by the enclosing AI run, not by an individual
+ // concurrent query. One timed-out search must not kill other searches.
+ const close=()=>{if(browser&&!browserLease)closing??=browser.close().catch(()=>{})};
  const interrupted=new Promise((_,reject)=>{
   abort=()=>{close();reject(searchSignal.reason)};
   searchSignal.addEventListener('abort',abort,{once:true});
@@ -242,8 +244,14 @@ export async function runWebSearch(env,account,args,signal,launchBrowser=binding
  const search=async()=>{
   try{
    searchSignal.throwIfAborted();
-   browser=browserLease?.browser||await launchBrowser(env.WEB_SEARCH_BROWSER);
-   if(browserLease)browserLease.browser=browser;
+   if(!browserLease)browser=await launchBrowser(env.WEB_SEARCH_BROWSER);
+   else{
+    // Coalesce simultaneous launch attempts into one Browser Run instance.
+    if(!browserLease.launching)browserLease.launching=Promise.resolve().then(()=>launchBrowser(env.WEB_SEARCH_BROWSER))
+     .then(instance=>{browserLease.browser=instance;return instance})
+     .catch(error=>{browserLease.launching=null;throw error});
+    browser=await browserLease.launching;
+   }
    searchSignal.throwIfAborted();
    const primary=await crawlSearchPage(browser,duckduckgo,query,searchSignal,deadline,maxResults);
    let secondary={results:[],raw:0,filtered:0},matched=[];
@@ -269,7 +277,7 @@ export async function runWebSearch(env,account,args,signal,launchBrowser=binding
  try{
   return await Promise.race([search(),interrupted]);
  }catch(error){
-  if(browserLease){close();await closing}
+  if(!browserLease){close();await closing}
   // A browser that never launched did not serve a search: do not charge quota.
   if(!browser)try{await env.DB.prepare('UPDATE account_rate_limits SET count=count-1 WHERE bucket=? AND count>0').bind(bucket).run()}catch{}
   if(signal?.aborted)throw signal.reason||error;
