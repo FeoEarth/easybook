@@ -396,6 +396,7 @@ public class MainActivity extends Activity {
             case "sandbox.configure":return AgentSandboxNetwork.configure(this,args);
             case "sandbox.fetch":return AgentSandboxNetwork.fetch(this,bounded(args,"url",2048));
             case "sandbox.vm.status":return AgentVmBridge.status(this);
+            case "sandbox.vm.permission.request":return AgentVmBridge.requestPermission(this);
             case "sandbox.vm.configure":return AgentVmBridge.configure(this,args);
             case "sandbox.vm.execute":return AgentVmBridge.run(this,args,repository.activeSpace());
             case "sandbox.vm.manage":return AgentVmBridge.manage(this,bounded(args,"action",20));
@@ -632,6 +633,13 @@ public class MainActivity extends Activity {
         if(destroyed||serverSwitching||!ready||!repository.isActiveProfile()||!LOCAL.equals(web.getUrl()))return;
         web.evaluateJavascript("window.easybookWebSearchResult&&window.easybookWebSearchResult("
             +JSONObject.quote(token)+","+(results==null?"null":JSONObject.quote(results))+")",null);
+    }
+    @Override public void onRequestPermissionsResult(int requestCode,String[] permissions,int[] grantResults) {
+        super.onRequestPermissionsResult(requestCode,permissions,grantResults);
+        if(requestCode==AgentVmBridge.REQUEST_PERMISSION_CODE&&!destroyed&&web!=null){
+            // A user-tapped prompt; reflect the grant/denial without retrying automatically.
+            web.evaluateJavascript("if(typeof refreshAiVmStatus==='function')refreshAiVmStatus()",null);
+        }
     }
     @Override protected void onActivityResult(int request, int result, Intent data) {
         super.onActivityResult(request, result, data);
