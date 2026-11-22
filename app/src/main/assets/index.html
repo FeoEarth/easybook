@@ -1550,14 +1550,18 @@ let aiConfigured=null,aiConfigPromise=null,aiBusy=false,aiConversation=[],aiConv
 const aiMemoryKey='easybook-ai-memory-v1';
 let aiPreferences=window.EasybookAiPreferences.emptyPreferences(),aiPreferencesLoaded=false,aiPreferencesPending=null,aiMemoryEditId='';
 let aiLocalStatus=null;
-let aiSandboxStatus=null;
+let aiSandboxStatus=null,aiVmStatus=null,aiSandboxRunController=null;
 const sandboxSessionActive=session=>!!(native&&aiSandboxStatus?.enabled&&session?.sandboxEnabled&&session.mode==='agent');
 async function refreshAiSandbox(){
  if(!native)return;
  $('aiSandboxSection').hidden=false;
  try{aiSandboxStatus=await native.call('sandbox.status');
   $('aiSandboxEnabled').checked=!!aiSandboxStatus.enabled;
-  $('aiSandboxNote').textContent='JavaScript · 每次执行限时 30 秒 · 文件仅保存在当前会话（最多 512 KB）· 公开 HTTPS 可联网。执行代码前必须确认。非 Linux 虚拟机，Python 和 Shell 尚不可用。';
+  try{aiVmStatus=await native.call('sandbox.vm.status');
+   $('aiVmEnabled').checked=!!aiVmStatus.enabled;
+   $('aiVmNote').textContent=aiVmStatus.ready?'QEMU 连接器已授权；需确保 Termux 内的 Linux 客体正在运行。':aiVmStatus.termuxInstalled?(aiVmStatus.permissionGranted?'需先启用连接器并配置 Linux 客体和 SSH。':'需要在 Android 系统设置中授予 Easybook「在 Termux 中执行命令」。'):'需要安装 Termux 0.109+，并手动配置 QEMU Linux 客体。';
+  }catch(error){aiVmStatus=null;$('aiVmEnabled').disabled=true;$('aiVmNote').textContent='QEMU 后端不可用：'+error.message}
+  $('aiSandboxNote').textContent='JavaScript 沙箱 · 每次执行最长 30 秒 · 会话文件上限 512 KB · 可访问公开 HTTPS。可选 QEMU Linux 客体支持 Python/Shell，需自行安装镜像与 SSH。';
  }catch(error){aiSandboxStatus=null;$('aiSandboxEnabled').disabled=true;$('aiSandboxNote').textContent='执行环境不可用：'+error.message}
  if(tab==='ai-hub')renderAiHub();
 }
@@ -1570,13 +1574,84 @@ $('aiSandboxEnabled').onchange=async event=>{
  }catch(error){toast(error.message);control.checked=!enabled}
  finally{control.disabled=false}
 };
+$('aiVmEnabled').onchange=async event=>{
+ const control=event.target;control.disabled=true;
+ try{aiVmStatus=await native.call('sandbox.vm.configure',{enabled:control.checked});
+  $('aiVmNote').textContent=aiVmStatus.ready?'已启用 QEMU 后端。请在当前 Agent 会话选中 Linux 虚拟机，并先启动 Termux 中的客体。':'QEMU 后端未启用；需要 Termux 权限和 Linux 客体配置。';
+  if(!aiVmStatus.enabled){for(const session of aiHubSessions)if(session.sandboxBackend==='linux')session.sandboxBackend='javascript';saveAiHubSessions()}
+  renderAiHub();
+ }catch(error){toast(error.message);control.checked=!control.checked}
+ finally{control.disabled=false}
+};
+async function refreshAiSandboxFiles(){
+ const session=currentAiHubSession();
+ if(!session||!sandboxSessionActive(session))return;
+ const select=$('aiSandboxFileList'),space=localSpace,id=session.id;
+ try{
+  const module=await import('/agent-sandbox-client.mjs');
+  const files=await module.listSandboxFiles(space,id);
+  if(localSpace!==space||currentAiHubSession()?.id!==id)return;
+  const previous=select.value;
+  select.innerHTML='<option value="">'+(files.length?'选择文件 · '+files.length+' 个':'暂无文件')+'</option>'+files.map(f=>'<option value="'+esc(f.path)+'">'+esc(f.path)+' · '+f.bytes+' B</option>').join('');
+  if(files.some(file=>file.path===previous))select.value=previous;
+  $('aiSandboxFileNote').textContent='会话文件 '+files.length+' 个，最大 48 个、总量 512 KB。只能导入 UTF-8 文本文件，QEMU 客体无法自动读取。';
+ }catch(error){$('aiSandboxFileNote').textContent=error.message}
+}
+$('aiSandboxImport').onclick=()=>$('aiSandboxImportInput').click();
+$('aiSandboxImportInput').onchange=async event=>{
+ const session=currentAiHubSession(),files=event.target.files,space=localSpace,id=session?.id;
+ if(!sandboxSessionActive(session)||!files?.length)return;
+ try{
+  const module=await import('/agent-sandbox-client.mjs');
+  await module.importSandboxFiles(space,id,files);
+  if(space===localSpace&&currentAiHubSession()?.id===id){toast('已导入到当前沙箱');await refreshAiSandboxFiles()}
+ }catch(error){toast(error.message)}finally{event.target.value=''}
+};
+$('aiSandboxReload').onclick=refreshAiSandboxFiles;
+$('aiSandboxExport').onclick=async()=>{
+ const session=currentAiHubSession(),path=$('aiSandboxFileList').value;if(!session||!path)return toast('请先选择文件');
+ try{const module=await import('/agent-sandbox-client.mjs');
+  const file=await module.getSandboxExport(localSpace,session.id,path);
+  await native.call('sandbox.export',{name:file.name,content:file.data});
+ }catch(error){toast(error.message)}
+};
+$('aiSandboxDelete').onclick=()=>{
+ const session=currentAiHubSession(),path=$('aiSandboxFileList').value;if(!session||!path)return toast('请先选择文件');
+ const space=localSpace,id=session.id;
+ confirmAction('删除沙箱文件？','仅删除本机会话中的 '+path+'，无法撤销。',async()=>{
+  try{const module=await import('/agent-sandbox-client.mjs');await module.removeSandboxFile(space,id,path);await refreshAiSandboxFiles()}catch(error){toast(error.message)}
+ });
+};
+$('aiSandboxClear').onclick=()=>{
+ const session=currentAiHubSession();if(!session)return;const space=localSpace,id=session.id;
+ confirmAction('清空当前 Agent 沙箱？','这会删除当前会话内全部虚拟文件，不会影响 Easybook 笔记或虚拟机磁盘。',async()=>{
+  try{const module=await import('/agent-sandbox-client.mjs');await module.clearSandboxFiles(space,id);await refreshAiSandboxFiles()}catch(error){toast(error.message)}
+ });
+};
+$('aiSandboxStop').onclick=()=>{aiSandboxRunController?.abort();toast('已取消等待沙箱结果；QEMU 客体命令可能继续运行直到超时')};
 async function executeAiSandboxApproval(pending,session){
  if(!sandboxSessionActive(session)||pending.workspace!==localSpace||pending.sessionId!==session.id)throw Error('沙箱权限已撤销或会话已切换');
  if(pending.expiresAt<Date.now())throw Error('沙箱调用已过期');
  session.sandboxCalls=(session.sandboxCalls||0)+1;
  if(session.sandboxCalls>6)throw Error('本轮沙箱工具调用次数已达上限，请重新发送明确的新任务');
- const module=await import('/agent-sandbox-client.mjs');
- return module.executeSandboxTool({tool:pending.tool,args:pending.arguments,workspace:localSpace,sessionId:session.id,native,authorize:()=>sandboxSessionActive(session)&&currentAiHubSession()===session&&localSpace===pending.workspace&&session.pendingApproval===pending});
+ const controller=new AbortController();aiSandboxRunController=controller;
+ $('aiSandboxStop').hidden=false;
+ const backend=session.sandboxBackend==='linux'?'linux':'javascript';
+ try{
+  if(pending.tool==='sandbox_execute'&&backend==='linux'){
+   if(!aiVmStatus?.ready)throw Error('QEMU 未授权或 Termux 权限缺失，请先到 AI 设置启用');
+   if(!['python','shell'].includes(pending.arguments?.language))throw Error('QEMU 客体只执行 Python / Shell');
+   const result=await Promise.race([
+    native.call('sandbox.vm.execute',{language:pending.arguments.language,code:pending.arguments.code}),
+    new Promise((_,reject)=>controller.signal.addEventListener('abort',()=>reject(new DOMException('停止等待虚拟机结果','AbortError')),{once:true}))
+   ]);
+   if(!sandboxSessionActive(session)||session.pendingApproval!==pending)throw Error('会话授权已失效');
+   return result;
+  }
+  if(pending.tool==='sandbox_execute'&&pending.arguments?.language!=='javascript')throw Error('内置沙箱只执行 JavaScript。请切换到 QEMU Linux 虚拟机');
+  const module=await import('/agent-sandbox-client.mjs');
+  return module.executeSandboxTool({tool:pending.tool,args:pending.arguments,workspace:localSpace,sessionId:session.id,native,signal:controller.signal,authorize:()=>sandboxSessionActive(session)&&currentAiHubSession()===session&&localSpace===pending.workspace&&session.pendingApproval===pending});
+ }finally{if(aiSandboxRunController===controller)aiSandboxRunController=null;$('aiSandboxStop').hidden=true}
 }
 const aiLocalPending=new Map();
 window.easybookLocalAiEvent=event=>{
