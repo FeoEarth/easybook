@@ -360,6 +360,20 @@ assert.equal(webSearchQuota(monthStart,{permanent:1,expires_at:0}).kind,'member'
  assert.equal(searches,10);
  const permanentUsage=(await (await api('mcp','GET')).json()).usage.webSearch;
  assert.equal(permanentUsage.tier,'member');assert.equal(permanentUsage.used,1000);assert.equal(permanentUsage.remaining,0);
+ // Keep one Cloudflare browser alive through successive queries in a single AI run.
+ // Launching a new browser for every model tool call can hit Browser Run's
+ // new-instance rate limit even when each individual query works.
+ const {runWebSearch}=await import('../worker/ai-web-search.mjs');
+ const lease={browser:null},beforeSearches=searches,beforeClosed=closed;
+ primary='results';query='public docs';
+ for(let i=0;i<2;i++){
+  const result=await runWebSearch(searchEnv,'reuse-search-fixture',{query,maxResults:3},undefined,launchSearchBrowser,lease);
+  assert.equal(result.results.length,1);
+ }
+ assert.equal(searches,beforeSearches+1,'Repeated searches in one run reuse the browser');
+ assert.equal(closed,beforeClosed,'Browser stays open between searches');
+ await lease.browser.close();lease.browser=null;
+ assert.equal(closed,beforeClosed+1,'Browser is closed when the run ends');
  await api('mcp','PUT',{webSearch:false});
 }
 
