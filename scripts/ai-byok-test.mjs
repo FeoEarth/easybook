@@ -330,9 +330,9 @@ assert.equal(webSearchQuota(monthStart,{permanent:1,expires_at:0}).kind,'member'
  assert.equal((await searchOnce()).result.reason,'parse_failed');
  assert.deepEqual(visits.splice(0),['duckduckgo'],'Skip Wiby for non-English queries');
  assert.match(profiles.at(-1).params.acceptLanguage,/^zh-CN/);
- assert.equal(sqlite.prepare("SELECT count FROM account_rate_limits WHERE bucket LIKE 'ai-web-search:%'").get().count,5,'One quota charge per approved query');
- const usedFive=(await (await api('mcp','GET')).json()).usage.webSearch;
- assert.equal(usedFive.used,5);assert.equal(usedFive.remaining,10,'Reading usage must not deduct quota');
+ assert.equal(sqlite.prepare("SELECT count FROM account_rate_limits WHERE bucket LIKE 'ai-web-search:%'").get().count,2,'Only searches returning evidence count against quota');
+ const usedTwo=(await (await api('mcp','GET')).json()).usage.webSearch;
+ assert.equal(usedTwo.used,2);assert.equal(usedTwo.remaining,13,'Reading usage must not deduct quota');
  assert.equal((await api('mcp','PUT',{webSearchApproval:'always'})).status,200);
  assert.equal((await (await api('mcp','GET')).json()).webSearch.approval,'always');
  assert.equal((await (await api('mcp','GET',undefined,{...principal,accountId:otherAccount})).json()).webSearch.approval,'ask');
