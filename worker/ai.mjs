@@ -390,29 +390,36 @@ export async function aiAPI(request,env,principal,{workspaceId,fetcher=fetch,lau
     reasoning+=chunk;receivedReasoning=true;
     if(input?.stream===true)emit('reasoning',{text:chunk});
    };
-   let completed;
-   try{
-    completed=await completion(key,row,conversation,tools,fetcher,input?.stream===true?text=>emit('delta',{text}):undefined,runSignal,undefined,addReasoning);
-   }catch(error){
-    if(!webSearches.length||runSignal?.aborted)throw error;
-    // A provider failure after successful research must not discard sources
-    // or turn an otherwise useful multi-search run into ai_unavailable.
-    console.warn(JSON.stringify({event:'ai_search_finalization_failed',code:error?.code||'provider_unavailable',searches:webSearches.length}));
-    const successes=webSearches.filter(item=>item.result?.results?.length).length;
-    return answer('已完成 '+successes+' 次有效联网检索，但 AI 后续生成遇到问题。已保留检索结果，可以继续回答并使用这些来源。',{model:row.model,providerName:row.provider_name,partial:true});
+   let calls;
+   if(pendingCalls){
+    // A prior model response has already generated this full tool batch.
+    // Do not ask the model for another plan until every tool ID has a result.
+    calls=pendingCalls;
+   }else{
+    let completed;
+    try{
+     completed=await completion(key,row,conversation,tools,fetcher,input?.stream===true?text=>emit('delta',{text}):undefined,runSignal,undefined,addReasoning);
+    }catch(error){
+     if(!webSearches.length||runSignal?.aborted)throw error;
+     console.warn(JSON.stringify({event:'ai_search_finalization_failed',code:error?.code||'provider_unavailable',searches:webSearches.length}));
+     const successes=webSearches.filter(item=>item.result?.results?.length).length;
+     await finishQueue();
+     return answer('已完成 '+successes+' 次有效联网检索，但 AI 后续生成遇到问题。已保留检索结果，可以继续回答并使用这些来源。',{model:row.model,providerName:row.provider_name,partial:true});
+    }
+    const {reasoning:thought,...message}=completed;
+    calls=Array.isArray(message.tool_calls)?message.tool_calls:[];
+    if(!receivedReasoning&&thought)addReasoning(thought);
+    if(!calls.length){await finishQueue();return answer(typeof message.content==='string'?message.content:'',{model:row.model,providerName:row.provider_name})}
+    // Restore DeepSeek reasoning and all tool_call IDs as one provider turn.
+    conversation.push(row.provider==='deepseek'&&thought?{...message,reasoning_content:thought}:message);
+    emit('reset',{});
    }
-   const {reasoning:thought,...message}=completed;
-   const calls=Array.isArray(message.tool_calls)?message.tool_calls:[];
-   if(!receivedReasoning&&thought)addReasoning(thought);
-   if(!calls.length){await finishQueue();return answer(typeof message.content==='string'?message.content:'',{model:row.model,providerName:row.provider_name})}
-   // DeepSeek expects the assistant's reasoning back with the tool result in the same exchange.
-   conversation.push(row.provider==='deepseek'&&thought?{...message,reasoning_content:thought}:message);
-   emit('reset',{});
    const searchRequested=searchEnabled&&calls.some(call=>call?.function?.name===WEB_SEARCH);
    const currentSearch=searchRequested&&autoSearch?await readPreferences(env,principal.accountId):settings;
    const currentQuota=searchRequested&&autoSearch&&currentSearch.webSearch&&webSearchAvailable(env)?await webSearchUsage(env,principal.accountId):null;
    const currentPrimary=!!currentQuota?.remaining,currentParallel=currentSearch.parallelSearch===true;
    const automatically=autoSearch&&(currentPrimary||currentParallel)&&(!currentPrimary||currentSearch.webSearchApproval==='always')&&(!currentParallel||currentSearch.parallelSearchApproval==='always');
+   if(!pendingCalls){
    const approvalCall=calls.find(call=>(localSandbox&&SANDBOX_NAMES.has(call?.function?.name))||(searchRequested&&!automatically&&call?.function?.name===WEB_SEARCH)||external.has(call?.function?.name)||registry.some(t=>t.name===call?.function?.name&&!t.risk&&WRITE.includes(t.scope)&&scopes.includes(t.scope)));
    if(approvalCall){
     await finishQueue();
@@ -439,6 +446,14 @@ export async function aiAPI(request,env,principal,{workspaceId,fetcher=fetch,lau
     if(name===WEB_SEARCH)return answer('请确认本次搜索关键词及接收服务。',{approval:{id,tool:name,arguments:args,providers,expiresAt}});
     if(remote)return answer('第三方工具调用等待确认。确认后，所示参数将发送至 '+new URL(remote.url).hostname+'。',{approval:{id,tool:name,arguments:args,expiresAt,external:{server:remote.server,tool:remote.name,host:new URL(remote.url).hostname}}});
     return answer('Agent 已准备 '+name+' 操作，正在等待你核对参数并确认。未确认前不会修改工作区。',{approval:{id,tool:name,arguments:args,expiresAt}});
+   }
+    // Persist the complete plan before running any search. For a large read
+    // batch do the same: never silently drop unused tool calls.
+    if(searchRequested&&automatically||calls.length>4){
+     pendingCalls=calls;
+     nextCall=0;
+     await createQueue();
+    }
    }
    let batchCompleted=0;
    const executeCall=async call=>{
