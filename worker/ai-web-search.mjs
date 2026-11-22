@@ -1,4 +1,5 @@
 import puppeteer from '@cloudflare/puppeteer';
+import {searchPublicRss} from './ai-search-fallback.mjs';
 import {hash,schema,str,int,validate} from './mcp-common.mjs';
 
 export const WEB_SEARCH='web_search';
@@ -219,7 +220,7 @@ export async function webSearchUsage(env,account,now=Date.now()){
  return {tier:quota.kind,period:quota.kind==='member'?'month':'day',used,limit:quota.limit,remaining:quota.limit-used,resetAt:quota.expiresAt};
 }
 
-export async function runWebSearch(env,account,args,signal,launchBrowser=binding=>puppeteer.launch(binding,{keep_alive:30000}),browserLease){
+export async function runWebSearch(env,account,args,signal,launchBrowser,browserLease){
  const query=webSearchQuery(args),maxResults=webSearchResultLimit(args);
  signal?.throwIfAborted();
  if(!webSearchAvailable(env))return searchFailure('unavailable');
@@ -230,25 +231,63 @@ export async function runWebSearch(env,account,args,signal,launchBrowser=binding
  await env.DB.prepare('DELETE FROM account_rate_limits WHERE bucket IN (SELECT bucket FROM account_rate_limits WHERE expires_at<? LIMIT 100)').bind(now).run();
  const credit=await env.DB.prepare('INSERT INTO account_rate_limits(bucket,count,expires_at) VALUES(?,1,?) ON CONFLICT(bucket) DO UPDATE SET count=count+1 WHERE count<? RETURNING count').bind(bucket,quota.expiresAt,quota.limit).first();
  if(!credit)return searchFailure('limit','web_search_limit',quota.kind==='member'?'会员本月自动搜索次数已达上限，请在浏览器中继续。':'今日自动搜索次数已达上限，请在浏览器中继续。');
+ let refunded=false;
+ const refund=async()=>{if(refunded)return;refunded=true;
+  try{await env.DB.prepare('UPDATE account_rate_limits SET count=count-1 WHERE bucket=? AND count>0').bind(bucket).run()}catch{}
+ };
  const started=Date.now(),budget=18000,deadline=started+budget;
  const timeout=AbortSignal.timeout(budget);
  const searchSignal=signal?AbortSignal.any([signal,timeout]):timeout;
+ const managed=typeof launchBrowser!=='function';
+ const fallback=async()=>{if(!managed||searchSignal.aborted)return null;
+  try{const result=await searchPublicRss(query,maxResults,searchSignal);return result.results?.length?result:null}catch{return null}
+ };
  let browser,context,closing,abort;
  // The browser belongs to this AI reply; each concurrent search owns its
  // isolated context. Aborting one query must not close its peers' browser.
- const close=()=>{if(browser&&!browserLease)closing??=browser.close().catch(()=>{})};
+ const close=()=>{if(browser&&!browserLease)closing??=Promise.resolve(typeof browser.disconnect==='function'?browser.disconnect():browser.close()).catch(()=>{})};
  const interrupted=new Promise((_,reject)=>{
   abort=()=>{if(context)void context.close().catch(()=>{});close();reject(searchSignal.reason)};
   searchSignal.addEventListener('abort',abort,{once:true});
  });
- // A browser launch may return 429 while other requests launch sessions.
- // Back off once per shared lease, not once per query.
+ // Cross-request Browser Run sessions and one launch slot are managed in D1.
+ // No global Puppeteer process is shared, and each query gets an isolated context.
+ const SLOT='ai-browser-launch-slot',SESSION='ai-browser-reusable:';
+ const daily=error=>/time.limit.exceeded|time limit exceeded for today|daily browser limit|browser time limit|exceeded for today/i.test(String(error?.message||''));
+ const limited=error=>error?.status===429||error?.code==='web_search_rate_limited'||/429|rate.limit|too.many.requests/i.test(String(error?.message||''));
  const launch=async()=>{
+  if(managed){
+   const rows=await env.DB.prepare('SELECT bucket FROM account_rate_limits WHERE bucket LIKE ? AND expires_at>? ORDER BY expires_at DESC LIMIT 4')
+    .bind(SESSION+'%',Date.now()).all();
+   for(const row of rows?.results||[]){
+    try{
+     const instance=await puppeteer.connect(env.WEB_SEARCH_BROWSER,row.bucket.slice(SESSION.length));
+     await env.DB.prepare('UPDATE account_rate_limits SET expires_at=? WHERE bucket=?').bind(Date.now()+29000,row.bucket).run();
+     return instance;
+    }catch{await env.DB.prepare('DELETE FROM account_rate_limits WHERE bucket=?').bind(row.bucket).run().catch(()=>{})}
+   }
+   const instant=Date.now();
+   const slot=await env.DB.prepare('INSERT INTO account_rate_limits(bucket,count,expires_at) VALUES(?,0,?) ON CONFLICT(bucket) DO UPDATE SET expires_at=excluded.expires_at WHERE account_rate_limits.expires_at<=? RETURNING expires_at')
+    .bind(SLOT,instant+21000,instant).first();
+   if(!slot){
+    const wait=await env.DB.prepare('SELECT expires_at FROM account_rate_limits WHERE bucket=?').bind(SLOT).first();
+    throw Object.assign(Error('Browser launch cooldown'),{code:'web_search_rate_limited',retryAfterMs:Math.max(1000,Number(wait?.expires_at||instant+21000)-Date.now())});
+   }
+   try{
+    const instance=await puppeteer.launch(env.WEB_SEARCH_BROWSER,{keep_alive:30000});
+    const id=instance.sessionId?.();
+    if(id)await env.DB.prepare('INSERT INTO account_rate_limits(bucket,count,expires_at) VALUES(?,0,?) ON CONFLICT(bucket) DO UPDATE SET expires_at=excluded.expires_at')
+     .bind(SESSION+id,Date.now()+29000).run();
+    return instance;
+   }catch(error){
+    if(daily(error))await env.DB.prepare('UPDATE account_rate_limits SET expires_at=? WHERE bucket=?')
+     .bind(Math.floor(Date.now()/86400000)*86400000+86400000,SLOT).run().catch(()=>{});
+    throw error;
+   }
+  }
   try{return await launchBrowser(env.WEB_SEARCH_BROWSER)}
   catch(error){
-   const limited=error?.status===429||/429|rate.limit|too.many.requests/i.test(String(error?.message||''));
-   const exhausted=/daily|today|time.limit.exceeded|monthly/i.test(String(error?.message||''));
-   if(!limited||exhausted||searchSignal.aborted)throw error;
+   if(!limited(error)||daily(error)||searchSignal.aborted)throw error;
    const seconds=Number(error?.headers?.get?.('Retry-After'));
    const delay=Number.isFinite(seconds)&&seconds>0?Math.min(2000,Math.max(1000,seconds*1000)):1100;
    await new Promise(resolve=>setTimeout(resolve,delay));
@@ -289,20 +328,30 @@ export async function runWebSearch(env,account,args,signal,launchBrowser=binding
    const diagnostics={requested:maxResults,duckduckgo:{raw:primary.raw||0,accepted:primary.results.length,loads:primary.loads||0},
     wiby:{raw:secondary.raw||0,accepted:matched.length},duplicatesRemoved:primary.results.length+matched.length-unique.length,returned:results.length};
    if(results.length)return {results,source:primary.results.length?'duckduckgo':'wiby',diagnostics};
-   return {...searchFailure(primary.status),diagnostics};
+   const alternate=await fallback();
+   return alternate||{...searchFailure(primary.status),diagnostics};
   }finally{if(context)try{await context.close()}catch{};if(!browserLease){close();await closing}}
  };
  try{
-  return await Promise.race([search(),interrupted]);
+  const result=await Promise.race([search(),interrupted]);
+  if(!result?.results?.length)await refund();
+  return result;
  }catch(error){
   if(!browserLease){close();await closing}
-  // A browser that never launched did not serve a search: do not charge quota.
-  if(!browser)try{await env.DB.prepare('UPDATE account_rate_limits SET count=count-1 WHERE bucket=? AND count>0').bind(bucket).run()}catch{}
-  if(signal?.aborted)throw signal.reason||error;
-  const limited=error?.status===429||/429|rate.limit|too.many.requests/i.test(String(error?.message||''));
-  const reason=timeout.aborted?'timeout':limited?'rate_limited':'unavailable';
-  console.info(JSON.stringify({event:'ai_web_search',site:'duckduckgo',stage:browser?'session':'launch',status:reason,ms:Date.now()-started}));
-  return reason==='rate_limited'?searchFailure(reason,'web_search_rate_limited','云端浏览器启动过于频繁，请稍后重试；已启用的 Parallel 搜索仍可继续。'):searchFailure(reason);
+  if(signal?.aborted){await refund();throw signal.reason||error}
+  const alternate=await fallback();
+  if(alternate)return alternate;
+  await refund();
+  const exhausted=/time.limit.exceeded|time limit exceeded for today|daily browser limit|browser time limit|exceeded for today/i.test(String(error?.message||''));
+  const blocked=error?.status===429||error?.code==='web_search_rate_limited'||/429|rate.limit|too.many.requests/i.test(String(error?.message||''));
+  const reason=timeout.aborted?'timeout':exhausted?'daily_limit':blocked?'rate_limited':'unavailable';
+  console.info(JSON.stringify({event:'ai_web_search',site:'duckduckgo',stage:browser?'session':'launch',status:reason,ms:Date.now()-started,
+   providerStatus:error?.status||null,errorCode:error?.code||null}));
+  if(exhausted)return searchFailure(reason,'web_search_provider_daily_limit','Cloudflare 云端浏览器今日使用额度耗尽，且备用搜索未返回结果。');
+  if(blocked)return {...searchFailure(reason,'web_search_rate_limited','云端浏览器启动限流，备用搜索未返回结果，稍后自动重试。'),
+   error:{code:'web_search_rate_limited',message:'云端浏览器启动限流，备用搜索未返回结果，稍后自动重试。',
+    retryAfterMs:Math.max(1000,Number(error?.retryAfterMs)||21000)}};
+  return searchFailure(reason);
  }finally{
   searchSignal.removeEventListener('abort',abort);
  }
