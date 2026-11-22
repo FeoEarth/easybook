@@ -365,7 +365,7 @@ export async function aiAPI(request,env,principal,{workspaceId,fetcher=fetch,lau
    // There is no limit on total searches for a user task. Keep each HTTP
    // segment within a soft wall-time budget so Workers do not exhaust CPU.
    // The client continues a long task in another request with saved receipts.
-   const SEARCH_CONCURRENCY=2;
+   // Search queries are processed in arrival order, not concurrently.
    // Free Workers cannot opt into a larger CPU budget. Keep each invocation
    // small and resume the research task in another request after two queries.
    // This is not a per-task search limit; the client continues automatically.
@@ -488,9 +488,14 @@ export async function aiAPI(request,env,principal,{workspaceId,fetcher=fetch,lau
     selected.push(call);
     if(selectedSearches>=MAX_SEARCHES_PER_REQUEST)break;
    }
-   const completedCalls=automatically&&selected.length>1&&selected.every(call=>call?.function?.name===WEB_SEARCH)
-    ?await Promise.all(selected.map(executeCall))
-    :await (async()=>{const done=[];for(const call of selected)done.push(await executeCall(call));return done})();
+   // Serial execution is deliberate. Cloudflare Free may reject concurrent
+   // Browser Run contexts, while the durable queue preserves every call.
+   // Waiting is preferable to failing or re-running the model's planning step.
+   const completedCalls=[];
+   for(const call of selected){
+    runSignal?.throwIfAborted?.();
+    completedCalls.push(await executeCall(call));
+   }
    for(const item of completedCalls){
     used.push({name:item.name,ok:!item.result?.error});
     if(item.receipt){
