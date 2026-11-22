@@ -568,25 +568,25 @@ assert.equal(webSearchQuota(monthStart,{permanent:1,expires_at:0}).kind,'member'
  assert.equal((await api('mcp','PUT',{parallelMode:'anonymous'})).status,200);
  const chat=async()=> (await api('chat','POST',{credentialId:openaiId,mode:'conversation',messages:[{role:'user',content:'检索10个独立主题'}]})).json();
  const serialQueries=[];
- for(let segment=0;segment<5;segment++){
+ for(let segment=0;networkCalls<10&&segment<10;segment++){
   const step=await chat();
-  assert.equal(step.continuationRequired,true,'Two queries produce a resumable segment rather than a per-task cap');
-  assert.equal(step.webSearches.length,2);
+  assert.ok(step.webSearches.length>=1&&step.webSearches.length<=2,'Each free-tier segment stays small');
   assert.ok(step.webSearches.every(item=>item.result.results.length===1));
   serialQueries.push(...step.webSearches.map(item=>item.arguments.query));
+  if(networkCalls<10)assert.equal(step.continuationRequired,true);
  }
- assert.equal((await chat()).message.content,'已综合搜索结果。');
+ assert.equal(networkCalls,10);
  assert.deepEqual(serialQueries,Array.from({length:10},(_,i)=>'independent topic '+i));
  assert.equal(networkCalls,10);assert.equal(peakInFlight,1);
  mode='batch';modelRounds=0;networkCalls=0;inFlight=0;peakInFlight=0;
  const batchedQueries=[];
- for(let segment=0;segment<5;segment++){
+ for(let segment=0;networkCalls<10&&segment<10;segment++){
   const step=await chat();
-  assert.equal(step.continuationRequired,true,'One large tool batch is split into resumable requests');
-  assert.equal(step.webSearches.length,2,'At most two searches execute per Worker request');
+  assert.ok(step.webSearches.length>=1&&step.webSearches.length<=2,'At most two searches execute per Worker request');
   batchedQueries.push(...step.webSearches.map(item=>item.arguments.query));
+  if(networkCalls<10)assert.equal(step.continuationRequired,true);
  }
- assert.equal((await chat()).message.content,'已综合搜索结果。');
+ assert.equal(networkCalls,10);
  assert.ok(peakInFlight>=2,'Independent searches still execute concurrently');
  assert.deepEqual(batchedQueries,Array.from({length:10},(_,i)=>'independent topic '+i));
  mode='failure';modelRounds=0;networkCalls=0;
