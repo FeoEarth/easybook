@@ -4,7 +4,21 @@
 
 **交付条件：** 本次包含 Android / Termux 命令桥接、回执、后端切换、脚本和安装指引。需要用户手工安装独立 Termux、受信任的 Linux ARM64 镜像、QEMU、SSH 密钥并先启动客体系统；在没有真实镜像与 Android 16 真机验证之前，不能声称这是开箱即用的 VM。
 
-## Android 安装、权限与风险
+## 一键安装（Android 0.8.47 / versionCode 115 起，实验性）
+
+1. 安装官方 Termux **0.109 或更新版本**（例如 F-Droid）；首次打开 Termux。在 Termux 的 `~/.termux/termux.properties` 中设置 `allow-external-apps = true`，执行 `termux-reload-settings`。然后在 Android 系统设置中向 Easybook 授予 **Run commands in Termux environment** 权限。Android 不允许 Easybook 静默完成这两项授权。
+2. Easybook → 设置 → AI → Agent 执行环境：先开启「启用本地代码沙箱」，再开启「可选 Linux 虚拟机（QEMU）」。点击 **安装 Linux 环境**。
+3. 安装器通过 Termux 的已授权命令通道运行 APK 内置、固定的 `setup.sh`，从 Termux 软件源安装 QEMU 依赖，并从 Debian 官方固定版本地址获取 ARM64 GenericCloud qcow2。APK **固定 SHA-512 摘要**，下载后必须验证通过才能使用。安装器自动创建 cloud-init NoCloud 配置、非特权 `easybook` 用户、密钥 SSH 与已校验的 `known_hosts`，无需手动生成镜像。
+4. 安装结束后点击 **启动虚拟机**。当界面显示 SSH 已验证，再到 Agent 会话上下文选择 Linux 执行环境。可随时停止虚拟机、卸载虚拟磁盘或刷新状态。**卸载不可恢复**，只删除 Termux 下的 `~/easybook-agent-vm` 专用目录。
+5. 当前下载镜像约数百 MB，安装至少要求 1.5 GB 剩余存储。虚拟磁盘的 6 GB 是稀疏虚拟容量而非立即占用空间。QEMU 使用软件模拟，安装、首次启动、SSH 与联网仍需 Android 16 真机测试。失败时可在 Termux 查看 `~/easybook-agent-vm/install.log`；Linux 下载断电/中断后可能需要卸载重装。
+
+**安全边界：** Easybook 只执行 APK 内自带的安装和生命周期脚本，绝不运行服务端/模型生成的 Termux 宿主 Shell。模型生成的代码仍只发送到 SSH 校验过的 Linux 客体。关闭虚拟机并不解除 Termux 的 Android 授权；建议仅在信任 Easybook 时授予该高权限。
+
+**Debian 镜像固定版本：** `debian-13-genericcloud-arm64-20260623-2518.qcow2`，原始文件与 SHA-512 见 [Debian 官方云镜像目录](https://cloud.debian.org/images/cloud/trixie/20260623-2518/) 与 [镜像清单](https://cloud-image-finder.debian.net/i/debian-13-genericcloud-arm64-20260623-2518)。升级镜像应修改固定摘要并重新发布 APK，而非静默替换用户系统。
+
+## 高级手动安装与风险（旧版流程）
+
+若不使用一键安装，仍可按以下步骤自行准备 QEMU 客体。新安装器已自动完成多数步骤，但 Termux 本身与 Android 权限仍须用户操作。
 
 1. 从可信渠道安装 Termux **0.109 或更新版本**。不能依赖 Android 应用数据目录执行从网上解压的 Linux 二进制。
 2. 在 Termux 执行 `pkg update && pkg install openssh coreutils qemu-system-aarch64-headless qemu-utils`。实际包名请按所用源检验。
