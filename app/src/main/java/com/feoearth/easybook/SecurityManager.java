@@ -58,6 +58,9 @@ public final class SecurityManager {
             case "sandbox.status":fields=Collections.emptySet();break;
             case "sandbox.configure":fields=fields("enabled");break;
             case "sandbox.fetch":fields=fields("url");break;
+            case "sandbox.vm.status":fields=Collections.emptySet();break;
+            case "sandbox.vm.configure":fields=fields("enabled");break;
+            case "sandbox.vm.execute":fields=fields("language","code");break;
             case "ai.local.status":case "ai.local.cancel":case "ai.local.runtime.install":case "ai.local.runtime.cancel":case "ai.local.runtime.delete":fields=Collections.emptySet();break;
             case "ai.local.install":case "ai.local.download.cancel":case "ai.local.delete":fields=fields("model");break;
             case "ai.local.generate":fields=fields("id","model","prompt");break;
