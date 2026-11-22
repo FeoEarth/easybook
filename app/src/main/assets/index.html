@@ -1571,7 +1571,8 @@ function renderAiVmStatus(){
  let note=v.connectionError?'无法获取 Termux 状态：'+v.connectionError:(phases[phase]||'状态待确认');
  if(!v.managementAvailable)note='一键安装需要新版 Android APK（versionCode 115 或更高），网页热更新无法单独启用此功能。';
  else if(!v.termuxInstalled)note='请先从 F-Droid 安装 Termux 0.109+，再授予 Easybook「在 Termux 中执行命令」权限。';
- else if(!v.termuxPermissionAvailable)note='当前安装的 Termux 没有提供 RUN_COMMAND 权限。请核对是否为官方 F-Droid/GitHub 版，勿直接卸载含有重要文件的 Termux。';
+ else if(v.termuxPermissionAvailable===undefined)note='请升级 Android APK 至 0.8.48（versionCode 116），以使用 Easybook 内的系统授权入口。';
+ else if(v.termuxPermissionAvailable===false)note='当前安装的 Termux 没有提供 RUN_COMMAND 权限。请核对是否为官方 F-Droid/GitHub 版，勿直接卸载含有重要文件的 Termux。';
  else if(!v.permissionGranted)note='点击「授权 Termux 命令权限」，通过 Android 系统弹窗授权；若被系统阻止，请检查系统权限管理器。Termux 内仍需开启 allow-external-apps。';
  else if(!aiSandboxStatus?.enabled)note='请先开启上方的本地代码沙箱。';
  else if(!v.enabled)note='请先启用 QEMU Linux 虚拟机。';
