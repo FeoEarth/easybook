@@ -35,7 +35,7 @@ export function validateLocalAiAction(action,mode='conversation'){
  const integer=(key,min,max,required=false)=>{if(required&&args[key]===undefined)throw Error('缺少工具参数：'+key);if(args[key]!==undefined&&(!Number.isInteger(args[key])||args[key]<min||args[key]>max))throw Error('工具参数无效：'+key)};
  const identity=(key,required=false)=>{string(key,36,required);if(args[key]!==undefined&&!uuid.test(args[key]))throw Error('工具 ID 无效')};
  if(name==='sandbox_execute'){
-  string('language',16,true);if(args.language!=='javascript')throw Error('本地沙箱暂只支持 JavaScript');
+  string('language',16,true);if(!['javascript','python','shell'].includes(args.language))throw Error('沙箱仅支持 JavaScript、Python 或 Shell');
   string('code',10000,true);
  }
  if(name==='sandbox_read_file'){
@@ -63,7 +63,7 @@ export function localAiPrompt(messages,{mode='conversation',memory='',toolResult
   '请求只能有一个 JSON 对象，JSON 必须使用双引号，不能添加解释或代码围栏。收到工具结果后继续分析，必要时再调用。',
   '只读工具：notes_list({limit?,folder_id?}),notes_search({query,limit?,folder_id?}),notes_get({id}),folders_list({}),tasks_list({limit?,note_id?,completed?}),workspace_get_summary({})。',
   agent?'Agent 模式可提议写入工具：notes_create({title,text?,folder_id?}),notes_update({id,version,title}),notes_append({id,version,text}),notes_pin({id,version,pinned})。必须先读取获得笔记 ID 和 version。每项写入都会暂停并等待用户逐项确认，确认前不得称其已执行。':'当前为对话模式：只能调用只读工具；创建、修改或删除内容时请建议切换 Agent 模式。',
-  sandbox&&agent?'用户已为当前 Agent 会话启用 Android 本地代码沙箱。可用工具：sandbox_execute({language:"javascript",code}),sandbox_list_files({}),sandbox_read_file({path})。脚本在会话隔离 Worker 内执行，有 sandbox.readFile(name)、sandbox.writeFile(name,text)、sandbox.deleteFile(name)、sandbox.listFiles()、await sandbox.fetchText(httpsUrl)、print(...)。只支持 JS，最长 30 秒；每次需要用户在应用内确认。沙箱不能直接访问笔记和账户凭证。':'沙箱执行工具当前未启用，不得提出 sandbox_* 调用。',
+  sandbox&&agent?'用户已为当前 Agent 会话启用 Android 本地代码沙箱。可用工具：sandbox_execute({language:"javascript"|"python"|"shell",code}),sandbox_list_files({}),sandbox_read_file({path})。JavaScript 仅在会话 Worker 执行，支持 sandbox.readFile(name)/writeFile(name,text)/listFiles()/fetchText(url)；Python/Shell 只在用户额外配置并选中 QEMU Linux 虚拟机时可用，不能操作 JS 沙箱文件。每次操作需在应用内确认。沙箱不能直接访问笔记和账户凭证。':'沙箱执行工具当前未启用，不得提出 sandbox_* 调用。',
   '不支持的工具或操作请如实说明，不要输出伪造的工具调用。'
  ];
  if(memory?.trim())rules.push('用户偏好（不覆盖以上规则）：'+memory.trim().slice(0,6000));
