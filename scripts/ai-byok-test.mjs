@@ -374,6 +374,12 @@ assert.equal(webSearchQuota(monthStart,{permanent:1,expires_at:0}).kind,'member'
  assert.equal(closed,beforeClosed,'Browser stays open between searches');
  await lease.browser.close();lease.browser=null;
  assert.equal(closed,beforeClosed+1,'Browser is closed when the run ends');
+ const concurrentLease={browser:null},beforeConcurrent=searches;
+ const concurrentResults=await Promise.all(Array.from({length:3},()=>runWebSearch(searchEnv,'concurrent-search-fixture',{query,maxResults:3},undefined,launchSearchBrowser,concurrentLease)));
+ assert.deepEqual(concurrentResults.map(item=>item.results.length),[1,1,1]);
+ assert.equal(searches,beforeConcurrent+1,'Concurrent searches share one browser launch');
+ await concurrentLease.browser.close();
+ assert.equal(closed,beforeClosed+2);
  const rejected=await runWebSearch(searchEnv,'launch-failure-fixture',{query,maxResults:3},undefined,async()=>{throw Object.assign(Error('429 Too many browser instances'),{status:429})});
  assert.equal(rejected.error.code,'web_search_rate_limited');
  assert.equal((await (await import('../worker/ai-web-search.mjs')).webSearchUsage(searchEnv,'launch-failure-fixture')).used,0,'Rejected launches must not use customer quota');
@@ -485,6 +491,58 @@ assert.equal(webSearchQuota(monthStart,{permanent:1,expires_at:0}).kind,'member'
  assert.deepEqual(parallelQueries,['APEC Shenzhen','APEC meetings']);
  assert.equal(result.webSearch.result.results.length,22,'Legacy search receipt remains available');
  assert.equal(sqlite.prepare("SELECT count FROM account_rate_limits WHERE bucket LIKE 'ai-web-search:month:%'").get().count,usedBefore,'Parallel research uses no Easybook browser quota');
+ assert.equal((await api('mcp','PUT',{parallelSearch:false})).status,200);
+}
+
+// No per-answer search cap: verify more than 8 sequential searches, plus
+// simultaneous tool calls whose executions overlap but return in model order.
+{
+ let mode='serial',modelRounds=0,networkCalls=0,inFlight=0,peakInFlight=0;
+ const fetcher=async(url,init={})=>{
+  const target=new URL(url);
+  if(target.hostname==='cloudflare-dns.com')return Response.json({Status:0,Answer:[{type:1,data:'93.184.216.34'}]});
+  if(target.hostname==='mcp.parallel.ai'){
+   if(init.method==='DELETE')return new Response(null,{status:204});
+   const rpc=JSON.parse(init.body);
+   if(rpc.method==='initialize')return Response.json({jsonrpc:'2.0',id:rpc.id,result:{protocolVersion:'2025-06-18',capabilities:{tools:{}}}});
+   if(rpc.method==='notifications/initialized')return new Response(null,{status:202});
+   assert.equal(rpc.method,'tools/call');
+   networkCalls++;inFlight++;peakInFlight=Math.max(inFlight,peakInFlight);
+   await new Promise(resolve=>setTimeout(resolve,10));
+   inFlight--;
+   const phrase=rpc.params.arguments.objective;
+   return Response.json({jsonrpc:'2.0',id:rpc.id,result:{content:[{type:'text',text:JSON.stringify({results:[{url:'https://example.org/q/'+encodeURIComponent(phrase),title:'Found '+phrase,excerpts:['Public information']}]})}]}});
+  }
+  assert.equal(target.hostname,'api.openai.com');
+  const payload=JSON.parse(init.body),seen=payload.messages.filter(x=>x.role==='tool').length;
+  modelRounds++;
+  if(mode==='failure'&&seen>=1)return Response.json({error:{message:'upstream failed'}},{status:503});
+  let count=mode==='serial'?seen<10?1:0:mode==='batch'?seen?0:10:seen?0:1;
+  const calls=Array.from({length:count},(_,i)=>({id:mode+'-'+seen+'-'+i,type:'function',
+   function:{name:'web_search',arguments:JSON.stringify({query:'independent topic '+(seen+i),maxResults:3})}}));
+  return Response.json({choices:[{message:calls.length?{role:'assistant',content:'',tool_calls:calls}:{role:'assistant',content:'已综合搜索结果。'}}]});
+ };
+ const api=(path,method,body)=>aiAPI(request('/api/ai/'+path,method,body),env,principal,{workspaceId:workspace,fetcher});
+ assert.equal((await api('mcp','PUT',{parallelSearch:true})).status,200);
+ assert.equal((await api('mcp','PUT',{parallelSearchApproval:'always'})).status,200);
+ assert.equal((await api('mcp','PUT',{parallelMode:'anonymous'})).status,200);
+ const chat=async()=> (await api('chat','POST',{credentialId:openaiId,mode:'conversation',messages:[{role:'user',content:'检索10个独立主题'}]})).json();
+ const serial=await chat();
+ assert.equal(serial.message.content,'已综合搜索结果。');
+ assert.equal(serial.webSearches.length,10,'Sequential calls must not stop at 8');
+ assert.ok(serial.webSearches.every(item=>item.result.results.length===1));
+ assert.equal(networkCalls,10);assert.equal(peakInFlight,1);
+ mode='batch';modelRounds=0;networkCalls=0;inFlight=0;peakInFlight=0;
+ const batched=await chat();
+ assert.equal(batched.message.content,'已综合搜索结果。');
+ assert.equal(batched.webSearches.length,10,'Process every tool call, not just the first 6');
+ assert.ok(peakInFlight>=2,'Independent searches execute concurrently');
+ assert.deepEqual(batched.webSearches.map(item=>item.arguments.query),Array.from({length:10},(_,i)=>'independent topic '+i));
+ mode='failure';modelRounds=0;networkCalls=0;
+ const partial=await chat();
+ assert.equal(partial.partial,true,'A provider failure after research must not erase results');
+ assert.equal(partial.webSearches.length,1);
+ assert.match(partial.message.content,/已保留检索结果/);
  assert.equal((await api('mcp','PUT',{parallelSearch:false})).status,200);
 }
 

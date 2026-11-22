@@ -320,10 +320,13 @@ export async function aiAPI(request,env,principal,{workspaceId,fetcher=fetch,lau
    const preferences=preferenceContext(settings);
    const conversation=[{role:'system',content:assistantSystemPrompt(mode)+'\n'+aiEnvironmentPrompt({role:access.role,webSearch:searchEnabled,autoSearch})+externalPolicy+searchPolicy+(preferences?'\n以下为用户个性化偏好，优先服从当前明确要求；不能改变工具权限与确认规则。\n'+preferences:'')},...messages];
    const used=[],webSearches=[],browserLease={browser:null};
-   const MAX_AUTO_SEARCHES=8,MAX_MODEL_ROUNDS=12;
+   // No per-answer search-count ceiling. Individual providers enforce their
+   // own quota and the model decides when enough sources have been collected.
+   // Bound only simultaneous upstream calls to protect shared runtime resources.
+   const SEARCH_CONCURRENCY=3;
    let reasoning='';
    const answer=(content,extra={})=>({message:{role:'assistant',content,...(reasoning?{reasoning}:{})},tools:used,...(webSearches.length?{webSearch:webSearches.at(-1),webSearches}:{}),...extra});
-   try{for(let turn=0;turn<MAX_MODEL_ROUNDS;turn++){
+   try{for(;;){
    let receivedReasoning=false;
    const addReasoning=text=>{
     const chunk=((!receivedReasoning&&reasoning?'\n\n':'')+text).slice(0,32000-reasoning.length);
@@ -331,20 +334,30 @@ export async function aiAPI(request,env,principal,{workspaceId,fetcher=fetch,lau
     reasoning+=chunk;receivedReasoning=true;
     if(input?.stream===true)emit('reasoning',{text:chunk});
    };
-   const offeredTools=webSearches.length>=MAX_AUTO_SEARCHES?tools.filter(tool=>tool.function.name!==WEB_SEARCH):tools;
-    const {reasoning:thought,...message}=await completion(key,row,conversation,offeredTools,fetcher,input?.stream===true?text=>emit('delta',{text}):undefined,request.signal,undefined,addReasoning);
+   let completed;
+   try{
+    completed=await completion(key,row,conversation,tools,fetcher,input?.stream===true?text=>emit('delta',{text}):undefined,request.signal,undefined,addReasoning);
+   }catch(error){
+    if(!webSearches.length||request.signal?.aborted)throw error;
+    // A provider failure after successful research must not discard sources
+    // or turn an otherwise useful multi-search run into ai_unavailable.
+    console.warn(JSON.stringify({event:'ai_search_finalization_failed',code:error?.code||'provider_unavailable',searches:webSearches.length}));
+    const successes=webSearches.filter(item=>item.result?.results?.length).length;
+    return answer('已完成 '+successes+' 次有效联网检索，但 AI 后续生成遇到问题。已保留检索结果，可以继续回答并使用这些来源。',{model:row.model,providerName:row.provider_name,partial:true});
+   }
+   const {reasoning:thought,...message}=completed;
    const calls=Array.isArray(message.tool_calls)?message.tool_calls:[];
    if(!receivedReasoning&&thought)addReasoning(thought);
    if(!calls.length)return answer(typeof message.content==='string'?message.content:'',{model:row.model,providerName:row.provider_name});
    // DeepSeek expects the assistant's reasoning back with the tool result in the same exchange.
    conversation.push(row.provider==='deepseek'&&thought?{...message,reasoning_content:thought}:message);
    emit('reset',{});
-   const searchRequested=searchEnabled&&webSearches.length<MAX_AUTO_SEARCHES&&calls.slice(0,6).some(call=>call?.function?.name===WEB_SEARCH);
+   const searchRequested=searchEnabled&&calls.some(call=>call?.function?.name===WEB_SEARCH);
    const currentSearch=searchRequested&&autoSearch?await readPreferences(env,principal.accountId):settings;
    const currentQuota=searchRequested&&autoSearch&&currentSearch.webSearch&&webSearchAvailable(env)?await webSearchUsage(env,principal.accountId):null;
    const currentPrimary=!!currentQuota?.remaining,currentParallel=currentSearch.parallelSearch===true;
    const automatically=autoSearch&&(currentPrimary||currentParallel)&&(!currentPrimary||currentSearch.webSearchApproval==='always')&&(!currentParallel||currentSearch.parallelSearchApproval==='always');
-   const approvalCall=calls.slice(0,6).find(call=>(localSandbox&&SANDBOX_NAMES.has(call?.function?.name))||(searchRequested&&!automatically&&call?.function?.name===WEB_SEARCH)||external.has(call?.function?.name)||registry.some(t=>t.name===call?.function?.name&&!t.risk&&WRITE.includes(t.scope)&&scopes.includes(t.scope)));
+   const approvalCall=calls.find(call=>(localSandbox&&SANDBOX_NAMES.has(call?.function?.name))||(searchRequested&&!automatically&&call?.function?.name===WEB_SEARCH)||external.has(call?.function?.name)||registry.some(t=>t.name===call?.function?.name&&!t.risk&&WRITE.includes(t.scope)&&scopes.includes(t.scope)));
    if(approvalCall){
     const name=approvalCall.function.name;let args;
     try{args=JSON.parse(approvalCall.function.arguments||'{}');if(!object(args))throw Error('invalid')}catch{throw Object.assign(Error('Invalid tool arguments'),{code:'invalid_tool_arguments',status:400})}
@@ -370,28 +383,46 @@ export async function aiAPI(request,env,principal,{workspaceId,fetcher=fetch,lau
     if(remote)return answer('第三方工具调用等待确认。确认后，所示参数将发送至 '+new URL(remote.url).hostname+'。',{approval:{id,tool:name,arguments:args,expiresAt,external:{server:remote.server,tool:remote.name,host:new URL(remote.url).hostname}}});
     return answer('Agent 已准备 '+name+' 操作，正在等待你核对参数并确认。未确认前不会修改工作区。',{approval:{id,tool:name,arguments:args,expiresAt}});
    }
-   for(const call of calls.slice(0,6)){
-    const name=call?.function?.name;let args,result;
+   const executeCall=async call=>{
+    const name=call?.function?.name;let args,result,receipt;
     emit('tool_start',{name:typeof name==='string'?name:'unknown'});
     try{
      args=JSON.parse(call?.function?.arguments||'{}');
      if(name===WEB_SEARCH){
-      if(!automatically||webSearches.length>=MAX_AUTO_SEARCHES)result={error:{code:'web_search_budget_exhausted',message:'本轮自动检索预算已用完，请基于现有资料回答。'}};
+      if(!automatically)result={error:{code:'web_search_approval_required',message:'联网搜索需要用户授权。'}};
       else{
        const query=webSearchQuery(args),maxResults=webSearchResultLimit(args);
        result=await searchApprovedWeb(env,principal.accountId,{query,maxResults,requireAlways:true},request.signal,launchSearchBrowser,fetcher,browserLease);
-       webSearches.push({arguments:{query,maxResults},result});
+       receipt={arguments:{query,maxResults},result};
       }
      }else result=await callTool({env,workspace:workspaceId,client:'easybook-agent:'+principal.accountId,scopes},name,args);
-    }
-    catch(error){result={error:{code:error.code||'TOOL_ERROR',message:error.code?error.message:'Tool failed'}}}
+    }catch(error){result={error:{code:error?.code||'TOOL_ERROR',message:error?.code?error.message:'Tool failed'}}}
     emit('tool_end',{name:typeof name==='string'?name:'unknown',status:result?.error?'failed':'done'});
-    used.push({name,ok:!result?.error});
-    conversation.push({role:'tool',tool_call_id:call.id,content:JSON.stringify(result).slice(0,180000)});
+    return {call,name,result,receipt};
+   };
+   let completedCalls;
+   if(automatically&&calls.length>1&&calls.every(call=>call?.function?.name===WEB_SEARCH)){
+    // Multiple independent queries can execute concurrently. Retain the
+    // model's tool-call order when feeding tool results back to the provider.
+    completedCalls=new Array(calls.length);
+    let next=0;
+    await Promise.all(Array.from({length:Math.min(SEARCH_CONCURRENCY,calls.length)},async()=>{
+     for(;;){
+      const index=next++;
+      if(index>=calls.length)return;
+      completedCalls[index]=await executeCall(calls[index]);
+     }
+    }));
+   }else{
+    completedCalls=[];
+    for(const call of calls)completedCalls.push(await executeCall(call));
+   }
+   for(const item of completedCalls){
+    used.push({name:item.name,ok:!item.result?.error});
+    if(item.receipt)webSearches.push(item.receipt);
+    conversation.push({role:'tool',tool_call_id:item.call.id,content:JSON.stringify(item.result).slice(0,180000)});
    }
   }
-   const final=await completion(key,row,conversation,[],fetcher,undefined,request.signal,800);
-   return answer(final.tool_calls?.length?'已完成可用检索，请基于目前的来源继续提问。':typeof final.content==='string'&&final.content?final.content:'本轮检索已结束，请基于现有来源继续提问。',{model:row.model,providerName:row.provider_name});
    }finally{
     const browser=browserLease.browser;browserLease.browser=null;
     if(browser)try{await browser.close()}catch{}
