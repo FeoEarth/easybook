@@ -64,16 +64,16 @@ final class AgentVmBridge {
         }
     }
     private static String installer(Context context)throws Exception {
-        StringBuilder script=new StringBuilder("set -euo pipefail\\numask 077\\DIR=\\\"$HOME/easybook-agent-vm\\\"\\mkdir -p \\\"$DIR\\\"\\");
+        StringBuilder script=new StringBuilder("set -euo pipefail\numask 077\nDIR=\"$HOME/easybook-agent-vm\"\nmkdir -p \"$DIR\"\n");
         // Transfer only trusted APK-bundled scripts; no mutable GitHub-main curl|bash.
         for(String name:new String[]{"runner","start-qemu","setup"}) {
             String data=android.util.Base64.encodeToString(asset(context,name).getBytes(StandardCharsets.UTF_8),android.util.Base64.NO_WRAP);
-            script.append("base64 -d > \\\"$DIR/").append(name).append(".sh\\\" <<'EASYBOOK_BUNDLED_SCRIPT'\\")
-                .append(data).append("\\EASYBOOK_BUNDLED_SCRIPT\\");
+            script.append("base64 -d > \"$DIR/").append(name).append(".sh\" <<'EASYBOOK_BUNDLED_SCRIPT'\n")
+                .append(data).append("\nEASYBOOK_BUNDLED_SCRIPT\n");
         }
-        script.append("chmod 700 \\\"$DIR/runner.sh\\\" \\\"$DIR/start-qemu.sh\\\" \\\"$DIR/setup.sh\\\"\\");
-        script.append("exec \\\"$DIR/setup.sh\\\"\\");
-        return script.toString().replace('\\\\','\\n');
+        script.append("chmod 700 \"$DIR/runner.sh\" \"$DIR/start-qemu.sh\" \"$DIR/setup.sh\"\n");
+        script.append("exec \"$DIR/setup.sh\"\n");
+        return script.toString();
     }
     private static JSONObject termuxControl(Context context,String script,String action,boolean wait)throws Exception {
         if(!permitted(context))throw new SecurityException("请安装 Termux 0.109+，开启 allow-external-apps，并授予 Easybook RUN_COMMAND 权限");
