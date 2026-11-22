@@ -1,4 +1,5 @@
 import {enrichWebSearchResults} from './ai-web-sources.mjs';
+import {createAgentQueue,claimAgentQueue,checkpointAgentQueue,finishAgentQueue,releaseAgentQueue} from './ai-agent-queue.mjs';
 import {WEB_SEARCH,webSearchTool,webSearchAvailable,webSearchQuery,webSearchResultLimit,runWebSearch,webSearchUsage} from './ai-web-search.mjs';
 import {runParallelMcpSearch} from './ai-parallel-search.mjs';
 import {AI_CHAT_MAX_BODY_BYTES,AI_CHAT_MAX_MESSAGES,AI_CHAT_MAX_TEXT_CHARS} from '../shared/ai-context-policy.mjs';
@@ -273,7 +274,24 @@ export async function aiAPI(request,env,principal,{workspaceId,fetcher=fetch,lau
    catch(error){result={error:{code:error.code||'TOOL_ERROR',message:error.code?error.message:'Tool failed'}}}
    return response({ok:!result?.error,tool:pending.tool_name,result:result?.error&&!result.browserSearch?undefined:result,error:result?.error});
   }
-  const input=await boundedJSON(request,AI_CHAT_MAX_BODY_BYTES);
+  let input=await boundedJSON(request,AI_CHAT_MAX_BODY_BYTES);
+  // Existing Android clients already forward "purpose" through the verified
+  // native bridge; use it as a compatibility transport for research run IDs.
+  const purposeRunId=typeof input?.purpose==='string'&&/^agent_run:[a-f0-9-]{36}$/.test(input.purpose)?input.purpose.slice(10):'';
+  const resumeId=input?.agentRunId||purposeRunId;
+  let resumed=null,runLease=null;
+  if(resumeId){
+   if(typeof resumeId!=='string'||!/^[a-f0-9-]{36}$/.test(resumeId))return response({error:'invalid_agent_run'},400);
+   runLease=crypto.randomUUID();
+   const stored=await claimAgentQueue(env,principal.accountId,workspaceId,resumeId,runLease);
+   try{resumed=JSON.parse(await open(env,{account_id:principal.accountId,id:'agent-run:'+resumeId,key_ciphertext:stored.state_ciphertext,key_iv:stored.state_iv}))}
+   catch(error){await releaseAgentQueue(env,principal.accountId,workspaceId,resumeId,runLease);throw error}
+   if(!resumed||resumed.version!==1||!Array.isArray(resumed.conversation)||!(Array.isArray(resumed.calls)||resumed.calls===null)||!object(resumed.options)){
+    await releaseAgentQueue(env,principal.accountId,workspaceId,resumeId,runLease);
+    return response({error:'invalid_agent_run'},409);
+   }
+   input={...input,...resumed.options,stream:input.stream,purpose:undefined,agentRunId:resumeId};
+  }
   const savedRow=await credential(env,principal.accountId,input?.credentialId||'');
   if(input?.model!==undefined&&input.model!==''&&(typeof input.model!=='string'||!modelPattern.test(input.model)))return response({error:'invalid_credential'},400);
   const row=savedRow&&input?.model?{...savedRow,model:input.model}:savedRow;if(!row)return response({error:'ai_not_configured'},409);
@@ -293,7 +311,7 @@ export async function aiAPI(request,env,principal,{workspaceId,fetcher=fetch,lau
    if(!title)return response({error:'invalid_title'},502);
    return response({title});
   }
-  const messages=safeMessages(input?.messages,input?.attachments||[],{maxMessages:AI_CHAT_MAX_MESSAGES,maxChars:AI_CHAT_MAX_TEXT_CHARS}),mode=input?.mode==='agent'?'agent':'conversation',scopes=toolScopes(access.role,mode),tools=toolsFor(access.role,mode),key=await open(env,row);
+  const messages=resumed?[]:safeMessages(input?.messages,input?.attachments||[],{maxMessages:AI_CHAT_MAX_MESSAGES,maxChars:AI_CHAT_MAX_TEXT_CHARS}),mode=input?.mode==='agent'?'agent':'conversation',scopes=toolScopes(access.role,mode),tools=toolsFor(access.role,mode),key=await open(env,row);
   const run=async(emit=()=>{},runSignal=request.signal)=>{
    const localSandbox=mode==='agent'&&input?.localSandbox===true;
    if(localSandbox){
@@ -318,8 +336,32 @@ export async function aiAPI(request,env,principal,{workspaceId,fetcher=fetch,lau
    if(searchEnabled)tools.push({...webSearchTool,function:{...webSearchTool.function,description:webSearchTool.function.description+' Easybook 在启用两种搜索来源时并行查询；内置额度耗尽后仍可查询 Parallel MCP。只发送简短公开关键词，不要提供笔记正文或密钥。'}});
    const searchPolicy=searchEnabled?'\n'+webResearchInstruction(autoSearch)+'\nEasybook 内置搜索与 Parallel MCP 进阶搜索各自独立限额。两者启用时并行检索；内置额度用尽时 Parallel 仍可独立工作（可能被 Parallel 匿名限流）。仅引用搜索结果里的真实链接，不把搜索摘要当作已阅读全文。':'';
    const preferences=preferenceContext(settings);
-   const conversation=[{role:'system',content:assistantSystemPrompt(mode)+'\n'+aiEnvironmentPrompt({role:access.role,webSearch:searchEnabled,autoSearch})+externalPolicy+searchPolicy+(preferences?'\n以下为用户个性化偏好，优先服从当前明确要求；不能改变工具权限与确认规则。\n'+preferences:'')},...messages];
+   const conversation=resumed?.conversation||[{role:'system',content:assistantSystemPrompt(mode)+'\n'+aiEnvironmentPrompt({role:access.role,webSearch:searchEnabled,autoSearch})+externalPolicy+searchPolicy+(preferences?'\n以下为用户个性化偏好，优先服从当前明确要求；不能改变工具权限与确认规则。\n'+preferences:'')},...messages];
    const used=[],webSearches=[],browserLease={browser:null};
+   let agentRunId=resumeId||null,agentLease=runLease;
+   let pendingCalls=resumed?.calls||null,nextCall=resumed?.nextCall||0;
+   const stateOptions={credentialId:row.id,model:row.model,mode,externalTools:input.externalTools===true,localSandbox:input.localSandbox===true,localSandboxBackend:input.localSandboxBackend||'javascript'};
+   const state=()=>({version:1,options:stateOptions,conversation,calls:pendingCalls,nextCall});
+   const encryptState=async id=>{
+    const serialized=JSON.stringify(state());
+    if(serialized.length>1800000)throw Object.assign(Error('Agent context too large'),{code:'agent_context_too_large',status:413});
+    return seal(env,principal.accountId,'agent-run:'+id,serialized);
+   };
+   const createQueue=async()=>{
+    if(agentRunId)return;
+    agentRunId=crypto.randomUUID();agentLease=crypto.randomUUID();
+    await createAgentQueue(env,principal.accountId,workspaceId,agentRunId,agentLease,await encryptState(agentRunId));
+   };
+   const checkpoint=async()=>{
+    if(!agentRunId)return;
+    await checkpointAgentQueue(env,principal.accountId,workspaceId,agentRunId,agentLease,await encryptState(agentRunId));
+    agentLease=null;
+   };
+   const finishQueue=async()=>{
+    if(!agentRunId||!agentLease)return;
+    await finishAgentQueue(env,principal.accountId,workspaceId,agentRunId,agentLease);
+    agentLease=null;
+   };
    // There is no limit on total searches for a user task. Keep each HTTP
    // segment within a soft wall-time budget so Workers do not exhaust CPU.
    // The client continues a long task in another request with saved receipts.
@@ -333,11 +375,14 @@ export async function aiAPI(request,env,principal,{workspaceId,fetcher=fetch,lau
    const configuredSegment=Number(env.AI_SEARCH_SEGMENT_MS);
    const SEARCH_SEGMENT_MS=Number.isFinite(configuredSegment)&&configuredSegment>0?Math.min(20000,configuredSegment):20000;
    const segmentExpired=()=>Date.now()-segmentStarted>=SEARCH_SEGMENT_MS;
-   const partialSegment=()=>answer('本阶段已执行 '+webSearches.length+' 次联网搜索，已保存来源，正在继续原研究任务。',{model:row.model,providerName:row.provider_name,partial:true,continuationRequired:true});
+   const partialSegment=async()=>{
+    await checkpoint();
+    return answer('',{model:row.model,providerName:row.provider_name,partial:true,continuationRequired:true,agentRunId,queuedTools:pendingCalls?.length-nextCall||0});
+   };
    let reasoning='';
    const answer=(content,extra={})=>({message:{role:'assistant',content,...(reasoning?{reasoning}:{})},tools:used,...(webSearches.length?{webSearch:webSearches.at(-1),webSearches}:{}),...extra});
    try{for(;;){
-   if(webSearches.length&&segmentExpired())return partialSegment();
+   if(agentRunId&&segmentExpired())return partialSegment();
    let receivedReasoning=false;
    const addReasoning=text=>{
     const chunk=((!receivedReasoning&&reasoning?'\n\n':'')+text).slice(0,32000-reasoning.length);
@@ -359,7 +404,7 @@ export async function aiAPI(request,env,principal,{workspaceId,fetcher=fetch,lau
    const {reasoning:thought,...message}=completed;
    const calls=Array.isArray(message.tool_calls)?message.tool_calls:[];
    if(!receivedReasoning&&thought)addReasoning(thought);
-   if(!calls.length)return answer(typeof message.content==='string'?message.content:'',{model:row.model,providerName:row.provider_name});
+   if(!calls.length){await finishQueue();return answer(typeof message.content==='string'?message.content:'',{model:row.model,providerName:row.provider_name})}
    // DeepSeek expects the assistant's reasoning back with the tool result in the same exchange.
    conversation.push(row.provider==='deepseek'&&thought?{...message,reasoning_content:thought}:message);
    emit('reset',{});
@@ -370,6 +415,7 @@ export async function aiAPI(request,env,principal,{workspaceId,fetcher=fetch,lau
    const automatically=autoSearch&&(currentPrimary||currentParallel)&&(!currentPrimary||currentSearch.webSearchApproval==='always')&&(!currentParallel||currentSearch.parallelSearchApproval==='always');
    const approvalCall=calls.find(call=>(localSandbox&&SANDBOX_NAMES.has(call?.function?.name))||(searchRequested&&!automatically&&call?.function?.name===WEB_SEARCH)||external.has(call?.function?.name)||registry.some(t=>t.name===call?.function?.name&&!t.risk&&WRITE.includes(t.scope)&&scopes.includes(t.scope)));
    if(approvalCall){
+    await finishQueue();
     const name=approvalCall.function.name;let args;
     try{args=JSON.parse(approvalCall.function.arguments||'{}');if(!object(args))throw Error('invalid')}catch{throw Object.assign(Error('Invalid tool arguments'),{code:'invalid_tool_arguments',status:400})}
     if(localSandbox&&SANDBOX_NAMES.has(name))args=validateSandboxTool(name,args);
