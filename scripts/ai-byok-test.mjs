@@ -586,14 +586,26 @@ assert.equal(webSearchQuota(monthStart,{permanent:1,expires_at:0}).kind,'member'
  assert.deepEqual(serial.webSearches.map(item=>item.arguments.query),Array.from({length:10},(_,i)=>'independent topic '+i));
  assert.equal(networkCalls,10);assert.equal(peakInFlight,1);
  mode='batch';modelRounds=0;networkCalls=0;inFlight=0;peakInFlight=0;
- const first=await (await run(initial)).json();
+ // A fast provider should execute ALL ten planned calls in one HTTP request.
+ // Two means max concurrent work, NOT max calls per request or model turn.
+ const uninterrupted=await (await run(initial)).json();
+ assert.equal(uninterrupted.continuationRequired,undefined,'Fast searches must not stop after two calls');
+ assert.equal(uninterrupted.message.content,'已综合搜索结果。');
+ assert.equal(uninterrupted.webSearches.length,10,'One model turn can complete ten tools across five internal waves');
+ assert.equal(modelRounds,2,'Model plans once and synthesizes once, with no repeated planning');
+ assert.ok(peakInFlight>=2,'Independent searches overlap');
+ assert.deepEqual(uninterrupted.webSearches.map(x=>x.arguments.query),Array.from({length:10},(_,i)=>'independent topic '+i));
+ // Force a short Worker time budget to verify durable continuation when needed.
+ modelRounds=0;networkCalls=0;inFlight=0;peakInFlight=0;
+ const segmentedRun=body=>aiAPI(request('/api/ai/chat','POST',body),{...env,AI_SEARCH_SEGMENT_MS:1},principal,{workspaceId:workspace,fetcher});
+ const first=await (await segmentedRun(initial)).json();
  assert.equal(first.continuationRequired,true);
  assert.equal(first.queuedTools,8);
  const stored=sqlite.prepare('SELECT state_ciphertext,state_iv FROM ai_agent_run_queue WHERE id=?').get(first.agentRunId);
  assert.ok(stored?.state_ciphertext&&!stored.state_ciphertext.includes('independent topic'));
  const other=await aiAPI(request('/api/ai/chat','POST',{purpose:'agent_run:'+first.agentRunId,messages:[]}),env,{...principal,accountId:otherAccount},{workspaceId:workspace,fetcher});
  assert.equal(other.status,403,'Run IDs cannot cross account permissions');
- const batched=await completeResearch(run,{purpose:'agent_run:'+first.agentRunId});
+ const batched=await completeResearch(segmentedRun,{purpose:'agent_run:'+first.agentRunId});
  const all=[...(first.webSearches||[]),...(batched.webSearches||[])];
  assert.equal(batched.message.content,'已综合搜索结果。');
  assert.equal(modelRounds,2,'A queued 10-tool batch uses one model planning round plus final synthesis');
