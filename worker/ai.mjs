@@ -535,7 +535,7 @@ export async function aiAPI(request,env,principal,{workspaceId,fetcher=fetch,lau
      webSearches.push(item.receipt);
      const sources=(item.receipt.result?.results||[]).slice(0,2);
      const lines=sources.map(source=>(String(source.title||'来源').slice(0,100)+' '+String(source.url||'').slice(0,350)));
-     emit('reasoning',{text:'\\n已记录搜索 '+webSearches.length+'：'+String(item.receipt.arguments.query||'').slice(0,100)+(lines.length?'\\n'+lines.join('\\n'):'（未取得来源）')+'\\n'});
+     emit('reasoning',{text:'\n已记录搜索 '+webSearches.length+'：'+String(item.receipt.arguments.query||'').slice(0,100)+(lines.length?'\n'+lines.join('\n'):'（未取得来源）')+'\n'});
     }
     conversation.push({role:'tool',tool_call_id:item.call.id,content:JSON.stringify(item.result).slice(0,30000)});
    }
@@ -559,6 +559,7 @@ export async function aiAPI(request,env,principal,{workspaceId,fetcher=fetch,lau
     const successes=webSearches.filter(item=>item.result?.results?.length).length;
     return answer(successes?'已取得 '+successes+' 次有效搜索结果。执行中断，原任务可以继续。':'Agent 执行暂时中断，工具调用队列已保留，可稍后继续。',{model:row.model,providerName:row.provider_name,partial:true,...(agentRunId?{paused:true,agentRunId}:{})});
    }finally{
+    if(agentRunId&&agentLease)try{await releaseAgentQueue(env,principal.accountId,workspaceId,agentRunId,agentLease)}catch{}
     const browser=browserLease.browser||await browserLease.launching?.catch(()=>null);
     browserLease.browser=null;
     if(browser)try{await browser.close()}catch{}
