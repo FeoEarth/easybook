@@ -17,7 +17,7 @@ import {aiEnvironmentPrompt,assistantSystemPrompt,CHAT_TITLE_INSTRUCTION,normali
 const encoder=new TextEncoder(),decoder=new TextDecoder();
 const providerSignal=(requestSignal,streaming)=>requestSignal?AbortSignal.any([requestSignal,AbortSignal.timeout(streaming?120000:45000)]):AbortSignal.timeout(streaming?120000:45000);
 const response=(body,status=200)=>Response.json(body,{status,headers:{'Cache-Control':'no-store','Referrer-Policy':'no-referrer','X-Content-Type-Options':'nosniff'}});
-const b64=bytes=>btoa(String.fromCharCode(...bytes));
+const b64=bytes=>{let binary='';for(let index=0;index<bytes.length;index+=32768)binary+=String.fromCharCode(...bytes.subarray(index,index+32768));return btoa(binary)};
 const unb64=value=>Uint8Array.from(atob(value),c=>c.charCodeAt(0));
 const modelPattern=modelIdPattern;
 const allowedRoles=new Set(['manager','editor','reader']);
