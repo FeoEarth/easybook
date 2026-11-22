@@ -4,9 +4,11 @@
 set -euo pipefail
 umask 077
 MODE="${1:-}"
+SCOPE="${2:-}"
 if [[ "$MODE" != shell && "$MODE" != python ]]; then
   echo 'Unsupported guest language' >&2; exit 64
 fi
+[[ "$SCOPE" =~ ^[a-f0-9]{64}$ ]] || { echo 'Invalid guest workspace scope' >&2; exit 64; }
 DIR="$HOME/easybook-agent-vm"
 KEY="$DIR/ssh/id_ed25519"
 KNOWN="$DIR/ssh/known_hosts"
@@ -22,7 +24,7 @@ SSH=(ssh -T -p 2222 -i "$KEY" -o BatchMode=yes -o StrictHostKeyChecking=yes
     -o PermitLocalCommand=no -o RequestTTY=no
     easybook@127.0.0.1)
 if [[ "$MODE" == shell ]]; then
-  timeout --signal=TERM --kill-after=3 32 "${SSH[@]}" 'cd "$HOME/work" && exec /bin/bash --noprofile --norc -s'
+  timeout --signal=TERM --kill-after=3 32 "${SSH[@]}" "umask 077; mkdir -p \"\$HOME/work/$SCOPE\"; cd \"\$HOME/work/$SCOPE\" && exec /bin/bash --noprofile --norc -s"
 else
-  timeout --signal=TERM --kill-after=3 32 "${SSH[@]}" 'cd "$HOME/work" && exec /usr/bin/python3 -I -'
+  timeout --signal=TERM --kill-after=3 32 "${SSH[@]}" "umask 077; mkdir -p \"\$HOME/work/$SCOPE\"; cd \"\$HOME/work/$SCOPE\" && exec /usr/bin/python3 -I -"
 fi
