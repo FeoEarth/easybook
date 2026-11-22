@@ -112,7 +112,8 @@ try{
   return {message:{content:'根据公开参考文档，搜索已完成。'}};
  });
  $('aiHubMessages').querySelector('[data-ai-approve-always]').click();
- await wait(()=>app.session().messages.at(-1).content==='根据公开参考文档，搜索已完成。');
+ try{await wait(()=>app.session().messages.at(-1).content==='根据公开参考文档，搜索已完成。')}
+ catch(error){console.error('Search-approval state',JSON.stringify({executions:approvalRequests,busy:app.busy(),pending:app.session().pendingApproval,last:app.session().messages.slice(-3).map(m=>({role:m.role,content:m.content,status:m.status,error:m.error}))}));throw error}
  assert.deepEqual(approvalRequests,['mcp','execute']);
  assert.equal($('aiHubMessages').querySelector('a[href="https://example.com/actual"]').textContent,'参考文档');
  assert.match($('aiHubMessages').textContent,/已读取正文/);
