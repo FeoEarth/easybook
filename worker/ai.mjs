@@ -371,7 +371,8 @@ export async function aiAPI(request,env,principal,{workspaceId,fetcher=fetch,lau
    // The limit below applies to a single Free Worker invocation, not a task.
    const MAX_SEARCHES_PER_REQUEST=2;
    let searchesStarted=0;
-   const MAX_SEARCH_ATTEMPTS=3;
+   const MAX_SEARCH_ATTEMPTS=4;
+   let retryAfterMs=0;
    const shouldRetrySearch=result=>{
     if(result?.results?.length>0)return false;
     const code=result?.error?.code||'';
@@ -384,7 +385,7 @@ export async function aiAPI(request,env,principal,{workspaceId,fetcher=fetch,lau
    const segmentExpired=()=>Date.now()-segmentStarted>=SEARCH_SEGMENT_MS;
    const partialSegment=async()=>{
     await checkpoint();
-    return answer('',{model:row.model,providerName:row.provider_name,partial:true,continuationRequired:true,agentRunId,queuedTools:pendingCalls?.length-nextCall||0});
+    return answer('',{model:row.model,providerName:row.provider_name,partial:true,continuationRequired:true,agentRunId,queuedTools:pendingCalls?.length-nextCall||0,...(retryAfterMs?{retryAfterMs}:{})});
    };
    let reasoning='';
    const answer=(content,extra={})=>({message:{role:'assistant',content,...(reasoning?{reasoning}:{})},tools:used,...(webSearches.length?{webSearch:webSearches.at(-1),webSearches}:{}),...extra});
@@ -524,7 +525,13 @@ export async function aiAPI(request,env,principal,{workspaceId,fetcher=fetch,lau
     }
     bufferedResults[index]=item;
    }
-   if(rateLimited)serializeSearches=true; // automatic fall back for this plan
+   if(rateLimited){
+    serializeSearches=true;
+    // Give Browser Run / Parallel rate limits time to recover instead of
+    // immediately issuing a second burst from the next HTTP request.
+    const attempts=Math.max(1,...Object.values(searchAttempts));
+    retryAfterMs=Math.min(25000,5000*Math.pow(2,attempts-1));
+   }
    // Flush only contiguous tool results. A successful parallel search behind
    // a retryable failure is buffered and never executed again.
    while(Object.prototype.hasOwnProperty.call(bufferedResults,nextCall)){
