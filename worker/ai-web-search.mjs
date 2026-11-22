@@ -270,6 +270,8 @@ export async function runWebSearch(env,account,args,signal,launchBrowser=binding
   return await Promise.race([search(),interrupted]);
  }catch(error){
   if(browserLease){close();await closing}
+  // A browser that never launched did not serve a search: do not charge quota.
+  if(!browser)try{await env.DB.prepare('UPDATE account_rate_limits SET count=count-1 WHERE bucket=? AND count>0').bind(bucket).run()}catch{}
   if(signal?.aborted)throw signal.reason||error;
   const limited=error?.status===429||/429|rate.limit|too.many.requests/i.test(String(error?.message||''));
   const reason=timeout.aborted?'timeout':limited?'rate_limited':'unavailable';
