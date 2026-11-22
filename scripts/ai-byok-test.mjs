@@ -639,7 +639,9 @@ assert.equal(webSearchQuota(monthStart,{permanent:1,expires_at:0}).kind,'member'
   ]}}]});
  };
  const api=(path,method,body)=>aiAPI(request('/api/ai/'+path,method,body),env,principal,{workspaceId:workspace,fetcher});
- await api('mcp','PUT',{parallelSearch:true,parallelSearchApproval:'always',webSearch:false});
+ await api('mcp','PUT',{webSearch:false});
+ await api('mcp','PUT',{parallelSearch:true});
+ await api('mcp','PUT',{parallelSearchApproval:'always'});
  const initial={credentialId:openaiId,mode:'agent',messages:[{role:'user',content:'Search two topics; retry failures'}]};
  const first=await (await api('chat','POST',initial)).json();
  assert.equal(first.continuationRequired,true);
