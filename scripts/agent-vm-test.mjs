@@ -49,7 +49,7 @@ assert.match(manager,/ssh_host_key_mismatch/);
 assert.match(manager,/ssh_auth_failed/);
 assert.match(manager,/boot_too_long/);
 assert.match(manager,/bootSeconds/);
-assert.match(manager,/case "diagnose"/);
+assert.match(manager,/\n  diagnose\)/);
 assert.match(manager,/boot_seconds/);
 assert.match(manager,/vm\.log/);
 assert.doesNotMatch(manager,/StrictHostKeyChecking=no/);
