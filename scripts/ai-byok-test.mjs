@@ -526,7 +526,7 @@ assert.equal(webSearchQuota(monthStart,{permanent:1,expires_at:0}).kind,'member'
  assert.equal((await api('mcp','PUT',{parallelSearch:true})).status,200);
  assert.equal((await api('mcp','GET')).status,200);
  const usedBefore=sqlite.prepare("SELECT count FROM account_rate_limits WHERE bucket LIKE 'ai-web-search:month:%'").get().count;
- const result=await (await api('chat','POST',{credentialId:openaiId,mode:'conversation',messages:[{role:'user',content:'比较 APEC 的多方资料'}]})).json();
+ const result=await completeResearch(body=>api('chat','POST',body),{credentialId:openaiId,mode:'conversation',messages:[{role:'user',content:'比较 APEC 的多方资料'}]});
  assert.equal(result.approval,undefined);
  assert.equal(result.message.content,'已综合不同查询结果与来源。');
  assert.equal(result.webSearches.length,2,'Research continues after the first search without starting a new reply');
@@ -541,7 +541,9 @@ assert.equal(webSearchQuota(monthStart,{permanent:1,expires_at:0}).kind,'member'
  assert.equal(segmented.continuationRequired,true,'Long research returns a resumable segment');
  assert.equal(segmented.partial,true);
  assert.equal(segmented.webSearches.length,1,'Completed search receipt is preserved before continuing');
- assert.match(segmented.message.content,/继续原研究任务/);
+ assert.match(segmented.agentRunId,/^[a-f0-9-]{36}$/,'A checkpoint saves the original model context in D1');
+ const resumed=await completeResearch(body=>aiAPI(request('/api/ai/chat','POST',body),{...env,AI_SEARCH_SEGMENT_MS:1},principal,{workspaceId:workspace,fetcher}),{purpose:'agent_run:'+segmented.agentRunId});
+ assert.equal(resumed.message.content,'已综合不同查询结果与来源。');
  assert.equal((await api('mcp','PUT',{parallelSearch:false})).status,200);
 }
 
