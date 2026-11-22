@@ -7,6 +7,9 @@ import {beginMcpOAuth,handleMcpOAuth,mcpAccessToken,mcpOAuthStatus} from './ai-m
 export const mcpError=(code,status=502)=>Object.assign(Error(code),{code,status});
 const serverLimit=20;
 export const PARALLEL_MCP_LOGIN='https://mcp.parallel.ai/mcp?login';
+// The real Parallel WWW-Authenticate challenge advertises this exact ?login
+// protected-resource metadata endpoint (unlike the anonymous MCP endpoint).
+const PARALLEL_OAUTH_METADATA='https://mcp.parallel.ai/.well-known/oauth-protected-resource/mcp?login';
 const parallelBuiltinLabel='Easybook · Parallel 登录';
 const isParallelBuiltin=row=>row?.label===parallelBuiltinLabel&&row?.url===PARALLEL_MCP_LOGIN;
 async function parallelRow(env,account){
@@ -21,7 +24,7 @@ function endpoint(value){
  let url;
  try{if(typeof value!=='string'||value.length>1024)throw Error();url=new URL(value)}catch{throw mcpError('mcp_invalid_url',400)}
  const host=url.hostname;
- if(url.protocol!=='https:'||url.username||url.password||url.port||(url.search&&url.href!==PARALLEL_MCP_LOGIN)||url.hash||
+ if(url.protocol!=='https:'||url.username||url.password||url.port||(url.search&&url.href!==PARALLEL_MCP_LOGIN&&url.href!==PARALLEL_OAUTH_METADATA)||url.hash||
     !publicHostname(host))throw mcpError('mcp_invalid_url',400);
  return url;
 }

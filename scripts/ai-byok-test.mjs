@@ -647,7 +647,8 @@ assert.equal(webSearchQuota(monthStart,{permanent:1,expires_at:0}).kind,'member'
 // Optional Parallel OAuth is bound to the Easybook account, hidden from
 // third-party MCP catalogs, stored encrypted, and only used when selected.
 {
- const base='https://mcp.parallel.ai/mcp',login=base+'?login',issuer='https://auth.parallel.ai';
+ const base='https://mcp.parallel.ai/mcp',login=base+'?login',issuer='https://platform.parallel.ai';
+ const metadataUrl='https://mcp.parallel.ai/.well-known/oauth-protected-resource/mcp?login';
  const callback='/api/ai/mcp/oauth/callback';
  const token='parallel-login-secret-token';
  let registered=0,protectedCalls=0,anonymousCalls=0,clientCalls=0,modelRounds=0;
@@ -658,15 +659,16 @@ assert.equal(webSearchQuota(monthStart,{permanent:1,expires_at:0}).kind,'member'
   if(u.href===login){
    assert.equal(init.method,'POST');
    if(anonymousLoginProbe)return Response.json({jsonrpc:'2.0',id:1,result:{protocolVersion:'2025-06-18',capabilities:{tools:{}}}});
-   return new Response(null,{status:401,headers:{'WWW-Authenticate':'Bearer resource_metadata="https://mcp.parallel.ai/.well-known/oauth-protected-resource/mcp"'}});
+   return new Response(null,{status:401,headers:{'WWW-Authenticate':'Bearer resource_metadata="'+metadataUrl+'"'}});
   }
-  if(u.href==='https://mcp.parallel.ai/.well-known/oauth-protected-resource/mcp')
-   return Response.json({resource:base,authorization_servers:[issuer],scopes_supported:['search']});
+  if(u.href===metadataUrl)
+   return Response.json({resource:login,authorization_servers:[issuer],scopes_supported:['key:read']});
   if(u.href===issuer+'/.well-known/oauth-authorization-server')
-   return Response.json({issuer,authorization_endpoint:issuer+'/authorize',token_endpoint:issuer+'/token',
-    registration_endpoint:issuer+'/register',code_challenge_methods_supported:['S256'],
+   return Response.json({issuer,authorization_endpoint:issuer+'/getKeys/authorize',token_endpoint:issuer+'/getKeys/token',
+    registration_endpoint:issuer+'/getKeys/register',code_challenge_methods_supported:['S256'],
+    grant_types_supported:['authorization_code','urn:ietf:params:oauth:grant-type:device_code'],
     token_endpoint_auth_methods_supported:['none']});
-  if(u.href===issuer+'/register'){
+  if(u.href===issuer+'/getKeys/register'){
    registered++;
    const requestBody=JSON.parse(init.body);
    assert.deepEqual(requestBody.redirect_uris,['https://easybook.test'+callback]);
@@ -674,8 +676,8 @@ assert.equal(webSearchQuota(monthStart,{permanent:1,expires_at:0}).kind,'member'
    assert.deepEqual(requestBody.grant_types,['authorization_code'],'Do not request unadvertised refresh-token grants');
    return Response.json({client_id:'parallel-public-client',token_endpoint_auth_method:'none'});
   }
-  if(u.href===issuer+'/token'){
-   assert.equal(new URLSearchParams(init.body).get('resource'),base);
+  if(u.href===issuer+'/getKeys/token'){
+   assert.equal(new URLSearchParams(init.body).get('resource'),login);
    return Response.json({access_token:token,token_type:'Bearer',expires_in:3600,refresh_token:'parallel-refresh-secret'});
   }
   if(u.href===base){
@@ -722,6 +724,9 @@ assert.equal(webSearchQuota(monthStart,{permanent:1,expires_at:0}).kind,'member'
  assert.equal(destination.searchParams.get('redirect_uri'),'https://easybook.test'+callback);
  assert.equal((await aiMcpOAuthPage(request(callback+'?state='+start.state+'&code=parallel-auth-code'),env,{fetcher:parallelFetcher})).status,200);
  assert.deepEqual(await (await config({oauthState:start.state})).json(),{status:'connected'});
+ // Auth server and protected-resource metadata must both match the real Parallel response.
+ assert.equal(destination.searchParams.get('resource'),login);
+ assert.equal(destination.searchParams.get('scope'),'key:read');
  const view=await (await config()).json();
  assert.equal(view.parallelSearch.connected,true);assert.equal(view.parallelSearch.mode,'account');
  assert.equal(view.servers.some(row=>row.label.includes('Parallel 登录')),false,'Built-in OAuth is not a duplicate external MCP');

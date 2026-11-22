@@ -44,6 +44,9 @@ async function discover(resource,context){
  const metadataHint=advertised?.[1]||advertised?.[2]||advertised?.[3];
  const resourceMetadata=[
   ...(metadataHint?[metadataHint]:[]),
+  // Parallel's ?login resource is distinct from its anonymous MCP endpoint.
+  // Preserve the exact query when discovering its metadata without a challenge.
+  ...(parallelLogin?[resource.origin+'/.well-known/oauth-protected-resource'+resource.pathname.replace(/\/$/,'')+resource.search]:[]),
   resource.origin+'/.well-known/oauth-protected-resource'+resource.pathname.replace(/\/$/,''),
   resource.origin+'/.well-known/oauth-protected-resource'
  ];
