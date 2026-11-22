@@ -393,6 +393,9 @@ public class MainActivity extends Activity {
             case "sandbox.status":return AgentSandboxNetwork.status(this);
             case "sandbox.configure":return AgentSandboxNetwork.configure(this,args);
             case "sandbox.fetch":return AgentSandboxNetwork.fetch(this,bounded(args,"url",2048));
+            case "sandbox.vm.status":return AgentVmBridge.status(this);
+            case "sandbox.vm.configure":return AgentVmBridge.configure(this,args);
+            case "sandbox.vm.execute":return AgentVmBridge.run(this,args);
             case "ai.local.status":return localAiModels.status().put("errors",localAiModels.errors()).put("runtime",localAiRuntime.status());
             case "ai.local.runtime.install":return localAiRuntime.install();
             case "ai.local.runtime.cancel":localAiRuntime.cancel();return localAiRuntime.status();
