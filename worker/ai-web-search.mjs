@@ -135,12 +135,12 @@ export async function expandDuckDuckGoResults(page,initial,target,signal,deadlin
  return {...current,loads};
 }
 
-async function crawlSearchPage(browser,site,query,signal,deadline,target=WEB_SEARCH_DEFAULT_RESULTS){
+async function crawlSearchPage(browser,site,query,signal,deadline,target=WEB_SEARCH_DEFAULT_RESULTS,pageContext=browser){
  const started=Date.now();
  let stage='page',status='unavailable',page;
  try{
   signal.throwIfAborted();
-  page=await browser.newPage();
+  page=await pageContext.newPage();
   if(site===duckduckgo){
    stage='browser_profile';
    await configureMobileSearchPage(page,await browser.version(),query);
@@ -233,33 +233,51 @@ export async function runWebSearch(env,account,args,signal,launchBrowser=binding
  const started=Date.now(),budget=12000,deadline=started+budget;
  const timeout=AbortSignal.timeout(budget);
  const searchSignal=signal?AbortSignal.any([signal,timeout]):timeout;
- let browser,closing,abort;
- // A shared browser is owned by the enclosing AI run, not by an individual
- // concurrent query. One timed-out search must not kill other searches.
+ let browser,context,closing,abort;
+ // The browser belongs to this AI reply; each concurrent search owns its
+ // isolated context. Aborting one query must not close its peers' browser.
  const close=()=>{if(browser&&!browserLease)closing??=browser.close().catch(()=>{})};
  const interrupted=new Promise((_,reject)=>{
-  abort=()=>{close();reject(searchSignal.reason)};
+  abort=()=>{if(context)void context.close().catch(()=>{});close();reject(searchSignal.reason)};
   searchSignal.addEventListener('abort',abort,{once:true});
  });
+ // A browser launch may return 429 while other requests launch sessions.
+ // Back off once per shared lease, not once per query.
+ const launch=async()=>{
+  try{return await launchBrowser(env.WEB_SEARCH_BROWSER)}
+  catch(error){
+   const limited=error?.status===429||/429|rate.limit|too.many.requests/i.test(String(error?.message||''));
+   const exhausted=/daily|today|time.limit.exceeded|monthly/i.test(String(error?.message||''));
+   if(!limited||exhausted||searchSignal.aborted)throw error;
+   const seconds=Number(error?.headers?.get?.('Retry-After'));
+   const delay=Number.isFinite(seconds)&&seconds>0?Math.min(2000,Math.max(1000,seconds*1000)):1100;
+   await new Promise(resolve=>setTimeout(resolve,delay));
+   searchSignal.throwIfAborted();
+   return launchBrowser(env.WEB_SEARCH_BROWSER);
+  }
+ };
  const search=async()=>{
   try{
    searchSignal.throwIfAborted();
-   if(!browserLease)browser=await launchBrowser(env.WEB_SEARCH_BROWSER);
+   if(!browserLease)browser=await launch();
    else{
-    // Coalesce simultaneous launch attempts into one Browser Run instance.
-    if(!browserLease.launching)browserLease.launching=Promise.resolve().then(()=>launchBrowser(env.WEB_SEARCH_BROWSER))
-     .then(instance=>{browserLease.browser=instance;return instance})
-     .catch(error=>{browserLease.launching=null;throw error});
+    // Coalesce parallel launches, including failures. A failed launch stays
+    // rejected for this reply, preventing a burst of identical 429 requests.
+    if(!browserLease.launching)browserLease.launching=launch().then(instance=>{
+     browserLease.browser=instance;
+     return instance;
+    });
     browser=await browserLease.launching;
    }
    searchSignal.throwIfAborted();
-   const primary=await crawlSearchPage(browser,duckduckgo,query,searchSignal,deadline,maxResults);
+   context=typeof browser.createBrowserContext==='function'?await browser.createBrowserContext():null;
+   const primary=await crawlSearchPage(browser,duckduckgo,query,searchSignal,deadline,maxResults,context||browser);
    let secondary={results:[],raw:0,filtered:0},matched=[];
    const keywords=englishKeywords(query);
    // A partial DDG result page no longer prevents a useful Wiby fallback.
    // Wiby is constrained to English keywords and ranked conservatively.
    if(primary.results.length<maxResults&&keywords.length&&deadline-Date.now()>1800){
-    secondary=await crawlSearchPage(browser,wiby,query,searchSignal,deadline,maxResults);
+    secondary=await crawlSearchPage(browser,wiby,query,searchSignal,deadline,maxResults,context||browser);
     matched=relevantResults(secondary.results,keywords);
    }
    const seen=new Set(),unique=[];
@@ -272,7 +290,7 @@ export async function runWebSearch(env,account,args,signal,launchBrowser=binding
     wiby:{raw:secondary.raw||0,accepted:matched.length},duplicatesRemoved:primary.results.length+matched.length-unique.length,returned:results.length};
    if(results.length)return {results,source:primary.results.length?'duckduckgo':'wiby',diagnostics};
    return {...searchFailure(primary.status),diagnostics};
-  }finally{if(!browserLease){close();await closing}}
+  }finally{if(context)try{await context.close()}catch{};if(!browserLease){close();await closing}}
  };
  try{
   return await Promise.race([search(),interrupted]);
