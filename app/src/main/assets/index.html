@@ -2515,11 +2515,19 @@ function renderAiHub(){
  $('aiSandboxSessionRow').hidden=!native||!aiSandboxStatus?.enabled||mode!=='agent';
  $('aiSandboxSession').checked=!!session.sandboxEnabled;
  $('aiSandboxSession').disabled=aiHubBusy||!!session.pendingApproval;
+ $('aiSandboxControls').hidden=!sandboxSessionActive(session);
+ const linuxAvailable=!!aiVmStatus?.ready;
+ $('aiSandboxBackend').querySelector('option[value="linux"]').disabled=!linuxAvailable;
+ $('aiSandboxBackend').value=session.sandboxBackend==='linux'&&linuxAvailable?'linux':'javascript';
+ $('aiSandboxBackend').disabled=aiHubBusy||!!session.pendingApproval;
+ for(const name of ['aiSandboxImport','aiSandboxReload','aiSandboxExport','aiSandboxDelete','aiSandboxClear'])
+  $(name).disabled=aiHubBusy||!!session.pendingApproval;
+ if(!$('aiSandboxControls').hidden&&$('aiContextPanel').hidden===false)void refreshAiSandboxFiles();
  $('aiHubTitle').textContent=session.title;
  $('aiHubComposerModel').textContent=session.profileId==='__local__'?(aiLocalStatus?.models?.find(m=>m.id===session.model)?.title||session.model)+' · 本地':session.model||activeAiProfile()?.model||'选择模型';
  $('aiHubConversation').setAttribute('aria-pressed',String(mode==='conversation'));
  $('aiHubAgent').setAttribute('aria-pressed',String(mode==='agent'));
- $('aiHubHint').textContent=(session.profileId==='__local__'?'本地模型 · ':'')+(mode==='agent'?'Agent · 写入逐项确认':'对话 · 仅可读取笔记')+(sandboxSessionActive(session)?' · 本地沙箱已启用':'')+' · 仅存本机';
+ $('aiHubHint').textContent=(session.profileId==='__local__'?'本地模型 · ':'')+(mode==='agent'?'Agent · 写入逐项确认':'对话 · 仅可读取笔记')+(sandboxSessionActive(session)?session.sandboxBackend==='linux'&&aiVmStatus?.ready?' · QEMU Linux 已启用':' · 本地沙箱已启用':'')+' · 仅存本机';
  const panel=$('aiHubMessages'),nearBottom=panel.scrollHeight-panel.scrollTop-panel.clientHeight<100;
  // Keep completed DOM nodes, selection, table scroll and expanded tool traces.
  if(panel.dataset.session!==session.id){panel.replaceChildren();panel.dataset.session=session.id}
@@ -2553,7 +2561,7 @@ function renderAiHub(){
    const args=pending.arguments||{},search=pending.tool==='web_search';
    const preview=(search?[args.query]:[args.title,args.text,args.code,args.path]).filter(Boolean).join('\n\n');
    const recipients=search?[pending.providers?.primary?'DuckDuckGo / Cloudflare':null,pending.providers?.parallel?'Parallel MCP':null].filter(Boolean).join('、'):'';
-   const instruction=pending.localSandbox?'确认后将在本机隔离 Worker 中执行。代码可访问此会话沙箱文件，并可通过受控代理访问公开 HTTPS；请核对代码。':search?'确认后将公开关键词发送至：'+(recipients||'已启用的搜索服务')+'。选择「总是允许」仅授权本次列出的来源，可在插件设置中撤销。':pending.external?'参数将发送至 '+pending.external.host+'。请核对后确认。':'请核对本次修改。确认后执行，并自动继续任务。';
+   const instruction=pending.localSandbox?(session.sandboxBackend==='linux'?'将在你自行配置的 QEMU Linux 客体中执行 Python/Shell；请核对命令，虚拟机可联网且客体权限由你配置。':'确认后将在本机隔离 Worker 中执行。代码可访问此会话沙箱文件，并可通过受控代理访问公开 HTTPS；请核对代码。'):search?'确认后将公开关键词发送至：'+(recipients||'已启用的搜索服务')+'。选择「总是允许」仅授权本次列出的来源，可在插件设置中撤销。':pending.external?'参数将发送至 '+pending.external.host+'。请核对后确认。':'请核对本次修改。确认后执行，并自动继续任务。';
    card.innerHTML='<strong>'+esc(pending.external?pending.external.server+' · '+pending.external.tool:aiToolLabel(pending.tool))+'</strong><small>'+esc(instruction)+'</small>'+(preview?'<div class="ai-approval-preview">'+esc(preview)+'</div>':'')+'<details><summary>查看完整参数</summary><pre>'+esc(JSON.stringify(args,null,2))+'</pre></details><div class="ai-approval-actions"><button type="button" data-ai-reject'+(aiHubBusy?' disabled':'')+'>取消</button><button type="button" data-ai-approve'+(aiHubBusy?' disabled':'')+'>'+(aiHubBusy?'正在执行…':'确认并继续')+'</button>'+(search?'<button type="button" data-ai-approve-always'+(aiHubBusy?' disabled':'')+'>总是允许</button>':'')+'</div>';card._aiSignature=signature;
   }
  }else card?.remove();
@@ -2776,10 +2784,10 @@ async function sendAiHubMessage(content,resumeSession=null,{regenerate=false,sea
   const onTool=event=>{active();recordAiToolEvent(partial,event);refresh()};
   let data;
   if(localModel){
-   data=await aiLocalGenerate(session.model,payload,text=>{active();partial.content=text;refresh()},{mode:session.mode==='agent'?'agent':'conversation',onTool,signal:run.controller.signal,sandbox:sandboxSessionActive(session)});
+   data=await aiLocalGenerate(session.model,payload,text=>{active();partial.content=text;refresh()},{mode:session.mode==='agent'?'agent':'conversation',onTool,signal:run.controller.signal,sandbox:sandboxSessionActive(session),sandboxBackend:session.sandboxBackend==='linux'&&aiVmStatus?.ready?'linux':'javascript'});
   }else{
    // Text attachments already live in apiContent; only images use this-turn wire attachments.
-   data=await aiStreamRequest({messages:payload,credentialId:session.profileId,model:session.model,mode:session.mode==='agent'?'agent':'conversation',externalTools:session.externalTools===true,localSandbox:sandboxSessionActive(session),attachments:images},{signal:run.controller.signal,progress:text=>{active();partial.reasoningActive=false;partial.content+=text;refresh()},onReasoning:text=>{active();partial.reasoningActive=true;partial.reasoning=(partial.reasoning||'')+text;refresh()},reset:()=>{active();partial.reasoningActive=false;partial.content='';refresh()},onTool});
+   data=await aiStreamRequest({messages:payload,credentialId:session.profileId,model:session.model,mode:session.mode==='agent'?'agent':'conversation',externalTools:session.externalTools===true,localSandbox:sandboxSessionActive(session),localSandboxBackend:session.sandboxBackend==='linux'&&aiVmStatus?.ready?'linux':'javascript',attachments:images},{signal:run.controller.signal,progress:text=>{active();partial.reasoningActive=false;partial.content+=text;refresh()},onReasoning:text=>{active();partial.reasoningActive=true;partial.reasoning=(partial.reasoning||'')+text;refresh()},reset:()=>{active();partial.reasoningActive=false;partial.content='';refresh()},onTool});
   }
   active();
   if(data.approval){if(data.approval.localSandbox){data.approval.workspace=localSpace;data.approval.sessionId=session.id}session.pendingApproval=data.approval;}
@@ -3017,7 +3025,12 @@ $('aiContextWindow').onchange=event=>{
  renderAiHubContext(session);
 };
 $('aiMcpSession').onchange=event=>{const session=currentAiHubSession();if(!session)return;session.externalTools=event.target.checked;saveAiHubSessions();renderAiHubContext(session)};
-$('aiSandboxSession').onchange=event=>{const session=currentAiHubSession();if(!session)return;session.sandboxEnabled=event.target.checked&&!!aiSandboxStatus?.enabled;session.sandboxCalls=0;saveAiHubSessions();renderAiHub()};
+$('aiSandboxSession').onchange=event=>{const session=currentAiHubSession();if(!session)return;session.sandboxEnabled=event.target.checked&&!!aiSandboxStatus?.enabled;session.sandboxCalls=0;saveAiHubSessions();renderAiHub();if(session.sandboxEnabled)void refreshAiSandboxFiles()};
+$('aiSandboxBackend').onchange=event=>{const session=currentAiHubSession();if(!session)return;
+ if(event.target.value==='linux'&&!aiVmStatus?.ready){toast('请先配置并授权 Termux/QEMU');event.target.value='javascript';return}
+ session.sandboxBackend=event.target.value==='linux'?'linux':'javascript';
+ session.sandboxCalls=0;saveAiHubSessions();renderAiHub();
+};
 $('aiContextNew').onclick=()=>{$('aiContextPanel').hidden=true;$('aiHubContext').setAttribute('aria-expanded','false');newAiHubSession()};
 let aiComposerAnimation=null;
 function resizeAiHubPrompt(){
