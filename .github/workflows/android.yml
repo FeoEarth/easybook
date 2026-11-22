@@ -96,7 +96,7 @@ jobs:
           cache: npm
       - run: npm ci
       - name: Native bridge bootstrap regression
-        run: node scripts/native-bootstrap-test.mjs
+        run: node scripts/native-bootstrap-test.mjs && node scripts/agent-vm-test.mjs
       - name: On-device AI tool safety protocol
         run: node scripts/local-ai-protocol-test.mjs
       - name: Focused folder navigation regression
