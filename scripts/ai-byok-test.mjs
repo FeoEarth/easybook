@@ -374,6 +374,9 @@ assert.equal(webSearchQuota(monthStart,{permanent:1,expires_at:0}).kind,'member'
  assert.equal(closed,beforeClosed,'Browser stays open between searches');
  await lease.browser.close();lease.browser=null;
  assert.equal(closed,beforeClosed+1,'Browser is closed when the run ends');
+ const rejected=await runWebSearch(searchEnv,'launch-failure-fixture',{query,maxResults:3},undefined,async()=>{throw Object.assign(Error('429 Too many browser instances'),{status:429})});
+ assert.equal(rejected.error.code,'web_search_rate_limited');
+ assert.equal((await (await import('../worker/ai-web-search.mjs')).webSearchUsage(searchEnv,'launch-failure-fixture')).used,0,'Rejected launches must not use customer quota');
  await api('mcp','PUT',{webSearch:false});
 }
 
