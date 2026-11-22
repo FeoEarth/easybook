@@ -142,7 +142,7 @@ final class AgentVmBridge {
         if(permission) {
             try {
                 JSONObject current=new JSONObject(termuxControl(context,asset(context,"manage"),"status",true).getString("stdout"));
-                for(String key:new String[]{"phase","installed","running","guestReady"})if(current.has(key))info.put(key,current.get(key));
+                for(String key:new String[]{"phase","installed","running","guestReady","bootSeconds","issue"})if(current.has(key))info.put(key,current.get(key));
                 boolean guestReady=current.optBoolean("guestReady");
                 info.put("guestBootVerified",guestReady);
                 info.put("ready",active&&AgentSandboxNetwork.enabled(context)&&guestReady);
@@ -158,6 +158,10 @@ final class AgentVmBridge {
                 // Long downloads run in Termux, not inside a 45-second Android bridge call.
                 termuxControl(context,installer(context),"install",false);
                 return new JSONObject().put("started",true).put("phase","packages");
+            case "diagnose":
+                JSONObject diagnostics=termuxControl(context,asset(context,"manage"),action,true);
+                return new JSONObject().put("report",diagnostics.optString("stdout","").substring(0,
+                    Math.min(10000,diagnostics.optString("stdout","").length())));
             case "start":case "stop":case "remove":
                 termuxControl(context,asset(context,"manage"),action,true);
                 return status(context);
