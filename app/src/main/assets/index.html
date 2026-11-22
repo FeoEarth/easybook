@@ -923,8 +923,10 @@ body[data-settings-detail] .app{display:block;max-width:720px;height:auto;min-he
   <button type="button" id="aiVmStart" hidden>启动虚拟机</button>
   <button type="button" id="aiVmStop" hidden>停止虚拟机</button>
   <button type="button" id="aiVmRefresh">刷新状态</button>
+  <button type="button" id="aiVmDiagnose" hidden>查看启动诊断</button>
   <button type="button" id="aiVmRemove" hidden>卸载 Linux</button>
  </div>
+ <pre id="aiVmDiagnosticReport" hidden style="white-space:pre-wrap;overflow-wrap:anywhere;max-height:220px;overflow:auto;user-select:text;font-size:12px;padding:12px;border-radius:12px;background:var(--surface-secondary,rgba(128,128,128,.12))" aria-label="Linux 启动诊断"></pre>
  <small class="ai-note">使用 Debian ARM64 官方镜像，下载约数百 MB、需要至少 1.5 GB 可用空间；首次需安装并授权 Termux。Linux 数据只存储在独立虚拟磁盘中。<a href="https://f-droid.org/packages/com.termux/" target="_blank" rel="noopener noreferrer">获取 Termux</a></small>
 </section>
 <section id="aiProviderPage" class="sync-page settings-detail" aria-labelledby="aiProviderTitle" hidden><nav class="sync-nav ui-nav"><button class="nav-back glass" type="button" id="aiProviderClose"><svg aria-hidden="true"><use href="#i-back"/></svg><span>设置</span></button></nav><div class="sync-content"><h1 id="aiProviderTitle" tabindex="-1">添加 API</h1><form id="aiConfigForm">
@@ -1567,6 +1569,7 @@ function renderAiVmStatus(){
  $('aiVmActions').style.display=v.managementAvailable?'flex':'none';
  $('aiVmAuthorize').hidden=!(v.managementAvailable&&v.termuxInstalled&&v.termuxPermissionAvailable&&!v.permissionGranted);
  $('aiVmAuthorize').disabled=false;
+ $('aiVmDiagnose').hidden=!(v.managementAvailable&&v.permissionGranted&&v.installed);
  const phases={packages:'正在安装 Linux 依赖',downloading:'正在下载并校验 Debian 镜像',provisioning:'正在配置隔离虚拟磁盘与 SSH',installed:'镜像已安装',failed:'安装失败，请在 Termux 查看 ~/easybook-agent-vm/install.log','not-installed':'尚未安装'};
  let note=v.connectionError?'无法获取 Termux 状态：'+v.connectionError:(phases[phase]||'状态待确认');
  if(!v.managementAvailable)note='一键安装需要新版 Android APK（versionCode 115 或更高），网页热更新无法单独启用此功能。';
@@ -1577,7 +1580,25 @@ function renderAiVmStatus(){
  else if(!aiSandboxStatus?.enabled)note='请先开启上方的本地代码沙箱。';
  else if(!v.enabled)note='请先启用 QEMU Linux 虚拟机。';
  else if(v.guestBootVerified)note='Debian 虚拟机运行中，SSH 已验证；Agent 可以执行 Python / Shell。';
- else if(v.running)note='虚拟机已启动，正在等待 Debian 启动和 SSH 就绪。';
+ else if(v.running){
+  const issue=v.issue||'ssh_unavailable',seconds=Number(v.bootSeconds||0);
+  const hints={
+   missing_ssh_keys:'缺少 Linux SSH 凭证，安装过程可能没有完成；请查看安装日志。',
+   ssh_host_key_mismatch:'SSH 主机密钥与安装时记录的不一致，已安全阻止连接。不要关闭 SSH 主机验证。',
+   ssh_auth_failed:'Debian 已响应 SSH，但拒绝 Easybook 的密钥。可能是 cloud-init 用户或授权密钥配置失败。',
+   ssh_not_listening:'Debian 的 SSH 端口尚未开放，可能仍在启动或配置 sshd。',
+   ssh_timeout:'SSH 连接超时。可能是 QEMU 客体未完成启动。',
+   ssh_initializing:'SSH 已有回应，但连接尚未准备好。',
+   guest_network_error:'QEMU 的客体网络或 SSH 端口不可达。',
+   kernel_panic:'Linux 客体启动日志检测到内核错误。',
+   uefi_boot_shell:'QEMU 停在 UEFI Shell，系统盘可能没有正确引导。',
+   qemu_error:'QEMU 启动日志检测到错误。',
+   cloud_init_error:'Debian cloud-init 初始化可能失败，SSH 用户或密钥可能未配置。',
+   boot_too_long:'虚拟机启动超过 10 分钟仍不能通过 SSH 连接，不应继续无限等待。',
+   ssh_unavailable:'SSH 尚未就绪，具体原因请查看启动诊断。'
+  };
+  note='QEMU 运行中（'+(seconds?Math.floor(seconds/60)+' 分 '+seconds%60+' 秒':'启动时间未知')+'）。'+(hints[issue]||hints.ssh_unavailable)+' 可点击「查看启动诊断」。';
+ }
  else if(v.installed)note='Debian 已安装，点击「启动虚拟机」即可使用。';
  $('aiVmNote').textContent=note;
  $('aiVmEnabled').checked=!!v.enabled;
@@ -1657,6 +1678,15 @@ for(const [id,action] of [['aiVmInstall','install'],['aiVmStart','start'],['aiVm
   finally{control.disabled=false;renderAiVmStatus()}
  };
 }
+$('aiVmDiagnose').onclick=async()=>{
+ const btn=$('aiVmDiagnose');btn.disabled=true;
+ try{
+  const response=await native.call('sandbox.vm.manage',{action:'diagnose'});
+  $('aiVmDiagnosticReport').textContent=response.report||'没有可用的启动日志';
+  $('aiVmDiagnosticReport').hidden=false;
+ }catch(error){toast('无法读取虚拟机日志：'+error.message)}
+ finally{btn.disabled=false}
+};
 $('aiVmRefresh').onclick=async()=>{
  const control=$('aiVmRefresh');control.disabled=true;
  try{await refreshAiVmStatus()}finally{control.disabled=false}
