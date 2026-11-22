@@ -143,6 +143,29 @@ try{
  assert.equal(app.session().pendingAgentRunId,undefined,'Completed task removes its recovery handle');
  assert.equal(app.session().messages.at(-1).content,'长任务研究完毕。');
  assert.equal(app.session().messages.filter(message=>message.role==='assistant'&&!message.receipt).length,previousAssistantCount+1,'Multiple Worker segments form one visible AI reply');
+ // A CPU-killed Worker may never send its SSE done event. Its encrypted
+ // run ID arrived earlier as an internal tool_start checkpoint: Android must
+ // recover the same task without displaying a fake tool or starting over.
+ let crashRuns=0;
+ const crashedRun='a4b74eca-348b-4a38-aa7a-13e4fa5c4276';
+ app.cloud(async(body,events)=>{
+  crashRuns++;
+  if(crashRuns===1){
+   events.onTool({type:'tool_start',name:'__easybook_agent_run__:'+crashedRun});
+   throw Error('ai_unavailable');
+  }
+  assert.equal(body.purpose,'agent_run:'+crashedRun,'Interrupted Android request resumes the saved tool queue');
+  assert.deepEqual(body.messages,[],'Recovery never asks the model to plan anew');
+  return {message:{content:'恢复完成：整批搜索已继续执行。'}};
+ });
+ const beforeCrashMessages=app.session().messages.filter(message=>message.role==='assistant'&&!message.receipt).length;
+ await app.send('CPU 中断自动恢复测试');
+ assert.equal(crashRuns,2,'Transport failure retries the same Agent run');
+ assert.equal(app.session().messages.at(-1).content,'恢复完成：整批搜索已继续执行。');
+ assert.equal(app.session().pendingAgentRunId,undefined,'Run ID is cleared after recovery completes');
+ assert.equal(app.session().messages.filter(message=>message.role==='assistant'&&!message.receipt).length,beforeCrashMessages+1,'Recovery does not create duplicate assistant replies');
+ assert.ok(!app.session().messages.at(-1).toolEvents?.some(e=>e.name?.startsWith('__easybook_agent_run__')),'Checkpoint markers are never displayed as tools');
+
  const fallbackProposal={...searchProposal,id:'search-fallback'};
  app.cloud(async()=>({message:{content:'请确认搜索'},approval:fallbackProposal}));
  await app.send('再联网搜索一次');
