@@ -30,12 +30,20 @@ async function discover(resource,context){
  const {safeUrl,checkHost,fetcher}=context;
  const signal=AbortSignal.timeout(10000);
  await checkHost(resource,fetcher,signal);
- const probe=await fetcher(resource,{method:'POST',redirect:'manual',signal,headers:{'Content-Type':'application/json',Accept:'application/json, text/event-stream'},body:JSON.stringify({jsonrpc:'2.0',id:1,method:'initialize',params:{protocolVersion:'2025-06-18',capabilities:{},clientInfo:{name:'Easybook',version:'1.0'}}})}).catch(()=>{throw invalid('mcp_unreachable',502)});
- const challenge=probe.headers.get('WWW-Authenticate')||'';
- void probe.body?.cancel().catch(()=>{});
- if(probe.status!==401&&probe.status!==403)throw invalid('mcp_oauth_unavailable');
- const advertised=challenge.match(/\bresource_metadata="([^"]+)"/i)?.[1];
- const resourceMetadata=advertised?[advertised]:[
+ // Explicit Parallel login is a protected connection even if the endpoint also
+ // answers anonymous MCP probes. Never infer OAuth support from a normal MCP
+ // response for other servers; the resource metadata must still validate.
+ const parallelLogin=resource.href==='https://mcp.parallel.ai/mcp?login';
+ let probe;
+ try{probe=await fetcher(resource,{method:'POST',redirect:'manual',signal,headers:{'Content-Type':'application/json',Accept:'application/json, text/event-stream'},body:JSON.stringify({jsonrpc:'2.0',id:1,method:'initialize',params:{protocolVersion:'2025-06-18',capabilities:{},clientInfo:{name:'Easybook',version:'1.0'}}})})}
+ catch{if(!parallelLogin)throw invalid('mcp_unreachable',502)}
+ const challenge=probe?.headers.get('WWW-Authenticate')||'';
+ if(probe)void probe.body?.cancel().catch(()=>{});
+ if(!parallelLogin&&probe?.status!==401&&probe?.status!==403)throw invalid('mcp_oauth_unavailable');
+ const advertised=challenge.match(/\bresource_metadata\s*=\s*(?:"([^"]+)"|'([^']+)'|([^\s,]+))/i);
+ const metadataHint=advertised?.[1]||advertised?.[2]||advertised?.[3];
+ const resourceMetadata=[
+  ...(metadataHint?[metadataHint]:[]),
   resource.origin+'/.well-known/oauth-protected-resource'+resource.pathname.replace(/\/$/,''),
   resource.origin+'/.well-known/oauth-protected-resource'
  ];
@@ -65,7 +73,9 @@ async function discover(resource,context){
   requireIssuer:as.authorization_response_iss_parameter_supported===true,
   tokenEndpoint:safeUrl(as.token_endpoint).href,registrationEndpoint:as.registration_endpoint||'',scope,
   clientAuthMethods:Array.isArray(as.token_endpoint_auth_methods_supported)?as.token_endpoint_auth_methods_supported:['none'],
-  refresh:!as.grant_types_supported||as.grant_types_supported.includes('refresh_token')};
+  // Missing grant_types_supported does not advertise refresh-token support.
+  // Register an authorization-code web client; refresh only when advertised.
+  refresh:Array.isArray(as.grant_types_supported)&&as.grant_types_supported.includes('refresh_token')};
 }
 
 const setup=new WeakMap();
@@ -104,7 +114,7 @@ export async function beginMcpOAuth(env,request,account,input,context){
   clientAuth=['none','client_secret_post','client_secret_basic'].find(method=>metadata.clientAuthMethods.includes(method));
   if(!clientAuth)throw invalid('mcp_oauth_client_required');
   const client=await json(metadata.registrationEndpoint,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({
-   client_name:'Easybook',redirect_uris:[redirectUri],token_endpoint_auth_method:clientAuth,
+   client_name:'Easybook',application_type:'web',redirect_uris:[redirectUri],token_endpoint_auth_method:clientAuth,
    grant_types:metadata.refresh?['authorization_code','refresh_token']:['authorization_code'],response_types:['code']
   })},context,'mcp_oauth_registration_failed');
   if(typeof client.client_id!=='string'||!client.client_id||client.client_id.length>512||
