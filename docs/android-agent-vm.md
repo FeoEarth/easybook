@@ -36,8 +36,8 @@ QEMU 参数使用 `-accel tcg`（纯软件模拟），默认约 1 GiB 内存和 
 在 Termux 验证：
 
 ```sh
-printf 'print("Easybook QEMU guest OK")\n' | "$HOME/easybook-agent-vm/runner.sh" python
-printf 'pwd; id\n' | "$HOME/easybook-agent-vm/runner.sh" shell
+printf 'print("Easybook QEMU guest OK")\n' | "$HOME/easybook-agent-vm/runner.sh" python "0000000000000000000000000000000000000000000000000000000000000000"
+printf 'pwd; id\n' | "$HOME/easybook-agent-vm/runner.sh" shell "0000000000000000000000000000000000000000000000000000000000000000"
 ```
 
 这两条命令**确实通过 pinned SSH 在 guest 中执行**。Termux 只运行已经审查的 launcher 与 SSH 客户端，不对 Agent 生成的文本调用 `eval`、`bash -c` 或 `python -c`。每次执行最长约 32 秒，Android 收据等待最多 45 秒；一次只允许一条 VM 命令。
@@ -46,7 +46,7 @@ printf 'pwd; id\n' | "$HOME/easybook-agent-vm/runner.sh" shell
 
 - 会话级用户确认：每次执行必须在 Easybook 对话卡片中批准。Android 全局开关+当前会话开关+单独的 VM 启用开关为必备条件。
 - 网络：guest 使用 QEMU user-mode NAT，可以联网（与既定网络偏好一致），但不会继承 Easybook 的 Cookie、BYOK Key、同步密钥或本地数据库。
-- 文件：QEMU 客体只访问自己的 Linux 虚拟磁盘；JavaScript 沙箱的会话文件和 Easybook 笔记不会自动挂载。用户通过 Easybook 沙箱文件面板自行导入/导出文本，**当前没有自动 guest 文件同步**。
+- 文件：QEMU 客体只访问自己的 Linux 虚拟磁盘；Android 原生层按工作区与会话生成 SHA-256 路径，默认写入客体 `~/work/<scope>/`。同一 guest 内仍共享 Linux 账号，目录区分不等于 guest 内部的强安全隔离。JavaScript 沙箱的会话文件和 Easybook 笔记不会自动挂载。用户通过 Easybook 沙箱文件面板自行导入/导出文本，**当前没有自动 guest 文件同步**。
 - 客体安全：guest 管理员要定期更新镜像，不要给 `easybook` 账户 sudo 权限。QEMU TCG 不是抗所有虚拟机逃逸漏洞的保证。
 - 性能：ARM64 系统模拟有显著开销，内存和储存远大于 JavaScript 沙箱；后台可能被 Android 系统杀死。
 - 取消：Easybook 可立即放弃等待结果；已送入 guest 的命令不能保证即时终止，客体端/Termux `timeout` 限制是最后防线。不可宣称强制停止。
