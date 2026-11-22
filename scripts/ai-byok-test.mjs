@@ -76,6 +76,23 @@ let streamRequested=false;
 const streamedOpenai=async(url,init)=>{streamRequested=JSON.parse(init.body).stream===true;return streamResponse('data: '+JSON.stringify({choices:[{delta:{content:'你好'}}]})+'\n\n'+'data: '+JSON.stringify({choices:[{delta:{content:'，世界'}}]})+'\n\n'+'data: [DONE]\n\n')};
 let streamEvents=await readEvents(await aiAPI(request('/api/ai/chat','POST',{messages:[{role:'user',content:'你好'}],stream:true}),env,principal,{workspaceId:workspace,fetcher:streamedOpenai}));
 assert.equal(streamRequested,true);assert.deepEqual(streamEvents.map(event=>event.type),['delta','delta','done']);assert.equal(streamEvents.at(-1).data.message.content,'你好，世界');
+ // Disconnects must abort an outstanding model request without emitting to a
+ // canceled SSE controller (previously a generic ai_unavailable TypeError).
+ let startedBlockingFetch,wasCancelled=false;
+ const blockingStarted=new Promise(resolve=>{startedBlockingFetch=resolve});
+ const blockingFetcher=async(url,init)=>{
+  startedBlockingFetch();
+  return new Promise((resolve,reject)=>{
+   const onAbort=()=>{wasCancelled=true;reject(init.signal.reason||new Error('aborted'))};
+   if(init.signal.aborted)onAbort();
+   else init.signal.addEventListener('abort',onAbort,{once:true});
+  });
+ };
+ const cancellable=await aiAPI(request('/api/ai/chat','POST',{messages:[{role:'user',content:'disconnect test'}],stream:true}),env,principal,{workspaceId:workspace,fetcher:blockingFetcher});
+ await blockingStarted;
+ await cancellable.body.cancel();
+ assert.equal(wasCancelled,true,'Client cancellation aborts the active provider request');
+
 const deepSeek=(await (await aiAPI(request('/api/ai/config','PUT',{label:'DeepSeek reasoning',provider:'deepseek',model:'deepseek-reasoner',apiKey:secret}),env,principal)).json()).id;
 const modelFrames=items=>streamResponse(items.map(item=>'data: '+JSON.stringify(item)+'\n\n').join(''));
 let reasoningRound=0;
@@ -193,7 +210,7 @@ assert.equal(webSearchQuota(monthStart,{permanent:1,expires_at:0}).kind,'member'
 
 // The search plugin shares the approval flow and works independently of third-party MCP.
 {
- let searches=0,closed=0,exposed=false,primary='blocked',backup='no_results',query='current public docs';
+ let searches=0,closed=0,contextsOpened=0,contextsClosed=0,exposed=false,primary='blocked',backup='no_results',query='current public docs';
  const visits=[],profiles=[];
  const binding={},searchEnv={...env,WEB_SEARCH_BROWSER:binding};
  const launchSearchBrowser=async actual=>{
@@ -202,6 +219,11 @@ assert.equal(webSearchQuota(monthStart,{permanent:1,expires_at:0}).kind,'member'
   return {
    async close(){closed++},
    async version(){return 'HeadlessChrome/144.0.7339.0'},
+   async createBrowserContext(){
+    contextsOpened++;
+    const browser=this;
+    return {newPage:()=>browser.newPage(),async close(){contextsClosed++}};
+   },
    async newPage(){
     let address,site,phase,onRequest;
     return {
@@ -374,15 +396,25 @@ assert.equal(webSearchQuota(monthStart,{permanent:1,expires_at:0}).kind,'member'
  assert.equal(closed,beforeClosed,'Browser stays open between searches');
  await lease.browser.close();lease.browser=null;
  assert.equal(closed,beforeClosed+1,'Browser is closed when the run ends');
- const concurrentLease={browser:null},beforeConcurrent=searches;
+ const concurrentLease={browser:null},beforeConcurrent=searches,beforeContexts=contextsOpened,beforeContextCloses=contextsClosed;
  const concurrentResults=await Promise.all(Array.from({length:3},()=>runWebSearch(searchEnv,'concurrent-search-fixture',{query,maxResults:3},undefined,launchSearchBrowser,concurrentLease)));
  assert.deepEqual(concurrentResults.map(item=>item.results.length),[1,1,1]);
  assert.equal(searches,beforeConcurrent+1,'Concurrent searches share one browser launch');
+ assert.equal(contextsOpened-beforeContexts,3,'Each concurrent query has an isolated browser context');
+ assert.equal(contextsClosed-beforeContextCloses,3,'Each query closes only its own context');
  await concurrentLease.browser.close();
  assert.equal(closed,beforeClosed+2);
  const rejected=await runWebSearch(searchEnv,'launch-failure-fixture',{query,maxResults:3},undefined,async()=>{throw Object.assign(Error('429 Too many browser instances'),{status:429})});
  assert.equal(rejected.error.code,'web_search_rate_limited');
  assert.equal((await (await import('../worker/ai-web-search.mjs')).webSearchUsage(searchEnv,'launch-failure-fixture')).used,0,'Rejected launches must not use customer quota');
+ const rejectedLease={browser:null};let rejectedLaunches=0;
+ const denyLaunch=async()=>{rejectedLaunches++;throw Object.assign(Error('429 Too many browser instances'),{status:429})};
+ const refused=await Promise.all(Array.from({length:3},()=>runWebSearch(searchEnv,'shared-failed-launch',{query,maxResults:3},undefined,denyLaunch,rejectedLease)));
+ assert.ok(refused.every(result=>result.error.code==='web_search_rate_limited'));
+ assert.equal(rejectedLaunches,2,'Concurrent rate-limited queries share one initial launch and one bounded retry');
+ await runWebSearch(searchEnv,'shared-failed-launch',{query,maxResults:3},undefined,denyLaunch,rejectedLease);
+ assert.equal(rejectedLaunches,2,'A rejected launch does not cause later queries to retry in a storm');
+ assert.equal((await (await import('../worker/ai-web-search.mjs')).webSearchUsage(searchEnv,'shared-failed-launch')).used,0);
  await api('mcp','PUT',{webSearch:false});
 }
 

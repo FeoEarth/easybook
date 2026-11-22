@@ -294,7 +294,7 @@ export async function aiAPI(request,env,principal,{workspaceId,fetcher=fetch,lau
    return response({title});
   }
   const messages=safeMessages(input?.messages,input?.attachments||[],{maxMessages:AI_CHAT_MAX_MESSAGES,maxChars:AI_CHAT_MAX_TEXT_CHARS}),mode=input?.mode==='agent'?'agent':'conversation',scopes=toolScopes(access.role,mode),tools=toolsFor(access.role,mode),key=await open(env,row);
-  const run=async(emit=()=>{})=>{
+  const run=async(emit=()=>{},runSignal=request.signal)=>{
    const localSandbox=mode==='agent'&&input?.localSandbox===true;
    if(localSandbox){
     const linux=input?.localSandboxBackend==='linux';
@@ -336,9 +336,9 @@ export async function aiAPI(request,env,principal,{workspaceId,fetcher=fetch,lau
    };
    let completed;
    try{
-    completed=await completion(key,row,conversation,tools,fetcher,input?.stream===true?text=>emit('delta',{text}):undefined,request.signal,undefined,addReasoning);
+    completed=await completion(key,row,conversation,tools,fetcher,input?.stream===true?text=>emit('delta',{text}):undefined,runSignal,undefined,addReasoning);
    }catch(error){
-    if(!webSearches.length||request.signal?.aborted)throw error;
+    if(!webSearches.length||runSignal?.aborted)throw error;
     // A provider failure after successful research must not discard sources
     // or turn an otherwise useful multi-search run into ai_unavailable.
     console.warn(JSON.stringify({event:'ai_search_finalization_failed',code:error?.code||'provider_unavailable',searches:webSearches.length}));
@@ -392,7 +392,7 @@ export async function aiAPI(request,env,principal,{workspaceId,fetcher=fetch,lau
       if(!automatically)result={error:{code:'web_search_approval_required',message:'联网搜索需要用户授权。'}};
       else{
        const query=webSearchQuery(args),maxResults=webSearchResultLimit(args);
-       result=await searchApprovedWeb(env,principal.accountId,{query,maxResults,requireAlways:true},request.signal,launchSearchBrowser,fetcher,browserLease);
+       result=await searchApprovedWeb(env,principal.accountId,{query,maxResults,requireAlways:true},runSignal,launchSearchBrowser,fetcher,browserLease);
        receipt={arguments:{query,maxResults},result};
       }
      }else result=await callTool({env,workspace:workspaceId,client:'easybook-agent:'+principal.accountId,scopes},name,args);
@@ -423,16 +423,39 @@ export async function aiAPI(request,env,principal,{workspaceId,fetcher=fetch,lau
     conversation.push({role:'tool',tool_call_id:item.call.id,content:JSON.stringify(item.result).slice(0,180000)});
    }
   }
+   }catch(error){
+    if(runSignal?.aborted||!webSearches.length)throw error;
+    // Even an unexpected error after tool execution must not discard
+    // successful source receipts or turn the entire run into ai_unavailable.
+    console.error(JSON.stringify({event:'ai_search_run_recovered',name:error?.name||'Error',code:error?.code||'internal',searches:webSearches.length}));
+    const successes=webSearches.filter(item=>item.result?.results?.length).length;
+    return answer(successes?'已取得 '+successes+' 次有效搜索结果，但继续处理时发生错误。已保留来源，可继续根据这些结果回答。':'联网搜索未取得有效结果，且后续处理发生错误。已保留失败记录，可换来源或稍后重试。',{model:row.model,providerName:row.provider_name,partial:true});
    }finally{
-    const browser=browserLease.browser;browserLease.browser=null;
+    const browser=browserLease.browser||await browserLease.launching?.catch(()=>null);
+    browserLease.browser=null;
     if(browser)try{await browser.close()}catch{}
    }
   };
   if(input?.stream!==true)return response(await run());
-  const stream=new ReadableStream({start(controller){
-   const push=(event,data)=>controller.enqueue(encoder.encode('event: '+event+'\ndata: '+JSON.stringify(data)+'\n\n'));
-   void run(push).then(result=>push('done',result)).catch(error=>{console.error(JSON.stringify({event:'ai_stream_failed',name:error?.name,code:error?.code}));try{push('error',{error:error?.code||'ai_unavailable'})}catch{}}).finally(()=>{try{controller.close()}catch{}});
-  }});
+  const streamAbort=new AbortController();
+  const streamSignal=request.signal?AbortSignal.any([request.signal,streamAbort.signal]):streamAbort.signal;
+  let writable=true;
+  const stream=new ReadableStream({
+   start(controller){
+    // A disconnected client can cancel an SSE stream during parallel calls.
+    // Enqueueing into the closed stream must never erase completed searches.
+    const push=(event,data)=>{
+     if(!writable||streamSignal.aborted)return;
+     try{controller.enqueue(encoder.encode('event: '+event+'\ndata: '+JSON.stringify(data)+'\n\n'))}
+     catch{writable=false;streamAbort.abort()}
+    };
+    void run(push,streamSignal).then(result=>push('done',result)).catch(error=>{
+     if(!streamSignal.aborted)console.error(JSON.stringify({event:'ai_stream_failed',name:error?.name,code:error?.code}));
+     push('error',{error:error?.code||'ai_unavailable'});
+    }).finally(()=>{writable=false;try{controller.close()}catch{}});
+   },
+   cancel(){writable=false;streamAbort.abort()}
+  });
   return new Response(stream,{headers:{'Content-Type':'text/event-stream; charset=utf-8','Cache-Control':'no-store, no-transform','X-Accel-Buffering':'no','Referrer-Policy':'no-referrer','X-Content-Type-Options':'nosniff'}});
  }catch(error){if(error?.code==='PAYLOAD_TOO_LARGE')return response({error:'payload_too_large'},413);console.error(JSON.stringify({event:'ai_request_failed',name:error?.name,code:error?.code}));return response({error:error?.code||'ai_unavailable'},error?.status||503)}
 }
