@@ -127,7 +127,7 @@ try{
   researchSegments++;
   if(researchSegments===1)return {message:{content:'',agentRunId:'12345678-1234-4123-8123-1234567890ab'},continuationRequired:true,agentRunId:'12345678-1234-4123-8123-1234567890ab',queuedTools:8,webSearches:[{arguments:{query:'研究阶段一'},result:{results:[{url:'https://example.org/checkpoint',title:'阶段来源'}]}}]};
   assert.equal(body.purpose,'agent_run:12345678-1234-4123-8123-1234567890ab','Second request resumes existing model plan via D1');
-  assert.deepEqual(body.messages,[],'No new user instruction or model re-planning context is sent');
+  assert.ok(Array.isArray(body.messages)&&body.messages.length===0,'No new user instruction or model re-planning context is sent');
   return new Promise(resolve=>{finishResearch=()=>resolve({message:{content:'长任务研究完毕。'}})});
  });
  const ongoingResearch=app.send('长任务分段检索');
