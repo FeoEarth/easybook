@@ -388,6 +388,7 @@ export async function aiAPI(request,env,principal,{workspaceId,fetcher=fetch,lau
     return ['web_search_rate_limited','parallel_rate_limited','web_search_unavailable','parallel_unavailable','web_search_timeout','search_timeout','mcp_oauth_timeout'].includes(code)
       ||['timeout','unavailable','parse_failed','rate_limited'].includes(result?.reason);
    };
+   let completedWaves=0;
    const segmentStarted=Date.now();
    const configuredSegment=Number(env.AI_SEARCH_SEGMENT_MS);
    const SEARCH_SEGMENT_MS=Number.isFinite(configuredSegment)&&configuredSegment>0?Math.min(9000,configuredSegment):9000;
@@ -399,7 +400,9 @@ export async function aiAPI(request,env,principal,{workspaceId,fetcher=fetch,lau
    let reasoning='';
    const answer=(content,extra={})=>({message:{role:'assistant',content,...(reasoning?{reasoning}:{})},tools:used,...(webSearches.length?{webSearch:webSearches.at(-1),webSearches}:{}),...extra});
    try{for(;;){
-   if(agentRunId&&segmentExpired())return await partialSegment();
+   // Guarantee one small unit of progress per invocation, even if the
+   // initial model call or D1 encryption already used the soft wall budget.
+   if(agentRunId&&completedWaves>0&&segmentExpired())return await partialSegment();
    let receivedReasoning=false;
    const addReasoning=text=>{
     const chunk=((!receivedReasoning&&reasoning?'\n\n':'')+text).slice(0,32000-reasoning.length);
@@ -497,16 +500,17 @@ export async function aiAPI(request,env,principal,{workspaceId,fetcher=fetch,lau
    const offset=pendingCalls?nextCall:0,remaining=calls.slice(offset);
    const selected=[];
    let countSearches=0;
+   const waveParallelism=segmentExpired()?1:SEARCH_PARALLELISM;
    for(let index=offset;index<calls.length;index++){
-    if(selected.length>=4||segmentExpired()&&agentRunId)break;
+    if(selected.length>=4||completedWaves>0&&segmentExpired())break;
     const call=calls[index];
     if(Object.prototype.hasOwnProperty.call(bufferedResults,index))continue;
     if(call?.function?.name===WEB_SEARCH){
-     if(countSearches>=SEARCH_PARALLELISM)break;
+     if(countSearches>=waveParallelism)break;
      countSearches++;
     }
     selected.push({index,call});
-    if(countSearches>=SEARCH_PARALLELISM)break;
+    if(countSearches>=waveParallelism)break;
    }
    if(!selected.length&&remaining.length){
     if(!agentRunId){pendingCalls=calls;await createQueue();}
@@ -520,6 +524,7 @@ export async function aiAPI(request,env,principal,{workspaceId,fetcher=fetch,lau
       runSignal?.throwIfAborted?.();
       results.push({...item,result:await executeCall(item.call)});
      }return results})();
+   completedWaves++;
    let retryPending=false,rateLimited=false;
    for(const {index,result:item} of completedCalls){
     const retryable=item.name===WEB_SEARCH&&shouldRetrySearch(item.result);
