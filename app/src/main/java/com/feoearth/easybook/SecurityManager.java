@@ -59,6 +59,7 @@ public final class SecurityManager {
             case "sandbox.configure":fields=fields("enabled");break;
             case "sandbox.fetch":fields=fields("url");break;
             case "sandbox.vm.status":fields=Collections.emptySet();break;
+            case "sandbox.vm.permission.request":fields=Collections.emptySet();break;
             case "sandbox.vm.configure":fields=fields("enabled");break;
             case "sandbox.vm.execute":fields=fields("language","code","sessionId");break;
             case "sandbox.vm.manage":fields=fields("action");break;
