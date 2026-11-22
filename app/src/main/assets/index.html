@@ -2931,7 +2931,7 @@ async function sendAiHubMessage(content,resumeSession=null,{regenerate=false,sea
   partial.status=data.approval?'approval':'done';
   if(!needsNextSegment){
    // Keep the checkpoint only if an unfinished task must be resumed manually.
-   if(!data.continuationRequired)delete session.pendingAgentRunId;
+   if(!data.continuationRequired&&!data.paused)delete session.pendingAgentRunId;
    break;
   }
   // Keep the original Agent run active across Worker request boundaries.
