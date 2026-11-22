@@ -14,7 +14,7 @@
 
 **安全边界：** Easybook 只执行 APK 内自带的安装和生命周期脚本，绝不运行服务端/模型生成的 Termux 宿主 Shell。模型生成的代码仍只发送到 SSH 校验过的 Linux 客体。关闭虚拟机并不解除 Termux 的 Android 授权；建议仅在信任 Easybook 时授予该高权限。
 
-**Debian 镜像固定版本：** `debian-13-genericcloud-arm64-20260623-2518.qcow2`，原始文件与 SHA-512 见 [Debian 官方云镜像目录](https://cloud.debian.org/images/cloud/trixie/20260623-2518/) 与 [镜像清单](https://cloud-image-finder.debian.net/i/debian-13-genericcloud-arm64-20260623-2518)。升级镜像应修改固定摘要并重新发布 APK，而非静默替换用户系统。
+**Debian 镜像固定版本：** `debian-13-genericcloud-arm64-20260623-2518.qcow2`，原始文件与 SHA-512 见 [Debian 官方云镜像目录](https://cloud.debian.org/cdimage/cloud/trixie/20260623-2518/) 与 [镜像清单](https://cloud-image-finder.debian.net/i/debian-13-genericcloud-arm64-20260623-2518)。升级镜像应修改固定摘要并重新发布 APK，而非静默替换用户系统。
 
 ## 高级手动安装与风险（旧版流程）
 
