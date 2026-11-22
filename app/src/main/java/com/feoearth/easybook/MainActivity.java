@@ -396,6 +396,24 @@ public class MainActivity extends Activity {
             case "sandbox.vm.status":return AgentVmBridge.status(this);
             case "sandbox.vm.configure":return AgentVmBridge.configure(this,args);
             case "sandbox.vm.execute":return AgentVmBridge.run(this,args);
+            case "sandbox.export":{
+                String name=AttachmentStore.cleanName(bounded(args,"name",100));
+                String content=bounded(args,"content",131072);
+                if(content.getBytes(StandardCharsets.UTF_8).length>131072)throw new SecurityException("文件过大");
+                File dir=new File(getCacheDir(),"shared/sandbox");if(!dir.exists()&&!dir.mkdirs())throw new IOException("无法准备导出目录");
+                File output=new File(dir,name);
+                try(FileOutputStream out=new FileOutputStream(output)){out.write(content.getBytes(StandardCharsets.UTF_8));}
+                long exportGeneration=documentGeneration;
+                runOnUiThread(()->{
+                    if(destroyed||exportGeneration!=documentGeneration)return;
+                    attachmentExport=output;attachmentExportName=name;
+                    Intent intent=new Intent(Intent.ACTION_CREATE_DOCUMENT);
+                    intent.addCategory(Intent.CATEGORY_OPENABLE);
+                    intent.setType("text/plain");intent.putExtra(Intent.EXTRA_TITLE,name);
+                    startActivityForResult(intent,84);
+                });
+                return new JSONObject().put("picker",true);
+            }
             case "ai.local.status":return localAiModels.status().put("errors",localAiModels.errors()).put("runtime",localAiRuntime.status());
             case "ai.local.runtime.install":return localAiRuntime.install();
             case "ai.local.runtime.cancel":localAiRuntime.cancel();return localAiRuntime.status();
