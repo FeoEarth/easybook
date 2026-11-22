@@ -2887,7 +2887,12 @@ async function sendAiHubMessage(content,resumeSession=null,{regenerate=false,sea
   let currentAttachments=images;
   for(;;){
   const payload=context.messages;
-  partial={id:uuid(),role:'assistant',content:'',streaming:true,status:'streaming',toolEvents:[]};session.messages.push(partial);
+  if(!partial){partial={id:uuid(),role:'assistant',content:'',streaming:true,status:'streaming',toolEvents:[]};session.messages.push(partial);}
+  else{
+   // One visible assistant reply and one tool trace for the entire research.
+   // Search receipts remain separate evidence messages in local history.
+   partial.content='';partial.streaming=true;partial.status='streaming';partial.error=null;
+  }
   session.updatedAt=Date.now();saveAiHubSessions();renderAiHub();renderAiHubSessions();
   run.phase='streaming';
   const onTool=event=>{active();recordAiToolEvent(partial,event);refresh()};
