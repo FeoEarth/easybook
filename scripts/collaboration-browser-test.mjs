@@ -21,7 +21,7 @@ try{
  let created;
  try{[created]=await Promise.all([page.waitForResponse(response=>response.url()===origin+'/api/workspaces'&&response.request().method()==='POST'),page.locator('#workspaceNameSave').click()])}
  catch(error){console.log('COLLAB WORKSPACE CREATE STATE',JSON.stringify({ui:await page.evaluate(()=>({message:document.querySelector('#workspaceStatus')?.textContent,sync:document.querySelector('#syncStatus')?.textContent,editorVisible:!document.querySelector('#workspaceNameEditor')?.hidden,saveDisabled:document.querySelector('#workspaceNameSave')?.disabled,toast:document.querySelector('#toast')?.textContent,selected:document.querySelector('#workspaceCurrentName')?.textContent})),errors}));throw error}
- assert.equal(created.status(),201,await created.text());await page.waitForLoadState('load');await page.getByRole('heading',{name:'全部备忘录',exact:true}).waitFor();await settings();await page.locator('#workspaceList [aria-current=true]').getByText('共享界面验收',{exact:true}).waitFor();
+ assert.equal(created.status(),201,await created.text());await page.waitForLoadState('load');await page.locator('#foldersButton').waitFor({state:'attached'});await settings();await page.locator('#workspaceList [aria-current=true]').getByText('共享界面验收',{exact:true}).waitFor();
  await page.locator('#workspaceMembersOpen').click();await page.locator('#workspaceMemberSummary').filter({hasText:'管理者'}).waitFor();
  await page.locator('#workspaceShare').click();await page.locator('#confirmAccept').click();
  await page.waitForLoadState('domcontentloaded');await page.waitForTimeout(500);await settings('sync');
