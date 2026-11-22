@@ -14,6 +14,7 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
 
 /**
  * Optional *QEMU guest* transport through Termux RUN_COMMAND. No model-generated
@@ -66,7 +67,7 @@ final class AgentVmBridge {
         final PendingJob job=PENDING.get(id);
         if(job!=null&&nonce!=null&&nonce.equals(job.nonce))job.result.offer(result==null?new Bundle():result);
     }
-    static JSONObject run(Context context,JSONObject input)throws Exception {
+    static JSONObject run(Context context,JSONObject input,String workspace)throws Exception {
         if(!enabled(context)||!AgentSandboxNetwork.enabled(context))throw new SecurityException("虚拟机未授权");
         if(!permitted(context))throw new SecurityException("请在 Android 设置授权 Easybook 调用 Termux，且安装 Termux 0.109 或更新版本");
         final String language=input.optString("language","");
@@ -74,6 +75,11 @@ final class AgentVmBridge {
         final String code=input.optString("code","");
         if(code.isEmpty()||code.length()>LIMIT||code.getBytes(StandardCharsets.UTF_8).length>LIMIT)
             throw new SecurityException("虚拟机脚本过大");
+        String session=input.optString("sessionId","");
+        if(!session.matches("[a-f0-9-]{36}")||workspace==null||workspace.isEmpty())throw new SecurityException("会话标识无效");
+        byte[] digest=MessageDigest.getInstance("SHA-256").digest((workspace+"|"+session).getBytes(StandardCharsets.UTF_8));
+        StringBuilder scopeHex=new StringBuilder();
+        for(byte b:digest)scopeHex.append(String.format(java.util.Locale.ROOT,"%02x",b&255));
         if(!PENDING.isEmpty())throw new IllegalStateException("另一个虚拟机执行任务尚未完成");
         int id=IDS.incrementAndGet();
         byte[] nonceBytes=new byte[16];RANDOM.nextBytes(nonceBytes);
@@ -91,7 +97,7 @@ final class AgentVmBridge {
             Intent command=new Intent("com.termux.RUN_COMMAND");
             command.setClassName("com.termux","com.termux.app.RunCommandService");
             command.putExtra("com.termux.RUN_COMMAND_PATH","~/easybook-agent-vm/runner.sh");
-            command.putExtra("com.termux.RUN_COMMAND_ARGUMENTS",new String[]{language});
+            command.putExtra("com.termux.RUN_COMMAND_ARGUMENTS",new String[]{language,scopeHex.toString()});
             command.putExtra("com.termux.RUN_COMMAND_STDIN",code);
             command.putExtra("com.termux.RUN_COMMAND_WORKDIR","~/easybook-agent-vm");
             command.putExtra("com.termux.RUN_COMMAND_BACKGROUND",true);
