@@ -1562,10 +1562,12 @@ let aiSandboxStatus=null,aiVmStatus=null,aiSandboxRunController=null,aiVmPollTim
 const aiVmInstalling=phase=>['packages','downloading','provisioning'].includes(phase);
 function renderAiVmStatus(){
  const v=aiVmStatus||{},phase=v.phase||'not-installed';
- const canUse=!!(aiSandboxStatus?.enabled&&v.enabled&&v.permissionGranted);
+ const canUse=!!(aiSandboxStatus?.enabled&&v.enabled&&v.permissionGranted&&v.managementAvailable);
+ $('aiVmActions').style.display=v.managementAvailable?'flex':'none';
  const phases={packages:'正在安装 Linux 依赖',downloading:'正在下载并校验 Debian 镜像',provisioning:'正在配置隔离虚拟磁盘与 SSH',installed:'镜像已安装',failed:'安装失败，请在 Termux 查看 ~/easybook-agent-vm/install.log','not-installed':'尚未安装'};
  let note=v.connectionError?'无法获取 Termux 状态：'+v.connectionError:(phases[phase]||'状态待确认');
- if(!v.termuxInstalled)note='请先从 F-Droid 安装 Termux 0.109+，再授予 Easybook「在 Termux 中执行命令」权限。';
+ if(!v.managementAvailable)note='一键安装需要新版 Android APK（versionCode 115 或更高），网页热更新无法单独启用此功能。';
+ else if(!v.termuxInstalled)note='请先从 F-Droid 安装 Termux 0.109+，再授予 Easybook「在 Termux 中执行命令」权限。';
  else if(!v.permissionGranted)note='请在 Termux 开启 allow-external-apps = true，并在 Android 系统设置授权 Easybook 的 RUN_COMMAND 权限。';
  else if(!aiSandboxStatus?.enabled)note='请先开启上方的本地代码沙箱。';
  else if(!v.enabled)note='请先启用 QEMU Linux 虚拟机。';
