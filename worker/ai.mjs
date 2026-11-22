@@ -89,7 +89,7 @@ function toolsFor(role,mode){
  return registry.filter(t=>!t.risk&&scopes.includes(t.scope)&&!['access_request_permissions','operations_request_confirmation'].includes(t.name)).map(t=>({type:'function',function:{name:t.name,description:t.description,parameters:t.inputSchema}}));
 }
 const SANDBOX_TOOLS=[
- {type:'function',function:{name:'sandbox_execute',description:'在 Android 本地隔离沙箱运行 JavaScript，支持 sandbox.readFile/writeFile/deleteFile/listFiles/fetchText(url)、print(...)。执行前由用户确认。不允许直接访问笔记或凭证。',parameters:{type:'object',properties:{language:{type:'string',enum:['javascript']},code:{type:'string'}},required:['language','code'],additionalProperties:false}}},
+ {type:'function',function:{name:'sandbox_execute',description:'运行 Android 本地沙箱代码：javascript 在独立 Worker 中执行，python/shell 仅在用户配置真正的 QEMU Linux 客体后可执行。仅 javascript 可使用 sandbox.readFile/writeFile/listFiles/fetchText(url)。每次需确认；不直接访问笔记或凭证。',parameters:{type:'object',properties:{language:{type:'string',enum:['javascript','python','shell']},code:{type:'string'}},required:['language','code'],additionalProperties:false}}},
  {type:'function',function:{name:'sandbox_list_files',description:'列出此会话沙箱文件，执行前由用户确认。',parameters:{type:'object',properties:{},additionalProperties:false}}},
  {type:'function',function:{name:'sandbox_read_file',description:'读取此会话沙箱文件，执行前由用户确认。',parameters:{type:'object',properties:{path:{type:'string'}},required:['path'],additionalProperties:false}}}
 ];
@@ -97,7 +97,7 @@ const SANDBOX_NAMES=new Set(SANDBOX_TOOLS.map(tool=>tool.function.name));
 function validateSandboxTool(name,args){
  if(!SANDBOX_NAMES.has(name)||!object(args))throw Object.assign(Error('Invalid sandbox tool'),{status:400,code:'invalid_sandbox_tool'});
  if(name==='sandbox_execute'){
-  if(args.language!=='javascript'||typeof args.code!=='string'||!args.code.trim()||args.code.length>10000||Object.keys(args).some(key=>!['language','code'].includes(key)))throw Object.assign(Error('Invalid sandbox code'),{status:400,code:'invalid_sandbox_code'});
+  if(!['javascript','python','shell'].includes(args.language)||typeof args.code!=='string'||!args.code.trim()||args.code.length>10000||Object.keys(args).some(key=>!['language','code'].includes(key)))throw Object.assign(Error('Invalid sandbox code'),{status:400,code:'invalid_sandbox_code'});
  }else if(name==='sandbox_list_files'){
   if(Object.keys(args).length)throw Object.assign(Error('Invalid sandbox arguments'),{status:400,code:'invalid_sandbox_args'});
  }else if(typeof args.path!=='string'||!args.path||args.path.length>180||args.path.includes('..')||args.path.startsWith('/')||Object.keys(args).some(key=>key!=='path'))throw Object.assign(Error('Invalid sandbox path'),{status:400,code:'invalid_sandbox_args'});
