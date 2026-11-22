@@ -389,8 +389,9 @@ export async function aiAPI(request,env,principal,{workspaceId,fetcher=fetch,lau
     if(remote)return answer('第三方工具调用等待确认。确认后，所示参数将发送至 '+new URL(remote.url).hostname+'。',{approval:{id,tool:name,arguments:args,expiresAt,external:{server:remote.server,tool:remote.name,host:new URL(remote.url).hostname}}});
     return answer('Agent 已准备 '+name+' 操作，正在等待你核对参数并确认。未确认前不会修改工作区。',{approval:{id,tool:name,arguments:args,expiresAt}});
    }
+   let batchCompleted=0;
    const executeCall=async call=>{
-    if(segmentExpired()&&webSearches.length)return null;
+    if(segmentExpired()&&(webSearches.length||batchCompleted))return null;
     const name=call?.function?.name;let args,result,receipt;
     emit('tool_start',{name:typeof name==='string'?name:'unknown'});
     try{
@@ -405,6 +406,7 @@ export async function aiAPI(request,env,principal,{workspaceId,fetcher=fetch,lau
      }else result=await callTool({env,workspace:workspaceId,client:'easybook-agent:'+principal.accountId,scopes},name,args);
     }catch(error){result={error:{code:error?.code||'TOOL_ERROR',message:error?.code?error.message:'Tool failed'}}}
     emit('tool_end',{name:typeof name==='string'?name:'unknown',status:result?.error?'failed':'done'});
+    batchCompleted++;
     return {call,name,result,receipt};
    };
    let completedCalls;
@@ -416,14 +418,14 @@ export async function aiAPI(request,env,principal,{workspaceId,fetcher=fetch,lau
     await Promise.all(Array.from({length:Math.min(SEARCH_CONCURRENCY,calls.length)},async()=>{
      for(;;){
       const index=next++;
-      if(index>=calls.length||segmentExpired()&&webSearches.length)return;
+      if(index>=calls.length||segmentExpired()&&(webSearches.length||batchCompleted))return;
       completedCalls[index]=await executeCall(calls[index]);
      }
     }));
    }else{
     completedCalls=[];
     for(const call of calls){
-     if(segmentExpired()&&webSearches.length)break;
+     if(segmentExpired()&&(webSearches.length||batchCompleted))break;
      completedCalls.push(await executeCall(call));
     }
    }
