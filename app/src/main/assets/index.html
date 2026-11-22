@@ -2908,7 +2908,7 @@ async function sendAiHubMessage(content,resumeSession=null,{regenerate=false,sea
   }
   session.searchCompleted=(session.searchCompleted||0)+searches.length;
   if(data.continuationRequired&&searches.length){
-   if((session.searchSegments||0)<24){
+   if((session.searchSegments||0)<200){
     session.searchSegments=(session.searchSegments||0)+1;
     autoContinueNext=true;
    }else partial.content='已保留本阶段检索结果。自动续接达到安全次数，可发送“继续”接着完成研究。';
