@@ -455,13 +455,8 @@ export async function aiAPI(request,env,principal,{workspaceId,fetcher=fetch,lau
      await createQueue();
     }
    }
-   let batchCompleted=0;
    const executeCall=async call=>{
-    if(segmentExpired()&&(webSearches.length||batchCompleted))return null;
-    const name=call?.function?.name;
-    if(name===WEB_SEARCH&&searchesStarted>=MAX_SEARCHES_PER_REQUEST)return null;
-    if(name===WEB_SEARCH)searchesStarted++;
-    let args,result,receipt;
+    const name=call?.function?.name;let args,result,receipt;
     emit('tool_start',{name:typeof name==='string'?name:'unknown'});
     try{
      args=JSON.parse(call?.function?.arguments||'{}');
@@ -475,44 +470,48 @@ export async function aiAPI(request,env,principal,{workspaceId,fetcher=fetch,lau
      }else result=await callTool({env,workspace:workspaceId,client:'easybook-agent:'+principal.accountId,scopes},name,args);
     }catch(error){result={error:{code:error?.code||'TOOL_ERROR',message:error?.code?error.message:'Tool failed'}}}
     emit('tool_end',{name:typeof name==='string'?name:'unknown',status:result?.error?'failed':'done'});
-    batchCompleted++;
     return {call,name,result,receipt};
    };
-   let completedCalls;
-   if(automatically&&calls.length>1&&calls.every(call=>call?.function?.name===WEB_SEARCH)){
-    // Multiple independent queries can execute concurrently. Retain the
-    // model's tool-call order when feeding tool results back to the provider.
-    completedCalls=new Array(calls.length);
-    let next=0;
-    await Promise.all(Array.from({length:Math.min(SEARCH_CONCURRENCY,calls.length)},async()=>{
-     for(;;){
-      const index=next++;
-      if(index>=calls.length||searchesStarted>=MAX_SEARCHES_PER_REQUEST||segmentExpired()&&(webSearches.length||batchCompleted))return;
-      completedCalls[index]=await executeCall(calls[index]);
-     }
-    }));
-   }else{
-    completedCalls=[];
-    for(const call of calls){
-     if(segmentExpired()&&(webSearches.length||batchCompleted)||call?.function?.name===WEB_SEARCH&&searchesStarted>=MAX_SEARCHES_PER_REQUEST)break;
-     completedCalls.push(await executeCall(call));
+   // A fixed-size internal batch limits Free Worker resource use, not the
+   // user's total searches. All remaining tool IDs stay in the durable plan.
+   const offset=pendingCalls?nextCall:0,remaining=calls.slice(offset),selected=[];
+   let selectedSearches=0;
+   for(const call of remaining){
+    if(selected.length>=4||selectedSearches>=MAX_SEARCHES_PER_REQUEST)break;
+    if(call?.function?.name===WEB_SEARCH){
+     if(selectedSearches>=MAX_SEARCHES_PER_REQUEST)break;
+     selectedSearches++;
     }
+    selected.push(call);
+    if(selectedSearches>=MAX_SEARCHES_PER_REQUEST)break;
    }
-   const finishedCalls=completedCalls.filter(Boolean);
-   for(const item of finishedCalls){
+   const completedCalls=automatically&&selected.length>1&&selected.every(call=>call?.function?.name===WEB_SEARCH)
+    ?await Promise.all(selected.map(executeCall))
+    :await (async()=>{const done=[];for(const call of selected)done.push(await executeCall(call));return done})();
+   for(const item of completedCalls){
     used.push({name:item.name,ok:!item.result?.error});
     if(item.receipt){
      webSearches.push(item.receipt);
-     // Send a small human-readable checkpoint immediately. Even if the
-     // upstream CPU limit terminates this run, the Android/Web UI retains
-     // source titles and URLs in its streamed, locally saved transcript.
      const sources=(item.receipt.result?.results||[]).slice(0,2);
      const lines=sources.map(source=>(String(source.title||'来源').slice(0,100)+' '+String(source.url||'').slice(0,350)));
      emit('reasoning',{text:'\n已记录搜索 '+webSearches.length+'：'+String(item.receipt.arguments.query||'').slice(0,100)+(lines.length?'\n'+lines.join('\n'):'（未取得来源）')+'\n'});
     }
-    conversation.push({role:'tool',tool_call_id:item.call.id,content:JSON.stringify(item.result).slice(0,180000)});
+    // Keep the exact provider tool-call IDs and order, including tool errors.
+    // These are fed back to the SAME model response after the entire batch.
+    conversation.push({role:'tool',tool_call_id:item.call.id,content:JSON.stringify(item.result).slice(0,30000)});
    }
-   if(finishedCalls.length<calls.length||segmentExpired()&&webSearches.length)return partialSegment();
+   if(pendingCalls){
+    nextCall+=completedCalls.length;
+    if(nextCall>=pendingCalls.length){pendingCalls=null;nextCall=0;}
+    return partialSegment();
+   }
+   if(completedCalls.length<calls.length||segmentExpired()&&webSearches.length){
+    // Non-search batches larger than four are also persisted; this is a
+    // defensive fallback if a provider changes tool-call ordering.
+    pendingCalls=calls;nextCall=completedCalls.length;
+    await createQueue();
+    return partialSegment();
+   }
   }
    }catch(error){
     if(runSignal?.aborted||!webSearches.length)throw error;
