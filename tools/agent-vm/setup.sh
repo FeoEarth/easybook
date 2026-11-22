@@ -38,7 +38,7 @@ available=$(df -Pk "$HOME" | awk 'END { print $4+0 }')
 stage downloading
 # Immutable Debian 13 (trixie) official cloud image. SHA-512 pinned in the APK.
 IMAGE="debian-13-genericcloud-arm64-20260623-2518.qcow2"
-URL="https://cloud.debian.org/images/cloud/trixie/20260623-2518/$IMAGE"
+URL="https://cloud.debian.org/cdimage/cloud/trixie/20260623-2518/$IMAGE"
 SHA512="fd35e5ec7bd31bc3821ba43135574ac42bdf0ded4dc6e3c8a86995e00b4206db60f2a7782bb9d94188f2b302df782d3afb5b13bdeaba25efe8c39bc51cec83a8"
 TMP="$DIR/guest.download"
 if [[ -f "$TMP" ]]; then
