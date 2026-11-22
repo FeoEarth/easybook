@@ -219,7 +219,7 @@ export async function webSearchUsage(env,account,now=Date.now()){
  return {tier:quota.kind,period:quota.kind==='member'?'month':'day',used,limit:quota.limit,remaining:quota.limit-used,resetAt:quota.expiresAt};
 }
 
-export async function runWebSearch(env,account,args,signal,launchBrowser=binding=>puppeteer.launch(binding,{keep_alive:30000})){
+export async function runWebSearch(env,account,args,signal,launchBrowser=binding=>puppeteer.launch(binding,{keep_alive:30000}),browserLease){
  const query=webSearchQuery(args),maxResults=webSearchResultLimit(args);
  signal?.throwIfAborted();
  if(!webSearchAvailable(env))return searchFailure('unavailable');
@@ -234,7 +234,7 @@ export async function runWebSearch(env,account,args,signal,launchBrowser=binding
  const timeout=AbortSignal.timeout(budget);
  const searchSignal=signal?AbortSignal.any([signal,timeout]):timeout;
  let browser,closing,abort;
- const close=()=>{if(browser)closing??=browser.close().catch(()=>{})};
+ const close=()=>{if(browser){if(browserLease?.browser===browser)browserLease.browser=null;closing??=browser.close().catch(()=>{})}};
  const interrupted=new Promise((_,reject)=>{
   abort=()=>{close();reject(searchSignal.reason)};
   searchSignal.addEventListener('abort',abort,{once:true});
@@ -242,7 +242,8 @@ export async function runWebSearch(env,account,args,signal,launchBrowser=binding
  const search=async()=>{
   try{
    searchSignal.throwIfAborted();
-   browser=await launchBrowser(env.WEB_SEARCH_BROWSER);
+   browser=browserLease?.browser||await launchBrowser(env.WEB_SEARCH_BROWSER);
+   if(browserLease)browserLease.browser=browser;
    searchSignal.throwIfAborted();
    const primary=await crawlSearchPage(browser,duckduckgo,query,searchSignal,deadline,maxResults);
    let secondary={results:[],raw:0,filtered:0},matched=[];
@@ -263,15 +264,19 @@ export async function runWebSearch(env,account,args,signal,launchBrowser=binding
     wiby:{raw:secondary.raw||0,accepted:matched.length},duplicatesRemoved:primary.results.length+matched.length-unique.length,returned:results.length};
    if(results.length)return {results,source:primary.results.length?'duckduckgo':'wiby',diagnostics};
    return {...searchFailure(primary.status),diagnostics};
-  }finally{close();await closing}
+  }finally{if(!browserLease){close();await closing}}
  };
  try{
   return await Promise.race([search(),interrupted]);
  }catch(error){
+  if(browserLease){close();await closing}
+  // A browser that never launched did not serve a search: do not charge quota.
+  if(!browser)try{await env.DB.prepare('UPDATE account_rate_limits SET count=count-1 WHERE bucket=? AND count>0').bind(bucket).run()}catch{}
   if(signal?.aborted)throw signal.reason||error;
-  const reason=timeout.aborted?'timeout':'unavailable';
+  const limited=error?.status===429||/429|rate.limit|too.many.requests/i.test(String(error?.message||''));
+  const reason=timeout.aborted?'timeout':limited?'rate_limited':'unavailable';
   console.info(JSON.stringify({event:'ai_web_search',site:'duckduckgo',stage:browser?'session':'launch',status:reason,ms:Date.now()-started}));
-  return searchFailure(reason);
+  return reason==='rate_limited'?searchFailure(reason,'web_search_rate_limited','云端浏览器启动过于频繁，请稍后重试；已启用的 Parallel 搜索仍可继续。'):searchFailure(reason);
  }finally{
   searchSignal.removeEventListener('abort',abort);
  }
