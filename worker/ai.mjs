@@ -389,7 +389,7 @@ export async function aiAPI(request,env,principal,{workspaceId,fetcher=fetch,lau
    let reasoning='';
    const answer=(content,extra={})=>({message:{role:'assistant',content,...(reasoning?{reasoning}:{})},tools:used,...(webSearches.length?{webSearch:webSearches.at(-1),webSearches}:{}),...extra});
    try{for(;;){
-   if(agentRunId&&segmentExpired())return partialSegment();
+   if(agentRunId&&segmentExpired())return await partialSegment();
    let receivedReasoning=false;
    const addReasoning=text=>{
     const chunk=((!receivedReasoning&&reasoning?'\n\n':'')+text).slice(0,32000-reasoning.length);
@@ -500,7 +500,7 @@ export async function aiAPI(request,env,principal,{workspaceId,fetcher=fetch,lau
    }
    if(!selected.length&&remaining.length){
     if(!agentRunId){pendingCalls=calls;await createQueue();}
-    return partialSegment();
+    return await partialSegment();
    }
    searchesStarted+=countSearches;
    const completedCalls=automatically&&!serializeSearches&&selected.length>1
@@ -546,7 +546,7 @@ export async function aiAPI(request,env,principal,{workspaceId,fetcher=fetch,lau
    // in the next request. A retry exhaustion becomes a normal tool error.
    if(pendingCalls||retryPending||segmentExpired()&&webSearches.length||searchesStarted>=MAX_SEARCHES_PER_REQUEST){
     if(!agentRunId){pendingCalls=calls;nextCall=completedCalls.length;await createQueue();}
-    return partialSegment();
+    return await partialSegment();
    }
   }
    }catch(error){
