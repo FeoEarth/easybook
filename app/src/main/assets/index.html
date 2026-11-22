@@ -1642,7 +1642,7 @@ async function executeAiSandboxApproval(pending,session){
    if(!aiVmStatus?.ready)throw Error('QEMU 未授权或 Termux 权限缺失，请先到 AI 设置启用');
    if(!['python','shell'].includes(pending.arguments?.language))throw Error('QEMU 客体只执行 Python / Shell');
    const result=await Promise.race([
-    native.call('sandbox.vm.execute',{language:pending.arguments.language,code:pending.arguments.code}),
+    native.call('sandbox.vm.execute',{language:pending.arguments.language,code:pending.arguments.code,sessionId:session.id}),
     new Promise((_,reject)=>controller.signal.addEventListener('abort',()=>reject(new DOMException('停止等待虚拟机结果','AbortError')),{once:true}))
    ]);
    if(!sandboxSessionActive(session)||session.pendingApproval!==pending)throw Error('会话授权已失效');
