@@ -194,7 +194,7 @@ async function searchApprovedWeb(env,account,args,signal,launchBrowser,fetcher,b
  const diagnostics={requested:maxResults,duckduckgo:first?.diagnostics||null,parallel:second?.diagnostics||null,
    duplicatesRemoved:candidates.length-unique.length,returned:results.length,shortfall:Math.max(0,maxResults-results.length)};
   console.info(JSON.stringify({event:'ai_search_results',requested:maxResults,returned:results.length,duplicates:diagnostics.duplicatesRemoved,
-   providers:{primary:baseResults.length,parallel:parallelResults.length},parallelMode:prefs.parallelMode||'anonymous'}));
+   providers:{primary:baseResults.length,parallel:parallelResults.length},errors:{primary:first?.error?.code||null,parallel:second?.error?.code||null},parallelMode:prefs.parallelMode||'anonymous'}));
   if(results.length)return {results,source,providers,diagnostics};
  return {results:[],browserSearch:true,reason:first?.reason||'unavailable',source,providers,diagnostics,error:{code:second?.error?.code||first?.error?.code||'web_search_unavailable',message:advanced?second?.error?.message||'联网搜索进阶版没有返回结果。':first?.error?.message||'暂未取得可用搜索结果。'}};
 }
