@@ -9,7 +9,6 @@
   "workers_dev": true,
   "browser": { "binding": "WEB_SEARCH_BROWSER" },
   "keep_vars": true,
-  "limits": { "cpu_ms": 120000 },
   "observability": {
     "enabled": true,
     "head_sampling_rate": 1,

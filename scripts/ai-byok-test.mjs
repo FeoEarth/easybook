@@ -534,8 +534,8 @@ assert.equal(webSearchQuota(monthStart,{permanent:1,expires_at:0}).kind,'member'
  assert.equal((await api('mcp','PUT',{parallelSearch:false})).status,200);
 }
 
-// No per-answer search cap: verify more than 8 sequential searches, plus
-// simultaneous tool calls whose executions overlap but return in model order.
+// Free Workers keep each invocation small, but the same user task can
+// continue for ten or more searches across requests; pairs still run in parallel.
 {
  let mode='serial',modelRounds=0,networkCalls=0,inFlight=0,peakInFlight=0;
  const fetcher=async(url,init={})=>{
@@ -557,9 +557,9 @@ assert.equal(webSearchQuota(monthStart,{permanent:1,expires_at:0}).kind,'member'
   const payload=JSON.parse(init.body),seen=payload.messages.filter(x=>x.role==='tool').length;
   modelRounds++;
   if(mode==='failure'&&seen>=1)return Response.json({error:{message:'upstream failed'}},{status:503});
-  let count=mode==='serial'?seen<10?1:0:mode==='batch'?seen?0:10:seen?0:1;
+  const count=mode==='serial'?(networkCalls<10?1:0):mode==='batch'?(seen?0:Math.max(0,10-networkCalls)):(seen?0:1);
   const calls=Array.from({length:count},(_,i)=>({id:mode+'-'+seen+'-'+i,type:'function',
-   function:{name:'web_search',arguments:JSON.stringify({query:'independent topic '+(seen+i),maxResults:3})}}));
+   function:{name:'web_search',arguments:JSON.stringify({query:'independent topic '+(mode==='serial'?networkCalls:networkCalls+i),maxResults:3})}}));
   return Response.json({choices:[{message:calls.length?{role:'assistant',content:'',tool_calls:calls}:{role:'assistant',content:'已综合搜索结果。'}}]});
  };
  const api=(path,method,body)=>aiAPI(request('/api/ai/'+path,method,body),env,principal,{workspaceId:workspace,fetcher});
@@ -567,17 +567,28 @@ assert.equal(webSearchQuota(monthStart,{permanent:1,expires_at:0}).kind,'member'
  assert.equal((await api('mcp','PUT',{parallelSearchApproval:'always'})).status,200);
  assert.equal((await api('mcp','PUT',{parallelMode:'anonymous'})).status,200);
  const chat=async()=> (await api('chat','POST',{credentialId:openaiId,mode:'conversation',messages:[{role:'user',content:'检索10个独立主题'}]})).json();
- const serial=await chat();
- assert.equal(serial.message.content,'已综合搜索结果。');
- assert.equal(serial.webSearches.length,10,'Sequential calls must not stop at 8');
- assert.ok(serial.webSearches.every(item=>item.result.results.length===1));
+ const serialQueries=[];
+ for(let segment=0;networkCalls<10&&segment<10;segment++){
+  const step=await chat();
+  assert.ok(step.webSearches.length>=1&&step.webSearches.length<=2,'Each free-tier segment stays small');
+  assert.ok(step.webSearches.every(item=>item.result.results.length===1));
+  serialQueries.push(...step.webSearches.map(item=>item.arguments.query));
+  if(networkCalls<10)assert.equal(step.continuationRequired,true);
+ }
+ assert.equal(networkCalls,10);
+ assert.deepEqual(serialQueries,Array.from({length:10},(_,i)=>'independent topic '+i));
  assert.equal(networkCalls,10);assert.equal(peakInFlight,1);
  mode='batch';modelRounds=0;networkCalls=0;inFlight=0;peakInFlight=0;
- const batched=await chat();
- assert.equal(batched.message.content,'已综合搜索结果。');
- assert.equal(batched.webSearches.length,10,'Process every tool call, not just the first 6');
- assert.ok(peakInFlight>=2,'Independent searches execute concurrently');
- assert.deepEqual(batched.webSearches.map(item=>item.arguments.query),Array.from({length:10},(_,i)=>'independent topic '+i));
+ const batchedQueries=[];
+ for(let segment=0;networkCalls<10&&segment<10;segment++){
+  const step=await chat();
+  assert.ok(step.webSearches.length>=1&&step.webSearches.length<=2,'At most two searches execute per Worker request');
+  batchedQueries.push(...step.webSearches.map(item=>item.arguments.query));
+  if(networkCalls<10)assert.equal(step.continuationRequired,true);
+ }
+ assert.equal(networkCalls,10);
+ assert.ok(peakInFlight>=2,'Independent searches still execute concurrently');
+ assert.deepEqual(batchedQueries,Array.from({length:10},(_,i)=>'independent topic '+i));
  mode='failure';modelRounds=0;networkCalls=0;
  const partial=await chat();
  assert.equal(partial.partial,true,'A provider failure after research must not erase results');

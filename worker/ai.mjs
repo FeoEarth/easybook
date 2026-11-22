@@ -324,9 +324,14 @@ export async function aiAPI(request,env,principal,{workspaceId,fetcher=fetch,lau
    // segment within a soft wall-time budget so Workers do not exhaust CPU.
    // The client continues a long task in another request with saved receipts.
    const SEARCH_CONCURRENCY=2;
+   // Free Workers cannot opt into a larger CPU budget. Keep each invocation
+   // small and resume the research task in another request after two queries.
+   // This is not a per-task search limit; the client continues automatically.
+   const MAX_SEARCHES_PER_REQUEST=2;
+   let searchesStarted=0;
    const segmentStarted=Date.now();
    const configuredSegment=Number(env.AI_SEARCH_SEGMENT_MS);
-   const SEARCH_SEGMENT_MS=Number.isFinite(configuredSegment)&&configuredSegment>0?Math.min(75000,configuredSegment):75000;
+   const SEARCH_SEGMENT_MS=Number.isFinite(configuredSegment)&&configuredSegment>0?Math.min(20000,configuredSegment):20000;
    const segmentExpired=()=>Date.now()-segmentStarted>=SEARCH_SEGMENT_MS;
    const partialSegment=()=>answer('本阶段已执行 '+webSearches.length+' 次联网搜索，已保存来源，正在继续原研究任务。',{model:row.model,providerName:row.provider_name,partial:true,continuationRequired:true});
    let reasoning='';
@@ -392,7 +397,10 @@ export async function aiAPI(request,env,principal,{workspaceId,fetcher=fetch,lau
    let batchCompleted=0;
    const executeCall=async call=>{
     if(segmentExpired()&&(webSearches.length||batchCompleted))return null;
-    const name=call?.function?.name;let args,result,receipt;
+    const name=call?.function?.name;
+    if(name===WEB_SEARCH&&searchesStarted>=MAX_SEARCHES_PER_REQUEST)return null;
+    if(name===WEB_SEARCH)searchesStarted++;
+    let args,result,receipt;
     emit('tool_start',{name:typeof name==='string'?name:'unknown'});
     try{
      args=JSON.parse(call?.function?.arguments||'{}');
@@ -418,14 +426,14 @@ export async function aiAPI(request,env,principal,{workspaceId,fetcher=fetch,lau
     await Promise.all(Array.from({length:Math.min(SEARCH_CONCURRENCY,calls.length)},async()=>{
      for(;;){
       const index=next++;
-      if(index>=calls.length||segmentExpired()&&(webSearches.length||batchCompleted))return;
+      if(index>=calls.length||searchesStarted>=MAX_SEARCHES_PER_REQUEST||segmentExpired()&&(webSearches.length||batchCompleted))return;
       completedCalls[index]=await executeCall(calls[index]);
      }
     }));
    }else{
     completedCalls=[];
     for(const call of calls){
-     if(segmentExpired()&&(webSearches.length||batchCompleted))break;
+     if(segmentExpired()&&(webSearches.length||batchCompleted)||call?.function?.name===WEB_SEARCH&&searchesStarted>=MAX_SEARCHES_PER_REQUEST)break;
      completedCalls.push(await executeCall(call));
     }
    }
