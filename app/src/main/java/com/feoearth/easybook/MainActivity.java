@@ -397,7 +397,7 @@ public class MainActivity extends Activity {
             case "sandbox.fetch":return AgentSandboxNetwork.fetch(this,bounded(args,"url",2048));
             case "sandbox.vm.status":return AgentVmBridge.status(this);
             case "sandbox.vm.configure":return AgentVmBridge.configure(this,args);
-            case "sandbox.vm.execute":return AgentVmBridge.run(this,args);
+            case "sandbox.vm.execute":return AgentVmBridge.run(this,args,repository.activeSpace());
             case "sandbox.export":{
                 String name=AttachmentStore.cleanName(bounded(args,"name",100));
                 String content=bounded(args,"content",131072);
