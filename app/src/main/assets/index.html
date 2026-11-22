@@ -1706,12 +1706,12 @@ function localAiPrepareApproval(action){
  if(action.arguments.folder_id&&!activeFolders().some(folder=>folder.id===action.arguments.folder_id))throw Error('目标文件夹不存在');
  return {local:true,id:uuid(),tool:action.name,arguments:action.arguments,workspace:localSpace,mutation:note?.mutation||'',expiresAt:Date.now()+300000};
 }
-async function aiLocalGenerate(model,messages,progress,{mode='conversation',onTool=()=>{},signal,sandbox=false}={}){
+async function aiLocalGenerate(model,messages,progress,{mode='conversation',onTool=()=>{},signal,sandbox=false,sandboxBackend='javascript'}={}){
  const protocol=window.EasybookLocalAiProtocol,used=[],toolResults=[];
  if(navigator.onLine!==false)await refreshAiPreferences().catch(()=>{});
  for(let round=0;round<5;round++){
   if(signal?.aborted)throw new DOMException('已停止生成','AbortError');
-  const prompt=protocol.localAiPrompt(messages,{mode,memory:aiMemory(),toolResults,sandbox});
+  const prompt=protocol.localAiPrompt(messages,{mode,memory:aiMemory(),toolResults,sandbox,sandboxBackend});
   const data=await aiLocalRaw(model,prompt,text=>{const beginning=text.trimStart();if(!/^(<|\{|```)/.test(beginning))progress?.(text)});
   if(signal?.aborted)throw new DOMException('已停止生成','AbortError');
   const output=data.message.content,action=protocol.parseLocalAiAction(output);
@@ -2522,7 +2522,6 @@ function renderAiHub(){
  $('aiSandboxBackend').disabled=aiHubBusy||!!session.pendingApproval;
  for(const name of ['aiSandboxImport','aiSandboxReload','aiSandboxExport','aiSandboxDelete','aiSandboxClear'])
   $(name).disabled=aiHubBusy||!!session.pendingApproval;
- if(!$('aiSandboxControls').hidden&&$('aiContextPanel').hidden===false)void refreshAiSandboxFiles();
  $('aiHubTitle').textContent=session.title;
  $('aiHubComposerModel').textContent=session.profileId==='__local__'?(aiLocalStatus?.models?.find(m=>m.id===session.model)?.title||session.model)+' · 本地':session.model||activeAiProfile()?.model||'选择模型';
  $('aiHubConversation').setAttribute('aria-pressed',String(mode==='conversation'));
@@ -3007,7 +3006,7 @@ $('aiHubMessages').onclick=async event=>{
 };
 $('aiHubMessages').onscroll=()=>{const panel=$('aiHubMessages');$('aiHubLatest').hidden=panel.scrollHeight-panel.scrollTop-panel.clientHeight<100};
 $('aiHubLatest').onclick=()=>{const panel=$('aiHubMessages');panel.scrollTo({top:panel.scrollHeight,behavior:'smooth'})};
-$('aiHubContext').onclick=()=>{const panel=$('aiContextPanel');panel.hidden=!panel.hidden;$('aiHubContext').setAttribute('aria-expanded',String(!panel.hidden));renderAiHubContext(currentAiHubSession())};
+$('aiHubContext').onclick=()=>{const panel=$('aiContextPanel');panel.hidden=!panel.hidden;$('aiHubContext').setAttribute('aria-expanded',String(!panel.hidden));renderAiHubContext(currentAiHubSession());if(!panel.hidden)void refreshAiSandboxFiles()};
 $('aiContextWindow').onchange=event=>{
  const input=event.target,session=currentAiHubSession();
  if(!session)return;
