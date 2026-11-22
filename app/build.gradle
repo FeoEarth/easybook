@@ -75,7 +75,7 @@ tasks.register('preparePdfAssets', Exec) {
 tasks.named('preBuild').configure { dependsOn 'preparePdfAssets' }
 
 tasks.register('prepareAgentVmAssets', Copy) {
-    from('tools/agent-vm') { include '*.sh' }
-    into('app/src/main/assets/agent-vm')
+    from("${rootProject.projectDir}/tools/agent-vm") { include '*.sh' }
+    into("${project.projectDir}/src/main/assets/agent-vm")
 }
 tasks.named('preBuild').configure { dependsOn 'prepareAgentVmAssets' }
