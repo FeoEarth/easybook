@@ -348,15 +348,19 @@ export async function aiAPI(request,env,principal,{workspaceId,fetcher=fetch,lau
     if(serialized.length>1800000)throw Object.assign(Error('Agent context too large'),{code:'agent_context_too_large',status:413});
     return seal(env,principal.accountId,'agent-run:'+id,serialized);
    };
+   const advertiseCheckpoint=()=>emit('tool_start',{name:'__easybook_agent_run__:'+agentRunId});
    const createQueue=async()=>{
     if(agentRunId){
-     // A resumed task may generate another batch of tool calls. Commit that
-     // entire new plan before executing any item, under the same lease.
+     // Persist a new model plan before any of its tools begin.
      await refreshAgentQueue(env,principal.accountId,workspaceId,agentRunId,agentLease,await encryptState(agentRunId));
-     return;
+    }else{
+     agentRunId=crypto.randomUUID();agentLease=crypto.randomUUID();
+     await createAgentQueue(env,principal.accountId,workspaceId,agentRunId,agentLease,await encryptState(agentRunId));
     }
-    agentRunId=crypto.randomUUID();agentLease=crypto.randomUUID();
-    await createAgentQueue(env,principal.accountId,workspaceId,agentRunId,agentLease,await encryptState(agentRunId));
+    // Existing Android stream bridges forward tool_start.name, so a private
+    // checkpoint marker can recover a task even if Worker CPU is exhausted
+    // before the HTTP/SSE "done" frame arrives.
+    advertiseCheckpoint();
    };
    const checkpoint=async()=>{
     if(!agentRunId)return;
@@ -386,7 +390,7 @@ export async function aiAPI(request,env,principal,{workspaceId,fetcher=fetch,lau
    };
    const segmentStarted=Date.now();
    const configuredSegment=Number(env.AI_SEARCH_SEGMENT_MS);
-   const SEARCH_SEGMENT_MS=Number.isFinite(configuredSegment)&&configuredSegment>0?Math.min(20000,configuredSegment):20000;
+   const SEARCH_SEGMENT_MS=Number.isFinite(configuredSegment)&&configuredSegment>0?Math.min(9000,configuredSegment):9000;
    const segmentExpired=()=>Date.now()-segmentStarted>=SEARCH_SEGMENT_MS;
    const partialSegment=async()=>{
     await checkpoint();
@@ -395,7 +399,7 @@ export async function aiAPI(request,env,principal,{workspaceId,fetcher=fetch,lau
    let reasoning='';
    const answer=(content,extra={})=>({message:{role:'assistant',content,...(reasoning?{reasoning}:{})},tools:used,...(webSearches.length?{webSearch:webSearches.at(-1),webSearches}:{}),...extra});
    try{for(;;){
-   if(webSearches.length&&segmentExpired())return await partialSegment();
+   if(agentRunId&&segmentExpired())return await partialSegment();
    let receivedReasoning=false;
    const addReasoning=text=>{
     const chunk=((!receivedReasoning&&reasoning?'\n\n':'')+text).slice(0,32000-reasoning.length);
@@ -494,7 +498,7 @@ export async function aiAPI(request,env,principal,{workspaceId,fetcher=fetch,lau
    const selected=[];
    let countSearches=0;
    for(let index=offset;index<calls.length;index++){
-    if(selected.length>=4||segmentExpired()&&webSearches.length)break;
+    if(selected.length>=4||segmentExpired()&&agentRunId)break;
     const call=calls[index];
     if(Object.prototype.hasOwnProperty.call(bufferedResults,index))continue;
     if(call?.function?.name===WEB_SEARCH){
@@ -508,6 +512,7 @@ export async function aiAPI(request,env,principal,{workspaceId,fetcher=fetch,lau
     if(!agentRunId){pendingCalls=calls;await createQueue();}
     return await partialSegment();
    }
+   const waveStarted=Date.now();
    const completedCalls=automatically&&!serializeSearches&&selected.length>1
     &&selected.every(({call})=>call?.function?.name===WEB_SEARCH)
     ?await Promise.all(selected.map(async item=>({...item,result:await executeCall(item.call)})))
@@ -531,10 +536,14 @@ export async function aiAPI(request,env,principal,{workspaceId,fetcher=fetch,lau
    }
    if(rateLimited){
     serializeSearches=true;
-    // Give Browser Run / Parallel rate limits time to recover instead of
-    // immediately issuing a second burst from the next HTTP request.
+    // Let Browser Run / Parallel limits recover before the next request.
     const attempts=Math.max(1,...Object.values(searchAttempts));
     retryAfterMs=Math.min(25000,5000*Math.pow(2,attempts-1));
+   }
+   if(Date.now()-waveStarted>4000&&countSearches>1){
+    // Even successful browser waves can consume disproportionate Worker CPU.
+    // Prefer serial browsing on later waves in this model tool batch.
+    serializeSearches=true;
    }
    // Flush only contiguous tool results. A successful parallel search behind
    // a retryable failure is buffered and never executed again.
@@ -548,7 +557,9 @@ export async function aiAPI(request,env,principal,{workspaceId,fetcher=fetch,lau
      const lines=sources.map(source=>(String(source.title||'来源').slice(0,100)+' '+String(source.url||'').slice(0,350)));
      emit('reasoning',{text:'\n已记录搜索 '+webSearches.length+'：'+String(item.receipt.arguments.query||'').slice(0,100)+(lines.length?'\n'+lines.join('\n'):'（未取得来源）')+'\n'});
     }
-    conversation.push({role:'tool',tool_call_id:item.call.id,content:JSON.stringify(item.result).slice(0,30000)});
+    // Enough evidence for citation, but bounded across long research tasks:
+    // huge upstream snippets otherwise bloat D1 and model context each wave.
+    conversation.push({role:'tool',tool_call_id:item.call.id,content:JSON.stringify(item.result).slice(0,12000)});
    }
    if(pendingCalls&&nextCall>=pendingCalls.length){
     pendingCalls=null;nextCall=0;bufferedResults={};searchAttempts={};serializeSearches=false;
