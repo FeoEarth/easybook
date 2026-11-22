@@ -121,6 +121,17 @@ try{
  await app.send('直接搜索公开资料');
  assert.equal(app.session().pendingApproval,null);
  assert.equal($('aiHubMessages').querySelector('a[href="https://example.org/auto"]').textContent,'自动来源');
+ let researchSegments=0;
+ app.cloud(async body=>{
+  researchSegments++;
+  if(researchSegments===1)return {message:{content:'已完成本阶段，自动续接'},continuationRequired:true,webSearches:[{arguments:{query:'研究阶段一'},result:{results:[{url:'https://example.org/checkpoint',title:'阶段来源'}]}}]};
+  assert.match(body.messages.at(-1).content,/累计执行了 1 次联网检索/);
+  return {message:{content:'长任务研究完毕。'}};
+ });
+ await app.send('长任务分段检索');
+ await wait(()=>researchSegments===2&&app.session().messages.at(-1)?.content==='长任务研究完毕。');
+ assert.equal(app.session().searchCompleted,1,'Automatic continuation preserves cumulative tool counts');
+ assert.equal($('aiHubMessages').querySelector('a[href="https://example.org/checkpoint"]').textContent,'阶段来源');
  const fallbackProposal={...searchProposal,id:'search-fallback'};
  app.cloud(async()=>({message:{content:'请确认搜索'},approval:fallbackProposal}));
  await app.send('再联网搜索一次');
