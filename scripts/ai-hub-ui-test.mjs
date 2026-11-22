@@ -155,7 +155,7 @@ try{
    throw Error('ai_unavailable');
   }
   assert.equal(body.purpose,'agent_run:'+crashedRun,'Interrupted Android request resumes the saved tool queue');
-  assert.deepEqual(body.messages,[],'Recovery never asks the model to plan anew');
+  assert.ok(Array.isArray(body.messages)&&body.messages.length===0,'Recovery never asks the model to plan anew');
   return {message:{content:'恢复完成：整批搜索已继续执行。'}};
  });
  const beforeCrashMessages=app.session().messages.filter(message=>message.role==='assistant'&&!message.receipt).length;
