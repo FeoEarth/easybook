@@ -423,8 +423,16 @@ export async function aiAPI(request,env,principal,{workspaceId,fetcher=fetch,lau
     conversation.push({role:'tool',tool_call_id:item.call.id,content:JSON.stringify(item.result).slice(0,180000)});
    }
   }
+   }catch(error){
+    if(request.signal?.aborted||!webSearches.some(item=>item.result?.results?.length))throw error;
+    // Even an unexpected error after tool execution must not discard
+    // successful source receipts or turn the entire run into ai_unavailable.
+    console.error(JSON.stringify({event:'ai_search_run_recovered',name:error?.name||'Error',code:error?.code||'internal',searches:webSearches.length}));
+    const successes=webSearches.filter(item=>item.result?.results?.length).length;
+    return answer('已取得 '+successes+' 次有效搜索结果，但继续处理时发生错误。已保留来源，可继续根据这些结果回答。',{model:row.model,providerName:row.provider_name,partial:true});
    }finally{
-    const browser=browserLease.browser;browserLease.browser=null;
+    const browser=browserLease.browser||await browserLease.launching?.catch(()=>null);
+    browserLease.browser=null;
     if(browser)try{await browser.close()}catch{}
    }
   };
