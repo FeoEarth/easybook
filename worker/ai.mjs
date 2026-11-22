@@ -1,5 +1,5 @@
 import {enrichWebSearchResults} from './ai-web-sources.mjs';
-import {createAgentQueue,claimAgentQueue,checkpointAgentQueue,finishAgentQueue,releaseAgentQueue} from './ai-agent-queue.mjs';
+import {createAgentQueue,claimAgentQueue,refreshAgentQueue,checkpointAgentQueue,finishAgentQueue,releaseAgentQueue} from './ai-agent-queue.mjs';
 import {WEB_SEARCH,webSearchTool,webSearchAvailable,webSearchQuery,webSearchResultLimit,runWebSearch,webSearchUsage} from './ai-web-search.mjs';
 import {runParallelMcpSearch} from './ai-parallel-search.mjs';
 import {AI_CHAT_MAX_BODY_BYTES,AI_CHAT_MAX_MESSAGES,AI_CHAT_MAX_TEXT_CHARS} from '../shared/ai-context-policy.mjs';
@@ -349,7 +349,12 @@ export async function aiAPI(request,env,principal,{workspaceId,fetcher=fetch,lau
     return seal(env,principal.accountId,'agent-run:'+id,serialized);
    };
    const createQueue=async()=>{
-    if(agentRunId)return;
+    if(agentRunId){
+     // A resumed task may generate another batch of tool calls. Commit that
+     // entire new plan before executing any item, under the same lease.
+     await refreshAgentQueue(env,principal.accountId,workspaceId,agentRunId,agentLease,await encryptState(agentRunId));
+     return;
+    }
     agentRunId=crypto.randomUUID();agentLease=crypto.randomUUID();
     await createAgentQueue(env,principal.accountId,workspaceId,agentRunId,agentLease,await encryptState(agentRunId));
    };
