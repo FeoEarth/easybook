@@ -121,6 +121,7 @@ final class AgentVmBridge {
             .put("permissionGranted",permission).put("ready",false)
             .put("backend","qemu-guest-via-termux").put("guestBootVerified",false)
             .put("phase","not-installed").put("installed",false).put("running",false)
+            .put("managementAvailable",true)
             .put("supportedLanguages",new org.json.JSONArray().put("shell").put("python"))
             .put("requiresSetup",true).put("timeoutSeconds",45);
         if(permission) {
