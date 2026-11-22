@@ -8,6 +8,7 @@
   ],
   "workers_dev": true,
   "browser": { "binding": "WEB_SEARCH_BROWSER" },
+  "limits": { "cpu_ms": 120000 },
   "observability": {
     "enabled": true,
     "redact_query_string": true

@@ -523,6 +523,14 @@ assert.equal(webSearchQuota(monthStart,{permanent:1,expires_at:0}).kind,'member'
  assert.deepEqual(parallelQueries,['APEC Shenzhen','APEC meetings']);
  assert.equal(result.webSearch.result.results.length,22,'Legacy search receipt remains available');
  assert.equal(sqlite.prepare("SELECT count FROM account_rate_limits WHERE bucket LIKE 'ai-web-search:month:%'").get().count,usedBefore,'Parallel research uses no Easybook browser quota');
+ // An oversized research task is split across responses instead of allowing
+ // one Worker invocation to exhaust the 30s default CPU budget.
+ modelRounds=0;
+ const segmented=(await (await aiAPI(request('/api/ai/chat','POST',{credentialId:openaiId,mode:'conversation',messages:[{role:'user',content:'长任务，继续搜集证据'}]}),{...env,AI_SEARCH_SEGMENT_MS:1},principal,{workspaceId:workspace,fetcher})).json());
+ assert.equal(segmented.continuationRequired,true,'Long research returns a resumable segment');
+ assert.equal(segmented.partial,true);
+ assert.equal(segmented.webSearches.length,1,'Completed search receipt is preserved before continuing');
+ assert.match(segmented.message.content,/继续原研究任务/);
  assert.equal((await api('mcp','PUT',{parallelSearch:false})).status,200);
 }
 

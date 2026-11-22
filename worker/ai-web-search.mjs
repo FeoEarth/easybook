@@ -155,7 +155,7 @@ async function crawlSearchPage(browser,site,query,signal,deadline,target=WEB_SEA
   url.searchParams.set('q',query);
   stage='navigation';
   const remaining=limit=>Math.max(1,Math.min(limit,deadline-Date.now()));
-  const response=await page.goto(url.href,{waitUntil:'domcontentloaded',timeout:remaining(site===duckduckgo?5000:3500)});
+  const response=await page.goto(url.href,{waitUntil:'domcontentloaded',timeout:remaining(site===duckduckgo?7500:4500)});
   if([202,401,403,429].includes(response?.status())||!isSearchHost(new URL(page.url()),site)){
    status='blocked';return {status,results:[]};
   }
@@ -230,7 +230,7 @@ export async function runWebSearch(env,account,args,signal,launchBrowser=binding
  await env.DB.prepare('DELETE FROM account_rate_limits WHERE bucket IN (SELECT bucket FROM account_rate_limits WHERE expires_at<? LIMIT 100)').bind(now).run();
  const credit=await env.DB.prepare('INSERT INTO account_rate_limits(bucket,count,expires_at) VALUES(?,1,?) ON CONFLICT(bucket) DO UPDATE SET count=count+1 WHERE count<? RETURNING count').bind(bucket,quota.expiresAt,quota.limit).first();
  if(!credit)return searchFailure('limit','web_search_limit',quota.kind==='member'?'会员本月自动搜索次数已达上限，请在浏览器中继续。':'今日自动搜索次数已达上限，请在浏览器中继续。');
- const started=Date.now(),budget=12000,deadline=started+budget;
+ const started=Date.now(),budget=18000,deadline=started+budget;
  const timeout=AbortSignal.timeout(budget);
  const searchSignal=signal?AbortSignal.any([signal,timeout]):timeout;
  let browser,context,closing,abort;
