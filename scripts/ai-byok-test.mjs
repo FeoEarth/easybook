@@ -598,7 +598,11 @@ assert.equal(webSearchQuota(monthStart,{permanent:1,expires_at:0}).kind,'member'
  // Force a short Worker time budget to verify durable continuation when needed.
  modelRounds=0;networkCalls=0;inFlight=0;peakInFlight=0;
  const segmentedRun=body=>aiAPI(request('/api/ai/chat','POST',body),{...env,AI_SEARCH_SEGMENT_MS:1},principal,{workspaceId:workspace,fetcher});
- const first=await (await segmentedRun(initial)).json();
+ const streamedFirst=await readEvents(await segmentedRun({...initial,stream:true}));
+ const advertised=streamedFirst.find(event=>event.type==='tool_start'&&event.data.name?.startsWith('__easybook_agent_run__:'));
+ assert.ok(advertised,'Client receives durable run checkpoint before tools, even if the final SSE frame is lost');
+ const first=streamedFirst.find(event=>event.type==='done')?.data;
+ assert.equal(advertised.data.name.slice('__easybook_agent_run__:'.length),first?.agentRunId,'Early checkpoint identifies the same encrypted run');
  assert.equal(first.continuationRequired,true);
  assert.equal(first.queuedTools,8);
  const stored=sqlite.prepare('SELECT state_ciphertext,state_iv FROM ai_agent_run_queue WHERE id=?').get(first.agentRunId);
