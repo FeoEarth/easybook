@@ -2858,9 +2858,10 @@ async function sendAiHubMessage(content,resumeSession=null,{regenerate=false,sea
  const waitInRun=ms=>new Promise((resolve,reject)=>{
   const signal=run.controller.signal;
   if(signal.aborted){reject(new DOMException('已停止生成','AbortError'));return}
+  let timeout=null;
   const abort=()=>{clearTimeout(timeout);signal.removeEventListener('abort',abort);reject(new DOMException('已停止生成','AbortError'))};
   signal.addEventListener('abort',abort,{once:true});
-  const timeout=setTimeout(()=>{signal.removeEventListener('abort',abort);resolve()},ms);
+  timeout=setTimeout(()=>{signal.removeEventListener('abort',abort);resolve()},ms);
  });
  try{
   const localModel=session.profileId==='__local__';
