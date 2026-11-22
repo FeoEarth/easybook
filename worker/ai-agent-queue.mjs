@@ -1,7 +1,7 @@
 // Durable, account- and workspace-scoped research execution checkpoints.
 // The caller encrypts state (including model context and any read-tool results)
 // before it reaches D1. Leases prevent duplicate concurrent resumes.
-const TTL_MS=60*60*1000,LEASE_MS=90*1000;
+const TTL_MS=60*60*1000,LEASE_MS=45*1000;
 export async function ensureAgentQueue(env){
  await env.DB.prepare("CREATE TABLE IF NOT EXISTS ai_agent_run_queue(id TEXT PRIMARY KEY,account_id TEXT NOT NULL,workspace_id TEXT NOT NULL,state_ciphertext TEXT NOT NULL,state_iv TEXT NOT NULL,lease_id TEXT,lease_until INTEGER NOT NULL DEFAULT 0,expires_at INTEGER NOT NULL,created_at INTEGER NOT NULL,updated_at INTEGER NOT NULL)").run();
  await env.DB.prepare("CREATE INDEX IF NOT EXISTS ai_agent_run_queue_account ON ai_agent_run_queue(account_id,expires_at)").run();
@@ -27,8 +27,9 @@ export async function claimAgentQueue(env,account,workspace,id,lease){
  throw Object.assign(Error(exists?'Agent research task is already running':'Agent research task expired'),{code:exists?'agent_queue_busy':'agent_queue_expired',status:exists?409:404});
 }
 export async function refreshAgentQueue(env,account,workspace,id,lease,encrypted){
- const updated=await env.DB.prepare('UPDATE ai_agent_run_queue SET state_ciphertext=?,state_iv=?,updated_at=? WHERE id=? AND account_id=? AND workspace_id=? AND lease_id=? AND expires_at>? RETURNING id')
-  .bind(encrypted.ciphertext,encrypted.iv,Date.now(),id,account,workspace,lease,Date.now()).first();
+ const now=Date.now();
+ const updated=await env.DB.prepare('UPDATE ai_agent_run_queue SET state_ciphertext=?,state_iv=?,lease_until=?,updated_at=? WHERE id=? AND account_id=? AND workspace_id=? AND lease_id=? AND expires_at>? RETURNING id')
+  .bind(encrypted.ciphertext,encrypted.iv,now+LEASE_MS,now,id,account,workspace,lease,now).first();
  if(!updated)throw Object.assign(Error('Research task lease was lost'),{code:'agent_queue_conflict',status:409});
 }
 export async function checkpointAgentQueue(env,account,workspace,id,lease,encrypted){
