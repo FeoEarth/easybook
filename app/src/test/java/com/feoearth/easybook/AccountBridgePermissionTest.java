@@ -34,7 +34,11 @@ public class AccountBridgePermissionTest {
   security.authorize("ai.models",new JSONObject().put("method","GET").put("credentialId","fixture").put("refresh",true),7);
   security.authorize("ai.select",new JSONObject().put("method","POST").put("credentialId","fixture"),7);
   security.authorize("ai.chat",new JSONObject().put("method","POST").put("credentialId","fixture").put("model","provider/model").put("purpose","memory"),7);
-  security.authorize("ai.stream.start",new JSONObject().put("id","fixture").put("credentialId","fixture").put("model","provider/model"),7);
+  // The AI UI always sends localSandboxBackend, even when sandbox use is disabled.
+  // Both the regular JS backend and the opted-in Linux backend must cross the bridge.
+  security.authorize("ai.stream.start",new JSONObject().put("id","fixture").put("credentialId","fixture").put("model","provider/model").put("localSandbox",false).put("localSandboxBackend","javascript"),7);
+  security.authorize("ai.stream.start",new JSONObject().put("id","fixture").put("credentialId","fixture").put("model","provider/model").put("localSandbox",true).put("localSandboxBackend","linux"),7);
+  try{security.authorize("ai.stream.start",new JSONObject().put("id","fixture").put("localSandboxBackend","javascript").put("unapproved",true),7);fail("Unknown AI stream fields must still be denied");}catch(SecurityException expected){}
   try{security.authorize("ai.preferences",new JSONObject().put("apiKey","forged"),7);fail("Preference requests cannot carry unrelated credential fields");}catch(SecurityException expected){}
   try{security.authorize("ai.preferences",new JSONObject().put("method","GET"),8);fail("Stale documents must remain denied");}catch(SecurityException expected){}
  }
