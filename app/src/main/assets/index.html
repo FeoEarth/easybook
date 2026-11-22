@@ -915,7 +915,7 @@ body[data-settings-detail] .app{display:block;max-width:720px;height:auto;min-he
  <div class="ai-section-heading"><h2>Agent 执行环境</h2></div>
  <div class="settings-group"><label class="settings-row"><span class="row-text"><strong>启用本地代码沙箱</strong><small>Android · 默认关闭 · 每个 Agent 会话单独选择 · JS Worker</small></span><input id="aiSandboxEnabled" type="checkbox" aria-describedby="aiSandboxNote"></label></div>
  <p class="ai-note" id="aiSandboxNote" role="status">正在检查运行环境…</p>
- <div class="settings-group"><label class="settings-row"><span class="row-text"><strong>可选 Linux 虚拟机（QEMU）</strong><small>使用 Termux 启动的独立 Linux 客体；需用户先安装与配置镜像</small></span><input id="aiVmEnabled" type="checkbox"></label></div>
+ <div class="settings-group"><label class="settings-row"><span class="row-text"><strong>可选 Linux 虚拟机（QEMU）</strong><small>一键配置独立 Debian Linux；首次需要安装并授权 Termux</small></span><input id="aiVmEnabled" type="checkbox"></label></div>
  <p class="ai-note" id="aiVmNote" role="status">正在检测 Termux…</p>
  <div id="aiVmActions" style="display:flex;flex-wrap:wrap;gap:8px;margin:8px 0 12px">
   <button type="button" id="aiVmInstall">安装 Linux 环境</button>
@@ -924,7 +924,7 @@ body[data-settings-detail] .app{display:block;max-width:720px;height:auto;min-he
   <button type="button" id="aiVmRefresh">刷新状态</button>
   <button type="button" id="aiVmRemove" hidden>卸载 Linux</button>
  </div>
- <small class="ai-note">使用 Debian ARM64 官方镜像，下载约数百 MB、需要至少 1.5 GB 可用空间；首次需安装并授权 Termux。Linux 数据只存储在独立虚拟磁盘中。</small>
+ <small class="ai-note">使用 Debian ARM64 官方镜像，下载约数百 MB、需要至少 1.5 GB 可用空间；首次需安装并授权 Termux。Linux 数据只存储在独立虚拟磁盘中。<a href="https://f-droid.org/packages/com.termux/" target="_blank" rel="noopener noreferrer">获取 Termux</a></small>
 </section>
 <section id="aiProviderPage" class="sync-page settings-detail" aria-labelledby="aiProviderTitle" hidden><nav class="sync-nav ui-nav"><button class="nav-back glass" type="button" id="aiProviderClose"><svg aria-hidden="true"><use href="#i-back"/></svg><span>设置</span></button></nav><div class="sync-content"><h1 id="aiProviderTitle" tabindex="-1">添加 API</h1><form id="aiConfigForm">
 <div class="settings-group ai-fields">
@@ -1574,7 +1574,7 @@ function renderAiVmStatus(){
  else if(v.installed)note='Debian 已安装，点击「启动虚拟机」即可使用。';
  $('aiVmNote').textContent=note;
  $('aiVmEnabled').checked=!!v.enabled;
- $('aiVmInstall').hidden=!!v.installed;
+ $('aiVmInstall').hidden=!!v.installed||phase==='failed';
  $('aiVmInstall').disabled=!canUse||aiVmInstalling(phase)||!!v.connectionError;
  $('aiVmInstall').textContent=aiVmInstalling(phase)?'正在安装…':'安装 Linux 环境';
  $('aiVmStart').hidden=!v.installed||!!v.running;
@@ -1634,7 +1634,8 @@ for(const [id,action] of [['aiVmInstall','install'],['aiVmStart','start'],['aiVm
    if(action==='install')toast('已提交 Linux 安装任务。安装在 Termux 中进行，可点击刷新状态。');
    else toast(action==='start'?'正在启动 Debian 虚拟机':action==='stop'?'已停止虚拟机':'Linux 虚拟机已卸载');
    if(result?.phase)aiVmStatus={...aiVmStatus,...result};
-   await refreshAiVmStatus();
+   if(action==='install')renderAiVmStatus();
+   else await refreshAiVmStatus();
   }catch(error){toast(error.message)}
   finally{control.disabled=false;renderAiVmStatus()}
  };
