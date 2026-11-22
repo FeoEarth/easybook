@@ -76,6 +76,23 @@ let streamRequested=false;
 const streamedOpenai=async(url,init)=>{streamRequested=JSON.parse(init.body).stream===true;return streamResponse('data: '+JSON.stringify({choices:[{delta:{content:'你好'}}]})+'\n\n'+'data: '+JSON.stringify({choices:[{delta:{content:'，世界'}}]})+'\n\n'+'data: [DONE]\n\n')};
 let streamEvents=await readEvents(await aiAPI(request('/api/ai/chat','POST',{messages:[{role:'user',content:'你好'}],stream:true}),env,principal,{workspaceId:workspace,fetcher:streamedOpenai}));
 assert.equal(streamRequested,true);assert.deepEqual(streamEvents.map(event=>event.type),['delta','delta','done']);assert.equal(streamEvents.at(-1).data.message.content,'你好，世界');
+ // Disconnects must abort an outstanding model request without emitting to a
+ // canceled SSE controller (previously a generic ai_unavailable TypeError).
+ let startedBlockingFetch,wasCancelled=false;
+ const blockingStarted=new Promise(resolve=>{startedBlockingFetch=resolve});
+ const blockingFetcher=async(url,init)=>{
+  startedBlockingFetch();
+  return new Promise((resolve,reject)=>{
+   const onAbort=()=>{wasCancelled=true;reject(init.signal.reason||new Error('aborted'))};
+   if(init.signal.aborted)onAbort();
+   else init.signal.addEventListener('abort',onAbort,{once:true});
+  });
+ };
+ const cancellable=await aiAPI(request('/api/ai/chat','POST',{messages:[{role:'user',content:'disconnect test'}],stream:true}),env,principal,{workspaceId:workspace,fetcher:blockingFetcher});
+ await blockingStarted;
+ await cancellable.body.cancel();
+ assert.equal(wasCancelled,true,'Client cancellation aborts the active provider request');
+
 const deepSeek=(await (await aiAPI(request('/api/ai/config','PUT',{label:'DeepSeek reasoning',provider:'deepseek',model:'deepseek-reasoner',apiKey:secret}),env,principal)).json()).id;
 const modelFrames=items=>streamResponse(items.map(item=>'data: '+JSON.stringify(item)+'\n\n').join(''));
 let reasoningRound=0;
