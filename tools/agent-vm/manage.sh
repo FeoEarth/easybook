@@ -96,6 +96,22 @@ case "$ACTION" in
     fi
     printf '{"phase":"%s","installed":%s,"running":%s,"guestReady":%s,"bootSeconds":%d,"issue":"%s"}\n' "$phase" "$installed" "$up" "$guest" "$seconds" "$issue"
     ;;
+  diagnose)
+    printf 'Easybook VM diagnostics (no private SSH keys exported)\n'
+    printf 'status: '
+    if running; then printf 'qemu-running\n'; else printf 'qemu-not-running\n'; fi
+    printf 'ssh: '
+    if running; then probe_guest; printf '\n'; else printf 'not-started\n'; fi
+    printf 'uptime-seconds: '
+    boot_seconds; printf '\n'
+    printf '%s\n' '--- guest serial log (last 60 lines) ---'
+    if [[ -r "$DIR/vm.log" ]]; then
+      tail -n 60 "$DIR/vm.log" | sed -E \
+        -e '/BEGIN [A-Z ]*PRIVATE KEY/,/END [A-Z ]*PRIVATE KEY/c\[private key redacted]' \
+        -e 's/(password|passwd|token|secret)[=:][^[:space:]]+/\1=[redacted]/Ig' \
+        | cut -c 1-240
+    else echo 'No VM serial log yet'; fi
+    ;;
   start)
     [[ -f "$DIR/.installed" && -s "$DIR/seed.iso" && -f "$DIR/guest.qcow2" ]] || { echo 'Linux is not installed'; exit 65; }
     if ! running; then
