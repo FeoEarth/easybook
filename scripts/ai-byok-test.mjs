@@ -10,6 +10,17 @@ sqlite.exec('CREATE TABLE IF NOT EXISTS account_memberships(account_id TEXT PRIM
 const DB={prepare(sql){const statement=sqlite.prepare(sql);let args=[];return {bind(...values){args=values;return this},async first(){return statement.get(...args)||null},async all(){return {results:statement.all(...args)}},async run(){return statement.run(...args)}}},async batch(statements){sqlite.exec('BEGIN');try{const results=[];for(const statement of statements)results.push(await statement.run());sqlite.exec('COMMIT');return results}catch(error){sqlite.exec('ROLLBACK');throw error}}};
 const migration=readFileSync('worker/migrations/0021-ai-profiles.sql','utf8');sqlite.exec(migration);sqlite.exec(migration);const account='11111111-1111-4111-8111-111111111111',workspace='a'.repeat(64),now=Date.now();sqlite.prepare('INSERT INTO accounts(id,display_name,created_at) VALUES(?,?,?)').run(account,'AI test',now);sqlite.prepare("INSERT INTO workspaces(id,name,mode,manager_account_id,created_at) VALUES(?,?,'personal',?,?)").run(workspace,'AI workspace',account,now);
 const env={DB,AI_CREDENTIAL_KEY:Buffer.alloc(32,7).toString('base64')},principal={kind:'account',accountId:account,authenticatedAt:now},secret='sk-test-this-value-must-never-be-returned';const request=(path,method='GET',body)=>new Request('https://easybook.test'+path,{method,headers:{'Content-Type':'application/json'},body:body&&JSON.stringify(body)});
+async function completeResearch(call,body,maxSegments=32){
+ let data=await (await call(body)).json(),receipts=[...(data.webSearches||[])],used=[...(data.tools||[])],segments=0;
+ while(data.continuationRequired&&data.agentRunId&&segments++<maxSegments){
+  data=await (await call({purpose:'agent_run:'+data.agentRunId,stream:false})).json();
+  receipts.push(...(data.webSearches||[]));
+  used.push(...(data.tools||[]));
+ }
+ assert.ok(segments<maxSegments,'Research must finish without looping indefinitely');
+ return {...data,...(receipts.length?{webSearches:receipts,webSearch:receipts.at(-1)}:{}),tools:used};
+}
+
 let result=await aiAPI(request('/api/ai/config','PUT',{label:'Primary',provider:'openai',model:'gpt-4.1-mini',apiKey:secret}),env,principal);assert.equal(result.status,200);let saved=await result.json(),openaiId=saved.id;assert.equal(saved.configured,true);let stored=sqlite.prepare('SELECT * FROM account_ai_profiles WHERE id=?').get(openaiId);assert.ok(!JSON.stringify(stored).includes(secret));assert.notEqual(stored.key_ciphertext,secret);
 result=await aiAPI(request('/api/ai/config'),env,principal);let config=await result.json();assert.equal(config.profiles.length,1);assert.equal(config.activeId,openaiId);assert.equal(config.profiles[0].provider,'openai');assert.ok(!JSON.stringify(config).includes(secret));
 const ciphertext=stored.key_ciphertext;result=await aiAPI(request('/api/ai/config','PUT',{credentialId:openaiId,label:'Primary renamed',provider:'openai',model:'gpt-4.1'}),env,{...principal,authenticatedAt:0});assert.equal(result.status,200,'metadata-only Android edits do not require fresh authentication');stored=sqlite.prepare('SELECT * FROM account_ai_profiles WHERE id=?').get(openaiId);assert.equal(stored.key_ciphertext,ciphertext);assert.equal(stored.label,'Primary renamed');result=await aiAPI(request('/api/ai/config','PUT',{credentialId:openaiId,label:'Unsafe retarget',provider:'custom',providerName:'Other',baseUrl:'https://other.example/v1',model:'model',apiKey:''}),env,{...principal,authenticatedAt:0});assert.equal(result.status,403,'changing the secret destination still requires fresh authentication');
@@ -264,7 +275,7 @@ assert.equal(webSearchQuota(monthStart,{permanent:1,expires_at:0}).kind,'member'
   return Response.json({choices:[{message:exposed?{role:'assistant',tool_calls:[{id:'search-call',type:'function',function:{name:'web_search',arguments:JSON.stringify({query})}}]}:{role:'assistant',content:'No web search'}}]});
  };
  const api=(path,method,body,p=principal)=>aiAPI(request('/api/ai/'+path,method,body),searchEnv,p,{workspaceId:workspace,fetcher:modelFetcher,launchSearchBrowser});
- const chat=(mode='conversation')=>api('chat','POST',{credentialId:openaiId,mode,messages:[{role:'user',content:'请联网搜索'}]});
+ const chat=async(mode='conversation')=>Response.json(await completeResearch(body=>api('chat','POST',body),{credentialId:openaiId,mode,messages:[{role:'user',content:'请联网搜索'}]}));
  const initialUsage=(await (await api('mcp','GET')).json()).usage.webSearch;
  assert.equal(initialUsage.tier,'free');assert.equal(initialUsage.period,'day');
  assert.equal(initialUsage.limit,15);assert.equal(initialUsage.used,0);assert.equal(initialUsage.remaining,15);
@@ -455,7 +466,7 @@ assert.equal(webSearchQuota(monthStart,{permanent:1,expires_at:0}).kind,'member'
  assert.equal(direct.results[0].publishedAt,'2026-11-21');
  assert.equal(direct.results.length,1);
  const call=(path,method,body)=>aiAPI(request('/api/ai/'+path,method,body),env,principal,{workspaceId:workspace,fetcher:parallelFetcher});
- const chat=()=>call('chat','POST',{mode:'conversation',credentialId:openaiId,messages:[{role:'user',content:'搜索 APEC 2026'}]});
+ const chat=async()=>Response.json(await completeResearch(body=>call('chat','POST',body),{mode:'conversation',credentialId:openaiId,messages:[{role:'user',content:'搜索 APEC 2026'}]}));
  assert.equal((await call('mcp','PUT',{parallelSearch:true})).status,200);
  const listed=(await (await call('mcp','GET')).json()).parallelSearch;
  assert.equal(listed.enabled,true);assert.equal(listed.approval,'ask');
@@ -515,7 +526,7 @@ assert.equal(webSearchQuota(monthStart,{permanent:1,expires_at:0}).kind,'member'
  assert.equal((await api('mcp','PUT',{parallelSearch:true})).status,200);
  assert.equal((await api('mcp','GET')).status,200);
  const usedBefore=sqlite.prepare("SELECT count FROM account_rate_limits WHERE bucket LIKE 'ai-web-search:month:%'").get().count;
- const result=await (await api('chat','POST',{credentialId:openaiId,mode:'conversation',messages:[{role:'user',content:'比较 APEC 的多方资料'}]})).json();
+ const result=await completeResearch(body=>api('chat','POST',body),{credentialId:openaiId,mode:'conversation',messages:[{role:'user',content:'比较 APEC 的多方资料'}]});
  assert.equal(result.approval,undefined);
  assert.equal(result.message.content,'已综合不同查询结果与来源。');
  assert.equal(result.webSearches.length,2,'Research continues after the first search without starting a new reply');
@@ -530,12 +541,14 @@ assert.equal(webSearchQuota(monthStart,{permanent:1,expires_at:0}).kind,'member'
  assert.equal(segmented.continuationRequired,true,'Long research returns a resumable segment');
  assert.equal(segmented.partial,true);
  assert.equal(segmented.webSearches.length,1,'Completed search receipt is preserved before continuing');
- assert.match(segmented.message.content,/继续原研究任务/);
+ assert.match(segmented.agentRunId,/^[a-f0-9-]{36}$/,'A checkpoint saves the original model context in D1');
+ const resumed=await completeResearch(body=>aiAPI(request('/api/ai/chat','POST',body),{...env,AI_SEARCH_SEGMENT_MS:1},principal,{workspaceId:workspace,fetcher}),{purpose:'agent_run:'+segmented.agentRunId});
+ assert.equal(resumed.message.content,'已综合不同查询结果与来源。');
  assert.equal((await api('mcp','PUT',{parallelSearch:false})).status,200);
 }
 
-// Free Workers keep each invocation small, but the same user task can
-// continue for ten or more searches across requests; pairs still run in parallel.
+// A complete model tool-call plan survives Free Worker request boundaries.
+// Ten tool calls use one model planning round; transient failures do not replan.
 {
  let mode='serial',modelRounds=0,networkCalls=0,inFlight=0,peakInFlight=0;
  const fetcher=async(url,init={})=>{
@@ -557,44 +570,89 @@ assert.equal(webSearchQuota(monthStart,{permanent:1,expires_at:0}).kind,'member'
   const payload=JSON.parse(init.body),seen=payload.messages.filter(x=>x.role==='tool').length;
   modelRounds++;
   if(mode==='failure'&&seen>=1)return Response.json({error:{message:'upstream failed'}},{status:503});
-  const count=mode==='serial'?(networkCalls<10?1:0):mode==='batch'?(seen?0:Math.max(0,10-networkCalls)):(seen?0:1);
+  const count=mode==='serial'?(networkCalls<10?1:0):mode==='batch'?(seen?0:10):seen?0:1;
   const calls=Array.from({length:count},(_,i)=>({id:mode+'-'+seen+'-'+i,type:'function',
-   function:{name:'web_search',arguments:JSON.stringify({query:'independent topic '+(mode==='serial'?networkCalls:networkCalls+i),maxResults:3})}}));
+   function:{name:'web_search',arguments:JSON.stringify({query:'independent topic '+(mode==='serial'?networkCalls:seen+i),maxResults:3})}}));
   return Response.json({choices:[{message:calls.length?{role:'assistant',content:'',tool_calls:calls}:{role:'assistant',content:'已综合搜索结果。'}}]});
  };
  const api=(path,method,body)=>aiAPI(request('/api/ai/'+path,method,body),env,principal,{workspaceId:workspace,fetcher});
  assert.equal((await api('mcp','PUT',{parallelSearch:true})).status,200);
  assert.equal((await api('mcp','PUT',{parallelSearchApproval:'always'})).status,200);
  assert.equal((await api('mcp','PUT',{parallelMode:'anonymous'})).status,200);
- const chat=async()=> (await api('chat','POST',{credentialId:openaiId,mode:'conversation',messages:[{role:'user',content:'检索10个独立主题'}]})).json();
- const serialQueries=[];
- for(let segment=0;networkCalls<10&&segment<10;segment++){
-  const step=await chat();
-  assert.ok(step.webSearches.length>=1&&step.webSearches.length<=2,'Each free-tier segment stays small');
-  assert.ok(step.webSearches.every(item=>item.result.results.length===1));
-  serialQueries.push(...step.webSearches.map(item=>item.arguments.query));
-  if(networkCalls<10)assert.equal(step.continuationRequired,true);
- }
- assert.equal(networkCalls,10);
- assert.deepEqual(serialQueries,Array.from({length:10},(_,i)=>'independent topic '+i));
+ const run=body=>api('chat','POST',body);
+ const initial={credentialId:openaiId,mode:'conversation',messages:[{role:'user',content:'检索10个独立主题'}]};
+ const serial=await completeResearch(run,initial);
+ assert.equal(serial.message.content,'已综合搜索结果。');
+ assert.deepEqual(serial.webSearches.map(item=>item.arguments.query),Array.from({length:10},(_,i)=>'independent topic '+i));
  assert.equal(networkCalls,10);assert.equal(peakInFlight,1);
  mode='batch';modelRounds=0;networkCalls=0;inFlight=0;peakInFlight=0;
- const batchedQueries=[];
- for(let segment=0;networkCalls<10&&segment<10;segment++){
-  const step=await chat();
-  assert.ok(step.webSearches.length>=1&&step.webSearches.length<=2,'At most two searches execute per Worker request');
-  batchedQueries.push(...step.webSearches.map(item=>item.arguments.query));
-  if(networkCalls<10)assert.equal(step.continuationRequired,true);
- }
- assert.equal(networkCalls,10);
- assert.ok(peakInFlight>=2,'Independent searches still execute concurrently');
- assert.deepEqual(batchedQueries,Array.from({length:10},(_,i)=>'independent topic '+i));
+ const first=await (await run(initial)).json();
+ assert.equal(first.continuationRequired,true);
+ assert.equal(first.queuedTools,8);
+ const stored=sqlite.prepare('SELECT state_ciphertext,state_iv FROM ai_agent_run_queue WHERE id=?').get(first.agentRunId);
+ assert.ok(stored?.state_ciphertext&&!stored.state_ciphertext.includes('independent topic'));
+ const other=await aiAPI(request('/api/ai/chat','POST',{purpose:'agent_run:'+first.agentRunId,messages:[]}),env,{...principal,accountId:otherAccount},{workspaceId:workspace,fetcher});
+ assert.equal(other.status,403,'Run IDs cannot cross account permissions');
+ const batched=await completeResearch(run,{purpose:'agent_run:'+first.agentRunId});
+ const all=[...(first.webSearches||[]),...(batched.webSearches||[])];
+ assert.equal(batched.message.content,'已综合搜索结果。');
+ assert.equal(modelRounds,2,'A queued 10-tool batch uses one model planning round plus final synthesis');
+ assert.ok(peakInFlight>=2,'Independent searches can overlap within a bounded Free Worker segment');
+ assert.deepEqual(all.map(item=>item.arguments.query),Array.from({length:10},(_,i)=>'independent topic '+i));
+ assert.equal(sqlite.prepare('SELECT count(*) n FROM ai_agent_run_queue WHERE id=?').get(first.agentRunId).n,0,'Finished queue is deleted');
  mode='failure';modelRounds=0;networkCalls=0;
- const partial=await chat();
- assert.equal(partial.partial,true,'A provider failure after research must not erase results');
- assert.equal(partial.webSearches.length,1);
- assert.match(partial.message.content,/已保留检索结果/);
+ const paused=await (await run(initial)).json();
+ assert.equal(paused.paused,true,'Provider failure returns a resumable paused task');
+ assert.match(paused.agentRunId,/^[a-f0-9-]{36}$/);
+ assert.match(paused.message.content,/已保存/);
+ mode='recovered';
+ const recovered=await completeResearch(run,{purpose:'agent_run:'+paused.agentRunId});
+ assert.equal(recovered.message.content,'已综合搜索结果。');
  assert.equal((await api('mcp','PUT',{parallelSearch:false})).status,200);
+}
+
+// Partial parallel failure: preserve the good result, retry only the bad one,
+// and feed both original call IDs back in original order.
+{
+ const seen=new Map(),modelTurns=[];
+ const fetcher=async(url,init={})=>{
+  const target=new URL(url);
+  if(target.hostname==='cloudflare-dns.com')return Response.json({Status:0,Answer:[{type:1,data:'93.184.216.34'}]});
+  if(target.hostname==='mcp.parallel.ai'){
+   if(init.method==='DELETE')return new Response(null,{status:204});
+   const rpc=JSON.parse(init.body);
+   if(rpc.method==='initialize')return Response.json({jsonrpc:'2.0',id:rpc.id,result:{protocolVersion:'2025-06-18',capabilities:{tools:{}}}});
+   if(rpc.method==='notifications/initialized')return new Response(null,{status:202});
+   const topic=rpc.params.arguments.objective;
+   seen.set(topic,(seen.get(topic)||0)+1);
+   if(topic==='transient error'&&seen.get(topic)===1)return Response.json({error:'Rate limit exceeded'},{status:429});
+   return Response.json({jsonrpc:'2.0',id:rpc.id,result:{content:[{type:'text',text:JSON.stringify({results:[{url:'https://example.org/'+encodeURIComponent(topic),title:topic,excerpts:['Useful source']}]})}]}});
+  }
+  const payload=JSON.parse(init.body);modelTurns.push(payload.messages);
+  if(payload.messages.some(m=>m.role==='tool')){
+   assert.deepEqual(payload.messages.filter(m=>m.role==='tool').map(m=>m.tool_call_id),['retry-first','good-second']);
+   return Response.json({choices:[{message:{role:'assistant',content:'所有检索已完成。'}}]});
+  }
+  return Response.json({choices:[{message:{role:'assistant',tool_calls:[
+   {id:'retry-first',type:'function',function:{name:'web_search',arguments:JSON.stringify({query:'transient error'})}},
+   {id:'good-second',type:'function',function:{name:'web_search',arguments:JSON.stringify({query:'successful topic'})}}
+  ]}}]});
+ };
+ const api=(path,method,body)=>aiAPI(request('/api/ai/'+path,method,body),env,principal,{workspaceId:workspace,fetcher});
+ await api('mcp','PUT',{webSearch:false});
+ await api('mcp','PUT',{parallelSearch:true});
+ await api('mcp','PUT',{parallelSearchApproval:'always'});
+ const initial={credentialId:openaiId,mode:'agent',messages:[{role:'user',content:'Search two topics; retry failures'}]};
+ const first=await (await api('chat','POST',initial)).json();
+ assert.equal(first.continuationRequired,true);
+ assert.ok(first.agentRunId);
+ const resumed=await completeResearch(body=>api('chat','POST',body),{purpose:'agent_run:'+first.agentRunId});
+ assert.equal(resumed.message.content,'所有检索已完成。');
+ assert.equal(seen.get('transient error'),2,'Only transient failed calls retry');
+ assert.equal(seen.get('successful topic'),1,'Successful parallel call is never repeated');
+ assert.equal(modelTurns.length,2,'Retries do not ask the model to replan');
+ assert.equal(resumed.webSearches.length,2);
+ await api('mcp','PUT',{parallelSearch:false});
 }
 
 // Third-party MCP is opt-in and always sends arguments only after approval.

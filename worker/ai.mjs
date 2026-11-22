@@ -1,4 +1,5 @@
 import {enrichWebSearchResults} from './ai-web-sources.mjs';
+import {createAgentQueue,claimAgentQueue,refreshAgentQueue,checkpointAgentQueue,finishAgentQueue,releaseAgentQueue} from './ai-agent-queue.mjs';
 import {WEB_SEARCH,webSearchTool,webSearchAvailable,webSearchQuery,webSearchResultLimit,runWebSearch,webSearchUsage} from './ai-web-search.mjs';
 import {runParallelMcpSearch} from './ai-parallel-search.mjs';
 import {AI_CHAT_MAX_BODY_BYTES,AI_CHAT_MAX_MESSAGES,AI_CHAT_MAX_TEXT_CHARS} from '../shared/ai-context-policy.mjs';
@@ -16,7 +17,7 @@ import {aiEnvironmentPrompt,assistantSystemPrompt,CHAT_TITLE_INSTRUCTION,normali
 const encoder=new TextEncoder(),decoder=new TextDecoder();
 const providerSignal=(requestSignal,streaming)=>requestSignal?AbortSignal.any([requestSignal,AbortSignal.timeout(streaming?120000:45000)]):AbortSignal.timeout(streaming?120000:45000);
 const response=(body,status=200)=>Response.json(body,{status,headers:{'Cache-Control':'no-store','Referrer-Policy':'no-referrer','X-Content-Type-Options':'nosniff'}});
-const b64=bytes=>btoa(String.fromCharCode(...bytes));
+const b64=bytes=>{let binary='';for(let index=0;index<bytes.length;index+=32768)binary+=String.fromCharCode(...bytes.subarray(index,index+32768));return btoa(binary)};
 const unb64=value=>Uint8Array.from(atob(value),c=>c.charCodeAt(0));
 const modelPattern=modelIdPattern;
 const allowedRoles=new Set(['manager','editor','reader']);
@@ -273,7 +274,24 @@ export async function aiAPI(request,env,principal,{workspaceId,fetcher=fetch,lau
    catch(error){result={error:{code:error.code||'TOOL_ERROR',message:error.code?error.message:'Tool failed'}}}
    return response({ok:!result?.error,tool:pending.tool_name,result:result?.error&&!result.browserSearch?undefined:result,error:result?.error});
   }
-  const input=await boundedJSON(request,AI_CHAT_MAX_BODY_BYTES);
+  let input=await boundedJSON(request,AI_CHAT_MAX_BODY_BYTES);
+  // Existing Android clients already forward "purpose" through the verified
+  // native bridge; use it as a compatibility transport for research run IDs.
+  const purposeRunId=typeof input?.purpose==='string'&&/^agent_run:[a-f0-9-]{36}$/.test(input.purpose)?input.purpose.slice(10):'';
+  const resumeId=input?.agentRunId||purposeRunId;
+  let resumed=null,runLease=null;
+  if(resumeId){
+   if(typeof resumeId!=='string'||!/^[a-f0-9-]{36}$/.test(resumeId))return response({error:'invalid_agent_run'},400);
+   runLease=crypto.randomUUID();
+   const stored=await claimAgentQueue(env,principal.accountId,workspaceId,resumeId,runLease);
+   try{resumed=JSON.parse(await open(env,{account_id:principal.accountId,id:'agent-run:'+resumeId,key_ciphertext:stored.state_ciphertext,key_iv:stored.state_iv}))}
+   catch(error){await releaseAgentQueue(env,principal.accountId,workspaceId,resumeId,runLease);throw error}
+   if(!resumed||resumed.version!==1||!Array.isArray(resumed.conversation)||!(Array.isArray(resumed.calls)||resumed.calls===null)||!object(resumed.options)){
+    await releaseAgentQueue(env,principal.accountId,workspaceId,resumeId,runLease);
+    return response({error:'invalid_agent_run'},409);
+   }
+   input={...input,...resumed.options,stream:input.stream,purpose:undefined,agentRunId:resumeId};
+  }
   const savedRow=await credential(env,principal.accountId,input?.credentialId||'');
   if(input?.model!==undefined&&input.model!==''&&(typeof input.model!=='string'||!modelPattern.test(input.model)))return response({error:'invalid_credential'},400);
   const row=savedRow&&input?.model?{...savedRow,model:input.model}:savedRow;if(!row)return response({error:'ai_not_configured'},409);
@@ -293,7 +311,7 @@ export async function aiAPI(request,env,principal,{workspaceId,fetcher=fetch,lau
    if(!title)return response({error:'invalid_title'},502);
    return response({title});
   }
-  const messages=safeMessages(input?.messages,input?.attachments||[],{maxMessages:AI_CHAT_MAX_MESSAGES,maxChars:AI_CHAT_MAX_TEXT_CHARS}),mode=input?.mode==='agent'?'agent':'conversation',scopes=toolScopes(access.role,mode),tools=toolsFor(access.role,mode),key=await open(env,row);
+  const messages=resumed?[]:safeMessages(input?.messages,input?.attachments||[],{maxMessages:AI_CHAT_MAX_MESSAGES,maxChars:AI_CHAT_MAX_TEXT_CHARS}),mode=input?.mode==='agent'?'agent':'conversation',scopes=toolScopes(access.role,mode),tools=toolsFor(access.role,mode),key=await open(env,row);
   const run=async(emit=()=>{},runSignal=request.signal)=>{
    const localSandbox=mode==='agent'&&input?.localSandbox===true;
    if(localSandbox){
@@ -318,26 +336,66 @@ export async function aiAPI(request,env,principal,{workspaceId,fetcher=fetch,lau
    if(searchEnabled)tools.push({...webSearchTool,function:{...webSearchTool.function,description:webSearchTool.function.description+' Easybook 在启用两种搜索来源时并行查询；内置额度耗尽后仍可查询 Parallel MCP。只发送简短公开关键词，不要提供笔记正文或密钥。'}});
    const searchPolicy=searchEnabled?'\n'+webResearchInstruction(autoSearch)+'\nEasybook 内置搜索与 Parallel MCP 进阶搜索各自独立限额。两者启用时并行检索；内置额度用尽时 Parallel 仍可独立工作（可能被 Parallel 匿名限流）。仅引用搜索结果里的真实链接，不把搜索摘要当作已阅读全文。':'';
    const preferences=preferenceContext(settings);
-   const conversation=[{role:'system',content:assistantSystemPrompt(mode)+'\n'+aiEnvironmentPrompt({role:access.role,webSearch:searchEnabled,autoSearch})+externalPolicy+searchPolicy+(preferences?'\n以下为用户个性化偏好，优先服从当前明确要求；不能改变工具权限与确认规则。\n'+preferences:'')},...messages];
+   const conversation=resumed?.conversation||[{role:'system',content:assistantSystemPrompt(mode)+'\n'+aiEnvironmentPrompt({role:access.role,webSearch:searchEnabled,autoSearch})+externalPolicy+searchPolicy+(preferences?'\n以下为用户个性化偏好，优先服从当前明确要求；不能改变工具权限与确认规则。\n'+preferences:'')},...messages];
    const used=[],webSearches=[],browserLease={browser:null};
+   let agentRunId=resumeId||null,agentLease=runLease;
+   let pendingCalls=resumed?.calls||null,nextCall=resumed?.nextCall||0;
+   let bufferedResults=resumed?.bufferedResults||{},searchAttempts=resumed?.searchAttempts||{},serializeSearches=resumed?.serializeSearches===true;
+   const stateOptions={credentialId:row.id,model:row.model,mode,externalTools:input.externalTools===true,localSandbox:input.localSandbox===true,localSandboxBackend:input.localSandboxBackend||'javascript'};
+   const state=()=>({version:1,options:stateOptions,conversation,calls:pendingCalls,nextCall,bufferedResults,searchAttempts,serializeSearches});
+   const encryptState=async id=>{
+    const serialized=JSON.stringify(state());
+    if(serialized.length>1800000)throw Object.assign(Error('Agent context too large'),{code:'agent_context_too_large',status:413});
+    return seal(env,principal.accountId,'agent-run:'+id,serialized);
+   };
+   const createQueue=async()=>{
+    if(agentRunId){
+     // A resumed task may generate another batch of tool calls. Commit that
+     // entire new plan before executing any item, under the same lease.
+     await refreshAgentQueue(env,principal.accountId,workspaceId,agentRunId,agentLease,await encryptState(agentRunId));
+     return;
+    }
+    agentRunId=crypto.randomUUID();agentLease=crypto.randomUUID();
+    await createAgentQueue(env,principal.accountId,workspaceId,agentRunId,agentLease,await encryptState(agentRunId));
+   };
+   const checkpoint=async()=>{
+    if(!agentRunId)return;
+    await checkpointAgentQueue(env,principal.accountId,workspaceId,agentRunId,agentLease,await encryptState(agentRunId));
+    agentLease=null;
+   };
+   const finishQueue=async()=>{
+    if(!agentRunId||!agentLease)return;
+    await finishAgentQueue(env,principal.accountId,workspaceId,agentRunId,agentLease);
+    agentLease=null;
+   };
    // There is no limit on total searches for a user task. Keep each HTTP
    // segment within a soft wall-time budget so Workers do not exhaust CPU.
    // The client continues a long task in another request with saved receipts.
-   const SEARCH_CONCURRENCY=2;
-   // Free Workers cannot opt into a larger CPU budget. Keep each invocation
-   // small and resume the research task in another request after two queries.
-   // This is not a per-task search limit; the client continues automatically.
+   // Queries remain logically concurrent. On provider/browser throttling the
+   // queue switches to serial retries without dropping the model's call IDs.
+   // The limit below applies to a single Free Worker invocation, not a task.
    const MAX_SEARCHES_PER_REQUEST=2;
    let searchesStarted=0;
+   const MAX_SEARCH_ATTEMPTS=4;
+   let retryAfterMs=0;
+   const shouldRetrySearch=result=>{
+    if(result?.results?.length>0)return false;
+    const code=result?.error?.code||'';
+    return ['web_search_rate_limited','parallel_rate_limited','web_search_unavailable','parallel_unavailable','web_search_timeout','search_timeout','mcp_oauth_timeout'].includes(code)
+      ||['timeout','unavailable','parse_failed','rate_limited'].includes(result?.reason);
+   };
    const segmentStarted=Date.now();
    const configuredSegment=Number(env.AI_SEARCH_SEGMENT_MS);
    const SEARCH_SEGMENT_MS=Number.isFinite(configuredSegment)&&configuredSegment>0?Math.min(20000,configuredSegment):20000;
    const segmentExpired=()=>Date.now()-segmentStarted>=SEARCH_SEGMENT_MS;
-   const partialSegment=()=>answer('本阶段已执行 '+webSearches.length+' 次联网搜索，已保存来源，正在继续原研究任务。',{model:row.model,providerName:row.provider_name,partial:true,continuationRequired:true});
+   const partialSegment=async()=>{
+    await checkpoint();
+    return answer('',{model:row.model,providerName:row.provider_name,partial:true,continuationRequired:true,agentRunId,queuedTools:pendingCalls?.length-nextCall||0,...(retryAfterMs?{retryAfterMs}:{})});
+   };
    let reasoning='';
    const answer=(content,extra={})=>({message:{role:'assistant',content,...(reasoning?{reasoning}:{})},tools:used,...(webSearches.length?{webSearch:webSearches.at(-1),webSearches}:{}),...extra});
    try{for(;;){
-   if(webSearches.length&&segmentExpired())return partialSegment();
+   if(webSearches.length&&segmentExpired())return await partialSegment();
    let receivedReasoning=false;
    const addReasoning=text=>{
     const chunk=((!receivedReasoning&&reasoning?'\n\n':'')+text).slice(0,32000-reasoning.length);
@@ -345,31 +403,42 @@ export async function aiAPI(request,env,principal,{workspaceId,fetcher=fetch,lau
     reasoning+=chunk;receivedReasoning=true;
     if(input?.stream===true)emit('reasoning',{text:chunk});
    };
-   let completed;
-   try{
-    completed=await completion(key,row,conversation,tools,fetcher,input?.stream===true?text=>emit('delta',{text}):undefined,runSignal,undefined,addReasoning);
-   }catch(error){
-    if(!webSearches.length||runSignal?.aborted)throw error;
-    // A provider failure after successful research must not discard sources
-    // or turn an otherwise useful multi-search run into ai_unavailable.
-    console.warn(JSON.stringify({event:'ai_search_finalization_failed',code:error?.code||'provider_unavailable',searches:webSearches.length}));
-    const successes=webSearches.filter(item=>item.result?.results?.length).length;
-    return answer('已完成 '+successes+' 次有效联网检索，但 AI 后续生成遇到问题。已保留检索结果，可以继续回答并使用这些来源。',{model:row.model,providerName:row.provider_name,partial:true});
+   let calls;
+   if(pendingCalls){
+    // A prior model response has already generated this full tool batch.
+    // Do not ask the model for another plan until every tool ID has a result.
+    calls=pendingCalls;
+   }else{
+    let completed;
+    try{
+     completed=await completion(key,row,conversation,tools,fetcher,input?.stream===true?text=>emit('delta',{text}):undefined,runSignal,undefined,addReasoning);
+    }catch(error){
+     if(runSignal?.aborted||!webSearches.length&&!agentRunId)throw error;
+     console.warn(JSON.stringify({event:'ai_search_finalization_failed',code:error?.code||'provider_unavailable',searches:webSearches.length,agentRunId:!!agentRunId}));
+     if(agentRunId&&agentLease){
+      await releaseAgentQueue(env,principal.accountId,workspaceId,agentRunId,agentLease);
+      agentLease=null;
+      return answer('模型暂时无法继续，原始工具结果和上下文已保存。可以稍后继续同一任务。',{model:row.model,providerName:row.provider_name,partial:true,paused:true,agentRunId});
+     }
+     return answer('模型生成暂时失败，已保存可用搜索来源。',{model:row.model,providerName:row.provider_name,partial:true});
+    }
+    const {reasoning:thought,...message}=completed;
+    calls=Array.isArray(message.tool_calls)?message.tool_calls:[];
+    if(!receivedReasoning&&thought)addReasoning(thought);
+    if(!calls.length){await finishQueue();return answer(typeof message.content==='string'?message.content:'',{model:row.model,providerName:row.provider_name})}
+    // Restore DeepSeek reasoning and all tool_call IDs as one provider turn.
+    conversation.push(row.provider==='deepseek'&&thought?{...message,reasoning_content:thought}:message);
+    emit('reset',{});
    }
-   const {reasoning:thought,...message}=completed;
-   const calls=Array.isArray(message.tool_calls)?message.tool_calls:[];
-   if(!receivedReasoning&&thought)addReasoning(thought);
-   if(!calls.length)return answer(typeof message.content==='string'?message.content:'',{model:row.model,providerName:row.provider_name});
-   // DeepSeek expects the assistant's reasoning back with the tool result in the same exchange.
-   conversation.push(row.provider==='deepseek'&&thought?{...message,reasoning_content:thought}:message);
-   emit('reset',{});
    const searchRequested=searchEnabled&&calls.some(call=>call?.function?.name===WEB_SEARCH);
    const currentSearch=searchRequested&&autoSearch?await readPreferences(env,principal.accountId):settings;
    const currentQuota=searchRequested&&autoSearch&&currentSearch.webSearch&&webSearchAvailable(env)?await webSearchUsage(env,principal.accountId):null;
    const currentPrimary=!!currentQuota?.remaining,currentParallel=currentSearch.parallelSearch===true;
    const automatically=autoSearch&&(currentPrimary||currentParallel)&&(!currentPrimary||currentSearch.webSearchApproval==='always')&&(!currentParallel||currentSearch.parallelSearchApproval==='always');
+   if(!pendingCalls){
    const approvalCall=calls.find(call=>(localSandbox&&SANDBOX_NAMES.has(call?.function?.name))||(searchRequested&&!automatically&&call?.function?.name===WEB_SEARCH)||external.has(call?.function?.name)||registry.some(t=>t.name===call?.function?.name&&!t.risk&&WRITE.includes(t.scope)&&scopes.includes(t.scope)));
    if(approvalCall){
+    await finishQueue();
     const name=approvalCall.function.name;let args;
     try{args=JSON.parse(approvalCall.function.arguments||'{}');if(!object(args))throw Error('invalid')}catch{throw Object.assign(Error('Invalid tool arguments'),{code:'invalid_tool_arguments',status:400})}
     if(localSandbox&&SANDBOX_NAMES.has(name))args=validateSandboxTool(name,args);
@@ -394,13 +463,16 @@ export async function aiAPI(request,env,principal,{workspaceId,fetcher=fetch,lau
     if(remote)return answer('第三方工具调用等待确认。确认后，所示参数将发送至 '+new URL(remote.url).hostname+'。',{approval:{id,tool:name,arguments:args,expiresAt,external:{server:remote.server,tool:remote.name,host:new URL(remote.url).hostname}}});
     return answer('Agent 已准备 '+name+' 操作，正在等待你核对参数并确认。未确认前不会修改工作区。',{approval:{id,tool:name,arguments:args,expiresAt}});
    }
-   let batchCompleted=0;
+    // Persist the complete plan before running any search. For a large read
+    // batch do the same: never silently drop unused tool calls.
+    if(searchRequested&&automatically||calls.length>4){
+     pendingCalls=calls;
+     nextCall=0;
+     await createQueue();
+    }
+   }
    const executeCall=async call=>{
-    if(segmentExpired()&&(webSearches.length||batchCompleted))return null;
-    const name=call?.function?.name;
-    if(name===WEB_SEARCH&&searchesStarted>=MAX_SEARCHES_PER_REQUEST)return null;
-    if(name===WEB_SEARCH)searchesStarted++;
-    let args,result,receipt;
+    const name=call?.function?.name;let args,result,receipt;
     emit('tool_start',{name:typeof name==='string'?name:'unknown'});
     try{
      args=JSON.parse(call?.function?.arguments||'{}');
@@ -414,53 +486,99 @@ export async function aiAPI(request,env,principal,{workspaceId,fetcher=fetch,lau
      }else result=await callTool({env,workspace:workspaceId,client:'easybook-agent:'+principal.accountId,scopes},name,args);
     }catch(error){result={error:{code:error?.code||'TOOL_ERROR',message:error?.code?error.message:'Tool failed'}}}
     emit('tool_end',{name:typeof name==='string'?name:'unknown',status:result?.error?'failed':'done'});
-    batchCompleted++;
     return {call,name,result,receipt};
    };
-   let completedCalls;
-   if(automatically&&calls.length>1&&calls.every(call=>call?.function?.name===WEB_SEARCH)){
-    // Multiple independent queries can execute concurrently. Retain the
-    // model's tool-call order when feeding tool results back to the provider.
-    completedCalls=new Array(calls.length);
-    let next=0;
-    await Promise.all(Array.from({length:Math.min(SEARCH_CONCURRENCY,calls.length)},async()=>{
-     for(;;){
-      const index=next++;
-      if(index>=calls.length||searchesStarted>=MAX_SEARCHES_PER_REQUEST||segmentExpired()&&(webSearches.length||batchCompleted))return;
-      completedCalls[index]=await executeCall(calls[index]);
-     }
-    }));
-   }else{
-    completedCalls=[];
-    for(const call of calls){
-     if(segmentExpired()&&(webSearches.length||batchCompleted)||call?.function?.name===WEB_SEARCH&&searchesStarted>=MAX_SEARCHES_PER_REQUEST)break;
-     completedCalls.push(await executeCall(call));
+   // The model's entire batch is kept in D1. Process up to two outstanding
+   // searches here, even if the original model requested dozens at once.
+   const offset=pendingCalls?nextCall:0,remaining=calls.slice(offset);
+   const selected=[];
+   let countSearches=0;
+   for(let index=offset;index<calls.length;index++){
+    if(selected.length>=4||segmentExpired()&&webSearches.length)break;
+    const call=calls[index];
+    if(Object.prototype.hasOwnProperty.call(bufferedResults,index))continue;
+    if(call?.function?.name===WEB_SEARCH){
+     if(searchesStarted+countSearches>=MAX_SEARCHES_PER_REQUEST)break;
+     countSearches++;
     }
+    selected.push({index,call});
+    if(searchesStarted+countSearches>=MAX_SEARCHES_PER_REQUEST)break;
    }
-   const finishedCalls=completedCalls.filter(Boolean);
-   for(const item of finishedCalls){
+   if(!selected.length&&remaining.length){
+    if(!agentRunId){pendingCalls=calls;await createQueue();}
+    return await partialSegment();
+   }
+   searchesStarted+=countSearches;
+   const completedCalls=automatically&&!serializeSearches&&selected.length>1
+    &&selected.every(({call})=>call?.function?.name===WEB_SEARCH)
+    ?await Promise.all(selected.map(async item=>({...item,result:await executeCall(item.call)})))
+    :await (async()=>{const results=[];for(const item of selected){
+      runSignal?.throwIfAborted?.();
+      results.push({...item,result:await executeCall(item.call)});
+     }return results})();
+   let retryPending=false,rateLimited=false;
+   for(const {index,result:item} of completedCalls){
+    const retryable=item.name===WEB_SEARCH&&shouldRetrySearch(item.result);
+    if(retryable){
+     const attempts=(searchAttempts[index]||0)+1;
+     searchAttempts[index]=attempts;
+     if(attempts<MAX_SEARCH_ATTEMPTS){
+      retryPending=true;
+      if(/rate_limit|unavailable/.test(item.result?.error?.code||''))rateLimited=true;
+      continue;
+     }
+    }
+    bufferedResults[index]=item;
+   }
+   if(rateLimited){
+    serializeSearches=true;
+    // Give Browser Run / Parallel rate limits time to recover instead of
+    // immediately issuing a second burst from the next HTTP request.
+    const attempts=Math.max(1,...Object.values(searchAttempts));
+    retryAfterMs=Math.min(25000,5000*Math.pow(2,attempts-1));
+   }
+   // Flush only contiguous tool results. A successful parallel search behind
+   // a retryable failure is buffered and never executed again.
+   while(Object.prototype.hasOwnProperty.call(bufferedResults,nextCall)){
+    const item=bufferedResults[nextCall];
+    delete bufferedResults[nextCall];delete searchAttempts[nextCall];nextCall++;
     used.push({name:item.name,ok:!item.result?.error});
     if(item.receipt){
      webSearches.push(item.receipt);
-     // Send a small human-readable checkpoint immediately. Even if the
-     // upstream CPU limit terminates this run, the Android/Web UI retains
-     // source titles and URLs in its streamed, locally saved transcript.
      const sources=(item.receipt.result?.results||[]).slice(0,2);
      const lines=sources.map(source=>(String(source.title||'来源').slice(0,100)+' '+String(source.url||'').slice(0,350)));
      emit('reasoning',{text:'\n已记录搜索 '+webSearches.length+'：'+String(item.receipt.arguments.query||'').slice(0,100)+(lines.length?'\n'+lines.join('\n'):'（未取得来源）')+'\n'});
     }
-    conversation.push({role:'tool',tool_call_id:item.call.id,content:JSON.stringify(item.result).slice(0,180000)});
+    conversation.push({role:'tool',tool_call_id:item.call.id,content:JSON.stringify(item.result).slice(0,30000)});
    }
-   if(finishedCalls.length<calls.length||segmentExpired()&&webSearches.length)return partialSegment();
+   if(pendingCalls&&nextCall>=pendingCalls.length){
+    pendingCalls=null;nextCall=0;bufferedResults={};searchAttempts={};serializeSearches=false;
+   }
+   // A failed transient call stays in the queue and is retried automatically
+   // in the next request. A retry exhaustion becomes a normal tool error.
+   if(pendingCalls||retryPending||segmentExpired()&&webSearches.length||searchesStarted>=MAX_SEARCHES_PER_REQUEST){
+    // When a model batch has already finished, checkpoint with calls=null.
+    // Resuming then runs the model on its completed tool results instead of
+    // replaying or endlessly waiting for an exhausted batch.
+    if(!agentRunId){
+     if(nextCall<calls.length)pendingCalls=calls;
+     else{pendingCalls=null;nextCall=0;}
+     await createQueue();
+    }
+    return await partialSegment();
+   }
   }
    }catch(error){
-    if(runSignal?.aborted||!webSearches.length)throw error;
-    // Even an unexpected error after tool execution must not discard
-    // successful source receipts or turn the entire run into ai_unavailable.
+    if(runSignal?.aborted||!webSearches.length&&!agentRunId)throw error;
     console.error(JSON.stringify({event:'ai_search_run_recovered',name:error?.name||'Error',code:error?.code||'internal',searches:webSearches.length}));
+    if(agentRunId&&agentLease){
+     await releaseAgentQueue(env,principal.accountId,workspaceId,agentRunId,agentLease);
+     agentLease=null;
+    }
     const successes=webSearches.filter(item=>item.result?.results?.length).length;
-    return answer(successes?'已取得 '+successes+' 次有效搜索结果，但继续处理时发生错误。已保留来源，可继续根据这些结果回答。':'联网搜索未取得有效结果，且后续处理发生错误。已保留失败记录，可换来源或稍后重试。',{model:row.model,providerName:row.provider_name,partial:true});
+    return answer(successes?'已取得 '+successes+' 次有效搜索结果。执行中断，原任务可以继续。':'Agent 执行暂时中断，工具调用队列已保留，可稍后继续。',{model:row.model,providerName:row.provider_name,partial:true,...(agentRunId?{paused:true,agentRunId}:{})});
    }finally{
+    if(agentRunId&&agentLease)try{await releaseAgentQueue(env,principal.accountId,workspaceId,agentRunId,agentLease)}catch{}
     const browser=browserLease.browser||await browserLease.launching?.catch(()=>null);
     browserLease.browser=null;
     if(browser)try{await browser.close()}catch{}

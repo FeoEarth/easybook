@@ -125,8 +125,9 @@ try{
  const previousAssistantCount=app.session().messages.filter(message=>message.role==='assistant'&&!message.receipt).length;
  app.cloud(async body=>{
   researchSegments++;
-  if(researchSegments===1)return {message:{content:'已完成本阶段，自动续接'},continuationRequired:true,webSearches:[{arguments:{query:'研究阶段一'},result:{results:[{url:'https://example.org/checkpoint',title:'阶段来源'}]}}]};
-  assert.match(body.messages.at(-1).content,/累计执行了 1 次联网检索/);
+  if(researchSegments===1)return {message:{content:'',agentRunId:'12345678-1234-4123-8123-1234567890ab'},continuationRequired:true,agentRunId:'12345678-1234-4123-8123-1234567890ab',queuedTools:8,webSearches:[{arguments:{query:'研究阶段一'},result:{results:[{url:'https://example.org/checkpoint',title:'阶段来源'}]}}]};
+  assert.equal(body.purpose,'agent_run:12345678-1234-4123-8123-1234567890ab','Second request resumes existing model plan via D1');
+  assert.ok(Array.isArray(body.messages)&&body.messages.length===0,'No new user instruction or model re-planning context is sent');
   return new Promise(resolve=>{finishResearch=()=>resolve({message:{content:'长任务研究完毕。'}})});
  });
  const ongoingResearch=app.send('长任务分段检索');
@@ -134,10 +135,12 @@ try{
  assert.equal(app.busy(),true,'The Agent stays busy across segmented HTTP requests');
  assert.equal($('aiHubMessages').querySelector('[data-ai-continue]'),null,'Do not show Continue task as though the run has stopped');
  assert.equal(app.session().searchCompleted,1,'The next phase retains cumulative tool count');
+ assert.equal(app.session().pendingAgentRunId,'12345678-1234-4123-8123-1234567890ab','Run remains resumable during execution');
  assert.equal($('aiHubMessages').querySelector('a[href="https://example.org/checkpoint"]').textContent,'阶段来源');
  finishResearch();
  await ongoingResearch;
  assert.equal(app.busy(),false,'The Agent finishes only after the final segment');
+ assert.equal(app.session().pendingAgentRunId,undefined,'Completed task removes its recovery handle');
  assert.equal(app.session().messages.at(-1).content,'长任务研究完毕。');
  assert.equal(app.session().messages.filter(message=>message.role==='assistant'&&!message.receipt).length,previousAssistantCount+1,'Multiple Worker segments form one visible AI reply');
  const fallbackProposal={...searchProposal,id:'search-fallback'};
