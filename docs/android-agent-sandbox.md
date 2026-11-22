@@ -44,7 +44,7 @@ Each approved operation remains visible in the original Agent tool timeline and 
 
 ## Phase 3 experimental QEMU guest
 
-Android can optionally invoke a narrowly fixed Termux launcher via the official RUN_COMMAND intent after a separate VM setting is enabled. Termux **never evaluates model-generated code in the host**; a bundled, user-reviewed launcher forwards stdin through pinned SSH into a pre-provisioned QEMU guest. Agent commands cannot reach Easybook files unless the user deliberately copies content into the guest. QEMU guest storage remains separate from JS virtual files.
+Android can optionally invoke a narrowly fixed Termux launcher via the official RUN_COMMAND intent after a separate VM setting is enabled. Termux **never evaluates model-generated code in the host**; a bundled, user-reviewed launcher forwards stdin through pinned SSH into a pre-provisioned QEMU guest. Agent commands cannot reach Easybook files unless the user deliberately copies content into the guest. Android derives a per-workspace/per-session SHA-256 work directory inside the guest. This separates normal job files but is not a hostile-code security boundary between sessions sharing a Linux account. QEMU guest storage remains separate from JS virtual files.
 
 The native bridge receives stdout/stderr/exit status through a non-exported PendingIntent receiver. Linux commands execute on a dedicated native queue to avoid blocking the notes storage executor. VM operations require additional Termux permission, guest image setup and SSH verification (see `docs/android-agent-vm.md`). Without these prerequisites, VM tool execution fails closed.
 
