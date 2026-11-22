@@ -296,7 +296,14 @@ export async function aiAPI(request,env,principal,{workspaceId,fetcher=fetch,lau
   const messages=safeMessages(input?.messages,input?.attachments||[],{maxMessages:AI_CHAT_MAX_MESSAGES,maxChars:AI_CHAT_MAX_TEXT_CHARS}),mode=input?.mode==='agent'?'agent':'conversation',scopes=toolScopes(access.role,mode),tools=toolsFor(access.role,mode),key=await open(env,row);
   const run=async(emit=()=>{})=>{
    const localSandbox=mode==='agent'&&input?.localSandbox===true;
-   if(localSandbox)tools.push(...SANDBOX_TOOLS);
+   if(localSandbox){
+    const linux=input?.localSandboxBackend==='linux';
+    tools.push(...SANDBOX_TOOLS.map(tool=>tool.function.name==='sandbox_execute'
+      ?{...tool,function:{...tool.function,
+         description:linux?'QEMU Linux 虚拟机客体：仅支持 python 或 shell。客体需用户单独在 Termux 安装和启动；执行前逐项确认，不能访问 Easybook 主应用文件。':'独立 JS 沙箱 Worker：仅支持 javascript。sandbox.readFile/writeFile/listFiles/fetchText 仅访问会话文件与公开 HTTPS，执行前逐项确认。',
+         parameters:{...tool.function.parameters,properties:{...tool.function.parameters.properties,language:{type:'string',enum:linux?['python','shell']:['javascript']}}}}}
+      :tool));
+   }
    const external=input.externalTools===true&&access.role!=='reader'?await externalMcpTools(env,principal.accountId):new Map();
    for(const tool of external.values()){
     tools.push({type:'function',function:{name:tool.alias,description:'第三方 MCP '+tool.server+' / '+tool.name+'。调用前会在应用内确认。'+tool.description,parameters:tool.inputSchema}});
