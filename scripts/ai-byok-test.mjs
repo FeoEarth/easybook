@@ -604,7 +604,7 @@ assert.equal(webSearchQuota(monthStart,{permanent:1,expires_at:0}).kind,'member'
  const first=streamedFirst.find(event=>event.type==='done')?.data;
  assert.equal(advertised.data.name.slice('__easybook_agent_run__:'.length),first?.agentRunId,'Early checkpoint identifies the same encrypted run');
  assert.equal(first.continuationRequired,true);
- assert.equal(first.queuedTools,8);
+ assert.equal(first.queuedTools,10-(first.webSearches||[]).length,'Only unfinished calls stay in the durable queue');
  const stored=sqlite.prepare('SELECT state_ciphertext,state_iv FROM ai_agent_run_queue WHERE id=?').get(first.agentRunId);
  assert.ok(stored?.state_ciphertext&&!stored.state_ciphertext.includes('independent topic'));
  const other=await aiAPI(request('/api/ai/chat','POST',{purpose:'agent_run:'+first.agentRunId,messages:[]}),env,{...principal,accountId:otherAccount},{workspaceId:workspace,fetcher});
