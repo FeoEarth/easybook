@@ -24,8 +24,16 @@ for(const name of ['aiVmInstall','aiVmStart','aiVmStop','aiVmRemove','aiVmRefres
  assert.match(html,new RegExp('id="'+name+'"'));
 assert.match(html,/sandbox\.vm\.manage/);
 assert.match(build,/prepareAgentVmAssets/);
-assert.match(build,/versionCode 115/);
+assert.match(build,/versionCode 116/);
 assert.match(java,/case "sandbox.vm.manage"/);
+assert.match(java,/case "sandbox.vm.permission.request"/);
+assert.match(java,/onRequestPermissionsResult/);
+assert.match(vm,/requestPermissions\(new String\[\]\{PERMISSION\},REQUEST_PERMISSION_CODE\)/);
+assert.match(vm,/termuxPermissionAvailable/);
+assert.match(vm,/getPermissionInfo\(PERMISSION,0\)/);
+assert.match(html,/id="aiVmAuthorize"/);
+assert.match(html,/sandbox\.vm\.permission\.request/);
+assert.match(security,/case "sandbox.vm.permission.request":fields=Collections.emptySet\(\)/);
 assert.match(java,/method.startsWith\("sandbox.vm."\)/);
 assert.match(security,/case "sandbox.vm.manage":fields=fields\("action"\)/);
 assert.match(vm,/private static String installer/);

@@ -28,6 +28,7 @@ final class AgentVmBridge {
     static final String ACTION_RESULT="com.feoearth.easybook.AGENT_VM_RESULT";
     private static final String PREFS="easybook-vm-agent-v1";
     private static final String PERMISSION="com.termux.permission.RUN_COMMAND";
+    static final int REQUEST_PERMISSION_CODE=6302;
     private static final AtomicInteger IDS=new AtomicInteger(1000);
     private static final SecureRandom RANDOM=new SecureRandom();
     private static final ConcurrentHashMap<Integer, PendingJob> PENDING=new ConcurrentHashMap<>();
@@ -42,8 +43,22 @@ final class AgentVmBridge {
         try {context.getPackageManager().getPackageInfo("com.termux",0);return true;}
         catch(Exception ignored){return false;}
     }
+    private static boolean permissionAvailable(Context context) {
+        if(!installed(context))return false;
+        try {
+            android.content.pm.PermissionInfo info=context.getPackageManager().getPermissionInfo(PERMISSION,0);
+            return "com.termux".equals(info.packageName);
+        }catch(PackageManager.NameNotFoundException ignored){return false;}
+    }
     private static boolean permitted(Context context) {
-        return installed(context)&&context.checkSelfPermission(PERMISSION)==PackageManager.PERMISSION_GRANTED;
+        return permissionAvailable(context)&&context.checkSelfPermission(PERMISSION)==PackageManager.PERMISSION_GRANTED;
+    }
+    static JSONObject requestPermission(android.app.Activity activity)throws Exception {
+        if(!installed(activity))throw new IllegalStateException("请先安装 Termux 0.109 或更新版本");
+        if(!permissionAvailable(activity))throw new IllegalStateException("当前 Termux 版本未提供 RUN_COMMAND 权限，请使用官方 F-Droid 或 GitHub 发行版");
+        if(permitted(activity))return new JSONObject().put("permissionGranted",true).put("requested",false);
+        activity.runOnUiThread(()->activity.requestPermissions(new String[]{PERMISSION},REQUEST_PERMISSION_CODE));
+        return new JSONObject().put("permissionGranted",false).put("requested",true);
     }
     private static boolean enabled(Context context){
         return context.getSharedPreferences(PREFS,Context.MODE_PRIVATE).getBoolean("enabled",false);
@@ -118,7 +133,7 @@ final class AgentVmBridge {
         boolean hasTermux=installed(context),permission=permitted(context),active=enabled(context);
         JSONObject info=new JSONObject()
             .put("enabled",active).put("termuxInstalled",hasTermux)
-            .put("permissionGranted",permission).put("ready",false)
+            .put("permissionGranted",permission).put("termuxPermissionAvailable",permissionAvailable(context)).put("ready",false)
             .put("backend","qemu-guest-via-termux").put("guestBootVerified",false)
             .put("phase","not-installed").put("installed",false).put("running",false)
             .put("managementAvailable",true)
