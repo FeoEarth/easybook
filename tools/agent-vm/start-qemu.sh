@@ -5,7 +5,8 @@ set -euo pipefail
 DIR="$HOME/easybook-agent-vm"
 DISK="$DIR/guest.qcow2"
 FIRMWARE="$DIR/QEMU_EFI.fd"
-[[ -f "$DISK" && -f "$FIRMWARE" ]] || {
+SEED="$DIR/seed.iso"
+[[ -f "$DISK" && -f "$FIRMWARE" && -f "$SEED" ]] || {
   echo 'Place a trusted pre-installed Linux ARM64 qcow2 at guest.qcow2 and UEFI firmware at QEMU_EFI.fd' >&2
   exit 65
 }
@@ -18,6 +19,9 @@ exec qemu-system-aarch64 \
   -machine virt -accel tcg -cpu cortex-a72 -smp 2 -m 1024 \
   -bios "$FIRMWARE" \
   -drive file="$DISK",format=qcow2,if=virtio,cache=writeback \
+  -device virtio-scsi-device \
+  -drive file="$SEED",format=raw,media=cdrom,readonly=on,if=none,id=seed \
+  -device scsi-cd,drive=seed \
   -device virtio-net-device,netdev=guestnet \
   -netdev user,id=guestnet,hostfwd=tcp:127.0.0.1:2222-:22 \
   -nographic -no-reboot

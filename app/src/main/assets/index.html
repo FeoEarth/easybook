@@ -915,8 +915,16 @@ body[data-settings-detail] .app{display:block;max-width:720px;height:auto;min-he
  <div class="ai-section-heading"><h2>Agent 执行环境</h2></div>
  <div class="settings-group"><label class="settings-row"><span class="row-text"><strong>启用本地代码沙箱</strong><small>Android · 默认关闭 · 每个 Agent 会话单独选择 · JS Worker</small></span><input id="aiSandboxEnabled" type="checkbox" aria-describedby="aiSandboxNote"></label></div>
  <p class="ai-note" id="aiSandboxNote" role="status">正在检查运行环境…</p>
- <div class="settings-group"><label class="settings-row"><span class="row-text"><strong>可选 Linux 虚拟机（QEMU）</strong><small>使用 Termux 启动的独立 Linux 客体；需用户先安装与配置镜像</small></span><input id="aiVmEnabled" type="checkbox"></label></div>
+ <div class="settings-group"><label class="settings-row"><span class="row-text"><strong>可选 Linux 虚拟机（QEMU）</strong><small>一键配置独立 Debian Linux；首次需要安装并授权 Termux</small></span><input id="aiVmEnabled" type="checkbox"></label></div>
  <p class="ai-note" id="aiVmNote" role="status">正在检测 Termux…</p>
+ <div id="aiVmActions" style="display:flex;flex-wrap:wrap;gap:8px;margin:8px 0 12px">
+  <button type="button" id="aiVmInstall">安装 Linux 环境</button>
+  <button type="button" id="aiVmStart" hidden>启动虚拟机</button>
+  <button type="button" id="aiVmStop" hidden>停止虚拟机</button>
+  <button type="button" id="aiVmRefresh">刷新状态</button>
+  <button type="button" id="aiVmRemove" hidden>卸载 Linux</button>
+ </div>
+ <small class="ai-note">使用 Debian ARM64 官方镜像，下载约数百 MB、需要至少 1.5 GB 可用空间；首次需安装并授权 Termux。Linux 数据只存储在独立虚拟磁盘中。<a href="https://f-droid.org/packages/com.termux/" target="_blank" rel="noopener noreferrer">获取 Termux</a></small>
 </section>
 <section id="aiProviderPage" class="sync-page settings-detail" aria-labelledby="aiProviderTitle" hidden><nav class="sync-nav ui-nav"><button class="nav-back glass" type="button" id="aiProviderClose"><svg aria-hidden="true"><use href="#i-back"/></svg><span>设置</span></button></nav><div class="sync-content"><h1 id="aiProviderTitle" tabindex="-1">添加 API</h1><form id="aiConfigForm">
 <div class="settings-group ai-fields">
@@ -1550,18 +1558,53 @@ let aiConfigured=null,aiConfigPromise=null,aiBusy=false,aiConversation=[],aiConv
 const aiMemoryKey='easybook-ai-memory-v1';
 let aiPreferences=window.EasybookAiPreferences.emptyPreferences(),aiPreferencesLoaded=false,aiPreferencesPending=null,aiMemoryEditId='';
 let aiLocalStatus=null;
-let aiSandboxStatus=null,aiVmStatus=null,aiSandboxRunController=null;
+let aiSandboxStatus=null,aiVmStatus=null,aiSandboxRunController=null,aiVmPollTimer=null;
+const aiVmInstalling=phase=>['packages','downloading','provisioning'].includes(phase);
+function renderAiVmStatus(){
+ const v=aiVmStatus||{},phase=v.phase||'not-installed';
+ const canUse=!!(aiSandboxStatus?.enabled&&v.enabled&&v.permissionGranted&&v.managementAvailable);
+ $('aiVmActions').style.display=v.managementAvailable?'flex':'none';
+ const phases={packages:'正在安装 Linux 依赖',downloading:'正在下载并校验 Debian 镜像',provisioning:'正在配置隔离虚拟磁盘与 SSH',installed:'镜像已安装',failed:'安装失败，请在 Termux 查看 ~/easybook-agent-vm/install.log','not-installed':'尚未安装'};
+ let note=v.connectionError?'无法获取 Termux 状态：'+v.connectionError:(phases[phase]||'状态待确认');
+ if(!v.managementAvailable)note='一键安装需要新版 Android APK（versionCode 115 或更高），网页热更新无法单独启用此功能。';
+ else if(!v.termuxInstalled)note='请先从 F-Droid 安装 Termux 0.109+，再授予 Easybook「在 Termux 中执行命令」权限。';
+ else if(!v.permissionGranted)note='请在 Termux 开启 allow-external-apps = true，并在 Android 系统设置授权 Easybook 的 RUN_COMMAND 权限。';
+ else if(!aiSandboxStatus?.enabled)note='请先开启上方的本地代码沙箱。';
+ else if(!v.enabled)note='请先启用 QEMU Linux 虚拟机。';
+ else if(v.guestBootVerified)note='Debian 虚拟机运行中，SSH 已验证；Agent 可以执行 Python / Shell。';
+ else if(v.running)note='虚拟机已启动，正在等待 Debian 启动和 SSH 就绪。';
+ else if(v.installed)note='Debian 已安装，点击「启动虚拟机」即可使用。';
+ $('aiVmNote').textContent=note;
+ $('aiVmEnabled').checked=!!v.enabled;
+ $('aiVmInstall').hidden=!!v.installed||phase==='failed';
+ $('aiVmInstall').disabled=!canUse||aiVmInstalling(phase)||!!v.connectionError;
+ $('aiVmInstall').textContent=aiVmInstalling(phase)?'正在安装…':'安装 Linux 环境';
+ $('aiVmStart').hidden=!v.installed||!!v.running;
+ $('aiVmStart').disabled=!canUse;
+ $('aiVmStop').hidden=!v.running;
+ $('aiVmStop').disabled=!canUse;
+ $('aiVmRemove').hidden=!v.installed&&phase!=='failed';
+ $('aiVmRemove').disabled=!canUse||aiVmInstalling(phase);
+ if(aiVmPollTimer){clearTimeout(aiVmPollTimer);aiVmPollTimer=null}
+ if((aiVmInstalling(phase)||(v.running&&!v.guestBootVerified))&&!document.hidden)
+  aiVmPollTimer=setTimeout(()=>refreshAiVmStatus(),6000);
+}
+async function refreshAiVmStatus(){
+ if(!native)return;
+ try{aiVmStatus=await native.call('sandbox.vm.status')}
+ catch(error){aiVmStatus={connectionError:error.message};$('aiVmEnabled').disabled=true}
+ renderAiVmStatus();
+ if(tab==='ai-hub')renderAiHub();
+}
+
 const sandboxSessionActive=session=>!!(native&&aiSandboxStatus?.enabled&&session?.sandboxEnabled&&session.mode==='agent');
 async function refreshAiSandbox(){
  if(!native)return;
  $('aiSandboxSection').hidden=false;
  try{aiSandboxStatus=await native.call('sandbox.status');
   $('aiSandboxEnabled').checked=!!aiSandboxStatus.enabled;
-  try{aiVmStatus=await native.call('sandbox.vm.status');
-   $('aiVmEnabled').checked=!!aiVmStatus.enabled;
-   $('aiVmNote').textContent=aiVmStatus.ready?'QEMU 连接器已授权；需确保 Termux 内的 Linux 客体正在运行。':aiVmStatus.termuxInstalled?(aiVmStatus.permissionGranted?'需先启用连接器并配置 Linux 客体和 SSH。':'需要在 Android 系统设置中授予 Easybook「在 Termux 中执行命令」。'):'需要安装 Termux 0.109+，并手动配置 QEMU Linux 客体。';
-  }catch(error){aiVmStatus=null;$('aiVmEnabled').disabled=true;$('aiVmNote').textContent='QEMU 后端不可用：'+error.message}
-  $('aiSandboxNote').textContent='JavaScript 沙箱 · 每次执行最长 30 秒 · 会话文件上限 512 KB · 可访问公开 HTTPS。可选 QEMU Linux 客体支持 Python/Shell，需自行安装镜像与 SSH。';
+  await refreshAiVmStatus();
+  $('aiSandboxNote').textContent='JavaScript 沙箱 · 每次执行最长 30 秒 · 会话文件上限 512 KB · 可访问公开 HTTPS。Linux 客体支持 Python/Shell，首次需安装并授权 Termux。';
  }catch(error){aiSandboxStatus=null;$('aiSandboxEnabled').disabled=true;$('aiSandboxNote').textContent='执行环境不可用：'+error.message}
  if(tab==='ai-hub')renderAiHub();
 }
@@ -1577,11 +1620,31 @@ $('aiSandboxEnabled').onchange=async event=>{
 $('aiVmEnabled').onchange=async event=>{
  const control=event.target;control.disabled=true;
  try{aiVmStatus=await native.call('sandbox.vm.configure',{enabled:control.checked});
-  $('aiVmNote').textContent=aiVmStatus.ready?'已启用 QEMU 后端。请在当前 Agent 会话选中 Linux 虚拟机，并先启动 Termux 中的客体。':'QEMU 后端未启用；需要 Termux 权限和 Linux 客体配置。';
+  renderAiVmStatus();
   if(!aiVmStatus.enabled){for(const session of aiHubSessions)if(session.sandboxBackend==='linux')session.sandboxBackend='javascript';saveAiHubSessions()}
   renderAiHub();
  }catch(error){toast(error.message);control.checked=!control.checked}
  finally{control.disabled=false}
+};
+for(const [id,action] of [['aiVmInstall','install'],['aiVmStart','start'],['aiVmStop','stop'],['aiVmRemove','remove']]){
+ $(id).onclick=async()=>{
+  if(action==='install'&&!confirm('即将下载约数百 MB 的 Debian ARM64 镜像，并在 Termux 建立独立 Linux 虚拟磁盘。继续？'))return;
+  if(action==='remove'&&!confirm('确定删除整个 Linux 虚拟机、其中的软件与文件？Easybook 笔记不会被删除。'))return;
+  const control=$(id);control.disabled=true;
+  try{
+   const result=await native.call('sandbox.vm.manage',{action});
+   if(action==='install')toast('已提交 Linux 安装任务。安装在 Termux 中进行，可点击刷新状态。');
+   else toast(action==='start'?'正在启动 Debian 虚拟机':action==='stop'?'已停止虚拟机':'Linux 虚拟机已卸载');
+   if(result?.phase)aiVmStatus={...aiVmStatus,...result};
+   if(action==='install')renderAiVmStatus();
+   else await refreshAiVmStatus();
+  }catch(error){toast(error.message)}
+  finally{control.disabled=false;renderAiVmStatus()}
+ };
+}
+$('aiVmRefresh').onclick=async()=>{
+ const control=$('aiVmRefresh');control.disabled=true;
+ try{await refreshAiVmStatus()}finally{control.disabled=false}
 };
 async function refreshAiSandboxFiles(){
  const session=currentAiHubSession();

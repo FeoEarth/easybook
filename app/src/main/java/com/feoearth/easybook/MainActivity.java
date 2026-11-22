@@ -186,7 +186,7 @@ public class MainActivity extends Activity {
                 if(!requestId.matches("[a-zA-Z0-9-]{1,80}"))return;
                 Runnable operation=()->{try{if(destroyed||serverSwitching||generation!=documentGeneration)throw new SecurityException();repository.assertActiveProfile();security.authorize(method,input,generation);JSONObject output=dispatch(method,input,generation);respond(reply,generation,new JSONObject().put("id",requestId).put("ok",true).put("result",output));}catch(Exception e){try{respond(reply,generation,new JSONObject().put("id",requestId).put("ok",false).put("error",operationErrorMessage(e)).put("code",operationErrorCode(e)));}catch(Exception ignored){}}};
                 // Dock visibility updates must stay ordered and cannot wait for the storage queue.
-                if(method.equals("sandbox.vm.execute"))vmIo.execute(operation);
+                if(method.startsWith("sandbox.vm."))vmIo.execute(operation);
                 else if(method.equals("ui.glass.dock"))dockIo.execute(operation);
                 else if(method.equals("sync")||method.equals("attachment.get")||method.equals("attachment.open")||method.equals("attachment.share")||method.equals("attachment.export"))syncIo.execute(operation);else io.execute(operation);
             }catch(Exception ignored){}
@@ -398,6 +398,7 @@ public class MainActivity extends Activity {
             case "sandbox.vm.status":return AgentVmBridge.status(this);
             case "sandbox.vm.configure":return AgentVmBridge.configure(this,args);
             case "sandbox.vm.execute":return AgentVmBridge.run(this,args,repository.activeSpace());
+            case "sandbox.vm.manage":return AgentVmBridge.manage(this,bounded(args,"action",20));
             case "sandbox.export":{
                 String name=AttachmentStore.cleanName(bounded(args,"name",100));
                 String content=bounded(args,"content",131072);
