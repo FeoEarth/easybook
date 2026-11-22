@@ -122,6 +122,7 @@ try{
  assert.equal(app.session().pendingApproval,null);
  assert.equal($('aiHubMessages').querySelector('a[href="https://example.org/auto"]').textContent,'自动来源');
  let researchSegments=0,finishResearch=null;
+ const previousAssistantCount=app.session().messages.filter(message=>message.role==='assistant'&&!message.receipt).length;
  app.cloud(async body=>{
   researchSegments++;
   if(researchSegments===1)return {message:{content:'已完成本阶段，自动续接'},continuationRequired:true,webSearches:[{arguments:{query:'研究阶段一'},result:{results:[{url:'https://example.org/checkpoint',title:'阶段来源'}]}}]};
@@ -138,6 +139,7 @@ try{
  await ongoingResearch;
  assert.equal(app.busy(),false,'The Agent finishes only after the final segment');
  assert.equal(app.session().messages.at(-1).content,'长任务研究完毕。');
+ assert.equal(app.session().messages.filter(message=>message.role==='assistant'&&!message.receipt).length,previousAssistantCount+1,'Multiple Worker segments form one visible AI reply');
  const fallbackProposal={...searchProposal,id:'search-fallback'};
  app.cloud(async()=>({message:{content:'请确认搜索'},approval:fallbackProposal}));
  await app.send('再联网搜索一次');
