@@ -32,7 +32,7 @@ assert.match(vm,/private static String installer/);
 assert.match(vm,/new String\[\]\{"runner","start-qemu","setup"\}/);
 assert.match(vm,/RUN_COMMAND_STDIN/);
 assert.match(vm,/termuxControl/);
-assert.match(setup,/cloud.debian.org\/images\/cloud\/trixie\/20260623-2518/);
+assert.match(setup,/cloud.debian.org\/cdimage\/cloud\/trixie\/20260623-2518/);
 assert.match(setup,/sha512sum -c/);
 assert.match(setup,/cloud-config/);
 assert.match(setup,/ssh_keys:/);
