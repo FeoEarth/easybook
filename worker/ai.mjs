@@ -340,8 +340,9 @@ export async function aiAPI(request,env,principal,{workspaceId,fetcher=fetch,lau
    const used=[],webSearches=[],browserLease={browser:null};
    let agentRunId=resumeId||null,agentLease=runLease;
    let pendingCalls=resumed?.calls||null,nextCall=resumed?.nextCall||0;
+   let bufferedResults=resumed?.bufferedResults||{},searchAttempts=resumed?.searchAttempts||{},serializeSearches=resumed?.serializeSearches===true;
    const stateOptions={credentialId:row.id,model:row.model,mode,externalTools:input.externalTools===true,localSandbox:input.localSandbox===true,localSandboxBackend:input.localSandboxBackend||'javascript'};
-   const state=()=>({version:1,options:stateOptions,conversation,calls:pendingCalls,nextCall});
+   const state=()=>({version:1,options:stateOptions,conversation,calls:pendingCalls,nextCall,bufferedResults,searchAttempts,serializeSearches});
    const encryptState=async id=>{
     const serialized=JSON.stringify(state());
     if(serialized.length>1800000)throw Object.assign(Error('Agent context too large'),{code:'agent_context_too_large',status:413});
@@ -365,12 +366,18 @@ export async function aiAPI(request,env,principal,{workspaceId,fetcher=fetch,lau
    // There is no limit on total searches for a user task. Keep each HTTP
    // segment within a soft wall-time budget so Workers do not exhaust CPU.
    // The client continues a long task in another request with saved receipts.
-   // Search queries are processed in arrival order, not concurrently.
-   // Free Workers cannot opt into a larger CPU budget. Keep each invocation
-   // small and resume the research task in another request after two queries.
-   // This is not a per-task search limit; the client continues automatically.
+   // Queries remain logically concurrent. On provider/browser throttling the
+   // queue switches to serial retries without dropping the model's call IDs.
+   // The limit below applies to a single Free Worker invocation, not a task.
    const MAX_SEARCHES_PER_REQUEST=2;
    let searchesStarted=0;
+   const MAX_SEARCH_ATTEMPTS=3;
+   const shouldRetrySearch=result=>{
+    if(result?.results?.length>0)return false;
+    const code=result?.error?.code||'';
+    return ['web_search_rate_limited','parallel_rate_limited','web_search_unavailable','parallel_unavailable','web_search_timeout','search_timeout','mcp_oauth_timeout'].includes(code)
+      ||['timeout','unavailable','parse_failed','rate_limited'].includes(result?.reason);
+   };
    const segmentStarted=Date.now();
    const configuredSegment=Number(env.AI_SEARCH_SEGMENT_MS);
    const SEARCH_SEGMENT_MS=Number.isFinite(configuredSegment)&&configuredSegment>0?Math.min(20000,configuredSegment):20000;
@@ -475,49 +482,70 @@ export async function aiAPI(request,env,principal,{workspaceId,fetcher=fetch,lau
     emit('tool_end',{name:typeof name==='string'?name:'unknown',status:result?.error?'failed':'done'});
     return {call,name,result,receipt};
    };
-   // A fixed-size internal batch limits Free Worker resource use, not the
-   // user's total searches. All remaining tool IDs stay in the durable plan.
-   const offset=pendingCalls?nextCall:0,remaining=calls.slice(offset),selected=[];
-   let selectedSearches=0;
-   for(const call of remaining){
-    if(selected.length>=4||selectedSearches>=MAX_SEARCHES_PER_REQUEST)break;
+   // The model's entire batch is kept in D1. Process up to two outstanding
+   // searches here, even if the original model requested dozens at once.
+   const offset=pendingCalls?nextCall:0,remaining=calls.slice(offset);
+   const selected=[];
+   let countSearches=0;
+   for(let index=offset;index<calls.length;index++){
+    if(selected.length>=4||segmentExpired()&&webSearches.length)break;
+    const call=calls[index];
+    if(Object.prototype.hasOwnProperty.call(bufferedResults,index))continue;
     if(call?.function?.name===WEB_SEARCH){
-     if(selectedSearches>=MAX_SEARCHES_PER_REQUEST)break;
-     selectedSearches++;
+     if(searchesStarted+countSearches>=MAX_SEARCHES_PER_REQUEST)break;
+     countSearches++;
     }
-    selected.push(call);
-    if(selectedSearches>=MAX_SEARCHES_PER_REQUEST)break;
+    selected.push({index,call});
+    if(searchesStarted+countSearches>=MAX_SEARCHES_PER_REQUEST)break;
    }
-   // Serial execution is deliberate. Cloudflare Free may reject concurrent
-   // Browser Run contexts, while the durable queue preserves every call.
-   // Waiting is preferable to failing or re-running the model's planning step.
-   const completedCalls=[];
-   for(const call of selected){
-    runSignal?.throwIfAborted?.();
-    completedCalls.push(await executeCall(call));
+   if(!selected.length&&remaining.length){
+    if(!agentRunId){pendingCalls=calls;await createQueue();}
+    return partialSegment();
    }
-   for(const item of completedCalls){
+   searchesStarted+=countSearches;
+   const completedCalls=automatically&&!serializeSearches&&selected.length>1
+    &&selected.every(({call})=>call?.function?.name===WEB_SEARCH)
+    ?await Promise.all(selected.map(async item=>({...item,result:await executeCall(item.call)})))
+    :await (async()=>{const results=[];for(const item of selected){
+      runSignal?.throwIfAborted?.();
+      results.push({...item,result:await executeCall(item.call)});
+     }return results})();
+   let retryPending=false,rateLimited=false;
+   for(const {index,result:item} of completedCalls){
+    const retryable=item.name===WEB_SEARCH&&shouldRetrySearch(item.result);
+    if(retryable){
+     const attempts=(searchAttempts[index]||0)+1;
+     searchAttempts[index]=attempts;
+     if(attempts<MAX_SEARCH_ATTEMPTS){
+      retryPending=true;
+      if(/rate_limit|unavailable/.test(item.result?.error?.code||''))rateLimited=true;
+      continue;
+     }
+    }
+    bufferedResults[index]=item;
+   }
+   if(rateLimited)serializeSearches=true; // automatic fall back for this plan
+   // Flush only contiguous tool results. A successful parallel search behind
+   // a retryable failure is buffered and never executed again.
+   while(Object.prototype.hasOwnProperty.call(bufferedResults,nextCall)){
+    const item=bufferedResults[nextCall];
+    delete bufferedResults[nextCall];delete searchAttempts[nextCall];nextCall++;
     used.push({name:item.name,ok:!item.result?.error});
     if(item.receipt){
      webSearches.push(item.receipt);
      const sources=(item.receipt.result?.results||[]).slice(0,2);
      const lines=sources.map(source=>(String(source.title||'来源').slice(0,100)+' '+String(source.url||'').slice(0,350)));
-     emit('reasoning',{text:'\n已记录搜索 '+webSearches.length+'：'+String(item.receipt.arguments.query||'').slice(0,100)+(lines.length?'\n'+lines.join('\n'):'（未取得来源）')+'\n'});
+     emit('reasoning',{text:'\\n已记录搜索 '+webSearches.length+'：'+String(item.receipt.arguments.query||'').slice(0,100)+(lines.length?'\\n'+lines.join('\\n'):'（未取得来源）')+'\\n'});
     }
-    // Keep the exact provider tool-call IDs and order, including tool errors.
-    // These are fed back to the SAME model response after the entire batch.
     conversation.push({role:'tool',tool_call_id:item.call.id,content:JSON.stringify(item.result).slice(0,30000)});
    }
-   if(pendingCalls){
-    nextCall+=completedCalls.length;
-    if(nextCall>=pendingCalls.length){pendingCalls=null;nextCall=0;}
-    return partialSegment();
+   if(pendingCalls&&nextCall>=pendingCalls.length){
+    pendingCalls=null;nextCall=0;bufferedResults={};searchAttempts={};serializeSearches=false;
    }
-   if(completedCalls.length<calls.length||segmentExpired()&&webSearches.length){
-    // Non-search batches larger than four are also persisted; this is a
-    // defensive fallback if a provider changes tool-call ordering.
-    pendingCalls=calls;nextCall=completedCalls.length;
-    await createQueue();
+   // A failed transient call stays in the queue and is retried automatically
+   // in the next request. A retry exhaustion becomes a normal tool error.
+   if(pendingCalls||retryPending||segmentExpired()&&webSearches.length||searchesStarted>=MAX_SEARCHES_PER_REQUEST){
+    if(!agentRunId){pendingCalls=calls;nextCall=completedCalls.length;await createQueue();}
     return partialSegment();
    }
   }
