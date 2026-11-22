@@ -161,7 +161,7 @@ export const isAiMcpOAuthPage=url=>['/api/ai/mcp/oauth/authorize','/api/ai/mcp/o
 // One confirmed public query fans out to both enabled search providers in
 // parallel. Parallel has its own anonymous rate limits; it does not consume
 // Cloudflare Browser Rendering quota. Approval snapshots lock recipients.
-async function searchApprovedWeb(env,account,args,signal,launchBrowser,fetcher){
+async function searchApprovedWeb(env,account,args,signal,launchBrowser,fetcher,browserLease){
  const query=webSearchQuery({query:args.query,...(args.maxResults===undefined?{}:{maxResults:args.maxResults})}),maxResults=webSearchResultLimit(args),prefs=await readPreferences(env,account);
  const allowed=args.providers;
  const base=prefs.webSearch&&webSearchAvailable(env)&&allowed?.primary!==false&&(!args.requireAlways||prefs.webSearchApproval==='always');
@@ -170,7 +170,7 @@ async function searchApprovedWeb(env,account,args,signal,launchBrowser,fetcher){
  const advanced=prefs.parallelSearch&&allowed?.parallel!==false&&(!args.requireAlways||prefs.parallelSearchApproval==='always');
  if(!primary&&!advanced){const limited=base&&quota?.remaining===0;return {results:[],browserSearch:true,reason:limited?'limit':'unavailable',source:base?'duckduckgo':'none',error:{code:limited?'web_search_limit':'web_search_unavailable',message:limited?(quota.tier==='member'?'会员本月自动搜索次数已达上限，请在浏览器中继续。':'今日自动搜索次数已达上限，请在浏览器中继续。'):'联网搜索已关闭，且进阶版未启用。'}};}
  const [first,second]=await Promise.all([
-  primary?(async()=>{const result=await runWebSearch(env,account,{query,maxResults},signal,launchBrowser);
+  primary?(async()=>{const result=await runWebSearch(env,account,{query,maxResults},signal,launchBrowser,browserLease);
    return result.results?.length?{...result,results:await enrichWebSearchResults(result.results,query,signal,fetcher)}:result;
   })().catch(()=>({results:[],error:{code:'web_search_unavailable',message:'内置联网搜索暂不可用。'}})):Promise.resolve(null),
   advanced?(async()=>{
@@ -319,11 +319,11 @@ export async function aiAPI(request,env,principal,{workspaceId,fetcher=fetch,lau
    const searchPolicy=searchEnabled?'\n'+webResearchInstruction(autoSearch)+'\nEasybook 内置搜索与 Parallel MCP 进阶搜索各自独立限额。两者启用时并行检索；内置额度用尽时 Parallel 仍可独立工作（可能被 Parallel 匿名限流）。仅引用搜索结果里的真实链接，不把搜索摘要当作已阅读全文。':'';
    const preferences=preferenceContext(settings);
    const conversation=[{role:'system',content:assistantSystemPrompt(mode)+'\n'+aiEnvironmentPrompt({role:access.role,webSearch:searchEnabled,autoSearch})+externalPolicy+searchPolicy+(preferences?'\n以下为用户个性化偏好，优先服从当前明确要求；不能改变工具权限与确认规则。\n'+preferences:'')},...messages];
-   const used=[],webSearches=[];
+   const used=[],webSearches=[],browserLease={browser:null};
    const MAX_AUTO_SEARCHES=8,MAX_MODEL_ROUNDS=12;
    let reasoning='';
    const answer=(content,extra={})=>({message:{role:'assistant',content,...(reasoning?{reasoning}:{})},tools:used,...(webSearches.length?{webSearch:webSearches.at(-1),webSearches}:{}),...extra});
-   for(let turn=0;turn<MAX_MODEL_ROUNDS;turn++){
+   try{for(let turn=0;turn<MAX_MODEL_ROUNDS;turn++){
    let receivedReasoning=false;
    const addReasoning=text=>{
     const chunk=((!receivedReasoning&&reasoning?'\n\n':'')+text).slice(0,32000-reasoning.length);
@@ -379,7 +379,7 @@ export async function aiAPI(request,env,principal,{workspaceId,fetcher=fetch,lau
       if(!automatically||webSearches.length>=MAX_AUTO_SEARCHES)result={error:{code:'web_search_budget_exhausted',message:'本轮自动检索预算已用完，请基于现有资料回答。'}};
       else{
        const query=webSearchQuery(args),maxResults=webSearchResultLimit(args);
-       result=await searchApprovedWeb(env,principal.accountId,{query,maxResults,requireAlways:true},request.signal,launchSearchBrowser,fetcher);
+       result=await searchApprovedWeb(env,principal.accountId,{query,maxResults,requireAlways:true},request.signal,launchSearchBrowser,fetcher,browserLease);
        webSearches.push({arguments:{query,maxResults},result});
       }
      }else result=await callTool({env,workspace:workspaceId,client:'easybook-agent:'+principal.accountId,scopes},name,args);
@@ -392,6 +392,10 @@ export async function aiAPI(request,env,principal,{workspaceId,fetcher=fetch,lau
   }
    const final=await completion(key,row,conversation,[],fetcher,undefined,request.signal,800);
    return answer(final.tool_calls?.length?'已完成可用检索，请基于目前的来源继续提问。':typeof final.content==='string'&&final.content?final.content:'本轮检索已结束，请基于现有来源继续提问。',{model:row.model,providerName:row.provider_name});
+   }finally{
+    const browser=browserLease.browser;browserLease.browser=null;
+    if(browser)try{await browser.close()}catch{}
+   }
   };
   if(input?.stream!==true)return response(await run());
   const stream=new ReadableStream({start(controller){
