@@ -320,13 +320,19 @@ export async function aiAPI(request,env,principal,{workspaceId,fetcher=fetch,lau
    const preferences=preferenceContext(settings);
    const conversation=[{role:'system',content:assistantSystemPrompt(mode)+'\n'+aiEnvironmentPrompt({role:access.role,webSearch:searchEnabled,autoSearch})+externalPolicy+searchPolicy+(preferences?'\n以下为用户个性化偏好，优先服从当前明确要求；不能改变工具权限与确认规则。\n'+preferences:'')},...messages];
    const used=[],webSearches=[],browserLease={browser:null};
-   // No per-answer search-count ceiling. Individual providers enforce their
-   // own quota and the model decides when enough sources have been collected.
-   // Bound only simultaneous upstream calls to protect shared runtime resources.
-   const SEARCH_CONCURRENCY=3;
+   // There is no limit on total searches for a user task. Keep each HTTP
+   // segment within a soft wall-time budget so Workers do not exhaust CPU.
+   // The client continues a long task in another request with saved receipts.
+   const SEARCH_CONCURRENCY=2;
+   const segmentStarted=Date.now();
+   const configuredSegment=Number(env.AI_SEARCH_SEGMENT_MS);
+   const SEARCH_SEGMENT_MS=Number.isFinite(configuredSegment)&&configuredSegment>0?Math.min(75000,configuredSegment):75000;
+   const segmentExpired=()=>Date.now()-segmentStarted>=SEARCH_SEGMENT_MS;
+   const partialSegment=()=>answer('本阶段已执行 '+webSearches.length+' 次联网搜索，已保存来源，正在继续原研究任务。',{model:row.model,providerName:row.provider_name,partial:true,continuationRequired:true});
    let reasoning='';
    const answer=(content,extra={})=>({message:{role:'assistant',content,...(reasoning?{reasoning}:{})},tools:used,...(webSearches.length?{webSearch:webSearches.at(-1),webSearches}:{}),...extra});
    try{for(;;){
+   if(webSearches.length&&segmentExpired())return partialSegment();
    let receivedReasoning=false;
    const addReasoning=text=>{
     const chunk=((!receivedReasoning&&reasoning?'\n\n':'')+text).slice(0,32000-reasoning.length);
@@ -384,6 +390,7 @@ export async function aiAPI(request,env,principal,{workspaceId,fetcher=fetch,lau
     return answer('Agent 已准备 '+name+' 操作，正在等待你核对参数并确认。未确认前不会修改工作区。',{approval:{id,tool:name,arguments:args,expiresAt}});
    }
    const executeCall=async call=>{
+    if(segmentExpired()&&webSearches.length)return null;
     const name=call?.function?.name;let args,result,receipt;
     emit('tool_start',{name:typeof name==='string'?name:'unknown'});
     try{
@@ -409,19 +416,32 @@ export async function aiAPI(request,env,principal,{workspaceId,fetcher=fetch,lau
     await Promise.all(Array.from({length:Math.min(SEARCH_CONCURRENCY,calls.length)},async()=>{
      for(;;){
       const index=next++;
-      if(index>=calls.length)return;
+      if(index>=calls.length||segmentExpired()&&webSearches.length)return;
       completedCalls[index]=await executeCall(calls[index]);
      }
     }));
    }else{
     completedCalls=[];
-    for(const call of calls)completedCalls.push(await executeCall(call));
+    for(const call of calls){
+     if(segmentExpired()&&webSearches.length)break;
+     completedCalls.push(await executeCall(call));
+    }
    }
-   for(const item of completedCalls){
+   const finishedCalls=completedCalls.filter(Boolean);
+   for(const item of finishedCalls){
     used.push({name:item.name,ok:!item.result?.error});
-    if(item.receipt)webSearches.push(item.receipt);
+    if(item.receipt){
+     webSearches.push(item.receipt);
+     // Send a small human-readable checkpoint immediately. Even if the
+     // upstream CPU limit terminates this run, the Android/Web UI retains
+     // source titles and URLs in its streamed, locally saved transcript.
+     const sources=(item.receipt.result?.results||[]).slice(0,2);
+     const lines=sources.map(source=>(String(source.title||'来源').slice(0,100)+' '+String(source.url||'').slice(0,350)));
+     emit('reasoning',{text:'\n已记录搜索 '+webSearches.length+'：'+String(item.receipt.arguments.query||'').slice(0,100)+(lines.length?'\n'+lines.join('\n'):'（未取得来源）')+'\n'});
+    }
     conversation.push({role:'tool',tool_call_id:item.call.id,content:JSON.stringify(item.result).slice(0,180000)});
    }
+   if(finishedCalls.length<calls.length||segmentExpired()&&webSearches.length)return partialSegment();
   }
    }catch(error){
     if(runSignal?.aborted||!webSearches.length)throw error;
