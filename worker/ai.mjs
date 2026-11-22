@@ -390,7 +390,7 @@ export async function aiAPI(request,env,principal,{workspaceId,fetcher=fetch,lau
    let reasoning='';
    const answer=(content,extra={})=>({message:{role:'assistant',content,...(reasoning?{reasoning}:{})},tools:used,...(webSearches.length?{webSearch:webSearches.at(-1),webSearches}:{}),...extra});
    try{for(;;){
-   if(agentRunId&&segmentExpired())return await partialSegment();
+   if(webSearches.length&&segmentExpired())return await partialSegment();
    let receivedReasoning=false;
    const addReasoning=text=>{
     const chunk=((!receivedReasoning&&reasoning?'\n\n':'')+text).slice(0,32000-reasoning.length);
