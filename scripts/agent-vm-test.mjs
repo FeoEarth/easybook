@@ -37,5 +37,5 @@ assert.match(runner,/timeout --signal=TERM/);
 assert.doesNotMatch(runner,/eval |sshpass|StrictHostKeyChecking=no|bash -c/);
 assert.match(boot,/qemu-system-aarch64/);
 assert.match(boot,/hostfwd=tcp:127\.0\.0\.1:2222-:22/);
-assert.doesNotMatch(boot,/-virtfs|virtiofs|hostfwd=tcp:0\.0\.0\.0/);
+assert.doesNotMatch(boot.split('\n').filter(line=>!line.trimStart().startsWith('#')).join('\n'),/-virtfs|virtiofs|hostfwd=tcp:0\.0\.0\.0/);
 console.log('Agent VM permission, guest routing, isolated file APIs and UI hooks OK');
