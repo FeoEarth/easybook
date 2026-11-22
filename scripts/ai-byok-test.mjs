@@ -651,11 +651,13 @@ assert.equal(webSearchQuota(monthStart,{permanent:1,expires_at:0}).kind,'member'
  const callback='/api/ai/mcp/oauth/callback';
  const token='parallel-login-secret-token';
  let registered=0,protectedCalls=0,anonymousCalls=0,clientCalls=0,modelRounds=0;
+ let anonymousLoginProbe=false;
  const parallelFetcher=async(input,init={})=>{
   const u=new URL(input),headers=new Headers(init.headers);
   if(u.hostname==='cloudflare-dns.com')return Response.json({Status:0,Answer:[{type:1,data:'93.184.216.34'}]});
   if(u.href===login){
    assert.equal(init.method,'POST');
+   if(anonymousLoginProbe)return Response.json({jsonrpc:'2.0',id:1,result:{protocolVersion:'2025-06-18',capabilities:{tools:{}}}});
    return new Response(null,{status:401,headers:{'WWW-Authenticate':'Bearer resource_metadata="https://mcp.parallel.ai/.well-known/oauth-protected-resource/mcp"'}});
   }
   if(u.href==='https://mcp.parallel.ai/.well-known/oauth-protected-resource/mcp')
@@ -668,6 +670,8 @@ assert.equal(webSearchQuota(monthStart,{permanent:1,expires_at:0}).kind,'member'
    registered++;
    const requestBody=JSON.parse(init.body);
    assert.deepEqual(requestBody.redirect_uris,['https://easybook.test'+callback]);
+   assert.equal(requestBody.application_type,'web');
+   assert.deepEqual(requestBody.grant_types,['authorization_code'],'Do not request unadvertised refresh-token grants');
    return Response.json({client_id:'parallel-public-client',token_endpoint_auth_method:'none'});
   }
   if(u.href===issuer+'/token'){
@@ -704,6 +708,14 @@ assert.equal(webSearchQuota(monthStart,{permanent:1,expires_at:0}).kind,'member'
  const start=await (await config({parallelLogin:true})).json();
  assert.match(start.state,/^[a-f0-9]{64}$/);
  assert.equal(registered,1);
+ // Some servers answer an anonymous MCP initialize even on an explicit-login
+ // endpoint. OAuth discovery must still use the verified resource metadata.
+ anonymousLoginProbe=true;
+ const fallback=await config({parallelLogin:true});
+ assert.equal(fallback.status,200);
+ assert.match((await fallback.json()).state,/^[a-f0-9]{64}$/);
+ assert.equal(registered,2);
+ anonymousLoginProbe=false;
  const launch=await aiMcpOAuthPage(new Request(start.authorizationUrl),env,{fetcher:parallelFetcher});
  assert.equal(launch.status,303);
  const destination=new URL(launch.headers.get('Location'));
