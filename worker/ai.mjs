@@ -543,7 +543,8 @@ export async function aiAPI(request,env,principal,{workspaceId,fetcher=fetch,lau
     serializeSearches=true;
     // Let Browser Run / Parallel limits recover before the next request.
     const attempts=Math.max(1,...Object.values(searchAttempts));
-    retryAfterMs=Math.min(25000,5000*Math.pow(2,attempts-1));
+    const providerDelay=Math.max(0,...completedCalls.map(({result:item})=>Number(item.result?.error?.retryAfterMs)||0));
+    retryAfterMs=Math.min(60000,Math.max(providerDelay,5000*Math.pow(2,attempts-1)));
    }
    if(Date.now()-waveStarted>4000&&countSearches>1){
     // Even successful browser waves can consume disproportionate Worker CPU.
@@ -602,7 +603,7 @@ export async function aiAPI(request,env,principal,{workspaceId,fetcher=fetch,lau
     if(agentRunId&&agentLease)try{await releaseAgentQueue(env,principal.accountId,workspaceId,agentRunId,agentLease)}catch{}
     const browser=browserLease.browser||await browserLease.launching?.catch(()=>null);
     browserLease.browser=null;
-    if(browser)try{await browser.close()}catch{}
+    if(browser)try{if(typeof browser.disconnect==='function')await browser.disconnect();else await browser.close()}catch{}
    }
   };
   if(input?.stream!==true)return response(await run());
