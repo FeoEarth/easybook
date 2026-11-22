@@ -10,6 +10,17 @@ sqlite.exec('CREATE TABLE IF NOT EXISTS account_memberships(account_id TEXT PRIM
 const DB={prepare(sql){const statement=sqlite.prepare(sql);let args=[];return {bind(...values){args=values;return this},async first(){return statement.get(...args)||null},async all(){return {results:statement.all(...args)}},async run(){return statement.run(...args)}}},async batch(statements){sqlite.exec('BEGIN');try{const results=[];for(const statement of statements)results.push(await statement.run());sqlite.exec('COMMIT');return results}catch(error){sqlite.exec('ROLLBACK');throw error}}};
 const migration=readFileSync('worker/migrations/0021-ai-profiles.sql','utf8');sqlite.exec(migration);sqlite.exec(migration);const account='11111111-1111-4111-8111-111111111111',workspace='a'.repeat(64),now=Date.now();sqlite.prepare('INSERT INTO accounts(id,display_name,created_at) VALUES(?,?,?)').run(account,'AI test',now);sqlite.prepare("INSERT INTO workspaces(id,name,mode,manager_account_id,created_at) VALUES(?,?,'personal',?,?)").run(workspace,'AI workspace',account,now);
 const env={DB,AI_CREDENTIAL_KEY:Buffer.alloc(32,7).toString('base64')},principal={kind:'account',accountId:account,authenticatedAt:now},secret='sk-test-this-value-must-never-be-returned';const request=(path,method='GET',body)=>new Request('https://easybook.test'+path,{method,headers:{'Content-Type':'application/json'},body:body&&JSON.stringify(body)});
+async function completeResearch(call,body,maxSegments=32){
+ let data=await (await call(body)).json(),receipts=[...(data.webSearches||[])],used=[...(data.tools||[])],segments=0;
+ while(data.continuationRequired&&data.agentRunId&&segments++<maxSegments){
+  data=await (await call({purpose:'agent_run:'+data.agentRunId,stream:false})).json();
+  receipts.push(...(data.webSearches||[]));
+  used.push(...(data.tools||[]));
+ }
+ assert.ok(segments<maxSegments,'Research must finish without looping indefinitely');
+ return {...data,...(receipts.length?{webSearches:receipts,webSearch:receipts.at(-1)}:{}),tools:used};
+}
+
 let result=await aiAPI(request('/api/ai/config','PUT',{label:'Primary',provider:'openai',model:'gpt-4.1-mini',apiKey:secret}),env,principal);assert.equal(result.status,200);let saved=await result.json(),openaiId=saved.id;assert.equal(saved.configured,true);let stored=sqlite.prepare('SELECT * FROM account_ai_profiles WHERE id=?').get(openaiId);assert.ok(!JSON.stringify(stored).includes(secret));assert.notEqual(stored.key_ciphertext,secret);
 result=await aiAPI(request('/api/ai/config'),env,principal);let config=await result.json();assert.equal(config.profiles.length,1);assert.equal(config.activeId,openaiId);assert.equal(config.profiles[0].provider,'openai');assert.ok(!JSON.stringify(config).includes(secret));
 const ciphertext=stored.key_ciphertext;result=await aiAPI(request('/api/ai/config','PUT',{credentialId:openaiId,label:'Primary renamed',provider:'openai',model:'gpt-4.1'}),env,{...principal,authenticatedAt:0});assert.equal(result.status,200,'metadata-only Android edits do not require fresh authentication');stored=sqlite.prepare('SELECT * FROM account_ai_profiles WHERE id=?').get(openaiId);assert.equal(stored.key_ciphertext,ciphertext);assert.equal(stored.label,'Primary renamed');result=await aiAPI(request('/api/ai/config','PUT',{credentialId:openaiId,label:'Unsafe retarget',provider:'custom',providerName:'Other',baseUrl:'https://other.example/v1',model:'model',apiKey:''}),env,{...principal,authenticatedAt:0});assert.equal(result.status,403,'changing the secret destination still requires fresh authentication');
@@ -264,7 +275,7 @@ assert.equal(webSearchQuota(monthStart,{permanent:1,expires_at:0}).kind,'member'
   return Response.json({choices:[{message:exposed?{role:'assistant',tool_calls:[{id:'search-call',type:'function',function:{name:'web_search',arguments:JSON.stringify({query})}}]}:{role:'assistant',content:'No web search'}}]});
  };
  const api=(path,method,body,p=principal)=>aiAPI(request('/api/ai/'+path,method,body),searchEnv,p,{workspaceId:workspace,fetcher:modelFetcher,launchSearchBrowser});
- const chat=(mode='conversation')=>api('chat','POST',{credentialId:openaiId,mode,messages:[{role:'user',content:'请联网搜索'}]});
+ const chat=async(mode='conversation')=>Response.json(await completeResearch(body=>api('chat','POST',body),{credentialId:openaiId,mode,messages:[{role:'user',content:'请联网搜索'}]}));
  const initialUsage=(await (await api('mcp','GET')).json()).usage.webSearch;
  assert.equal(initialUsage.tier,'free');assert.equal(initialUsage.period,'day');
  assert.equal(initialUsage.limit,15);assert.equal(initialUsage.used,0);assert.equal(initialUsage.remaining,15);
@@ -455,7 +466,7 @@ assert.equal(webSearchQuota(monthStart,{permanent:1,expires_at:0}).kind,'member'
  assert.equal(direct.results[0].publishedAt,'2026-11-21');
  assert.equal(direct.results.length,1);
  const call=(path,method,body)=>aiAPI(request('/api/ai/'+path,method,body),env,principal,{workspaceId:workspace,fetcher:parallelFetcher});
- const chat=()=>call('chat','POST',{mode:'conversation',credentialId:openaiId,messages:[{role:'user',content:'搜索 APEC 2026'}]});
+ const chat=async()=>Response.json(await completeResearch(body=>call('chat','POST',body),{mode:'conversation',credentialId:openaiId,messages:[{role:'user',content:'搜索 APEC 2026'}]}));
  assert.equal((await call('mcp','PUT',{parallelSearch:true})).status,200);
  const listed=(await (await call('mcp','GET')).json()).parallelSearch;
  assert.equal(listed.enabled,true);assert.equal(listed.approval,'ask');
