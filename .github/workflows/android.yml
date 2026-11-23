@@ -116,8 +116,7 @@ jobs:
         run: |
           echo '::error::Official Android releases must be dispatched from main'
           exit 1
-      - name: Build unsigned release for CI validation
-        if: github.event_name != 'workflow_dispatch' || inputs.publish_release != true
+      - name: Build and test unsigned Release APKs
         run: gradle :app:assembleRelease :agent-browser:assembleRelease :agent-browser:testReleaseUnitTest --no-daemon
       - name: Restore private Release signing key
         id: signing_key
@@ -140,14 +139,27 @@ jobs:
           printf '%s' "$EASYBOOK_RELEASE_KEYSTORE_BASE64" | base64 --decode > "$RUNNER_TEMP/easybook-release.p12"
           test -s "$RUNNER_TEMP/easybook-release.p12"
           echo "EASYBOOK_RELEASE_KEYSTORE_PATH=$RUNNER_TEMP/easybook-release.p12" >> "$GITHUB_ENV"
-      - name: Build officially signed Release APK
+      - name: Sign Release APKs with Android apksigner
         if: steps.signing_key.outcome == 'success'
+        shell: bash
         env:
-          EASYBOOK_REQUIRE_RELEASE_SIGNING: 'true'
           EASYBOOK_RELEASE_STORE_PASSWORD: ${{ secrets.EASYBOOK_RELEASE_STORE_PASSWORD }}
           EASYBOOK_RELEASE_KEY_ALIAS: ${{ secrets.EASYBOOK_RELEASE_KEY_ALIAS }}
           EASYBOOK_RELEASE_KEY_PASSWORD: ${{ secrets.EASYBOOK_RELEASE_KEY_PASSWORD }}
-        run: gradle :app:assembleRelease :agent-browser:assembleRelease :agent-browser:testReleaseUnitTest --no-daemon
+        run: |
+          set -euo pipefail
+          TOOLS="$ANDROID_HOME/build-tools/37.0.0"
+          sign_apk() {
+            "$TOOLS/zipalign" -c 4 "$1"
+            "$TOOLS/apksigner" sign --ks "$EASYBOOK_RELEASE_KEYSTORE_PATH" --ks-type PKCS12 \
+              --ks-key-alias "$EASYBOOK_RELEASE_KEY_ALIAS" \
+              --ks-pass env:EASYBOOK_RELEASE_STORE_PASSWORD --key-pass env:EASYBOOK_RELEASE_KEY_PASSWORD \
+              --v4-signing-enabled false --out "$2" "$1"
+          }
+          sign_apk app/build/outputs/apk/release/app-release-unsigned.apk app/build/outputs/apk/release/app-release.apk
+          for ABI in arm64-v8a armeabi-v7a x86_64; do
+            sign_apk "agent-browser/build/outputs/apk/release/agent-browser-$ABI-release-unsigned.apk" "Easybook-Agent-Browser-$ABI.apk"
+          done
       - name: Verify APK signing
         if: steps.signing_key.outcome == 'success'
         run: '"$ANDROID_HOME/build-tools/37.0.0/apksigner" verify --verbose --print-certs app/build/outputs/apk/release/app-release.apk'
@@ -156,11 +168,12 @@ jobs:
         run: node scripts/check-android-identity.mjs app/build/outputs/apk/release/app-release.apk
       - name: Verify optional runtimes are absent from base APK
         run: |
-          if unzip -Z1 app/build/outputs/apk/release/app-release.apk | grep -E '^lib/[^/]+/(liblitertlm_jni|libxul|libmozglue)\.so$|^assets/(omni\.ja|agent-browser/)'; then
+          unzip -Z1 app/build/outputs/apk/release/app-release-unsigned.apk > "$RUNNER_TEMP/base-apk-entries.txt"
+          if grep -E '^lib/[^/]+/(liblitertlm_jni|libxul|libmozglue)\.so$|^assets/(omni\.ja|agent-browser/)' "$RUNNER_TEMP/base-apk-entries.txt"; then
             echo '::error::Optional runtime unexpectedly packaged in base APK'
             exit 1
           fi
-      - name: Package the signed optional browser APKs
+      - name: Verify optional browser APK signatures
         if: steps.signing_key.outcome == 'success'
         run: |
           set -euo pipefail
@@ -168,10 +181,9 @@ jobs:
           CERT=$("$SIGNER" verify --print-certs app/build/outputs/apk/release/app-release.apk | awk '/certificate SHA-256 digest:/ { print $NF }' | sort -u)
           test -n "$CERT"
           for ABI in arm64-v8a armeabi-v7a x86_64; do
-            APK="agent-browser/build/outputs/apk/release/agent-browser-$ABI-release.apk"
+            APK="Easybook-Agent-Browser-$ABI.apk"
             BROWSER_CERT=$("$SIGNER" verify --print-certs "$APK" | awk '/certificate SHA-256 digest:/ { print $NF }' | sort -u)
             test "$CERT" = "$BROWSER_CERT"
-            cp "$APK" "Easybook-Agent-Browser-$ABI.apk"
           done
       - name: Package optional LiteRT-LM ARM64 runtime
         if: steps.signing_key.outcome == 'success'
