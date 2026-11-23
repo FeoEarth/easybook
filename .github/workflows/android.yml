@@ -117,7 +117,9 @@ jobs:
           echo '::error::Official Android releases must be dispatched from main'
           exit 1
       - name: Build and test unsigned Release APKs
-        run: gradle :app:assembleRelease :agent-browser:assembleRelease :agent-browser:testReleaseUnitTest --no-daemon
+        run: |
+          gradle :app:assembleRelease --no-daemon --max-workers=1 -Dorg.gradle.jvmargs=-Xmx2g --stacktrace
+          gradle :agent-browser:assembleRelease :agent-browser:testReleaseUnitTest --no-daemon --max-workers=1 -Dorg.gradle.jvmargs=-Xmx2g --stacktrace
       - name: Restore private Release signing key
         id: signing_key
         if: github.event_name == 'workflow_dispatch' && inputs.publish_release == true && github.ref == 'refs/heads/main'
