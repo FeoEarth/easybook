@@ -24,6 +24,9 @@ android {
     }
     compileOptions { sourceCompatibility JavaVersion.VERSION_17; targetCompatibility JavaVersion.VERSION_17 }
 }
+androidComponents {
+    beforeVariants(selector().withBuildType('release')) { variant -> variant.enableUnitTest = true }
+}
 dependencies {
     implementation 'org.mozilla.geckoview:geckoview:160.0.20261116130455'
     testImplementation 'junit:junit:4.13.2'
