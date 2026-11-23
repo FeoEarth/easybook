@@ -1,25 +1,11 @@
 plugins { id 'com.android.application' }
 
-// A release is signed only when all four private signing inputs are present.
-// CI builds without those inputs are intentionally unsigned; never fall back
-// to the development certificate for an installable Release APK.
-def releaseSigning = [
-    path: System.getenv('EASYBOOK_RELEASE_KEYSTORE_PATH'),
-    storePassword: System.getenv('EASYBOOK_RELEASE_STORE_PASSWORD'),
-    alias: System.getenv('EASYBOOK_RELEASE_KEY_ALIAS'),
-    keyPassword: System.getenv('EASYBOOK_RELEASE_KEY_PASSWORD')
-]
-def releaseSigningPresent = releaseSigning.values().count { it != null && !it.trim().isEmpty() }
-if (releaseSigningPresent > 0 && releaseSigningPresent < releaseSigning.size()) {
-    throw new GradleException('Incomplete Android Release signing configuration')
-}
-def releaseSigningReady = releaseSigningPresent == releaseSigning.size()
-if (System.getenv('EASYBOOK_REQUIRE_RELEASE_SIGNING') == 'true' && !releaseSigningReady) {
-    throw new GradleException('Official Android Release signing is required; configure all release signing secrets')
-}
+apply from: rootProject.file('gradle/android-signing.gradle')
+
 android {
     namespace 'com.feoearth.easybook'
     compileSdk 35
+    buildToolsVersion '37.0.0'
     buildFeatures { buildConfig true }
     defaultConfig { buildConfigField 'String', 'SOURCE_SHA', '"' + (System.getenv('GITHUB_SHA') ?: 'local') + '"' }
     defaultConfig { applicationId 'com.feoearth.easybook.notes'; minSdk 26; targetSdk 35; versionCode 117; versionName '0.8.49'; testInstrumentationRunner 'com.feoearth.easybook.PhaseTwoInstrumentation' }
@@ -30,35 +16,20 @@ android {
         buildConfigField 'String', 'LOCAL_AI_RUNTIME_TAG', '"' + (runNumber ? ('v' + versionName + '-build' + runNumber) : '') + '"'
     }
     packaging { jniLibs { excludes += ['**/liblitertlm_jni.so'] } }
-    signingConfigs {
-        debug {
-            storeFile file(System.getenv('EASYBOOK_DEBUG_STORE') ?: "${System.properties['user.home']}/.easybook-signing/development.keystore")
-            storePassword 'android'
-            keyAlias 'androiddebugkey'
-            keyPassword 'android'
-        }
-        if (releaseSigningReady) {
-            release {
-                storeFile file(releaseSigning.path)
-                storeType 'pkcs12'
-                storePassword releaseSigning.storePassword
-                keyAlias releaseSigning.alias
-                keyPassword releaseSigning.keyPassword
-            }
-        }
-    }
+    sourceSets.main.java.srcDir(rootProject.file('android-shared/java'))
     buildTypes {
         debug { buildConfigField 'boolean', 'NATIVE_GLASS_PROTOTYPE', project.hasProperty('nativeGlassPrototype') ? 'true' : 'false' }
         release {
             buildConfigField 'boolean', 'NATIVE_GLASS_PROTOTYPE', 'true'
             minifyEnabled false
             debuggable false
-            if (releaseSigningReady) {
-                signingConfig signingConfigs.release
-            }
         }
     }
     compileOptions { sourceCompatibility JavaVersion.VERSION_17; targetCompatibility JavaVersion.VERSION_17 }
+}
+
+androidComponents {
+    beforeVariants(selector().withBuildType('release')) { variant -> variant.enableUnitTest = true }
 }
 
 dependencies { implementation 'androidx.credentials:credentials:1.5.0'; implementation 'androidx.credentials:credentials-play-services-auth:1.5.0'; implementation 'androidx.webkit:webkit:1.12.1'; implementation 'com.journeyapps:zxing-android-embedded:4.3.0'; implementation 'com.google.ai.edge.litertlm:litertlm-android:0.18.0'; testImplementation 'junit:junit:4.13.2'; testImplementation 'org.json:json:20240303' }

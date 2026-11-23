@@ -9,7 +9,7 @@ new vm.Script(html.split('<script>')[1].split('</script>')[0]);
 const source=readFileSync('shared/local-ai-protocol.mjs','utf8');
 const java=readFileSync('app/src/main/java/com/feoearth/easybook/MainActivity.java','utf8');
 const client=readFileSync('app/src/main/assets/agent-sandbox-client.mjs','utf8');
-assert.ok(java.includes('agent-sandbox.easybook.invalid'),'runner should use an independent origin');
+assert.ok(java.includes(String.raw`[a-f0-9]{32}\\.agent-sandbox\\.easybook\\.invalid`),'runner should use an independent origin');
 assert.ok(client.includes("crypto.randomUUID().replaceAll('-','')+'.agent-sandbox.easybook.invalid'"),'every execution requires a unique sandbox origin');
 assert.ok(!client.includes('new Worker('),'main app origin must not create code execution worker');
 assert.match(source,/sandbox_execute/);

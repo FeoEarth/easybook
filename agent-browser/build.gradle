@@ -1,0 +1,33 @@
+plugins { id 'com.android.application' }
+apply from: rootProject.file('gradle/android-signing.gradle')
+
+android {
+    namespace 'com.feoearth.easybook.browser'
+    compileSdk { version = release(37) { minorApiLevel = 2 } }
+    buildToolsVersion '37.0.0'
+    defaultConfig {
+        applicationId 'com.feoearth.easybook.browser'
+        minSdk 26
+        targetSdk 35
+        versionCode 1
+        versionName '1.0'
+    }
+    sourceSets.main.java.srcDir(rootProject.file('android-shared/java'))
+    packaging { jniLibs { useLegacyPackaging = true } }
+    splits {
+        abi {
+            enable true
+            reset()
+            include 'arm64-v8a', 'armeabi-v7a', 'x86_64'
+            universalApk false
+        }
+    }
+    compileOptions { sourceCompatibility JavaVersion.VERSION_17; targetCompatibility JavaVersion.VERSION_17 }
+}
+androidComponents {
+    beforeVariants(selector().withBuildType('release')) { variant -> variant.enableUnitTest = true }
+}
+dependencies {
+    implementation 'org.mozilla.geckoview:geckoview:160.0.20261116130455'
+    testImplementation 'junit:junit:4.13.2'
+}

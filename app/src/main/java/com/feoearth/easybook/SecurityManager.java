@@ -51,6 +51,11 @@ public final class SecurityManager {
             case "ai.mcp.open":fields=fields("url");break;
             case "ai.web.search.assist":fields=fields("query","token");break;
             case "ai.web.search.open":fields=fields("query");break;
+            case "browser.status":case "browser.download":case "browser.install":case "browser.cancelDownload":case "browser.remove":fields=Collections.emptySet();break;
+            case "browser.configure":fields=fields("autoSearch");break;
+            case "browser.begin":fields=fields("token","preset");break;
+            case "browser.step":fields=fields("token","id","name","arguments");break;
+            case "browser.end":fields=fields("token");break;
             case "ai.mcp":fields=fields("method","config");break;
             case "ai.preferences":fields=fields("method","preferences");break;
             case "membership.open":case "membership.status":fields=Collections.emptySet();break;
@@ -70,8 +75,8 @@ public final class SecurityManager {
             case "ai.credential":fields=fields("method","credentialId","label","provider","providerName","baseUrl","model","apiKey","active","models");break;
             case "ai.models":fields=fields("method","credentialId","refresh");break;
             case "ai.select":fields=fields("method","credentialId");break;
-            case "ai.chat":fields=fields("method","messages","workspace","mode","attachments","credentialId","model","purpose","externalTools","localSandbox","localSandboxBackend");break;
-            case "ai.stream.start":fields=fields("id","messages","workspace","mode","attachments","credentialId","model","purpose","externalTools","localSandbox","localSandboxBackend");break;
+            case "ai.chat":fields=fields("method","messages","workspace","mode","attachments","credentialId","model","purpose","externalTools","localSandbox","localSandboxBackend","localBrowser","browserPreset","browserHistory");break;
+            case "ai.stream.start":fields=fields("id","messages","workspace","mode","attachments","credentialId","model","purpose","externalTools","localSandbox","localSandboxBackend","localBrowser","browserPreset","browserHistory");break;
             case "ai.stream.cancel":fields=fields("id");break;
             case "ai.execute":fields=fields("method","approvalId","workspace");break;
             case "ai.attachment.pick":case "ai.speech":fields=Collections.emptySet();break;

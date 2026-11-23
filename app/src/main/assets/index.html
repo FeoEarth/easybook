@@ -565,6 +565,7 @@ body[data-page=ai-hub] .app{max-width:none;height:var(--viewport-height,100dvh);
 .ai-context-window{display:grid;grid-template-columns:1fr 110px;align-items:center;gap:8px;margin:10px 0}.ai-context-window[hidden]{display:none}.ai-context-window input{min-width:0;width:100%;padding:6px 8px;border:1px solid var(--border);border-radius:8px;background:var(--control-fill);color:var(--ink);font-size:16px}
 .ai-context-panel button{min-height:36px;padding:5px 0;color:var(--chat-brand);font-size:12px}
 .ai-jump-latest{position:absolute;bottom:calc(100% + 14px);left:50%;transform:translateX(-50%);width:36px;height:36px;min-height:36px;padding:8px;border:1px solid var(--border);border-radius:50%;background:var(--paper);box-shadow:0 3px 12px #0001}.ai-jump-latest svg{width:18px;height:18px;transform:rotate(180deg)}
+#aiBrowserPresets{display:flex;gap:4px;flex-wrap:wrap}#aiBrowserPresets button[aria-pressed=true]{background:var(--chat-tint);color:var(--chat-brand)}
 .ai-approval-card{flex:none;padding:18px;border:1px solid color-mix(in srgb,var(--chat-brand) 25%,var(--border));border-radius:16px;background:var(--chat-tint);font-size:14px;line-height:1.6}.ai-approval-card strong{display:block}.ai-approval-card small{display:block;color:var(--muted);font-size:12px;margin-top:5px}.ai-approval-card details{margin-top:12px}.ai-approval-card summary{cursor:pointer;color:var(--muted);font-size:12px}.ai-approval-card pre{max-height:220px;overflow:auto;white-space:pre-wrap;overflow-wrap:anywhere;font-size:12px}.ai-approval-preview{max-height:200px;overflow:auto;margin:12px 0;white-space:pre-wrap;font-size:13px;color:var(--ink)}.ai-approval-actions{display:flex;flex-wrap:wrap;justify-content:flex-end;gap:8px;margin-top:16px}.ai-approval-actions button{min-height:36px;padding:7px 14px;border:1px solid var(--border);border-radius:9px;background:var(--paper);font-size:13px}.ai-approval-actions [data-ai-approve]{border-color:transparent;background:var(--chat-brand);color:#fff}
 .ai-tool-activity{margin:0 0 14px;border:1px solid var(--border);border-radius:12px;font-size:12px;line-height:1.6;overflow:hidden;background:transparent}.ai-tool-activity summary{display:flex;gap:8px;align-items:center;padding:9px 12px;cursor:pointer;list-style:none;color:var(--muted)}.ai-tool-activity summary:after{content:'⌄';margin-left:auto}.ai-tool-activity summary::-webkit-details-marker{display:none}.ai-tool-steps{padding:0 12px 10px}.ai-tool-step{display:flex;align-items:center;gap:8px;min-height:28px;color:var(--muted)}.ai-tool-step strong{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--ink);font-weight:400}.ai-tool-step small{margin:0!important;font-size:11px}.ai-tool-indicator{display:grid;place-items:center;width:12px;height:12px;flex:none}.ai-tool-step[data-status=running] .ai-tool-indicator{border:1.5px solid var(--chat-brand);border-right-color:transparent;border-radius:50%;animation:ai-tool-spin .8s linear infinite}.ai-tool-step[data-status=done] .ai-tool-indicator{color:var(--green)}.ai-tool-step[data-status=failed] .ai-tool-indicator{color:var(--danger)}
 .ai-reasoning{margin:0 0 12px;color:var(--muted);font-size:13px;line-height:1.6}
@@ -839,6 +840,15 @@ body[data-settings-detail] .app{display:block;max-width:720px;height:auto;min-he
 <button type="button" id="aiHubLatest" class="ai-jump-latest" aria-label="回到最新消息" hidden><svg><use href="#i-export"/></svg></button>
 <div id="aiContextPanel" class="ai-context-panel" hidden><strong>对话上下文</strong><p id="aiContextDetail"></p><progress id="aiContextUsage" max="48000" value="0" aria-label="上下文用量"></progress><p>自动保留原始要求、近期完整轮次及已执行操作记录。较早内容使用原文节选，完整会话仍保存在本机。</p><label class="ai-context-window" id="aiContextWindowRow">模型窗口（token）<input id="aiContextWindow" type="number" inputmode="numeric" step="1" placeholder="自动" aria-describedby="aiContextWindowHint"></label><p id="aiContextWindowHint">留空自动识别。手动值仅用于当前 API 配置与模型。预算已为回复、图片和工具预留空间。</p><label class="ai-mcp-session-option"><input type="checkbox" id="aiMcpSession"> 使用第三方 MCP 工具</label>
 <label class="ai-mcp-session-option" id="aiSandboxSessionRow" hidden><input type="checkbox" id="aiSandboxSession"> 使用 Android 本地执行环境（仅当前 Agent 会话）</label>
+<div id="aiBrowserControls" hidden>
+ <button type="button" id="aiBrowserManage" hidden>安装本地浏览器组件</button>
+ <label class="ai-mcp-session-option"><input type="checkbox" id="aiBrowserSession"> 使用本地浏览器</label>
+ <div id="aiBrowserPresets" role="group" aria-label="浏览器预设">
+  <button type="button" data-browser-preset="search" aria-pressed="false">联网搜索</button>
+  <button type="button" data-browser-preset="read" aria-pressed="false">阅读链接</button>
+  <button type="button" data-browser-preset="compare" aria-pressed="false">对照来源</button>
+ </div>
+</div>
 <div id="aiSandboxControls" hidden>
 <label class="ai-context-window">执行后端 <select id="aiSandboxBackend" class="ai-input"><option value="javascript">内置 JavaScript 沙箱</option><option value="linux">QEMU Linux 虚拟机（高级）</option></select></label>
 <div style="display:flex;gap:8px;flex-wrap:wrap;margin:10px 0">
@@ -911,6 +921,13 @@ body[data-settings-detail] .app{display:block;max-width:720px;height:auto;min-he
 
 <details id="aiDeviceSettings" class="ai-device-settings" hidden><summary>设备端模型</summary><div id="aiLocalSection" hidden><div class="settings-label">设备端 AI · 可选下载</div><div class="settings-group" id="aiLocalModels"><p class="ai-note">正在检测设备与本地模型…</p></div><p id="aiLocalNote" role="status">支持 Wi-Fi 和蜂窝网络主动下载；使用蜂窝网络可能产生流量费用，漫游下载仍受限制。</p></div>
 </details>
+<section id="aiBrowserSettings" class="ai-device-settings" hidden>
+ <div class="ai-section-heading"><h2>本地浏览器</h2></div>
+ <div class="settings-group">
+  <div class="settings-row"><span class="row-text"><strong>浏览器组件</strong><small id="aiBrowserPackageStatus" role="status"></small></span><button type="button" id="aiBrowserPackageAction" hidden></button></div>
+ </div>
+ <div class="settings-group"><label class="settings-row"><span class="row-text"><strong>允许自动搜索</strong><small>允许本地浏览器自动向 DuckDuckGo 发送公开关键词。此设置仅在本机生效。</small></span><input id="aiBrowserAutoSearch" type="checkbox"></label></div>
+</section>
 <section id="aiSandboxSection" class="ai-device-settings" hidden>
  <div class="ai-section-heading"><h2>Agent 执行环境</h2></div>
  <div class="settings-group"><label class="settings-row"><span class="row-text"><strong>启用本地代码沙箱</strong><small>Android · 默认关闭 · 每个 Agent 会话单独选择 · JS Worker</small></span><input id="aiSandboxEnabled" type="checkbox" aria-describedby="aiSandboxNote"></label></div>
@@ -1624,6 +1641,52 @@ async function refreshAiVmStatus(){
 }
 
 const sandboxSessionActive=session=>!!(native&&aiSandboxStatus?.enabled&&session?.sandboxEnabled&&session.mode==='agent');
+let aiBrowserStatus=null;
+const aiBrowserPresets=new Map();
+const browserAvailable=session=>!!(native&&aiBrowserStatus?.available&&session?.mode==='agent'&&session.profileId!=='__local__');
+function renderAiBrowserSettings(){
+ const status=aiBrowserStatus,action=$('aiBrowserPackageAction');
+ $('aiBrowserSettings').hidden=!status;
+ if(!status)return;
+ const transfer=status.totalBytes>0?aiDownloadSize(status.bytes)+' / '+aiDownloadSize(status.totalBytes):aiDownloadSize(status.bytes||0);
+ const messages={installed:'已安装',ready:'已验证，等待 Android 安装确认',verifying:'正在验证安装包',downloading:'正在下载 · '+transfer,
+  missing:status.downloadable?'可选下载 · 约 '+aiDownloadSize(status.estimatedBytes):status.supported?'此版本支持手动安装同签名组件':'当前设备架构不支持浏览器组件',failed:status.error||'下载失败'};
+ $('aiBrowserPackageStatus').textContent=messages[status.state]||'';
+ const methods={installed:['remove','卸载组件'],ready:['install','安装组件'],downloading:['cancelDownload','取消下载'],missing:['download','下载组件'],failed:['download','重新下载']};
+ const next=methods[status.state];
+ action.hidden=!next||next[0]==='download'&&!status.downloadable;
+ action.dataset.action=next?.[0]||'';
+ action.textContent=next?.[1]||'';
+ $('aiBrowserAutoSearch').checked=!!status.autoSearch;
+ $('aiBrowserAutoSearch').disabled=!status.available;
+}
+async function refreshAiBrowser(){
+ if(!native)return;
+ aiBrowserStatus=await native.call('browser.status').catch(()=>null);
+ renderAiBrowserSettings();
+ if(tab==='ai-hub')renderAiHub();
+}
+window.easybookAgentBrowserChanged=()=>{if(tab==='ai'||tab==='ai-hub')void refreshAiBrowser()};
+setInterval(()=>{if(tab==='ai'&&['downloading','verifying'].includes(aiBrowserStatus?.state))void refreshAiBrowser()},2500);
+$('aiBrowserManage').onclick=()=>{showAiPage();requestAnimationFrame(()=>$('aiBrowserSettings').scrollIntoView({block:'nearest'}))};
+$('aiBrowserPackageAction').onclick=event=>{
+ const button=event.currentTarget,action=button.dataset.action;
+ if(!action||button.disabled)return;
+ const run=async()=>{
+  button.disabled=true;
+  try{aiBrowserStatus=await native.call('browser.'+action);renderAiBrowserSettings()}
+  catch(error){toast(error.message)}
+  finally{button.disabled=false}
+ };
+ if(action==='download')confirmAction('下载可选浏览器组件？','将下载适用于此设备的 GeckoView 组件（约 '+aiDownloadSize(aiBrowserStatus.estimatedBytes)+'）。',run);
+ else void run();
+};
+$('aiBrowserAutoSearch').onchange=async event=>{
+ const control=event.target;control.disabled=true;
+ try{aiBrowserStatus=await native.call('browser.configure',{autoSearch:control.checked})}
+ catch(error){toast(error.message)}
+ finally{control.checked=!!aiBrowserStatus?.autoSearch;control.disabled=false}
+};
 async function refreshAiSandbox(){
  if(!native)return;
  $('aiSandboxSection').hidden=false;
@@ -2310,7 +2373,7 @@ function showAiPage(push=true){
   history.pushState({...history.state,easybookAi:true,aiSettingsOrigin,aiHistoryReturn},'');
  }else{aiSettingsOrigin=history.state?.aiSettingsOrigin;aiHistoryReturn=history.state?.aiHistoryReturn||null;}
  $('aiBack').querySelector('span').textContent=aiHistoryReturn?'会话':aiSettingsOrigin?.tab==='ai-hub'?'对话':'设置';
- switchTab('ai');void refreshAiConfig().catch(()=>{});void refreshAiPreferences().catch(()=>{});void refreshAiLocal();void refreshAiSandbox();
+ switchTab('ai');void refreshAiConfig().catch(()=>{});void refreshAiPreferences().catch(()=>{});void refreshAiLocal();void refreshAiSandbox();void refreshAiBrowser();
 }
 function leaveAiPage(){
  if(history.state?.easybookAi)history.back();else restoreAiSettingsOrigin();
@@ -2447,7 +2510,13 @@ async function sendAiMessage(content,label=content){
 const editorAi=document.createElement('button');editorAi.type='button';editorAi.id='editorAi';editorAi.setAttribute('aria-label','AI 写作工具');editorAi.title='AI 写作工具';editorAi.innerHTML='<svg aria-hidden="true" viewBox="0 0 24 24"><path style="fill:currentColor;stroke:none" fill-rule="evenodd" d="M11.34 1.78Q11.77 1.69 12.28 1.73Q12.8 1.78 13.41 2.11Q14.02 2.44 14.23 2.67Q14.44 2.91 15.05 3.89Q15.66 4.88 16.69 4.73Q17.72 4.59 18.16 4.62Q18.61 4.64 19.1 4.83Q19.59 5.02 19.99 5.37Q20.39 5.72 20.65 6.21Q20.91 6.7 20.95 7.38Q21 8.06 20.58 9.3Q20.16 10.55 21 11.37Q21.84 12.19 22.08 12.59Q22.31 12.98 22.38 13.22Q22.45 13.45 22.45 14.11Q22.45 14.77 22.22 15.3Q21.98 15.84 21.49 16.29Q21 16.73 19.76 17.18Q18.52 17.63 18.42 18.7Q18.33 19.78 18.14 20.32Q17.95 20.86 17.55 21.3Q17.16 21.75 16.83 21.94Q16.5 22.13 16.17 22.22Q15.84 22.31 15.35 22.31Q14.86 22.31 14.58 22.24Q14.3 22.17 13.17 21.47Q12.05 20.77 11.04 21.4Q10.03 22.03 9.7 22.15Q9.38 22.27 8.77 22.29Q8.16 22.31 7.64 22.13Q7.13 21.94 6.77 21.66Q6.42 21.38 6.12 20.86Q5.81 20.34 5.65 18.98Q5.48 17.63 4.5 17.3Q3.52 16.97 3.14 16.78Q2.77 16.59 2.34 16.15Q1.92 15.7 1.73 15.23Q1.55 14.77 1.52 14.25Q1.5 13.73 1.71 13.13Q1.92 12.52 2.88 11.53Q3.84 10.55 3.42 9.3Q3 8.06 3.05 7.38Q3.09 6.7 3.35 6.21Q3.61 5.72 4.01 5.37Q4.41 5.02 4.9 4.83Q5.39 4.64 5.84 4.62Q6.28 4.59 7.31 4.73Q8.34 4.88 8.95 3.89Q9.56 2.91 9.77 2.67Q9.98 2.44 10.45 2.16Q10.92 1.88 11.34 1.78Z M10.2 6.89Q9.28 6.7 8.91 7.41Q8.53 8.11 8.11 8.7Q7.69 9.28 7.17 9.82Q6.66 10.36 6.26 10.66Q5.86 10.97 6.16 11.63Q6.47 12.28 6.66 12.96Q6.84 13.64 6.94 14.34Q7.03 15.05 7.03 15.66Q7.03 16.27 7.66 16.38Q8.3 16.5 8.93 16.73Q9.56 16.97 10.24 17.37Q10.92 17.77 11.46 18.21Q12 18.66 12.49 18.21Q12.98 17.77 13.66 17.37Q14.34 16.97 15 16.73Q15.66 16.5 16.27 16.41Q16.88 16.31 16.85 15.61Q16.83 14.91 16.92 14.2Q17.02 13.5 17.23 12.84Q17.44 12.19 17.77 11.55Q18.09 10.92 17.55 10.52Q17.02 10.13 16.57 9.66Q16.13 9.19 15.7 8.58Q15.28 7.97 15 7.34Q14.72 6.7 13.78 6.89Q12.84 7.08 11.98 7.08Q11.11 7.08 10.2 6.89Z M16.85 18.12Q16.83 17.91 15.98 18.14Q15.14 18.38 14.55 18.7Q13.97 19.03 13.62 19.36Q13.27 19.69 14.06 20.18Q14.86 20.67 15.33 20.67Q15.8 20.67 15.98 20.58Q16.17 20.48 16.43 20.13Q16.69 19.78 16.78 19.05Q16.88 18.33 16.85 18.12Z M7.8 18.07Q7.17 17.91 7.15 18.12Q7.13 18.33 7.22 19.05Q7.31 19.78 7.41 19.97Q7.5 20.16 7.73 20.37Q7.97 20.58 8.16 20.65Q8.34 20.72 8.74 20.7Q9.14 20.67 9.91 20.2Q10.69 19.73 10.62 19.62Q10.55 19.5 9.98 19.1Q9.42 18.7 8.93 18.47Q8.44 18.23 7.8 18.07Z M18.33 6.28Q17.91 6.19 17.13 6.28Q16.36 6.38 16.36 6.45Q16.36 6.52 16.88 7.36Q17.39 8.2 17.86 8.67Q18.33 9.14 18.59 9.3Q18.84 9.47 19.13 8.67Q19.41 7.88 19.38 7.5Q19.36 7.13 19.24 6.91Q19.13 6.7 18.94 6.54Q18.75 6.38 18.33 6.28Z M20.04 12.7Q19.36 12.05 19.17 12.35Q18.98 12.66 18.77 13.31Q18.56 13.97 18.52 14.95Q18.47 15.94 19.31 15.66Q20.16 15.38 20.37 15.21Q20.58 15.05 20.72 14.79Q20.86 14.53 20.88 14.2Q20.91 13.88 20.81 13.62Q20.72 13.36 20.04 12.7Z M6.61 6.26Q5.86 6.19 5.48 6.33Q5.11 6.47 4.95 6.66Q4.78 6.84 4.69 7.08Q4.59 7.31 4.62 7.69Q4.64 8.06 4.9 8.77Q5.16 9.47 5.79 8.88Q6.42 8.3 7.01 7.38Q7.59 6.47 7.59 6.42Q7.59 6.38 7.48 6.35Q7.36 6.33 6.61 6.26Z M4.76 12.42Q4.59 12.09 3.94 12.73Q3.28 13.36 3.19 13.62Q3.09 13.88 3.12 14.2Q3.14 14.53 3.28 14.79Q3.42 15.05 3.63 15.21Q3.84 15.38 4.64 15.63Q5.44 15.89 5.34 14.88Q5.25 13.88 5.09 13.31Q4.92 12.75 4.76 12.42Z M12.02 3.33Q11.67 3.33 11.44 3.42Q11.2 3.52 11.02 3.7Q10.83 3.89 10.43 4.57Q10.03 5.25 10.69 5.37Q11.34 5.48 12 5.48Q12.66 5.48 13.31 5.37Q13.97 5.25 13.57 4.57Q13.17 3.89 12.98 3.7Q12.8 3.52 12.59 3.42Q12.38 3.33 12.02 3.33Z"/></svg>';$('attachmentButton').after(editorAi);
 let aiHubSessions=[],aiHubCurrent='',aiHubBusy=false,aiHubRenameId='';
 const aiHubRuns=new Map(),aiHubExecutions=new Set();
-function syncAiHubRun(){aiHubRun=aiHubRuns.get(aiHubCurrent)||null;aiHubStreamAbort=aiHubRun?.controller||null;aiHubBusy=!!aiHubRun||aiHubExecutions.has(aiHubCurrent)}
+function syncAiHubRun(){
+ for(const [id,run] of aiHubRuns)if(run.browserToken&&(id!==aiHubCurrent||run.workspace!==localSpace))run.stop();
+ aiHubRun=aiHubRuns.get(aiHubCurrent)||null;aiHubStreamAbort=aiHubRun?.controller||null;aiHubBusy=!!aiHubRun||aiHubExecutions.has(aiHubCurrent);
+}
+window.easybookAgentBrowserStopped=token=>{
+ for(const run of aiHubRuns.values())if(run.browserToken===token){run.stop();break}
+};
 const aiHubStorageKey=()=>`easybook-ai-sessions-v1:${localSpace}`;
 const aiHubStore=window.EasybookAiChat.createChatSessionStore(window.indexedDB,localStorage);
 let aiHubLoadedKey='',aiHubOpening=null;
@@ -2470,7 +2539,7 @@ function saveAiHubSessions(){
 }
 function currentAiHubSession(){return aiHubSessions.find(session=>session.id===aiHubCurrent)}
 function newAiHubSession(save=true){saveAiHubDraft();const profile=activeAiProfile(),session={id:uuid(),title:'新会话',createdAt:Date.now(),updatedAt:Date.now(),profileId:profile?.id||'',model:profile?.model||'',messages:[],draft:'',titleSource:'fallback',titleRevision:0};aiHubSessions.unshift(session);aiHubCurrent=session.id;if(save)saveAiHubSessions();restoreAiHubDraft();renderAiHub();renderAiHubSessions();return session}
-const aiToolLabels={sandbox_execute:'运行本地代码',sandbox_list_files:'查看沙箱文件',sandbox_read_file:'读取沙箱文件',web_search:'联网搜索',notes_search:'搜索笔记',notes_get:'读取笔记',notes_list:'浏览笔记',notes_create:'新建笔记',notes_append:'追加内容',notes_update:'更新笔记',notes_move:'移动笔记',notes_pin:'置顶笔记',notes_favorite:'收藏笔记',folders_list:'读取文件夹',folders_create:'新建文件夹',tasks_list:'读取待办',workspace_get_summary:'查看工作区'};
+const aiToolLabels={browser_search:'本地联网搜索',browser_open:'打开网页',browser_read:'读取网页',browser_scroll:'滚动网页',browser_follow:'打开来源',browser_back:'返回上一页',sandbox_execute:'运行本地代码',sandbox_list_files:'查看沙箱文件',sandbox_read_file:'读取沙箱文件',web_search:'联网搜索',notes_search:'搜索笔记',notes_get:'读取笔记',notes_list:'浏览笔记',notes_create:'新建笔记',notes_append:'追加内容',notes_update:'更新笔记',notes_move:'移动笔记',notes_pin:'置顶笔记',notes_favorite:'收藏笔记',folders_list:'读取文件夹',folders_create:'新建文件夹',tasks_list:'读取待办',workspace_get_summary:'查看工作区'};
 const aiToolLabel=name=>aiToolLabels[name]||name;
 const aiHubWelcome=()=>'<div class="ai-hub-welcome"><span class="ai-hub-mark" aria-hidden="true"><svg><use href="#i-spark"/></svg></span><h2>有什么可以帮你？</h2><p>从一个想法开始，和你的笔记一起思考。</p><div class="ai-hub-suggestions"><button type="button" data-ai-suggestion="总结当前工作区最近的内容，并列出重点"><svg><use href="#i-note"/></svg>总结笔记</button><button type="button" data-ai-suggestion="帮我整理一个清晰、可执行的计划"><svg><use href="#i-list"/></svg>制定计划</button><button type="button" data-ai-suggestion="查找当前工作区中尚未完成的待办事项"><svg><use href="#i-search"/></svg>查找待办</button></div></div>';
 function aiToolActivityHTML(message){
@@ -2619,6 +2688,18 @@ function renderAiHubContext(session){
 function renderAiHub(){
  syncAiHubRun();const session=currentAiHubSession();if(!session)return;
  const mode=session.mode==='agent'?'agent':'conversation';
+ const browser=browserAvailable(session), browserBusy=aiHubBusy||!!session.pendingApproval;
+ const browserSupported=!!(native&&aiBrowserStatus?.supported&&mode==='agent'&&session.profileId!=='__local__');
+ $('aiBrowserControls').hidden=!browser&&!browserSupported;
+ $('aiBrowserManage').hidden=browser;
+ $('aiBrowserSession').closest('label').hidden=!browser;
+ $('aiBrowserPresets').hidden=!browser;
+ $('aiBrowserSession').checked=!!session.browserEnabled;
+ $('aiBrowserSession').disabled=browserBusy;
+ for(const button of $('aiBrowserPresets').querySelectorAll('[data-browser-preset]')){
+  button.disabled=browserBusy;
+  button.setAttribute('aria-pressed',String(aiBrowserPresets.get(session.id)===button.dataset.browserPreset));
+ }
  $('aiMcpSession').checked=!!session.externalTools;$('aiMcpSession').disabled=session.profileId==='__local__'||aiHubBusy||!!session.pendingApproval;
  $('aiSandboxSessionRow').hidden=!native||!aiSandboxStatus?.enabled||mode!=='agent';
  $('aiSandboxSession').checked=!!session.sandboxEnabled;
@@ -2703,7 +2784,7 @@ async function openAiHub(){
   if(aiHubOpening===opening)aiHubOpening=null;
   if(!loaded||storageKey!==aiHubStorageKey()||tab!==sourceTab)return;
  }
- switchTab('ai-hub');void refreshAiLocal().then(()=>renderAiHub());void refreshAiSandbox();void refreshAiConfig().then(()=>renderAiHub()).catch(()=>{});
+ switchTab('ai-hub');void refreshAiLocal().then(()=>renderAiHub());void refreshAiSandbox();void refreshAiBrowser();void refreshAiConfig().then(()=>renderAiHub()).catch(()=>{});
 }
 function setAiHubMode(mode){const session=currentAiHubSession();if(!session||aiHubBusy||session.pendingApproval)return;session.mode=mode==='agent'?'agent':'conversation';saveAiHubSessions();renderAiHub()}
 async function activateAiHubModel(session){if(session.profileId==='__local__'||!session.profileId)return;const profile=aiProfiles.find(value=>value.id===session.profileId);if(!profile)throw Error('此 API 配置已删除，请选择其他模型');if(!session.model)session.model=profile.model}
@@ -2850,11 +2931,17 @@ async function sendAiHubMessage(content,resumeSession=null,{regenerate=false,sea
  if(session.profileId==='__local__'&&([...aiHubRuns.values()].some(r=>r.local)||aiBusy))return toast('设备端模型正在处理另一条请求，请稍后再试');
  if(session.pendingApproval){toast('请先确认或取消待执行的操作');return}
  const attachments=resumeSession?[]:aiHubFiles.map(file=>({...file})),names=attachments.map(file=>file.name);
+ const browserPreset=!resumeSession&&browserAvailable(session)?aiBrowserPresets.get(session.id)||'':'';
+ const localBrowser=browserAvailable(session)&&(session.browserEnabled===true||!!browserPreset);
+ if(!resumeSession)aiBrowserPresets.delete(session.id);
+ const browserHistory=[];
  const run=window.EasybookAiChat.createChatRun(session.id,localSpace);run.local=session.profileId==='__local__';aiHubRuns.set(session.id,run);syncAiHubRun();
  let partial=null;updateAiHubComposer();
  const scheduler=window.EasybookAiChat.createRenderScheduler(()=>{if(aiHubCurrent===session.id&&tab==='ai-hub')renderAiHub()});
  const refresh=()=>scheduler.request();
  const active=()=>run.assertActive(localSpace);
+ const endBrowser=()=>{if(run.browserToken)void native.call('browser.end',{token:run.browserToken}).catch(()=>{})};
+ run.controller.signal.addEventListener('abort',endBrowser,{once:true});
  const waitInRun=ms=>new Promise((resolve,reject)=>{
   const signal=run.controller.signal;
   if(signal.aborted){reject(new DOMException('已停止生成','AbortError'));return}
@@ -2928,7 +3015,7 @@ async function sendAiHubMessage(content,resumeSession=null,{regenerate=false,sea
   }else{
    // Text attachments already live in apiContent; only images use this-turn wire attachments.
    try{
-   data=await aiStreamRequest({messages:payload,credentialId:session.profileId,model:session.model,mode:session.mode==='agent'?'agent':'conversation',externalTools:session.externalTools===true,localSandbox:sandboxSessionActive(session),localSandboxBackend:session.sandboxBackend==='linux'&&aiVmStatus?.ready?'linux':'javascript',attachments:currentAttachments,...(agentRunId?{purpose:'agent_run:'+agentRunId}:{})},{signal:run.controller.signal,progress:text=>{active();partial.reasoningActive=false;partial.content+=text;refresh()},onReasoning:text=>{active();partial.reasoningActive=true;partial.reasoning=(partial.reasoning||'')+text;refresh()},reset:()=>{active();partial.reasoningActive=false;partial.content='';refresh()},onTool});
+   data=await aiStreamRequest({messages:payload,credentialId:session.profileId,model:session.model,mode:session.mode==='agent'?'agent':'conversation',externalTools:session.externalTools===true,localSandbox:sandboxSessionActive(session),localSandboxBackend:session.sandboxBackend==='linux'&&aiVmStatus?.ready?'linux':'javascript',attachments:currentAttachments,...(agentRunId?{purpose:'agent_run:'+agentRunId}:{}),...(localBrowser&&!agentRunId?{localBrowser:true,browserPreset,browserHistory}:{})},{signal:run.controller.signal,progress:text=>{active();partial.reasoningActive=false;partial.content+=text;refresh()},onReasoning:text=>{active();partial.reasoningActive=true;partial.reasoning=(partial.reasoning||'')+text;refresh()},reset:()=>{active();partial.reasoningActive=false;partial.content='';refresh()},onTool});
     recoveryAttempts=0;
    }catch(error){
     active();
@@ -2945,6 +3032,26 @@ async function sendAiHubMessage(content,resumeSession=null,{regenerate=false,sea
    }
   }
   active();
+  if(data.browserAction&&localBrowser){
+   if(aiHubCurrent!==session.id||tab!=='ai-hub')throw new DOMException('会话已切换','AbortError');
+   const action=data.browserAction;
+   if(!/^browser_(search|open|read|scroll|follow|back)$/.test(action.name)||!/^[a-f0-9-]{36}$/.test(action.id)||browserHistory.length>=12)
+    throw Error('本地浏览器动作无效或已达到步数上限');
+   if(!run.browserToken){
+    run.browserToken=uuid();
+    const start=await native.call('browser.begin',{token:run.browserToken,preset:browserPreset});active();
+    if(start.status==='cancelled')throw new DOMException('已停止浏览','AbortError');
+    if(start.status!=='ready')throw Error(start.status==='busy'?'本地浏览器正在执行另一项任务':'本地浏览器暂不可用');
+   }
+   onTool({type:'tool_start',name:action.name});
+   const result=await native.call('browser.step',{token:run.browserToken,id:action.id,name:action.name,arguments:action.arguments});active();
+   if(result.status==='cancelled'||result.status==='expired')throw new DOMException('已停止浏览','AbortError');
+   onTool({type:'tool_end',name:action.name,status:result.status==='ok'?'done':'failed'});
+   while(JSON.stringify(result).length>3900&&result.links?.length)result.links.pop();
+   if(JSON.stringify(result).length>3900)result.text=(result.text||'').slice(0,1200);
+   browserHistory.push({id:action.id,name:action.name,arguments:action.arguments,result,...(action.reasoning?{reasoning:action.reasoning}:{})});
+   continue;
+  }
   if(data.approval){if(data.approval.localSandbox){data.approval.workspace=localSpace;data.approval.sessionId=session.id}session.pendingApproval=data.approval;}
   partial.content=data.message?.content||'';partial.reasoning=data.message?.reasoning||partial.reasoning;partial.tools=(data.tools||[]).map(tool=>tool.name);
   const searches=Array.isArray(data.webSearches)?data.webSearches:data.webSearch?[data.webSearch]:[];
@@ -2992,6 +3099,8 @@ async function sendAiHubMessage(content,resumeSession=null,{regenerate=false,sea
   if(partial){partial.status=stopped?'stopped':'error';partial.error=stopped?'已停止生成，可以继续回答。':error.message||'生成失败，请重试。'}
   else if(!stopped)toast(error.message);
  }finally{
+  if(!run.controller.signal.aborted)endBrowser();
+  run.controller.signal.removeEventListener('abort',endBrowser);
   scheduler.cancel();
   if(partial){partial.streaming=false;for(const item of partial.toolEvents||[])if(item.status==='running')item.status=partial.status==='error'?'failed':'stopped'}
   session.updatedAt=Date.now();if(run.workspace===localSpace)saveAiHubSessions();
@@ -3211,6 +3320,23 @@ $('aiContextWindow').onchange=event=>{
  renderAiHubContext(session);
 };
 $('aiMcpSession').onchange=event=>{const session=currentAiHubSession();if(!session)return;session.externalTools=event.target.checked;saveAiHubSessions();renderAiHubContext(session)};
+$('aiBrowserSession').onchange=event=>{
+ const session=currentAiHubSession();if(!browserAvailable(session)||aiHubBusy)return;
+ session.browserEnabled=event.target.checked;
+ if(!session.browserEnabled)aiBrowserPresets.delete(session.id);
+ saveAiHubSessions();renderAiHub();
+};
+$('aiBrowserPresets').onclick=event=>{
+ const button=event.target.closest('[data-browser-preset]'),session=currentAiHubSession();
+ if(!button||!browserAvailable(session)||aiHubBusy||session.pendingApproval)return;
+ const preset=button.dataset.browserPreset;
+ if(aiBrowserPresets.get(session.id)===preset)aiBrowserPresets.delete(session.id);
+ else aiBrowserPresets.set(session.id,preset);
+ const input=$('aiHubPrompt');
+ if(!input.value.trim())input.value={search:'请联网搜索：',read:'请阅读这个链接：',compare:'请查阅并对照来源：'}[preset];
+ $('aiContextPanel').hidden=true;$('aiHubContext').setAttribute('aria-expanded','false');
+ renderAiHub();input.focus();input.setSelectionRange(input.value.length,input.value.length);input.dispatchEvent(new Event('input'));
+};
 $('aiSandboxSession').onchange=event=>{const session=currentAiHubSession();if(!session)return;session.sandboxEnabled=event.target.checked&&!!aiSandboxStatus?.enabled;session.sandboxCalls=0;saveAiHubSessions();renderAiHub();if(session.sandboxEnabled)void refreshAiSandboxFiles()};
 $('aiSandboxBackend').onchange=event=>{const session=currentAiHubSession();if(!session)return;
  if(event.target.value==='linux'&&!aiVmStatus?.ready){toast('请先配置并授权 Termux/QEMU');event.target.value='javascript';return}
@@ -4152,7 +4278,7 @@ if(native){$('pairKey').remove();$('pairDialog').remove();$('join')?.remove();}s
 (()=>{
 const STORAGE='easybook-language',supported=['auto','zh-CN','en'];
 const en={
-'总是允许':'Always Allow','总是允许联网搜索':'Always allow web search','允许云端对话直接发送公开搜索关键词，此设置随账户同步。':'Allow cloud chats to send public search queries automatically. This setting syncs with your account.','通过浏览器读取公开搜索页，已设为总是允许。':'Reads public search pages in a browser. Always Allow is on.','确认后将此关键词发送给联网搜索服务。选择「总是允许」后，云端对话可直接搜索，可在 MCP 设置中撤销。':'Approval sends this query to web search. Always Allow enables automatic search in cloud chats and can be turned off in MCP settings.',
+'安装本地浏览器组件':'Install local browser component','浏览器组件':'Browser component','下载组件':'Download component','安装组件':'Install component','卸载组件':'Uninstall component','正在验证安装包':'Verifying APK','已验证，等待 Android 安装确认':'Verified and ready for Android installation','使用本地浏览器':'Use local browser','本地浏览器':'Local browser','浏览器预设':'Browser presets','阅读链接':'Read link','对照来源':'Compare sources','允许自动搜索':'Allow automatic search','允许本地浏览器自动向 DuckDuckGo 发送公开关键词。此设置仅在本机生效。':'Allow the local browser to send public keywords to DuckDuckGo automatically. This setting applies only to this device.','总是允许':'Always Allow','总是允许联网搜索':'Always allow web search','允许云端对话直接发送公开搜索关键词，此设置随账户同步。':'Allow cloud chats to send public search queries automatically. This setting syncs with your account.','通过浏览器读取公开搜索页，已设为总是允许。':'Reads public search pages in a browser. Always Allow is on.','确认后将此关键词发送给联网搜索服务。选择「总是允许」后，云端对话可直接搜索，可在 MCP 设置中撤销。':'Approval sends this query to web search. Always Allow enables automatic search in cloud chats and can be turned off in MCP settings.',
 '已读取正文':'Page read',
 '在应用内继续搜索':'Continue search in Easybook','结束搜索':'End search','已结束联网搜索':'Web search ended','已导入联网搜索来源':'Imported web search sources','搜索站限制了自动访问，请在浏览器中继续。':'The search site blocked automated access. Continue in the browser.','自动搜索超时，请在浏览器中继续。':'The automated search timed out. Continue in the browser.','搜索站没有返回符合条件的结果。':'The search returned no matching results.','自动搜索未能读取结果页，可在浏览器中继续。':'The result page could not be read. Continue in the browser.','自动搜索暂不可用，请在浏览器中继续。':'Automated search is unavailable. Continue in the browser.',
 

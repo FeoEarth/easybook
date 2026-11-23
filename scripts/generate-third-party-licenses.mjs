@@ -96,7 +96,7 @@ add({name:'DeepSeek chat-demo (SSE transport)',version:'5d5dd754ebc1948e977ddb88
   note:'Actual upstream SSE decoder and abort-aware reader, transpiled from src/services/api/sse.ts. https://github.com/deepseek-ai/chat-demo'});
 
 const androidManifest=JSON.parse(read('third_party/android/runtime-dependencies.json'));
-if(androidManifest.generated_from!=='Gradle :app:releaseRuntimeClasspath'||!androidManifest.modules?.length)
+if(androidManifest.generated_from!=='Gradle :app and :agent-browser releaseRuntimeClasspath'||!androidManifest.modules?.length)
   throw Error('Missing resolved Android runtime license manifest.');
 const android=androidManifest.modules;
 for(const item of android){

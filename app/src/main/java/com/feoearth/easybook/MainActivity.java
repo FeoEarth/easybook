@@ -23,6 +23,7 @@ public class MainActivity extends Activity {
     public com.feoearth.easybook.glass.NativeGlassMenu nativeGlass;
     private long glassGeneration=-1;
     private android.widget.FrameLayout safeArea;
+    private AgentBrowserClient agentBrowser;
     private android.net.ConnectivityManager connectivity;
     private android.net.ConnectivityManager.NetworkCallback networkCallback;
     private String networkSignature="";
@@ -74,6 +75,7 @@ public class MainActivity extends Activity {
     void accountChanged(){runOnUiThread(()->{if(!destroyed&&!serverSwitching&&repository.isActiveProfile()&&ready&&web!=null&&LOCAL.equals(web.getUrl()))web.evaluateJavascript("window.easybookAccountChanged&&window.easybookAccountChanged()",null);});}
     private static final String LOCAL = "https://appassets.androidplatform.net/index.html";
     private boolean systemDark() { return AppAppearance.systemDark(getResources().getConfiguration()); }
+    boolean agentBrowserDark() { return darkAppearance(); }
     private boolean darkAppearance() { return AppAppearance.dark(AppAppearance.mode(this), systemDark()); }
     private String appearanceBootstrap() {
         String mode = AppAppearance.mode(this);
@@ -184,6 +186,10 @@ public class MainActivity extends Activity {
             if(text==null||text.length()>16*1024*1024)return;
             try{JSONObject envelope=new JSONObject(text);String requestId=envelope.getString("id"),method=envelope.getString("method");JSONObject args=envelope.optJSONObject("args");if(args==null)args=new JSONObject();final JSONObject input=args;final long generation=documentGeneration;
                 if(!requestId.matches("[a-zA-Z0-9-]{1,80}"))return;
+                if(method.startsWith("browser.")){
+                    runOnUiThread(()->handleAgentBrowser(method,input,generation,requestId,reply));
+                    return;
+                }
                 Runnable operation=()->{try{if(destroyed||serverSwitching||generation!=documentGeneration)throw new SecurityException();repository.assertActiveProfile();security.authorize(method,input,generation);JSONObject output=dispatch(method,input,generation);respond(reply,generation,new JSONObject().put("id",requestId).put("ok",true).put("result",output));}catch(Exception e){try{respond(reply,generation,new JSONObject().put("id",requestId).put("ok",false).put("error",operationErrorMessage(e)).put("code",operationErrorCode(e)));}catch(Exception ignored){}}};
                 // Dock visibility updates must stay ordered and cannot wait for the storage queue.
                 if(method.startsWith("sandbox.vm."))vmIo.execute(operation);
@@ -282,7 +288,7 @@ public class MainActivity extends Activity {
             @Override public boolean shouldOverrideUrlLoading(WebView v, WebResourceRequest r) { Uri uri=r.getUrl();if(!r.isForMainFrame()&&"GET".equals(r.getMethod())&&AgentSandboxNetwork.enabled(MainActivity.this)
                 &&uri.getHost()!=null&&uri.getHost().matches("[a-f0-9]{32}\\.agent-sandbox\\.easybook\\.invalid")&&"/runner.html".equals(uri.getPath()))return false;
                 if(!repository.profile().httpKeyOnly&&!r.isForMainFrame()&&"GET".equals(r.getMethod())&&"https".equals(uri.getScheme())&&"challenges.cloudflare.com".equals(uri.getHost())&&(uri.getPort()==-1||uri.getPort()==443)&&uri.getUserInfo()==null)return false;return !r.isForMainFrame() || !LOCAL.equals(uri.toString()); }
-            @Override public void onPageStarted(WebView v,String url,android.graphics.Bitmap icon){if(localAiEngine!=null)localAiEngine.cancel();if(nativeAccount!=null)nativeAccount.cancelAiStream(null);ready=false;updateUiReady=false;documentGeneration++;if(nativeGlass!=null){nativeGlass.clearFormatFrame();nativeGlass.dismiss(true);}}
+            @Override public void onPageStarted(WebView v,String url,android.graphics.Bitmap icon){if(agentBrowser!=null)agentBrowser.close(false);if(localAiEngine!=null)localAiEngine.cancel();if(nativeAccount!=null)nativeAccount.cancelAiStream(null);ready=false;updateUiReady=false;documentGeneration++;if(nativeGlass!=null){nativeGlass.clearFormatFrame();nativeGlass.dismiss(true);}}
         });
         web.loadUrl(LOCAL);
     }
@@ -298,6 +304,28 @@ public class MainActivity extends Activity {
         return "<script>"+updated+"</script><script>setTimeout(function(){if(!window.easybookUpdateUiReady){var entry=document.getElementById('appUpdateEntry');if(entry)entry.removeAttribute('data-native-updater-ready');var dialog=document.getElementById('appUpdateDialog');if(dialog)dialog.remove();"+bundled+"}},1800);</script>";
     }
     private void respond(JavaScriptReplyProxy reply,long generation,JSONObject value){runOnUiThread(()->{if(!destroyed&&(!serverSwitching||value.optJSONObject("result")!=null&&value.optJSONObject("result").optBoolean("serverChanged"))&&generation==documentGeneration&&LOCAL.equals(web.getUrl()))try{reply.postMessage(value.toString());}catch(IllegalStateException ignored){}});}
+    private void handleAgentBrowser(String method,JSONObject args,long generation,String id,JavaScriptReplyProxy reply){
+        try{
+            if(destroyed||serverSwitching||generation!=documentGeneration||!LOCAL.equals(web.getUrl()))throw new SecurityException();
+            repository.assertActiveProfile();
+            security.authorize(method,args,generation);
+            if(agentBrowser==null)agentBrowser=new AgentBrowserClient(this,token->{
+                if(!destroyed&&!serverSwitching&&LOCAL.equals(web.getUrl()))
+                    web.evaluateJavascript("window.easybookAgentBrowserStopped?.("+JSONObject.quote(token)+")",null);
+            });
+            agentBrowser.call(method,args).whenComplete((value,error)->browserReply(reply,generation,id,value,error));
+        }catch(Exception|LinkageError error){browserReply(reply,generation,id,null,error);}
+    }
+    private void browserReply(JavaScriptReplyProxy reply,long generation,String id,JSONObject value,Throwable error){
+        try{
+            JSONObject response=new JSONObject().put("id",id).put("ok",error==null);
+            if(error==null)response.put("result",value);
+            else if((error instanceof java.io.IOException||error instanceof IllegalStateException)&&error.getMessage()!=null)
+                response.put("error",error.getMessage());
+            else response.put("error",error instanceof IllegalArgumentException||error instanceof SecurityException?"浏览器操作无效":"本地浏览器暂不可用");
+            respond(reply,generation,response);
+        }catch(org.json.JSONException ignored){}
+    }
     private String bounded(JSONObject args,String name,int max)throws Exception{if(!(args.get(name) instanceof String))throw new IllegalArgumentException();String s=args.getString(name);if(s.length()>max)throw new IllegalArgumentException("Value too large");return s;}
     private void openAppRelease(){runOnUiThread(()->{try{startActivity(new Intent(Intent.ACTION_VIEW,Uri.parse("https://github.com/FeoEarth/easybook/releases/latest")));}catch(ActivityNotFoundException e){notifyJs("无法打开下载页面");}});}
     private JSONObject serverSnapshot(JSONObject snapshot)throws Exception{
@@ -643,6 +671,7 @@ public class MainActivity extends Activity {
     }
     @Override protected void onActivityResult(int request, int result, Intent data) {
         super.onActivityResult(request, result, data);
+        if(request==AgentBrowserClient.REQUEST){if(agentBrowser!=null)agentBrowser.activityReturned();return;}
         if(request==WebSearchActivity.REQUEST){
             String token=aiSearchToken;aiSearchToken=null;
             if(token!=null&&aiSearchGeneration==documentGeneration){
@@ -730,9 +759,9 @@ public class MainActivity extends Activity {
         if (!ready) {super.onBackPressed(); return;}
         web.evaluateJavascript("window.handleBack()", handled -> {if (!"true".equals(handled)) MainActivity.super.onBackPressed();});
     }
-    @Override protected void onResume(){super.onResume();refreshAppearance(systemDark());if(nativeAccount!=null){nativeAccount.resume();accountChanged();}}
+    @Override protected void onResume(){super.onResume();if(ready&&LOCAL.equals(web.getUrl()))web.evaluateJavascript("window.easybookAgentBrowserChanged?.()",null);refreshAppearance(systemDark());if(nativeAccount!=null){nativeAccount.resume();accountChanged();}}
     @Override protected void onPause() { if(localAiEngine!=null)localAiEngine.cancel();if(security!=null)security.dismissConnection(); if(nativeGlass!=null)nativeGlass.dismiss(true);web.evaluateJavascript("window.EasybookVideo?.pauseAll();window.persistNow && window.persistNow()", null); super.onPause(); }
-    @Override protected void onDestroy() { hideVideoFullscreen(); if(nativeAccount!=null){nativeAccount.cancel();nativeAccount.shutdownAiStream();} if(localAiEngine!=null)localAiEngine.shutdown();if(localAiModels!=null)localAiModels.shutdown();if(localAiRuntime!=null)localAiRuntime.shutdown(); if(security!=null)security.dismissConnection(); if(connectivity!=null&&networkCallback!=null)connectivity.unregisterNetworkCallback(networkCallback); if(nativeGlass!=null){nativeGlass.clearFormatFrame();nativeGlass.dismiss(true);}ready=false; destroyed=true;if(WebViewFeature.isFeatureSupported(WebViewFeature.WEB_MESSAGE_LISTENER))WebViewCompat.removeWebMessageListener(web,"EasybookNative");web.destroy();if(appUpdater!=null)appUpdater.shutdown();vmIo.shutdownNow();dockIo.shutdown();io.shutdown();super.onDestroy(); }
+    @Override protected void onDestroy() { if(agentBrowser!=null)agentBrowser.close(false); hideVideoFullscreen(); if(nativeAccount!=null){nativeAccount.cancel();nativeAccount.shutdownAiStream();} if(localAiEngine!=null)localAiEngine.shutdown();if(localAiModels!=null)localAiModels.shutdown();if(localAiRuntime!=null)localAiRuntime.shutdown(); if(security!=null)security.dismissConnection(); if(connectivity!=null&&networkCallback!=null)connectivity.unregisterNetworkCallback(networkCallback); if(nativeGlass!=null){nativeGlass.clearFormatFrame();nativeGlass.dismiss(true);}ready=false; destroyed=true;if(WebViewFeature.isFeatureSupported(WebViewFeature.WEB_MESSAGE_LISTENER))WebViewCompat.removeWebMessageListener(web,"EasybookNative");web.destroy();if(appUpdater!=null)appUpdater.shutdown();vmIo.shutdownNow();dockIo.shutdown();io.shutdown();super.onDestroy(); }
 }
 
 

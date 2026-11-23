@@ -15,6 +15,7 @@ async function scenario({local=false,accept=true,toolError=false,networkError=fa
   currentAiHubSession:()=>session,setAiHubBusy:value=>{context.aiHubBusy=value},saveAiHubSessions(){},renderAiHub(){},toast(){},
   $:id=>id==='aiHubPrompt'?prompt:{},requestAnimationFrame:()=>1,cancelAnimationFrame(){},compactAiMessages:messages=>messages,
   refreshAiLocal:async()=>{},activateAiHubModel:async()=>{},recordAiToolEvent(){},clearAiHubFiles:()=>{files.length=0},
+  sandboxSessionActive:()=>false,browserAvailable:()=>false,autoRememberAi:async()=>{},
  };
  const execute=async()=>{executions++;if(networkError)throw Error('network');return toolError?{ok:false,error:{code:'CONFLICT'}}:{ok:true,result:{id:'created-note'}}};
  const generate=async messages=>{generations++;payload=messages;assert.equal(context.aiHubBusy,true);if(generationError)throw Error('provider unavailable');return {message:{content:'任务继续'},...(nextApproval?{approval:{id:'approval-2',tool:'notes_create'}}:{})}};
@@ -42,6 +43,41 @@ for(const local of [false,true]){
 }
 console.log('AI approval continuation: cloud/local, cancellation, failures and next approval OK');
 
+// The preset is captured from the Android UI, and its page evidence stays in the live request.
+{
+ const session={id:'browser-chat',profileId:'cloud',model:'model',mode:'agent',messages:[]};
+ const calls=[], snapshot={status:'ok',url:'https://example.org/docs',text:'Transient browser excerpt'};
+ const action={id:crypto.randomUUID(),name:'browser_search',arguments:{query:'public docs'}};
+ const context={AbortController,DOMException,window:{EasybookAiChat:aiChat},localSpace:'workspace',tab:'ai-hub',
+  aiHubCurrent:session.id,aiHubRuns:new Map(),aiHubExecutions:new Set(),aiConfigured:true,aiHubFiles:[],aiHubDraftFiles:new Map(),
+  aiProfiles:[],aiBrowserPresets:new Map([[session.id,'search']]),browserAvailable:()=>true,sandboxSessionActive:()=>false,
+  currentAiHubSession:()=>session,uuid:()=>crypto.randomUUID(),requestAnimationFrame:()=>1,cancelAnimationFrame(){},
+  $:()=>({style:{},scrollHeight:0}),renderAiHub(){},renderAiHubSessions(){},recordAiToolEvent(){},saveAiHubSessions(){},
+  syncAiHubRun(){},updateAiHubComposer(){},clearAiHubFiles(){},activateAiHubModel:async()=>{},generateAiHubTitle:async()=>{},autoRememberAi:async()=>{},
+  native:{async call(method,args){
+   calls.push([method,args]);
+   if(method==='browser.begin')return {status:'ready'};
+   if(method==='browser.step')return snapshot;
+   return {status:'closed'};
+  }},
+  async aiStreamRequest(body){
+   assert.equal(body.localBrowser,true);
+   assert.equal(body.browserPreset,'search');
+   if(!body.browserHistory.length)return {browserAction:action};
+   assert.equal(body.browserHistory[0].result,snapshot);
+   return {message:{content:'[Docs](https://example.org/docs)'}};
+  }
+ };
+ vm.createContext(context);vm.runInContext(source,context);
+ await context.sendAiHubMessage('查阅公开文档');
+ assert.deepEqual(calls.map(([method])=>method),['browser.begin','browser.step','browser.end']);
+ assert.equal(calls[0][1].preset,'search');
+ assert.equal(calls[0][1].token,calls[2][1].token);
+ assert.equal(session.messages.at(-1).status,'done');
+ assert.match(session.messages.at(-1).content,/https:\/\/example\.org\/docs/);
+ assert.doesNotMatch(JSON.stringify(session),/Transient browser excerpt/);
+ assert.match(readFileSync('mcp-oauth/src/index.mjs','utf8'),/localBrowser:true,browserPreset:input\.browserPreset,browserHistory:input\.browserHistory/);
+}
 
 // A native browser result can resume only the originating live search card.
 {
