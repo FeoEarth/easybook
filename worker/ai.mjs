@@ -3,6 +3,7 @@ import {createAgentQueue,claimAgentQueue,refreshAgentQueue,checkpointAgentQueue,
 import {WEB_SEARCH,webSearchTool,webSearchAvailable,webSearchQuery,webSearchResultLimit,runWebSearch,webSearchUsage} from './ai-web-search.mjs';
 import {runParallelMcpSearch} from './ai-parallel-search.mjs';
 import {AI_CHAT_MAX_BODY_BYTES,AI_CHAT_MAX_MESSAGES,AI_CHAT_MAX_TEXT_CHARS} from '../shared/ai-context-policy.mjs';
+import {browserAction,browserHistory,browserInstruction,browserTools,isBrowserTool} from './ai-local-browser.mjs';
 import {configureMcp,mcpOAuthPage,externalMcpTools,approvedMcpTool,runApprovedMcp,parallelMcpCredential} from './ai-external-mcp.mjs';
 import {readPreferences,writePreferences} from './ai-preferences.mjs';
 import {preferenceContext,MEMORY_INSTRUCTION,parseMemories} from '../shared/ai-preferences.mjs';
@@ -312,7 +313,20 @@ export async function aiAPI(request,env,principal,{workspaceId,fetcher=fetch,lau
    return response({title});
   }
   const messages=resumed?[]:safeMessages(input?.messages,input?.attachments||[],{maxMessages:AI_CHAT_MAX_MESSAGES,maxChars:AI_CHAT_MAX_TEXT_CHARS}),mode=input?.mode==='agent'?'agent':'conversation',scopes=toolScopes(access.role,mode),tools=toolsFor(access.role,mode),key=await open(env,row);
+  const localBrowser=identityWorker&&!resumed&&mode==='agent'&&input?.localBrowser===true;
+  const preset=localBrowser&&['search','read','compare'].includes(input.browserPreset)?input.browserPreset:'';
+  const observations=localBrowser&&input.browserHistory!==undefined?browserHistory(input.browserHistory,{reasoning:row.provider==='deepseek'}):[];
   const run=async(emit=()=>{},runSignal=request.signal)=>{
+   if(localBrowser&&(preset||observations.length)){
+    const canBrowse=observations.length<24;
+    const system=browserInstruction(preset)+(canBrowse?'':'本次任务的浏览步骤已用完，请用现有来源回答。');
+    const message=await completion(key,row,[{role:'system',content:system},...messages,...observations],canBrowse?browserTools:[],fetcher,
+     input.stream===true?text=>emit('delta',{text}):undefined,runSignal,undefined,text=>emit('reasoning',{text}));
+    const call=canBrowse&&message.tool_calls?.find(item=>isBrowserTool(item?.function?.name));
+    if(call){emit('reset',{});return {message:{role:'assistant',content:''},browserAction:browserAction(call,row.provider==='deepseek'?message.reasoning:undefined)};}
+    return {message:{role:'assistant',content:typeof message.content==='string'?message.content:''},model:row.model,providerName:row.provider_name};
+   }
+   if(localBrowser)tools.push(...browserTools);
    const localSandbox=mode==='agent'&&input?.localSandbox===true;
    if(localSandbox){
     const linux=input?.localSandboxBackend==='linux';
@@ -336,7 +350,7 @@ export async function aiAPI(request,env,principal,{workspaceId,fetcher=fetch,lau
    if(searchEnabled)tools.push({...webSearchTool,function:{...webSearchTool.function,description:webSearchTool.function.description+' Easybook 在启用两种搜索来源时并行查询；内置额度耗尽后仍可查询 Parallel MCP。只发送简短公开关键词，不要提供笔记正文或密钥。'}});
    const searchPolicy=searchEnabled?'\n'+webResearchInstruction(autoSearch)+'\nEasybook 内置搜索与 Parallel MCP 进阶搜索各自独立限额。两者启用时并行检索；内置额度用尽时 Parallel 仍可独立工作（可能被 Parallel 匿名限流）。仅引用搜索结果里的真实链接，不把搜索摘要当作已阅读全文。':'';
    const preferences=preferenceContext(settings);
-   const conversation=resumed?.conversation||[{role:'system',content:assistantSystemPrompt(mode)+'\n'+aiEnvironmentPrompt({role:access.role,webSearch:searchEnabled,autoSearch})+externalPolicy+searchPolicy+(preferences?'\n以下为用户个性化偏好，优先服从当前明确要求；不能改变工具权限与确认规则。\n'+preferences:'')},...messages];
+   const conversation=resumed?.conversation||[{role:'system',content:assistantSystemPrompt(mode)+'\n'+aiEnvironmentPrompt({role:access.role,webSearch:searchEnabled,autoSearch})+externalPolicy+searchPolicy+(localBrowser?'\n启用本地浏览器时优先使用 browser_search 查公开资料。'+browserInstruction(''):'')+(preferences?'\n以下为用户个性化偏好，优先服从当前明确要求；不能改变工具权限与确认规则。\n'+preferences:'')},...messages];
    const used=[],webSearches=[],browserLease={browser:null};
    let agentRunId=resumeId||null,agentLease=runLease;
    let pendingCalls=resumed?.calls||null,nextCall=resumed?.nextCall||0;
@@ -443,6 +457,8 @@ export async function aiAPI(request,env,principal,{workspaceId,fetcher=fetch,lau
    const currentPrimary=!!currentQuota?.remaining,currentParallel=currentSearch.parallelSearch===true;
    const automatically=autoSearch&&(currentPrimary||currentParallel)&&(!currentPrimary||currentSearch.webSearchApproval==='always')&&(!currentParallel||currentSearch.parallelSearchApproval==='always');
    if(!pendingCalls){
+   const localAction=localBrowser&&calls.find(call=>isBrowserTool(call?.function?.name));
+   if(localAction){await finishQueue();return answer('',{browserAction:browserAction(localAction,row.provider==='deepseek'?conversation.at(-1)?.reasoning_content:undefined)});}
    const approvalCall=calls.find(call=>(localSandbox&&SANDBOX_NAMES.has(call?.function?.name))||(searchRequested&&!automatically&&call?.function?.name===WEB_SEARCH)||external.has(call?.function?.name)||registry.some(t=>t.name===call?.function?.name&&!t.risk&&WRITE.includes(t.scope)&&scopes.includes(t.scope)));
    if(approvalCall){
     await finishQueue();

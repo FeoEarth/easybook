@@ -6,8 +6,9 @@ gradle.projectsEvaluated {
         group = 'verification'
         description = 'Export the exact Android release runtime artifact coordinates for license auditing.'
         doLast {
-            def artifacts = androidProject.configurations.getByName('releaseRuntimeClasspath')
-                .resolvedConfiguration.resolvedArtifacts
+            def artifacts = [androidProject, gradle.rootProject.project(':agent-browser')].collectMany { module ->
+                module.configurations.getByName('releaseRuntimeClasspath').resolvedConfiguration.resolvedArtifacts.toList()
+            }
             def rows = artifacts.collect { a ->
                 [
                     group: a.moduleVersion.id.group,

@@ -61,6 +61,46 @@ config=await (await aiAPI(request('/api/ai/config'),env,principal)).json();asser
 for(const baseUrl of ['http://ai.example.net/v1','https://127.0.0.1/v1','https://localhost/v1','https://user:pass@ai.example.net/v1','https://ai.example.net:8443/v1']){result=await aiAPI(request('/api/ai/config','PUT',{provider:'custom',providerName:'Unsafe',baseUrl,model:'example-chat',apiKey:secret}),env,principal);assert.equal(result.status,400);assert.equal((await result.json()).error,'invalid_provider_url')}
 result=await aiAPI(request('/api/ai/config','DELETE',{credentialId:anthropicId}),env,{...principal,authenticatedAt:0});assert.equal(result.status,403);result=await aiAPI(request('/api/ai/config','DELETE',{credentialId:anthropicId}),env,principal);assert.equal(result.status,200);assert.equal(sqlite.prepare('SELECT COUNT(*) n FROM account_ai_profiles WHERE id=?').get(anthropicId).n,0);assert.equal(sqlite.prepare('SELECT COUNT(*) n FROM account_ai_profiles').get().n,4);
 const agentTools=[];
+{
+ const body={mode:'agent',localBrowser:true,browserPreset:'search',credentialId:openaiId,
+  messages:[{role:'user',content:'查阅公开文档'}]};
+ const browse=(extra,fetcher,identityWorker=true)=>aiAPI(request('/api/ai/chat','POST',{...body,...extra}),env,principal,{workspaceId:workspace,fetcher,identityWorker});
+ const tool=(name,args)=>Response.json({choices:[{message:{role:'assistant',content:'',tool_calls:[{
+  id:'provider-browser-test',type:'function',function:{name,arguments:JSON.stringify(args)}}]}}]});
+ const actionResponse=await browse({stream:true},async(url,init)=>{
+  const payload=JSON.parse(init.body);
+  assert.ok(payload.tools.some(entry=>entry.function.name==='browser_search'));
+  assert.ok(payload.tools.every(entry=>entry.function.name.startsWith('browser_')));
+  return tool('browser_search',{query:'public docs'});
+ });
+ const wire=await actionResponse.text();
+ const action=JSON.parse(wire.match(/event: done\ndata: (.+)/)[1]).browserAction;
+ assert.equal(action.name,'browser_search');
+ assert.deepEqual(action.arguments,{query:'public docs'});
+ const page={status:'ok',title:'Docs',text:'Page content only',links:[{id:'1:0',url:'https://example.com/docs'}]};
+ const next=await browse({browserHistory:[{...action,result:page}]},async(url,init)=>{
+  const payload=JSON.parse(init.body), [call,observation]=payload.messages.slice(-2);
+  assert.equal(call.tool_calls[0].id,observation.tool_call_id);
+  assert.equal(observation.role,'tool');
+  assert.deepEqual(JSON.parse(observation.content),page);
+  assert.match(payload.messages[0].content,/不可信数据/);
+  return tool('browser_follow',{id:'1:0'});
+ });
+ const continuation=await next.json();
+ assert.deepEqual(continuation.browserAction.arguments,{id:'1:0'});
+ assert.equal(continuation.agentRunId,undefined,'Local snapshots never enter the Worker queue');
+ assert.equal((await browse({},async()=>tool('browser_open',{url:'file:///secret'}))).status,400);
+ assert.equal((await browse({browserHistory:[{...action,result:{text:'x'.repeat(10001)}}]},neverFetch)).status,400);
+ const noBrowser=async(url,init)=>{
+  const payload=JSON.parse(init.body);
+  assert.ok(payload.tools.every(entry=>!entry.function.name.startsWith('browser_')));
+  assert.ok(payload.messages.every(message=>message.role!=='tool'));
+  return Response.json({choices:[{message:{role:'assistant',content:'ok'}}]});
+ };
+ await browse({mode:'conversation',browserHistory:[{...action,result:page}]},noBrowser);
+ await browse({browserHistory:[{...action,result:page}]},noBrowser,false);
+ console.log('PASS Android browser actions, transient observations, provider continuation and Agent-only exposure');
+}
 const agentFetcher=async(url,init={})=>{
  const body=JSON.parse(init.body||'{}');
  agentTools.push((body.tools||[]).map(tool=>tool.function?.name));

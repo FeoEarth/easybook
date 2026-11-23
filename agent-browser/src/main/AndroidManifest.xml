@@ -1,0 +1,10 @@
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <uses-permission android:name="android.permission.INTERNET"/>
+    <queries><package android:name="com.feoearth.easybook.notes"/></queries>
+    <application android:label="Easybook 浏览器组件" android:allowBackup="false"
+        android:usesCleartextTraffic="false" android:theme="@android:style/Theme.Material.Light.NoActionBar">
+        <activity android:name="com.feoearth.easybook.AgentBrowserActivity" android:exported="true"
+            android:permission="com.feoearth.easybook.notes.permission.AGENT_BROWSER"
+            android:configChanges="orientation|screenSize|keyboardHidden|uiMode"/>
+    </application>
+</manifest>

@@ -1,0 +1,8 @@
+{
+  "manifest_version": 2,
+  "name": "Easybook Agent Browser",
+  "version": "1.0",
+  "browser_specific_settings": {"gecko": {"id": "agent-browser@easybook.invalid"}},
+  "permissions": ["nativeMessaging", "nativeMessagingFromContent", "geckoViewAddons"],
+  "content_scripts": [{"matches": ["https://*/*"], "js": ["page.js"], "run_at": "document_idle", "all_frames": false}]
+}
