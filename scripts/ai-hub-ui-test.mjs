@@ -56,6 +56,11 @@ try{
  });
  await app.send('阅读网页');
  assert.match($('aiHubMessages').querySelector('.ai-tool-activity').textContent,/连接网站超时（Gecko 38）/);
+ app.seed([{role:'user',content:'搜索公开资料'},{role:'assistant',content:'',status:'error',error:'AI 提供商暂时不可用',
+  browserSources:[{title:'公开来源',url:'https://example.org/source'}]}]);
+ const savedSource=$('aiHubMessages').querySelector('details a');
+ assert.equal(savedSource.href,'https://example.org/source');
+ assert.equal(savedSource.textContent,'公开来源');
  const proposal={id:'proposal',tool:'notes_create',arguments:{title:'测试笔记',text:'## 内容'},expiresAt:Date.now()+60000};
  app.seed([{role:'user',content:'创建笔记'},{role:'assistant',content:'请确认',toolEvents:[{name:'notes_create',status:'approval'}]}],proposal);
  $('aiHubAgent').click();assert.equal(app.session().mode,undefined,'Pending approval prevents changing execution mode');

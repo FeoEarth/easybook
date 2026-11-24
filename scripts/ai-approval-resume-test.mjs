@@ -5,7 +5,8 @@ import * as aiChat from '../shared/ai-chat.mjs';
 const html=readFileSync('app/src/main/assets/index.html','utf8');
 const contextSource=html.slice(html.indexOf('function aiHubContextModel('),html.indexOf('function renderAiHubContext('));
 const browserEvents=html.slice(html.indexOf('const aiBrowserClosedMessage='),html.indexOf('const aiHubStorageKey='));
-const source=contextSource+browserEvents+html.slice(html.indexOf('let aiHubStreamAbort=null'),html.indexOf('function localAiMarkdownDocument('));
+const searchSources=html.slice(html.indexOf('function webSearchSources('),html.indexOf('async function openManualWebSearch('));
+const source=contextSource+browserEvents+searchSources+html.slice(html.indexOf('let aiHubStreamAbort=null'),html.indexOf('function localAiMarkdownDocument('));
 async function scenario({local=false,accept=true,toolError=false,networkError=false,generationError=false,nextApproval=false}={}){
  const pending={id:'approval-1',tool:'notes_create',arguments:{title:'First'},local};
  const session={id:'session',profileId:local?'__local__':'cloud',model:'model',mode:'agent',messages:[{role:'user',content:'创建两篇笔记并总结'}],pendingApproval:pending};
@@ -51,7 +52,7 @@ console.log('AI approval continuation: cloud/local, cancellation, failures and n
  const action={id:crypto.randomUUID(),name:'browser_search',arguments:{query:'public docs'}};
  let savedWhileStreaming,interrupt=true,expectedPreset='search',installed=true,available=true,statusRefreshes=0,unexpectedExit=false,launchStatus='ready';
  const notices=[];
- const context={AbortController,DOMException,window:{EasybookAiChat:aiChat},localSpace:'workspace',tab:'ai-hub',
+ const context={AbortController,DOMException,URL,window:{EasybookAiChat:aiChat},localSpace:'workspace',tab:'ai-hub',
   aiHubCurrent:session.id,aiHubRuns:new Map(),aiHubExecutions:new Set(),aiConfigured:true,aiHubFiles:[],aiHubDraftFiles:new Map(),
   aiProfiles:[],aiBrowserPresets:new Map([[session.id,'search']]),browserAvailable:()=>available,sandboxSessionActive:()=>false,
   async refreshAiBrowser(){statusRefreshes++;available=installed},toast:message=>notices.push(message),
@@ -138,6 +139,31 @@ console.log('AI approval continuation: cloud/local, cancellation, failures and n
  assert.equal(crashed.messages.at(-1).status,'error');
  assert.match(crashed.messages.at(-1).error,/本地浏览器意外退出/);
  assert.match(readFileSync('mcp-oauth/src/index.mjs','utf8'),/localBrowser:true,browserPreset:input\.browserPreset,browserHistory:input\.browserHistory/);
+
+ session.messages=[];
+ launchStatus='ready';
+ snapshot.links=[{id:'1:0',url:'https://example.org/actual-source',title:'Public source',snippet:'Do not save this excerpt'}];
+ context.aiBrowserPresets.set(session.id,'search');
+ context.aiStreamRequest=async body=>{
+  if(!body.browserHistory.length)return {browserAction:action};
+  throw Error('AI 提供商暂时不可用');
+ };
+ await context.sendAiHubMessage('请联网搜索：公开文档');
+ const saved=aiChat.recoverChatSession(JSON.parse(JSON.stringify(session)));
+ assert.equal(saved.messages.at(-1).status,'error');
+ assert.equal(saved.messages.at(-1).browserSources[0].url,'https://example.org/actual-source');
+ assert.doesNotMatch(JSON.stringify(saved),/Do not save this excerpt|Transient browser excerpt/);
+ calls.length=0;
+ available=installed=false;
+ context.aiStreamRequest=async body=>{
+  assert.equal(body.purpose,'browser_answer');
+  assert.equal(body.localBrowser,undefined);
+  assert.match(body.messages.at(-1).content,/https:\/\/example\.org\/actual-source/);
+  return {message:{content:'根据已有来源完成回答'}};
+ };
+ await context.sendAiHubMessage('',saved);
+ assert.equal(saved.messages.at(-1).status,'done');
+ assert.equal(calls.length,0,'Retry after provider failure does not reopen the browser');
 }
 
 // A native browser result can resume only the originating live search card.
