@@ -82,6 +82,7 @@ final class AgentBrowser {
         boolean navigationStarted;
         String searchQuery;
         String diagnostic;
+        long navigationStart = System.nanoTime();
         Pending(CompletableFuture<JSONObject> reply) { this.reply = reply; }
     }
 
@@ -279,7 +280,7 @@ final class AgentBrowser {
                 if (browser == session && starting == null && pending != null && pending.navigates) {
                     URI failedUrl = null;
                     try { failedUrl = AgentBrowserProxy.publicUrl(value); } catch (RuntimeException ignored) { }
-                    if (failedUrl != null) pending.diagnostic = navigationDiagnostic(failedUrl, error);
+                    if (failedUrl != null) pending.diagnostic = navigationDiagnostic(failedUrl, error, pending.navigationStart);
                     android.util.Log.d("EasybookBrowser", "Gecko navigation error: " + error.code);
                 }
                 return null;
@@ -444,6 +445,7 @@ final class AgentBrowser {
         pending.navigates = true;
         pending.navigationStarted = false;
         pending.diagnostic = null;
+        pending.navigationStart = System.nanoTime();
         timeout(pending);
         loading = true;
         invalidate();
@@ -666,10 +668,11 @@ final class AgentBrowser {
         finish(outcome);
     }
 
-    private String navigationDiagnostic(URI target, WebRequestError error) {
+    private String navigationDiagnostic(URI target, WebRequestError error, long startedAt) {
         String message;
-        AgentBrowserProxy.Failure failure = error.category == WebRequestError.ERROR_CATEGORY_PROXY && proxy != null
-            ? proxy.failureFor(host(target)) : null;
+        boolean transportError = error.category == WebRequestError.ERROR_CATEGORY_PROXY ||
+            error.category == WebRequestError.ERROR_CATEGORY_NETWORK || error.code == WebRequestError.ERROR_UNKNOWN;
+        AgentBrowserProxy.Failure failure = transportError && proxy != null ? proxy.failureFor(host(target), startedAt) : null;
         if (failure != null) {
             switch (failure) {
                 case DNS: message = "域名解析失败"; break;

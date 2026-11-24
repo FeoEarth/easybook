@@ -27,11 +27,17 @@ final class AgentBrowserProxy implements AutoCloseable {
     private final ServerSocket listener = new ServerSocket(0, 32, InetAddress.getByName("127.0.0.1"));
     private final ExecutorService workers = Executors.newFixedThreadPool(64);
     private final Set<Socket> sockets = new HashSet<>();
-    private final LinkedHashMap<String, Failure> failures = new LinkedHashMap<>();
+    private final LinkedHashMap<String, FailureReport> failures = new LinkedHashMap<>();
     private long generation;
     private boolean active;
     private String probeHost;
     private Runnable probeNotice;
+
+    private static final class FailureReport {
+        final Failure reason;
+        final long observedAt = System.nanoTime();
+        FailureReport(Failure reason) { this.reason = reason; }
+    }
 
     AgentBrowserProxy() throws IOException {
         workers.execute(this::accept);
@@ -150,14 +156,17 @@ final class AgentBrowserProxy implements AutoCloseable {
         }
     }
 
-    synchronized Failure failureFor(String host) { return failures.get(host); }
+    synchronized Failure failureFor(String host, long notBefore) {
+        FailureReport report = failures.get(host);
+        return report != null && report.observedAt - notBefore >= 0 ? report.reason : null;
+    }
 
     private synchronized void report(String host, long lease, Failure failure) {
         if (!active || lease != generation) return;
         failures.remove(host);
         if (failure == null) return;
         if (failures.size() >= 16) failures.remove(failures.keySet().iterator().next());
-        failures.put(host, failure);
+        failures.put(host, new FailureReport(failure));
     }
 
     static List<InetAddress> connectionOrder(InetAddress[] resolved) throws IOException {
