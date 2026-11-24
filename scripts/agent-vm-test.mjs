@@ -24,7 +24,7 @@ for(const name of ['aiVmInstall','aiVmStart','aiVmStop','aiVmRemove','aiVmRefres
  assert.match(html,new RegExp('id="'+name+'"'));
 assert.match(html,/sandbox\.vm\.manage/);
 assert.match(build,/prepareAgentVmAssets/);
-assert.match(build,/versionCode 117/);
+assert.ok(Number(build.match(/\bversionCode\s+(\d+)\b/)?.[1])>=117,'Agent VM diagnostics require versionCode 117 or later');
 assert.match(java,/case "sandbox.vm.manage"/);
 assert.match(java,/case "sandbox.vm.permission.request"/);
 assert.match(java,/onRequestPermissionsResult/);
