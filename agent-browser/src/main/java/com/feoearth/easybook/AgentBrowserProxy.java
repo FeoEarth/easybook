@@ -21,15 +21,18 @@ import java.util.concurrent.Executors;
 
 /** Dedicated CONNECT transport. Gecko still owns end-to-end TLS verification. */
 final class AgentBrowserProxy implements AutoCloseable {
-    enum Failure { DNS, ADDRESS, CONNECT, TIMEOUT }
+    enum Failure { DNS, ADDRESS, PUBLIC_DNS, CONNECT, TIMEOUT }
+    interface Resolver { InetAddress[] resolve(String host) throws IOException; }
 
     private static final int CONNECT_BUDGET_MS = 10000;
     private final ServerSocket listener = new ServerSocket(0, 32, InetAddress.getByName("127.0.0.1"));
     private final ExecutorService workers = Executors.newFixedThreadPool(64);
     private final Set<Socket> sockets = new HashSet<>();
     private final LinkedHashMap<String, FailureReport> failures = new LinkedHashMap<>();
+    private final Resolver systemDns, publicDns;
     private long generation;
     private boolean active;
+    private boolean publicDnsAllowed;
     private String probeHost;
     private Runnable probeNotice;
 
@@ -40,6 +43,12 @@ final class AgentBrowserProxy implements AutoCloseable {
     }
 
     AgentBrowserProxy() throws IOException {
+        this(InetAddress::getAllByName, AgentBrowserDns::resolve);
+    }
+
+    AgentBrowserProxy(Resolver systemDns, Resolver publicDns) throws IOException {
+        this.systemDns = systemDns;
+        this.publicDns = publicDns;
         workers.execute(this::accept);
     }
 
@@ -53,6 +62,7 @@ final class AgentBrowserProxy implements AutoCloseable {
 
     synchronized void setActive(boolean active) {
         this.active = active;
+        publicDnsAllowed = false;
         generation++;
         probeHost = null;
         probeNotice = null;
@@ -64,6 +74,12 @@ final class AgentBrowserProxy implements AutoCloseable {
     synchronized void expectProbe(String host, Runnable notice) {
         probeHost = host;
         probeNotice = notice;
+    }
+
+    synchronized void allowPublicDns() { if (active) publicDnsAllowed = true; }
+
+    private synchronized boolean mayUsePublicDns(long lease) {
+        return active && publicDnsAllowed && lease == generation;
     }
 
     private synchronized boolean seeProbe(String host, long lease) {
@@ -132,9 +148,16 @@ final class AgentBrowserProxy implements AutoCloseable {
             if (seeProbe(host, lease)) throw new IOException("Local proxy check");
             if (!publicHost(host)) throw new IOException("Invalid destination");
             stage = Failure.DNS;
-            InetAddress[] resolved = InetAddress.getAllByName(host);
+            InetAddress[] resolved = systemDns.resolve(host);
             stage = Failure.ADDRESS;
-            List<InetAddress> candidates = connectionOrder(resolved);
+            List<InetAddress> candidates;
+            try {
+                candidates = connectionOrder(resolved);
+            } catch (IOException error) {
+                if (!mayUsePublicDns(lease)) throw error;
+                stage = Failure.PUBLIC_DNS;
+                candidates = connectionOrder(publicDns.resolve(host));
+            }
             stage = Failure.CONNECT;
             remote = connectPublic(candidates, lease);
             report(host, lease, null);
@@ -146,7 +169,7 @@ final class AgentBrowserProxy implements AutoCloseable {
             workers.execute(() -> relay(target, client));
             relay(client, target);
         } catch (IOException | RuntimeException error) {
-            if (stage != null) report(host, lease, error instanceof SocketTimeoutException ? Failure.TIMEOUT : stage);
+            if (stage != null) report(host, lease, stage == Failure.CONNECT && error instanceof SocketTimeoutException ? Failure.TIMEOUT : stage);
             try { client.getOutputStream().write("HTTP/1.1 403 Forbidden\r\nConnection: close\r\nContent-Length: 0\r\n\r\n".getBytes(StandardCharsets.US_ASCII)); }
             catch (IOException ignoredWrite) { }
         } finally {
