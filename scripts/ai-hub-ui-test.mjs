@@ -49,6 +49,13 @@ try{
  await app.send('继续分析');assert.equal(app.session().messages.at(-1).status,'error');assert.match($('aiHubMessages').textContent,/网络中断/);assert.match($('aiHubMessages').textContent,/保留的部分回答/);
  app.cloud(async(body,events)=>{events.progress('停止前的文本');app.stop();return {message:{content:'不应提交的答案'}}});
  await app.send('可以停止');assert.equal(app.session().messages.at(-1).status,'stopped');assert.match(app.session().messages.at(-1).content,/停止前/);
+ app.cloud(async(_body,events)=>{
+  events.onTool({type:'tool_start',name:'browser_open'});
+  events.onTool({type:'tool_end',name:'browser_open',status:'failed',diagnostic:'连接网站超时（Gecko 38）'});
+  return {message:{content:'网页暂不可用'}};
+ });
+ await app.send('阅读网页');
+ assert.match($('aiHubMessages').querySelector('.ai-tool-activity').textContent,/连接网站超时（Gecko 38）/);
  const proposal={id:'proposal',tool:'notes_create',arguments:{title:'测试笔记',text:'## 内容'},expiresAt:Date.now()+60000};
  app.seed([{role:'user',content:'创建笔记'},{role:'assistant',content:'请确认',toolEvents:[{name:'notes_create',status:'approval'}]}],proposal);
  $('aiHubAgent').click();assert.equal(app.session().mode,undefined,'Pending approval prevents changing execution mode');

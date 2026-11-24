@@ -81,6 +81,7 @@ final class AgentBrowser {
         boolean navigates;
         boolean navigationStarted;
         String searchQuery;
+        String diagnostic;
         Pending(CompletableFuture<JSONObject> reply) { this.reply = reply; }
     }
 
@@ -275,8 +276,12 @@ final class AgentBrowser {
                 if (browser == session) { canGoBack = value && !url.isEmpty(); back.setEnabled(canGoBack); }
             }
             @Override public GeckoResult<String> onLoadError(GeckoSession browser, String value, WebRequestError error) {
-                if (browser == session && starting == null && pending != null)
+                if (browser == session && starting == null && pending != null && pending.navigates) {
+                    URI failedUrl = null;
+                    try { failedUrl = AgentBrowserProxy.publicUrl(value); } catch (RuntimeException ignored) { }
+                    if (failedUrl != null) pending.diagnostic = navigationDiagnostic(failedUrl, error);
                     android.util.Log.d("EasybookBrowser", "Gecko navigation error: " + error.code);
+                }
                 return null;
             }
         });
@@ -438,6 +443,7 @@ final class AgentBrowser {
     private void openPage(URI target, String label) {
         pending.navigates = true;
         pending.navigationStarted = false;
+        pending.diagnostic = null;
         timeout(pending);
         loading = true;
         invalidate();
@@ -641,27 +647,50 @@ final class AgentBrowser {
     private void loadFailed() {
         loading = false;
         Pending step = pending;
+        String diagnostic = step == null ? null : step.diagnostic;
+        JSONObject outcome = diagnostic == null ? result("load_failed") : object("status", "load_failed", "diagnostic", diagnostic);
         if (step != null && step.searchQuery != null && !paused) {
             String query = step.searchQuery;
             step.searchQuery = null;
-            status.setText("DuckDuckGo 暂时不可用。");
+            status.setText(diagnostic == null ? "DuckDuckGo 暂时不可用。" : diagnostic);
             confirm("改用 Bing 搜索？", "允许后，本地浏览器会把同一关键词发送给 Bing。\n\n" + query, accepted -> {
                 if (pending != step) return;
-                if (!accepted) { finish(result("load_failed")); return; }
+                if (!accepted) { finish(outcome); return; }
                 allowed.add(FALLBACK_SEARCH_HOST);
                 allowed.add("cn.bing.com");
                 openPage(searchUri(FALLBACK_SEARCH_HOST, "/search", query), "AI 正在使用 Bing 搜索…");
             });
             return;
         }
-        if (status != null) status.setText("网页未能加载，可点「系统浏览器」尝试打开。");
-        finish(result("load_failed"));
+        if (status != null) status.setText((diagnostic == null ? "网页未能加载。" : diagnostic + "。") + "可点「系统浏览器」尝试打开。");
+        finish(outcome);
+    }
+
+    private String navigationDiagnostic(URI target, WebRequestError error) {
+        String message;
+        AgentBrowserProxy.Failure failure = error.category == WebRequestError.ERROR_CATEGORY_PROXY && proxy != null
+            ? proxy.failureFor(host(target)) : null;
+        if (failure != null) {
+            switch (failure) {
+                case DNS: message = "域名解析失败"; break;
+                case ADDRESS: message = "域名未解析到可访问的公网地址"; break;
+                case TIMEOUT: message = "连接网站超时"; break;
+                default: message = "无法建立到网站的连接";
+            }
+        } else if (error.category == WebRequestError.ERROR_CATEGORY_SECURITY) message = "HTTPS 验证失败";
+        else if (error.category == WebRequestError.ERROR_CATEGORY_PROXY) message = "本地代理连接失败";
+        else if (error.code == WebRequestError.ERROR_UNKNOWN_HOST) message = "域名解析失败";
+        else if (error.code == WebRequestError.ERROR_NET_TIMEOUT) message = "连接网站超时";
+        else if (error.category == WebRequestError.ERROR_CATEGORY_NETWORK) message = "网站网络连接失败";
+        else message = "网页未能加载";
+        return message + "（Gecko " + error.code + "）";
     }
 
     private void timeout(Pending step) {
         int window = ++step.deadline;
         handler.postDelayed(() -> {
             if (pending == step && !paused && dialog == null && step.deadline == window) {
+                if (step.diagnostic == null) step.diagnostic = loading ? "网页加载超时" : "等待网页正文超时";
                 if (session != null && loading) { loading = false; session.stop(); }
                 loadFailed();
             }
