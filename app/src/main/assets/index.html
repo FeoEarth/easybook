@@ -2649,16 +2649,16 @@ function aiWebSearchReceipt(message){
  const counts=d?'<p class="ai-note">请求 '+requested+' 条 · 最终 '+sources.length+' 条'+(duplicate?' · 去重 '+duplicate+' 条':'')+
   (Number.isInteger(d?.duckduckgo?.duckduckgo?.loads)?' · DuckDuckGo 加载更多 '+d.duckduckgo.duckduckgo.loads+' 次':'')+
   (d.parallel?.mode==='account'?' · Parallel 账户模式（可能计费）':d.parallel?.mode==='anonymous'?' · Parallel 匿名模式':'')+'</p>':'';
- return '<details><summary>'+esc(message.content)+' · '+sources.length+' 个结果'+(provider?' · '+provider:'')+'</summary>'+counts+(links.length?'<ul>'+links.join('')+'</ul>':'')+'</details>';
+ return '<details'+(message.receipt.directSearch?' open':'')+'><summary>'+esc(message.content)+' · '+sources.length+' 个结果'+(provider?' · '+provider:'')+'</summary>'+counts+(links.length?'<ul>'+links.join('')+'</ul>':'')+'</details>';
 }
 function aiHubMessageHTML(message,index){
  if(message.role==='user')return '<div class="ai-message-body">'+esc(message.content)+'</div>';
  const searchReceipt=message.receipt?.tool==='web_search'&&aiWebSearchReceipt(message);
- const body=searchReceipt||(message.receipt?'<details><summary>'+esc(message.content)+'</summary><pre>'+esc(JSON.stringify(message.receipt,null,2))+'</pre></details>':message.content?aiMarkdownHTML(message.content):message.streaming&&!message.reasoningActive?'<span class="ai-thinking">正在思考</span>':'');
+ const body=searchReceipt||(message.receipt?'<details><summary>'+esc(message.content)+'</summary><pre>'+esc(JSON.stringify(message.receipt,null,2))+'</pre></details>':message.content?aiMarkdownHTML(message.content):message.streaming&&!message.reasoningActive?'<span class="ai-thinking">'+(message.directSearch?'正在搜索':'正在思考')+'</span>':'');
  const sources=message.error?aiLocalBrowserSources(message.browserSources):[];
  const saved=sources.length?'<details open><summary>本地浏览来源</summary><ul>'+sources.map(item=>'<li><a href="'+esc(item.url)+'" target="_blank" rel="noopener noreferrer" translate="no">'+esc(item.title)+'</a></li>').join('')+'</ul></details>':'';
  const notice=message.error?'<div class="ai-message-notice" data-state="'+esc(message.status||'error')+'">'+esc(message.error)+'</div>':'';
- const actions=message.streaming||message.receipt?'':'<div class="ai-message-actions">'+(message.content?'<button type="button" data-ai-copy="'+index+'" aria-label="复制回答"><svg><use href="#i-copy"/></svg>复制</button>':'')+(index===currentAiHubSession().messages.length-1&&!currentAiHubSession().pendingApproval?'<button type="button" data-ai-continue="'+index+'">'+(message.status==='error'?'重试':message.status==='stopped'?'继续回答':currentAiHubSession().mode==='agent'?'继续任务':'重新回答')+'</button>':'')+'</div>';
+ const actions=message.streaming||message.receipt?'':'<div class="ai-message-actions">'+(message.content?'<button type="button" data-ai-copy="'+index+'" aria-label="复制回答"><svg><use href="#i-copy"/></svg>复制</button>':'')+(index===currentAiHubSession().messages.length-1&&!currentAiHubSession().pendingApproval?'<button type="button" data-ai-continue="'+index+'">'+(message.directSearch?'重新搜索':message.status==='error'?'重试':message.status==='stopped'?'继续回答':currentAiHubSession().mode==='agent'?'继续任务':'重新回答')+'</button>':'')+'</div>';
  const summarize=message.receipt?.directSearch&&message.receipt.ok&&index===currentAiHubSession().messages.length-1?'<div class="ai-message-actions"><button type="button" data-ai-search-summary>用 AI 总结</button></div>':'';
  return aiReasoningHTML(message)+aiToolActivityHTML(message)+'<div class="ai-message-body">'+body+saved+'</div>'+notice+actions+summarize;
 }
@@ -2808,7 +2808,7 @@ async function activateAiHubModel(session){if(session.profileId==='__local__'||!
 function updateAiHubComposer(){syncAiHubRun();
  const pending=!!currentAiHubSession()?.pendingApproval,executing=aiHubBusy&&!aiHubRun;
  $('aiHubSend').disabled=executing||(!aiHubBusy&&(pending||(!$('aiHubPrompt').value.trim()&&!aiHubFiles.length)));
- $('aiHubSend').setAttribute('aria-label',executing?'正在执行操作':aiHubBusy?'停止生成':'发送');
+ $('aiHubSend').setAttribute('aria-label',executing?'正在执行操作':aiHubBusy?(aiHubRun?.directSearch?'停止搜索':'停止生成'):'发送');
  $('aiHubSend').innerHTML=aiHubBusy?'<span class="ai-stop-square" aria-hidden="true"></span>':'<svg aria-hidden="true" viewBox="0 0 24 24"><path d="M12 19V5m-6 6 6-6 6 6"/></svg>';
  for(const id of ['aiHubAttach','aiHubVoice','aiHubConversation','aiHubAgent','aiHubComposerModel'])$(id).disabled=aiHubBusy||(['aiHubConversation','aiHubAgent','aiHubComposerModel'].includes(id)&&pending);
 }
@@ -2965,7 +2965,7 @@ async function sendAiHubMessage(content,resumeSession=null,{regenerate=false,sea
  // Older sessions did not save the selected preset. Restore only browser access with ordinary consent.
  const legacyBrowserRequest=original&&!Object.hasOwn(original,'browserPreset')&&/^请(?:联网搜索|阅读这个链接|查阅并对照来源)[：:]\s*\S/.test(original.memoryContent??original.content);
  const browserHistory=[];
- const run=window.EasybookAiChat.createChatRun(session.id,localSpace);run.local=!directSearch&&session.profileId==='__local__';aiHubRuns.set(session.id,run);syncAiHubRun();
+ const run=window.EasybookAiChat.createChatRun(session.id,localSpace);run.directSearch=directSearch;run.local=!directSearch&&session.profileId==='__local__';aiHubRuns.set(session.id,run);syncAiHubRun();
  let partial=null;updateAiHubComposer();
  const scheduler=window.EasybookAiChat.createRenderScheduler(()=>{if(aiHubCurrent===session.id&&tab==='ai-hub')renderAiHub()});
  const refresh=()=>scheduler.request();
@@ -3150,7 +3150,7 @@ async function sendAiHubMessage(content,resumeSession=null,{regenerate=false,sea
   if(localModel&&!directSearch){partial.streaming=false;renderAiHub();await generateAiHubTitle(session,run);if(!resumeSession)await autoRememberAi(content,{localModel:session.model,workspace:run.workspace,signal:run.controller.signal})}
  }catch(error){
   const stopped=!run.browserError&&(error.name==='AbortError'||run.controller.signal.aborted);
-  if(partial){partial.status=stopped?'stopped':'error';partial.error=stopped?'已停止生成，可以继续回答。':(run.browserError||error.message||'生成失败，请重试。')+(partial.browserAnswerPending?'。已保留本地浏览来源，可重试生成回答。':'');}
+  if(partial){partial.status=stopped?'stopped':'error';partial.error=stopped?(directSearch?'已停止搜索，可以重新搜索。':'已停止生成，可以继续回答。'):(run.browserError||error.message||'生成失败，请重试。')+(partial.browserAnswerPending?'。已保留本地浏览来源，可重试生成回答。':'');}
   else if(!stopped)toast(error.message);
  }finally{
   if(!run.controller.signal.aborted)endBrowser();
