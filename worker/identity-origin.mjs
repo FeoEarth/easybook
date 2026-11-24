@@ -2,6 +2,12 @@ import {publicOrigin} from './server-config.mjs';
 export {publicOrigin};
 export const IDENTITY_ORIGIN='https://easybook.loonxy.com';
 export const LEGACY_IDENTITY_ORIGIN='https://easybook-mcp-oauth.1902521952.workers.dev';
+// Keep the historical issuer and passkey RP unchanged. The current account
+// workers.dev subdomain is only an explicitly trusted transport alias.
+export const CURRENT_IDENTITY_TRANSPORT='https://easybook-mcp-oauth.zerolooo.workers.dev';
+export function identityTransportAlias(origin,{preview=false}={}){
+ return origin===LEGACY_IDENTITY_ORIGIN||origin===CURRENT_IDENTITY_TRANSPORT||(preview&&/^https:\/\/[a-f0-9]{8}-easybook-mcp-oauth\.(1902521952|zerolooo)\.workers\.dev$/.test(origin));
+}
 export const NATIVE_REDIRECT='easybook://account/callback';
 export function identityEnabled(env){return env.IDENTITY_CANONICAL_V2==='true'}
 export function hasLegacyIdentity(env){return publicOrigin(env)===IDENTITY_ORIGIN}

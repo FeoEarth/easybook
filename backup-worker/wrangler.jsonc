@@ -43,10 +43,5 @@
   "vars": {
     "BACKUP_RETENTION_ENABLED": "true"
   },
-  "preview_urls": false,
-  "tags": [
-    "project:easybook",
-    "role:backup",
-    "access:internal"
-  ]
+  "preview_urls": false
 }

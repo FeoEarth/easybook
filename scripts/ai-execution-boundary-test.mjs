@@ -1,6 +1,10 @@
 import assert from 'node:assert/strict';
 import {aiReadiness,aiServiceReady,dispatchWebAI,webAI,AI_READINESS_PATH} from '../worker/ai-transport.mjs';
 import {legacyMcpRetirement} from '../worker/legacy-mcp-policy.mjs';
+import {identityTransportAlias} from '../worker/identity-origin.mjs';
+assert.equal(identityTransportAlias('https://1234abcd-easybook-mcp-oauth.zerolooo.workers.dev',{preview:true}),true);
+assert.equal(identityTransportAlias('https://evil-easybook-mcp-oauth.zerolooo.workers.dev',{preview:true}),false);
+assert.equal(identityTransportAlias('https://easybook-mcp-oauth.zerolooo.workers.dev.evil.test',{preview:true}),false);
 const base='https://easybook.test',key='a'.repeat(64),receiver={PUBLIC_ORIGIN:base,AI_CREDENTIAL_KEY:key};
 const env={...receiver,IDENTITY_SERVICE:{fetch:r=>aiReadiness(r,receiver)}};
 assert.equal(await aiServiceReady(env,{fresh:true}),true);
@@ -11,7 +15,7 @@ const proxy={...env,IDENTITY_SERVICE:{async fetch(r){forwarded++;assert.equal(r.
 const request=()=>new Request(base+'/api/ai/chat',{method:'POST',body:'{}',headers:{Authorization:'Easybook-Web token'}});
 const response=await dispatchWebAI(request(),proxy,{ready:async()=>true,local:async()=>{local++;throw Error('unexpected fallback')}});
 assert.equal(await response.text(),'stream');assert.equal(forwarded,1);assert.equal(local,0);
-proxy.IDENTITY_SERVICE.fetch=async()=>{throw Error('network')};await assert.rejects(dispatchWebAI(request(),proxy,{ready:async()=>true,local:async()=>{local++;return new Response()}}));assert.equal(local,0);
+proxy.IDENTITY_SERVICE.fetch=async()=>{throw Error('network')};assert.equal((await dispatchWebAI(request(),proxy,{ready:async()=>true,local:async()=>{local++;return new Response()}})).status,503);assert.equal(local,0);
 await dispatchWebAI(request(),proxy,{ready:async()=>false,local:async()=>{local++;return new Response()}});assert.equal(local,1);
 const p={kind:'account',accountId:'test'};await webAI(request(),env,{authenticate:async(r,e,options)=>{assert.equal(options.mutation,true);return p},execute:async(r,e,principal)=>{assert.equal(principal,p);return new Response('ok')}});
 assert.equal(legacyMcpRetirement(new Request(base+'/api/mcp/attest'),{WORKSPACE_IDENTITY_V2:'true'},'sync').status,410);

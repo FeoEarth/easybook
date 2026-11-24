@@ -49,10 +49,5 @@
     }
   ],
   "workers_dev": false,
-  "preview_urls": false,
-  "tags": [
-    "project:easybook",
-    "role:finance",
-    "access:internal"
-  ]
+  "preview_urls": false
 }

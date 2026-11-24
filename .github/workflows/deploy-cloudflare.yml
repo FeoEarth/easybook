@@ -1,6 +1,7 @@
 name: Deploy Cloudflare Worker
 on:
   workflow_dispatch:
+  workflow_call:
   push:
     branches: [main]
     paths:
@@ -8,6 +9,7 @@ on:
       - 'mcp-oauth/**'
       - '.github/workflows/deploy-mcp-pairing.yml'
       - 'scripts/ai-execution-boundary-test.mjs'
+      - 'scripts/live-ai-execution-probe.mjs'
       - 'editor/**'
       - 'shared/**'
       - 'app/src/main/assets/**'
@@ -35,7 +37,7 @@ on:
       - 'scripts/mcp-upload-test.mjs'
       - '.github/workflows/deploy-cloudflare.yml'
 concurrency:
-  group: ${{ github.ref == 'refs/heads/main' && 'easybook-production-worker' || format('easybook-validation-{0}', github.ref_name) }}
+  group: ${{ github.workflow == 'Deploy membership checkout' && format('easybook-membership-release-child-{0}', github.run_id) || (github.ref == 'refs/heads/main' && 'easybook-production-worker' || format('easybook-validation-{0}', github.ref_name)) }}
   cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
 permissions:
   contents: read

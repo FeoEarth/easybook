@@ -1,0 +1,9 @@
+# Service and resource governance (phase 8–9)
+
+The Web and Android AI transports share account principal construction and a single AI core. The canonical Web route forwards through IDENTITY_SERVICE only after a vault-key readiness proof; a pre-dispatch failure uses the existing local implementation, never replaying a submitted mutation or stream. Noncanonical and self-hosted endpoints keep the local compatibility path. AI OAuth callbacks preserve origin/state behavior. No AI keys, user data or signing secrets are migrated. Old workspace-key MCP pairing retirement is centralized; legacy self-host compatibility code is retained pending dependency proof.
+
+The binding contract is tracked in infra/resource-inventory.json. D1/R2 bindings required for sync, recovery, signed payment reconciliation and older routes remain; no destructive migration is implied. The release coordinator promotes identity before sync, retains existing candidate smoke checks and each component's rollback. Membership deployments delegate Web/identity releases to this coordinator. Worker tags are Cloudflare metadata, not unsupported Wrangler fields; audit reports drift. Direct rollback of one component must preserve a compatible peer.
+
+The daily resource-health workflow is read-only and reports failures, missing resources, binding/public/preview/tag drift, stale backups and unsafe expiration. Prefer a dedicated least-privilege CLOUDFLARE_AUDIT_TOKEN; existing deployment token is fallback. Reports exclude key values, resource IDs, URLs with secrets and raw errors. Any unavailable API permission is an incomplete audit, not proof of absence.
+
+No deletion is automated. Archived legacy resources are reviewed privately, and deletion requires separate approval. R2 release recovery and externally served static resources are intentionally allowed to be unbound. Backups, safety checkpoints, user content and the independent security database remain isolated.

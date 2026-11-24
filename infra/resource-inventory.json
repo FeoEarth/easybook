@@ -1,0 +1,209 @@
+{
+  "format": 1,
+  "workers": {
+    "easybook-sync": {
+      "tags": [
+        "project:easybook",
+        "role:sync",
+        "access:public"
+      ],
+      "public": true,
+      "services": [
+        "easybook-mcp-oauth",
+        "easybook-payments"
+      ],
+      "d1": [
+        "easybook-data",
+        "easybook-security"
+      ],
+      "r2": [
+        "easybook-attachments"
+      ],
+      "browser": true
+    },
+    "easybook-mcp-oauth": {
+      "tags": [
+        "project:easybook",
+        "role:identity",
+        "access:public"
+      ],
+      "public": true,
+      "d1": [
+        "easybook-data",
+        "easybook-security"
+      ],
+      "r2": [
+        "easybook-attachments"
+      ],
+      "kv": [
+        "easybook-mcp-oauth"
+      ],
+      "browser": true
+    },
+    "easybook-backup": {
+      "tags": [
+        "project:easybook",
+        "role:backup",
+        "access:internal"
+      ],
+      "public": false,
+      "d1": [
+        "easybook-data",
+        "easybook-security"
+      ],
+      "r2": [
+        "easybook-attachments",
+        "easybook-backups",
+        "easybook-security-checkpoints"
+      ]
+    },
+    "easybook-payments": {
+      "tags": [
+        "project:easybook",
+        "role:finance",
+        "access:internal"
+      ],
+      "public": false,
+      "services": [
+        "easybook-collections"
+      ],
+      "d1": [
+        "easybook-data",
+        "easybook-security"
+      ]
+    },
+    "easybook-collections": {
+      "tags": [
+        "project:easybook",
+        "role:finance",
+        "access:internal"
+      ],
+      "public": false,
+      "d1": [
+        "easybook-data",
+        "easybook-security"
+      ]
+    },
+    "easybook-iodash": {
+      "tags": [
+        "project:easybook",
+        "role:admin",
+        "access:custom-domain"
+      ],
+      "public": false,
+      "d1": [
+        "easybook-data",
+        "easybook-security",
+        "easybook-iodash-auth"
+      ]
+    },
+    "easybook-release-rollback-probe": {
+      "tags": [
+        "project:easybook",
+        "role:release-probe",
+        "access:internal"
+      ],
+      "public": false
+    },
+    "ec127001": {
+      "tags": [
+        "project:telegram",
+        "role:editorial",
+        "access:public"
+      ],
+      "public": true,
+      "d1": [
+        "ec127001-data"
+      ]
+    },
+    "techverify": {
+      "tags": [
+        "project:telegram",
+        "role:verification",
+        "access:public"
+      ],
+      "public": true,
+      "d1": [
+        "techverify-db"
+      ]
+    },
+    "tg-relay-bot": {
+      "tags": [
+        "project:telegram",
+        "role:relay",
+        "access:public"
+      ],
+      "public": true,
+      "d1": [
+        "tg-forward-guard-data"
+      ],
+      "kv": [
+        "TG_RELAY_BOT_KV"
+      ]
+    },
+    "li": {
+      "tags": [
+        "project:infrastructure",
+        "role:shortlink",
+        "access:public"
+      ],
+      "public": true,
+      "kv": [
+        "shorturl"
+      ]
+    },
+    "mailcode": {
+      "tags": [
+        "project:infrastructure",
+        "role:mail",
+        "access:public"
+      ],
+      "public": true
+    },
+    "dawn-surf-13f8": {
+      "tags": [
+        "project:infrastructure",
+        "role:email",
+        "access:email",
+        "status:legacy"
+      ],
+      "public": true,
+      "review": "archived; deletion requires approval"
+    }
+  },
+  "d1": [
+    "easybook-data",
+    "easybook-security",
+    "easybook-iodash-auth",
+    "ec127001-data",
+    "techverify-db",
+    "tg-forward-guard-data"
+  ],
+  "kv": [
+    "easybook-mcp-oauth",
+    "TG_RELAY_BOT_KV",
+    "shorturl",
+    "nfd"
+  ],
+  "r2": [
+    "easybook-attachments",
+    "easybook-backups",
+    "easybook-security-checkpoints",
+    "easybook-release-recovery",
+    "tool"
+  ],
+  "privateR2": [
+    "easybook-backups",
+    "easybook-security-checkpoints",
+    "easybook-release-recovery"
+  ],
+  "exceptions": {
+    "unboundKV": [
+      "nfd"
+    ],
+    "unboundR2": [
+      "easybook-release-recovery",
+      "tool"
+    ]
+  }
+}

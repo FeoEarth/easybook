@@ -53,7 +53,7 @@ export async function aiServiceReady(env,{fresh=false}={}){
 }
 export async function dispatchWebAI(request,env,{local=webAI,ready=aiServiceReady}={}){
  if(new URL(request.url).origin===publicOrigin(env)&&await ready(env)){// Never retry a forwarded mutation or stream.
-  return env.IDENTITY_SERVICE.fetch(request);
+  try{return await env.IDENTITY_SERVICE.fetch(request)}catch{console.error(JSON.stringify({event:'ai_service_dispatch_failed'}));return json({error:'AI service temporarily unavailable'},503)}
  }
  return local(request,env);
 }

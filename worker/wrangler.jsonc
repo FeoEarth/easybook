@@ -54,10 +54,5 @@
       "binding": "MEMBERSHIP_SCANNER",
       "service": "easybook-payments"
     }
-  ],
-  "tags": [
-    "project:easybook",
-    "role:sync",
-    "access:public"
   ]
 }

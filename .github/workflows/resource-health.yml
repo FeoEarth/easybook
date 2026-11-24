@@ -1,0 +1,36 @@
+name: Cloudflare resource health
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: '25 2 * * *'
+  push:
+    branches: [main]
+    paths:
+      - 'infra/resource-inventory.json'
+      - 'scripts/resource-health-audit.mjs'
+      - '.github/workflows/resource-health.yml'
+permissions:
+  contents: read
+concurrency:
+  group: easybook-resource-health
+  cancel-in-progress: false
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - run: node scripts/resource-health-audit.mjs
+        env:
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          CLOUDFLARE_AUDIT_TOKEN: ${{ secrets.CLOUDFLARE_AUDIT_TOKEN }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: resource-health-report
+          path: resource-health-report.json
+          retention-days: 14

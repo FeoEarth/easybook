@@ -5,7 +5,7 @@ on:
 permissions:
   contents: read
 concurrency:
-  group: ${{ github.workflow == 'Deploy Cloudflare Worker' && format('easybook-oauth-child-{0}', github.run_id) || 'easybook-production-worker' }}
+  group: ${{ github.workflow == 'Deploy MCP OAuth Worker' && 'easybook-production-worker' || format('easybook-oauth-child-{0}', github.run_id) }}
   cancel-in-progress: false
 jobs:
   deploy:
@@ -51,7 +51,7 @@ jobs:
         run: node scripts/cloudflare-release.mjs promote --oauth
       - name: Verify OAuth production
         if: github.ref == 'refs/heads/main'
-        run: node scripts/oauth-release-smoke.mjs https://easybook.loonxy.com && node scripts/native-transport-release-probe.mjs https://easybook.loonxy.com
+        run: node scripts/oauth-release-smoke.mjs '${{ steps.candidate.outputs.production_url }}' && node scripts/native-transport-release-probe.mjs '${{ steps.candidate.outputs.production_url }}'
       - name: Roll back failed OAuth promotion
         if: ${{ (failure() || cancelled()) && github.ref == 'refs/heads/main' }}
         run: node scripts/cloudflare-release.mjs rollback --oauth

@@ -2,7 +2,7 @@ import {nativeAI,webAI,aiReadiness,AI_READINESS_PATH,aiPath} from '../../worker/
 import {legacyMcpRetirement} from '../../worker/legacy-mcp-policy.mjs';
 import {requireRestoreAccess} from '../../worker/security-checkpoint.mjs';
 import {modernWorkspaces,V2_SCOPES} from '../../worker/oauth-workspace-policy.mjs';
-import {IDENTITY_ORIGIN,LEGACY_IDENTITY_ORIGIN,identityEnabled,publicOrigin,hasLegacyIdentity,identityHttpsAllowed} from '../../worker/identity-origin.mjs';
+import {IDENTITY_ORIGIN,LEGACY_IDENTITY_ORIGIN,identityEnabled,publicOrigin,hasLegacyIdentity,identityHttpsAllowed,identityTransportAlias} from '../../worker/identity-origin.mjs';
 import {validateServerConfig} from '../../worker/server-config.mjs';
 import {webAccountRoutes} from './web-sessions.mjs';
 import {nativeAccountRoutes} from './native-sessions.mjs';
@@ -312,12 +312,12 @@ export default {async fetch(request,env,ctx){
   const web=await webAccountRoutes(request,env);if(web)return web;
   // Fixed first-party native API transport. Do not redirect POSTs or proxy OAuth
   // endpoints: browser login/consent and the WebAuthn RP remain canonical.
-  if(identityEnabled(env)&&hasLegacyIdentity(env)&&(requestUrl.origin===LEGACY_IDENTITY_ORIGIN||/^https:\/\/[a-f0-9]{8}-easybook-mcp-oauth\.1902521952\.workers\.dev$/.test(requestUrl.origin))&&path.startsWith('/account/native/')){
+  if(identityEnabled(env)&&hasLegacyIdentity(env)&&identityTransportAlias(requestUrl.origin,{preview:true})&&path.startsWith('/account/native/')){
    if(request.headers.has('Origin')||request.headers.get('X-Easybook-Native')!=='1')return Response.json({error:'native_request_required'},{status:403,headers:{'Cache-Control':'no-store'}});
    return await oauthHandler.fetch(new Request(publicOrigin(env)+path+requestUrl.search,request),env);
   }
 
-  if(modernWorkspaces(env)&&hasLegacyIdentity(env)&&requestUrl.origin===LEGACY_IDENTITY_ORIGIN){if(path.startsWith('/.well-known/oauth-')||path==='/oauth/authorize'||path==='/authorize')return new Response(null,{status:303,headers:{Location:publicOrigin(env)+path+requestUrl.search,'Cache-Control':'no-store','Referrer-Policy':'no-referrer'}});if(['/register','/token','/oauth/token'].includes(path))return Response.json({error:'legacy_issuer_retired',authorization_server:publicOrigin(env)},{status:410,headers:{'Cache-Control':'no-store'}});}
+  if(modernWorkspaces(env)&&hasLegacyIdentity(env)&&identityTransportAlias(requestUrl.origin)){if(path.startsWith('/.well-known/oauth-')||path==='/oauth/authorize'||path==='/authorize')return new Response(null,{status:303,headers:{Location:publicOrigin(env)+path+requestUrl.search,'Cache-Control':'no-store','Referrer-Policy':'no-referrer'}});if(['/register','/token','/oauth/token'].includes(path))return Response.json({error:'legacy_issuer_retired',authorization_server:publicOrigin(env)},{status:410,headers:{'Cache-Control':'no-store'}});}
   if(['/token','/oauth/token','/oauth/revoke','/register'].includes(path))await rateLimit(request,env,'oauth',60);
   const active=identityEnabled(env)&&new URL(request.url).origin===publicOrigin(env)?(hasLegacyIdentity(env)?canonicalProvider:new OAuthProvider({...providerOptions,resourceMetadata:{resource:publicOrigin(env)+'/mcp'},authorizeEndpoint:'/oauth/authorize',scopesSupported:['mcp:read',...V2_SCOPES]})):provider;
   return await guardTokens(request,env,ctx,active);

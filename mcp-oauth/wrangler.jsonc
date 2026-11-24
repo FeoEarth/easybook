@@ -38,10 +38,5 @@
       "binding": "ATTACHMENTS",
       "bucket_name": "easybook-attachments"
     }
-  ],
-  "tags": [
-    "project:easybook",
-    "role:identity",
-    "access:public"
   ]
 }

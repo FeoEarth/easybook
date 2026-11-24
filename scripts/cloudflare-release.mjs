@@ -34,7 +34,8 @@ if(mode==='stage'){
  const flags=['WORKSPACE_IDENTITY_V2','IDENTITY_CANONICAL_V2','SECURITY_CHECKPOINT_V2'].map(name=>bindings.some(b=>b.name===name&&b.text==='true'));if(flags.some(Boolean)&&!flags.every(Boolean))throw Error('Identity release requires coordinated workspace, issuer and checkpoint activation');state.identityV2=flags.every(Boolean);
  if(bindings.some(b=>b.name==='SECURITY_ADMIN_ACTION'&&b.text))throw Error('Clear security administration configuration before application deployment');
  writeFileSync(stateFile,JSON.stringify(state,null,2));
- if(process.env.GITHUB_OUTPUT)appendFileSync(process.env.GITHUB_OUTPUT,`url=${url}\nversion=${id}\nidentity_v2=${state.identityV2}\n`);
+ const previewHost=new URL(url).hostname,productionHost=previewHost.replace(/^[a-f0-9]{8}-/,'');if(productionHost===previewHost||!productionHost.startsWith(worker+'.'))throw Error('Unexpected candidate hostname');
+ if(process.env.GITHUB_OUTPUT)appendFileSync(process.env.GITHUB_OUTPUT,`url=${url}\nproduction_url=https://${productionHost}\nversion=${id}\nidentity_v2=${state.identityV2}\n`);
  summary(`Candidate ${id}; baseline deployment ${baseline.id}; no production traffic changed.`);
 }else if(mode==='promote'||mode==='rollback'){
  if(mode==='rollback'&&!existsSync(stateFile)){summary('No release state exists; no promotion was attempted.');process.exit(0)}
