@@ -12,6 +12,6 @@ const failed='backups/'+id(8)+'/status.json';await b.put(failed,'{}');const live
 const guard=async()=>true;await pruneBusiness(b,latest,{now,guard});assert.ok(b.data.has(old.manifestKey));assert.ok(!b.data.has(failed));assert.ok(b.data.has(orphan));
 await run(2);await pruneBusiness(b,latest,{now,guard});assert.ok(!b.data.has(old.manifestKey));assert.ok(b.data.has(live));assert.ok(!b.data.has(orphan));
 const s=bucket();const checkpoints=[];
-for(const age of [0,1/24,2/24,8,8.5,30,100,101]){const i=id(age),p='checkpoints/'+i+'/',m={status:'complete',sqlKey:p+'security.sql'};await s.put(p+'manifest.json',JSON.stringify(m));await s.put(m.sqlKey,'x');checkpoints.push(m)}
+for(const age of [0,1/24,2/24,8.25,8.5,30,100,101]){const i=id(age),p='checkpoints/'+i+'/',m={status:'complete',sqlKey:p+'security.sql'};await s.put(p+'manifest.json',JSON.stringify(m));await s.put(m.sqlKey,'x');checkpoints.push(m)}
 await s.put('status/latest.json',JSON.stringify(checkpoints[0]));await pruneSecurity(s,checkpoints[0],{now});assert.ok(s.data.has(checkpoints[0].sqlKey));assert.ok(s.data.has(checkpoints[3].sqlKey));assert.ok(!s.data.has(checkpoints[4].sqlKey));assert.ok(s.data.has(checkpoints[6].sqlKey));assert.ok(!s.data.has(checkpoints[7].sqlKey));
 console.log('PASS CAS protection, failed cleanup, minimum retained generations, conservative blob sweep and security tiers');
