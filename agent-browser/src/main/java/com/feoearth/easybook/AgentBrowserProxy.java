@@ -6,11 +6,13 @@ import java.net.InetAddress;
 import java.net.InetSocketAddress;
 import java.net.ServerSocket;
 import java.net.Socket;
+import java.net.SocketTimeoutException;
 import java.net.URI;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashSet;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Set;
@@ -19,13 +21,23 @@ import java.util.concurrent.Executors;
 
 /** Dedicated CONNECT transport. Gecko still owns end-to-end TLS verification. */
 final class AgentBrowserProxy implements AutoCloseable {
+    enum Failure { DNS, ADDRESS, CONNECT, TIMEOUT }
+
+    private static final int CONNECT_BUDGET_MS = 10000;
     private final ServerSocket listener = new ServerSocket(0, 32, InetAddress.getByName("127.0.0.1"));
     private final ExecutorService workers = Executors.newFixedThreadPool(64);
     private final Set<Socket> sockets = new HashSet<>();
+    private final LinkedHashMap<String, FailureReport> failures = new LinkedHashMap<>();
     private long generation;
     private boolean active;
     private String probeHost;
     private Runnable probeNotice;
+
+    private static final class FailureReport {
+        final Failure reason;
+        final long observedAt = System.nanoTime();
+        FailureReport(Failure reason) { this.reason = reason; }
+    }
 
     AgentBrowserProxy() throws IOException {
         workers.execute(this::accept);
@@ -44,6 +56,7 @@ final class AgentBrowserProxy implements AutoCloseable {
         generation++;
         probeHost = null;
         probeNotice = null;
+        failures.clear();
         for (Socket socket : sockets) close(socket);
         sockets.clear();
     }
@@ -106,6 +119,8 @@ final class AgentBrowserProxy implements AutoCloseable {
 
     private void connect(Socket client, long lease) {
         Socket remote = null;
+        String host = null;
+        Failure stage = null;
         try {
             client.setSoTimeout(12000);
             InputStream input = client.getInputStream();
@@ -113,17 +128,25 @@ final class AgentBrowserProxy implements AutoCloseable {
             String[] request = header.substring(0, header.indexOf("\r\n")).split(" ", -1);
             if (request.length != 3 || !request[0].equals("CONNECT") || !request[2].matches("HTTP/1\\.[01]") ||
                 !request[1].endsWith(":443")) throw new IOException("Invalid tunnel");
-            String host = request[1].substring(0, request[1].length() - 4);
+            host = request[1].substring(0, request[1].length() - 4).toLowerCase(Locale.ROOT);
             if (seeProbe(host, lease)) throw new IOException("Local proxy check");
             if (!publicHost(host)) throw new IOException("Invalid destination");
-            remote = connectPublic(InetAddress.getAllByName(host), lease);
+            stage = Failure.DNS;
+            InetAddress[] resolved = InetAddress.getAllByName(host);
+            stage = Failure.ADDRESS;
+            List<InetAddress> candidates = connectionOrder(resolved);
+            stage = Failure.CONNECT;
+            remote = connectPublic(candidates, lease);
+            report(host, lease, null);
+            stage = null;
             remote.setSoTimeout(30000);
             client.setSoTimeout(30000);
             client.getOutputStream().write("HTTP/1.1 200 Connection Established\r\n\r\n".getBytes(StandardCharsets.US_ASCII));
             Socket target = remote;
             workers.execute(() -> relay(target, client));
             relay(client, target);
-        } catch (IOException | RuntimeException ignored) {
+        } catch (IOException | RuntimeException error) {
+            if (stage != null) report(host, lease, error instanceof SocketTimeoutException ? Failure.TIMEOUT : stage);
             try { client.getOutputStream().write("HTTP/1.1 403 Forbidden\r\nConnection: close\r\nContent-Length: 0\r\n\r\n".getBytes(StandardCharsets.US_ASCII)); }
             catch (IOException ignoredWrite) { }
         } finally {
@@ -131,6 +154,19 @@ final class AgentBrowserProxy implements AutoCloseable {
             close(remote);
             synchronized (this) { sockets.remove(client); sockets.remove(remote); }
         }
+    }
+
+    synchronized Failure failureFor(String host, long notBefore) {
+        FailureReport report = failures.get(host);
+        return report != null && report.observedAt - notBefore >= 0 ? report.reason : null;
+    }
+
+    private synchronized void report(String host, long lease, Failure failure) {
+        if (!active || lease != generation) return;
+        failures.remove(host);
+        if (failure == null) return;
+        if (failures.size() >= 16) failures.remove(failures.keySet().iterator().next());
+        failures.put(host, new FailureReport(failure));
     }
 
     static List<InetAddress> connectionOrder(InetAddress[] resolved) throws IOException {
@@ -147,10 +183,18 @@ final class AgentBrowserProxy implements AutoCloseable {
         return candidates;
     }
 
-    private Socket connectPublic(InetAddress[] resolved, long lease) throws IOException {
-        List<InetAddress> candidates = connectionOrder(resolved);
+    static int connectionTimeout(int remainingMillis, int attemptsLeft) {
+        if (attemptsLeft == 1) return remainingMillis;
+        return Math.min(2500, remainingMillis);
+    }
+
+    private Socket connectPublic(List<InetAddress> candidates, long lease) throws IOException {
+        int attempts = Math.min(4, candidates.size());
+        long started = System.nanoTime();
         IOException failure = null;
-        for (InetAddress address : candidates.subList(0, Math.min(4, candidates.size()))) {
+        for (int i = 0; i < attempts; i++) {
+            int remaining = CONNECT_BUDGET_MS - (int) ((System.nanoTime() - started) / 1_000_000);
+            if (remaining <= 0) throw new SocketTimeoutException("Connection budget exhausted");
             Socket remote = new Socket();
             try {
                 synchronized (this) {
@@ -158,7 +202,7 @@ final class AgentBrowserProxy implements AutoCloseable {
                     sockets.add(remote);
                 }
                 // Connect to the validated address itself without a second DNS lookup.
-                remote.connect(new InetSocketAddress(address, 443), 2500);
+                remote.connect(new InetSocketAddress(candidates.get(i), 443), connectionTimeout(remaining, attempts - i));
                 return remote;
             } catch (IOException error) {
                 failure = error;

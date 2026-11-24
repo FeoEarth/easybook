@@ -54,4 +54,11 @@ public class AgentBrowserProxyTest {
             return new String(socket.getInputStream().readAllBytes(), StandardCharsets.US_ASCII);
         }
     }
+
+    @Test public void lastAddressReceivesTheRemainingConnectionBudget() {
+        assertEquals(10000, AgentBrowserProxy.connectionTimeout(10000, 1));
+        assertEquals(2500, AgentBrowserProxy.connectionTimeout(10000, 2));
+        assertEquals(7500, AgentBrowserProxy.connectionTimeout(7500, 1));
+        assertEquals(600, AgentBrowserProxy.connectionTimeout(600, 2));
+    }
 }

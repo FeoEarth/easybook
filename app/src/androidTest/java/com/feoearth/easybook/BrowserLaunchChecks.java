@@ -58,18 +58,26 @@ final class BrowserLaunchChecks {
             approve(automation, "开始使用本地浏览器？", ready);
             JSONObject outcome = ready.get(45, TimeUnit.SECONDS);
             DataLayerChecks.require("ready".equals(outcome.optString("status")), "companion did not start: " + outcome);
-            CompletableFuture<JSONObject> content = new CompletableFuture<>();
-            JSONObject step = new JSONObject().put("token", args.getString("token")).put("id", UUID.randomUUID().toString())
-                .put("name", "browser_open").put("arguments", new JSONObject().put("url", "https://example.com/"));
-            request(test, main, "browser.step", step, content);
-            approve(automation, "打开公开网页？", content);
-            JSONObject page = content.get(40, TimeUnit.SECONDS);
+            String token = args.getString("token");
+            JSONObject page = open(test, main, automation, token, "https://example.com/");
             DataLayerChecks.require("ok".equals(page.optString("status")) && "Example Domain".equals(page.optString("title"))
                 && page.optString("text").contains("documentation examples"),
                 "companion did not read the public HTTPS page: " + page);
+            JSONObject failed = open(test, main, automation, token, "https://missing-" + UUID.randomUUID() + ".example.com/");
+            DataLayerChecks.require("load_failed".equals(failed.optString("status")) && failed.optString("diagnostic").contains("域名解析失败"),
+                "companion did not report the failed DNS lookup: " + failed);
         } finally {
             test.runOnMainSync(() -> main.agentBrowserClient().call("browser.end", args));
         }
+    }
+
+    private static JSONObject open(Instrumentation test, MainActivity main, UiAutomation automation, String token, String url) throws Exception {
+        CompletableFuture<JSONObject> result = new CompletableFuture<>();
+        JSONObject args = new JSONObject().put("token", token).put("id", UUID.randomUUID().toString())
+            .put("name", "browser_open").put("arguments", new JSONObject().put("url", url));
+        request(test, main, "browser.step", args, result);
+        approve(automation, "打开公开网页？", result);
+        return result.get(40, TimeUnit.SECONDS);
     }
 
     private static void request(Instrumentation test, MainActivity main, String method, JSONObject args, CompletableFuture<JSONObject> reply) {

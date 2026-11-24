@@ -2553,7 +2553,7 @@ function aiToolActivityHTML(message){
   const status=['running','done','failed','approval','stopped'].includes(item.status)?item.status:'failed';
   const symbol=status==='done'?'✓':status==='failed'?'!':status==='approval'?'·':status==='stopped'?'—':'';
   const stateText={running:'执行中',done:'已完成',failed:'未成功',approval:'待确认',stopped:'已停止'}[status];
-  return '<div class="ai-tool-step" data-status="'+status+'"><span class="ai-tool-indicator" aria-hidden="true">'+symbol+'</span><strong title="'+esc(item.name)+'">'+esc(aiToolLabel(item.name))+'</strong><small>'+stateText+'</small></div>';
+  return '<div class="ai-tool-step" data-status="'+status+'"><span class="ai-tool-indicator" aria-hidden="true">'+symbol+'</span><strong title="'+esc(item.name)+'">'+esc(aiToolLabel(item.name))+'</strong><small>'+stateText+(item.diagnostic?' · '+esc(item.diagnostic):'')+'</small></div>';
  }).join('')+'</div></details>';
 }
 function recordAiToolEvent(message,event){
@@ -2563,7 +2563,8 @@ function recordAiToolEvent(message,event){
  if(event.type==='tool_start'){message.toolEvents.push({name,status:'running'});return}
  const entry=[...message.toolEvents].reverse().find(item=>item.name===name&&item.status==='running');
  const status=['done','failed','approval'].includes(event.status)?event.status:'failed';
- if(entry)entry.status=status;else message.toolEvents.push({name,status});
+ const diagnostic=typeof event.diagnostic==='string'?event.diagnostic.slice(0,100):'';
+ if(entry){entry.status=status;if(diagnostic)entry.diagnostic=diagnostic}else message.toolEvents.push({name,status,...(diagnostic?{diagnostic}:{})});
 }
 let aiSearchHandoff=null;
 function canContinueWebSearch(message){
@@ -3059,7 +3060,7 @@ async function sendAiHubMessage(content,resumeSession=null,{regenerate=false,sea
    const result=await native.call('browser.step',{token:run.browserToken,id:action.id,name:action.name,arguments:action.arguments});active();
    if(result.status==='browser_closed')throw Error(aiBrowserClosedMessage);
    if(result.status==='cancelled'||result.status==='expired')throw new DOMException('已停止浏览','AbortError');
-   onTool({type:'tool_end',name:action.name,status:result.status==='ok'?'done':'failed'});
+   onTool({type:'tool_end',name:action.name,status:result.status==='ok'?'done':'failed',diagnostic:result.diagnostic});
    while(JSON.stringify(result).length>3900&&result.links?.length)result.links.pop();
    if(JSON.stringify(result).length>3900)result.text=(result.text||'').slice(0,1200);
    browserHistory.push({id:action.id,name:action.name,arguments:action.arguments,result,...(action.reasoning?{reasoning:action.reasoning}:{})});
