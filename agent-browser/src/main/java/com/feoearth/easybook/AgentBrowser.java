@@ -123,6 +123,7 @@ final class AgentBrowser {
         if (preset.equals("search")) disclosure += "\n\n本次联网搜索可直接打开搜索结果中的公开站点。";
         confirm("开始使用本地浏览器？", disclosure, granted -> {
             if (!requested.equals(token)) return;
+            android.util.Log.d("EasybookBrowser", granted ? "Browser startup approved" : "Browser startup declined");
             if (!granted) { close(false); return; }
             try {
                 GeckoRuntime engine = runtime();
@@ -568,6 +569,7 @@ final class AgentBrowser {
 
     boolean backgrounded() {
         if (externalOpened) return true;
+        android.util.Log.d("EasybookBrowser", "Companion activity no longer visible");
         close(true);
         return false;
     }
@@ -593,6 +595,7 @@ final class AgentBrowser {
     }
 
     private void failStartup() {
+        android.util.Log.w("EasybookBrowser", "Gecko startup did not verify its local proxy");
         if (starting != null) { starting.complete(result("unavailable")); starting = null; }
         close(false);
     }

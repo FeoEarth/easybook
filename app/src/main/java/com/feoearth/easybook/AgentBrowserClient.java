@@ -11,6 +11,7 @@ import android.os.IBinder;
 import android.os.Looper;
 import android.os.Message;
 import android.os.Messenger;
+import android.os.Parcel;
 import android.os.RemoteException;
 import android.os.ResultReceiver;
 import org.json.JSONObject;
@@ -113,7 +114,7 @@ final class AgentBrowserClient {
             Bundle connection = new Bundle();
             connection.putBinder("owner", run.owner);
             activity.startActivityForResult(new Intent().setComponent(new ComponentName(AgentBrowserProtocol.PACKAGE, AgentBrowserProtocol.ACTIVITY))
-                .putExtras(connection).putExtra("receiver", receiver).putExtra("dark", activity.agentBrowserDark())
+                .putExtras(connection).putExtra("receiver", transportReceiver(receiver)).putExtra("dark", activity.agentBrowserDark())
                 .putExtra("autoSearch", preferences.getBoolean("autoSearch", false)), REQUEST);
             activityOpen = true;
             ui.postDelayed(() -> {
@@ -129,6 +130,18 @@ final class AgentBrowserClient {
             throw error;
         }
         reply.whenComplete((value, error) -> { if (error != null) clear(run, false); });
+    }
+
+    static ResultReceiver transportReceiver(ResultReceiver receiver) {
+        // Parcel records the concrete class name. The optional APK cannot load the host's callback subclass.
+        Parcel parcel = Parcel.obtain();
+        try {
+            receiver.writeToParcel(parcel, 0);
+            parcel.setDataPosition(0);
+            return ResultReceiver.CREATOR.createFromParcel(parcel);
+        } finally {
+            parcel.recycle();
+        }
     }
 
     private void send(Task run, String method, JSONObject args, CompletableFuture<JSONObject> reply) {
@@ -155,6 +168,7 @@ final class AgentBrowserClient {
     }
 
     void activityReturned(int resultCode) {
+        android.util.Log.d("EasybookBrowser", "Companion activity finished: " + resultCode);
         activityOpen = false;
         if (task != null) {
             if (resultCode == Activity.RESULT_OK) clear(task, true);
@@ -164,6 +178,7 @@ final class AgentBrowserClient {
 
     void close(boolean notify) {
         if (task != null) {
+            android.util.Log.d("EasybookBrowser", "Host closed browser task");
             sendEnd(task);
             clear(task, notify);
             if (activityOpen) activity.finishActivity(REQUEST);

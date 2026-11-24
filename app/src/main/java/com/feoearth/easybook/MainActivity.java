@@ -309,12 +309,15 @@ public class MainActivity extends Activity {
             if(destroyed||serverSwitching||generation!=documentGeneration||!LOCAL.equals(web.getUrl()))throw new SecurityException();
             repository.assertActiveProfile();
             security.authorize(method,args,generation);
-            if(agentBrowser==null)agentBrowser=new AgentBrowserClient(this,(token,failed)->{
-                if(!destroyed&&!serverSwitching&&LOCAL.equals(web.getUrl()))
-                    web.evaluateJavascript("window.easybookAgentBrowserStopped?.("+JSONObject.quote(token)+","+failed+")",null);
-            });
-            agentBrowser.call(method,args).whenComplete((value,error)->browserReply(reply,generation,id,value,error));
+            agentBrowserClient().call(method,args).whenComplete((value,error)->browserReply(reply,generation,id,value,error));
         }catch(Exception|LinkageError error){browserReply(reply,generation,id,null,error);}
+    }
+    AgentBrowserClient agentBrowserClient(){
+        if(agentBrowser==null)agentBrowser=new AgentBrowserClient(this,(token,failed)->{
+            if(!destroyed&&!serverSwitching&&LOCAL.equals(web.getUrl()))
+                web.evaluateJavascript("window.easybookAgentBrowserStopped?.("+JSONObject.quote(token)+","+failed+")",null);
+        });
+        return agentBrowser;
     }
     private void browserReply(JavaScriptReplyProxy reply,long generation,String id,JSONObject value,Throwable error){
         try{
