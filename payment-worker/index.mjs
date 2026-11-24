@@ -10,7 +10,7 @@ async function run(env){
 export async function paymentDue(env,now=Date.now()){
  if(env.MEMBERSHIP_ENABLED!=='true')return false;
  if(Math.floor(now/60000)%5===0)return true;
- const row=await env.DB.prepare('SELECT EXISTS(SELECT 1 FROM membership_orders WHERE settled_at IS NULL AND expires_at>?) OR EXISTS(SELECT 1 FROM membership_scan_windows) OR EXISTS(SELECT 1 FROM membership_cursors WHERE updated_at<?) AS due').bind(now,now-5*60000).first();
+ const row=await env.DB.prepare('SELECT EXISTS(SELECT 1 FROM membership_purchases WHERE settled_at IS NULL AND cancelled_at IS NULL AND expires_at>?) OR EXISTS(SELECT 1 FROM membership_gift_orders WHERE settled_at IS NULL AND cancelled_at IS NULL AND expires_at>?) OR EXISTS(SELECT 1 FROM membership_scan_windows) OR EXISTS(SELECT 1 FROM membership_cursors WHERE updated_at<?) AS due').bind(now,now,now-5*60000).first();
  return !!row?.due;
 }
 export async function financeTick(env,now=Date.now()){

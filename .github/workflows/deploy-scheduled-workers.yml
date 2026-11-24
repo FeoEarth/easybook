@@ -10,6 +10,7 @@ on:
       - 'scripts/finance-scheduler-test.mjs'
       - 'scripts/binding-backup-test.mjs'
       - 'scripts/membership-collection-test.mjs'
+      - 'scripts/membership-scanner-test.mjs'
       - '.github/workflows/deploy-scheduled-workers.yml'
 permissions:
   contents: read
