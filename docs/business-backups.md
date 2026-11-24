@@ -14,7 +14,7 @@ snapshot and captures document references and the business security epoch in
 that same batch. SQL uses SQLite's quote() for values, preserving BLOBs and text.
 It creates tables, inserts data and preserves autoincrement sequences before
 creating indexes/triggers, avoiding replay of audit triggers during import.
-It refuses unsupported virtual tables, more than 75 tables, SQL over 16 MiB,
+It refuses unsupported virtual tables, more than 256 tables, SQL over 16 MiB,
 more than 10,000 objects or over 5 GiB of objects. It stops incomplete work after
 12 minutes; a 15-minute D1 lease prevents concurrent invocations. A successful
 daily receipt suppresses additional runs. No application data rows are modified;
@@ -28,8 +28,7 @@ Deployment, a real completed run and a remote restore drill remain distinct.
 
 ## Storage and consistency
 
-`easybook-backups` is a separate private R2 bucket. The `backups/` prefix expires
-after 2,592,000 seconds (30 days); R2 expiration is asynchronous. The production
+`easybook-backups` is a separate private R2 bucket. CAS-v2 retains manifest format 1 for existing restore tooling, stores attachment bytes once under `blobs/sha256/`, and keeps SQL snapshots independent. Worker retention keeps 30 days and at least the latest three complete snapshots, removes failed runs after seven days, and only prunes completed legacy runs or sweeps unreferenced blobs once three complete CAS generations exist. The old unconditional 30-day R2 expiration must be disabled; multipart upload expiration remains. Security checkpoints retain hourly for 7 days, daily for 90 days and monthly thereafter. Retention is bounded and fail-closed, triggered only following verified backup/archive success. The production
 attachment bucket and existing release recovery points are not given a new TTL.
 R2 provides encryption at rest; transfers use HTTPS. This is not application-level
 encryption and not an isolated account. The scheduled Worker uses resource bindings and needs no API credential. The

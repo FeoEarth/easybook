@@ -1,4 +1,5 @@
 import {createHash} from 'node:crypto';
+import {pruneBusiness,pruneSecurity} from './retention.mjs';
 const sha=value=>createHash('sha256').update(value).digest('hex');
 const quoteId=value=>'"'+value.replaceAll('"','""')+'"';
 const schemaSQL="SELECT type,name,tbl_name,sql FROM sqlite_master WHERE sql IS NOT NULL AND name NOT LIKE 'sqlite_%' AND substr(name,1,4)<>'_cf_' ORDER BY type,name";
@@ -87,7 +88,7 @@ export async function backup(env,now=Date.now()){
  const claimed=await env.DB.prepare("INSERT INTO identity_maintenance_runs(name,lease,lease_until) VALUES('business-backup',?,?) ON CONFLICT(name) DO UPDATE SET lease=excluded.lease,lease_until=excluded.lease_until WHERE identity_maintenance_runs.completed_at<? AND identity_maintenance_runs.lease_until<? RETURNING name").bind(lease,now+900000,day,now).first();
  if(!claimed)return {status:'skipped'};
  const id=new Date(now).toISOString().replace(/[:.]/g,'-')+'-'+lease,prefix='backups/'+id+'/';
- const status={format:1,id,startedAt:new Date(now).toISOString(),release:env.RELEASE_SHA};
+ const status={format:1,storageLayout:'cas-v2',id,startedAt:new Date(now).toISOString(),release:env.RELEASE_SHA};
  const putJSON=(key,value)=>env.BACKUPS.put(key,JSON.stringify(value),{httpMetadata:{contentType:'application/json'}});
  try{
   await putJSON(prefix+'status.json',{...status,status:'running'});
@@ -112,9 +113,13 @@ export async function backup(env,now=Date.now()){
     if(listed.key.startsWith('_mcp_uploads/')){temporaryUploadsExcluded++;continue;}
     if(!validKey(listed.key))throw Error('unknown_object');
     const {object,value}=await checkedObject(env.ATTACHMENTS,listed.key);total+=value.length;if(total>5*1024**3)throw Error('backup_byte_limit');
-    const entry={key:listed.key,storageKey:prefix+'objects/'+listed.key,size:value.length,sha256:sha(value),httpMetadata:object.httpMetadata||{},customMetadata:object.customMetadata||{}};
+    const hash=sha(value),entry={key:listed.key,storageKey:'blobs/sha256/'+hash,size:value.length,sha256:hash,httpMetadata:object.httpMetadata||{},customMetadata:object.customMetadata||{}};
     if((entry.customMetadata.hash || entry.customMetadata.sha256) && entry.sha256!==(entry.customMetadata.hash || entry.customMetadata.sha256))throw Error('source_hash');
-    await env.BACKUPS.put(entry.storageKey,value);await checkedObject(env.BACKUPS,entry.storageKey,entry);objects.push(entry);
+    // CAS is immutable; read and verify existing bytes rather than overwriting them.
+    const existing=await env.BACKUPS.get(entry.storageKey);
+    if(existing){const saved=new Uint8Array(await existing.arrayBuffer());if(saved.length!==entry.size||sha(saved)!==entry.sha256)throw Error('cas_corrupt');}
+    else{await env.BACKUPS.put(entry.storageKey,value);await checkedObject(env.BACKUPS,entry.storageKey,entry);}
+    objects.push(entry);
    }
   const manifest={...status,status:'complete',format:1,database,objects,temporaryUploadsExcluded,source:{database:'easybook-data',bucket:'easybook-attachments'},securityDatabaseIncluded:false,consistency:'One D1 batch transaction plus verified R2 reference closure; no cross-service atomic snapshot',completedAt:new Date().toISOString()};
   await putJSON(prefix+'candidate-manifest.json',{...manifest,status:'pending_verification'});
@@ -122,6 +127,11 @@ export async function backup(env,now=Date.now()){
   const encoded=JSON.stringify(manifest);await env.BACKUPS.put(prefix+'manifest.json',encoded);
   const receipt={...status,status:'complete',completedAt:manifest.completedAt,manifestKey:prefix+'manifest.json',manifestSha256:sha(encoded),objects:objects.length,localOnly:verified.localOnly};
   await putJSON(prefix+'status.json',receipt);await putJSON('status/latest-success.json',receipt);
+  // Retention is best-effort and runs only following a fully verified backup, under its lease.
+  if(env.BACKUP_RETENTION_ENABLED==='true')try{
+   const guard=async()=>{const row=await env.DB.prepare("SELECT lease,lease_until FROM identity_maintenance_runs WHERE name='business-backup'").first();return row?.lease===lease&&row.lease_until>Date.now()+60000};
+   const summary=await pruneBusiness(env.BACKUPS,receipt,{now:Date.now(),guard});console.log(JSON.stringify({event:'backup_retention',...summary}));
+  }catch{console.error(JSON.stringify({event:'backup_retention_failed'}));}
   await env.DB.prepare("UPDATE identity_maintenance_runs SET completed_at=?,lease=NULL,lease_until=0,error=NULL WHERE name='business-backup' AND lease=?").bind(Date.now(),lease).run();return receipt;
  }catch(error){
   const code=/^[a-z_]+$/.test(error.message)?error.message:'backup_failed';
@@ -158,6 +168,8 @@ export async function archiveSecurity(env,now=Date.now()){
  const checksum=sha(bytes),prefix='checkpoints/'+new Date(now).toISOString().replace(/[:.]/g,'-')+'-'+crypto.randomUUID()+'/';
  await env.SECURITY_BACKUPS.put(prefix+'security.sql',bytes);await checkedObject(env.SECURITY_BACKUPS,prefix+'security.sql',{size:bytes.length,sha256:checksum});
  const manifest={format:'security-checkpoint-v1',status:'complete',capturedAt:new Date(now).toISOString(),hour,sqlKey:prefix+'security.sql',sqlSha256:checksum,sqlBytes:bytes.length,independentSecurityOnly:true,automaticRestoreAllowed:false,release:env.RELEASE_SHA};
- await env.SECURITY_BACKUPS.put(prefix+'manifest.json',JSON.stringify(manifest));await env.SECURITY_BACKUPS.put('status/latest.json',JSON.stringify(manifest));return manifest;
+ await env.SECURITY_BACKUPS.put(prefix+'manifest.json',JSON.stringify(manifest));await env.SECURITY_BACKUPS.put('status/latest.json',JSON.stringify(manifest));
+ if(env.BACKUP_RETENTION_ENABLED==='true'&&new Date(now).getUTCHours()===0)try{const summary=await pruneSecurity(env.SECURITY_BACKUPS,manifest,{now});console.log(JSON.stringify({event:'security_retention',...summary}));}catch{console.error(JSON.stringify({event:'security_retention_failed'}));}
+ return manifest;
 }
 export default {async fetch(){return new Response('Not found',{status:404});},async scheduled(controller,env){const results=await Promise.allSettled([archiveSecurity(env),backup(env)]);if(results.some(r=>r.status==='rejected'))throw Error('Backup maintenance incomplete');}};

@@ -9,6 +9,7 @@ on:
       - 'collection-worker/**'
       - 'scripts/finance-scheduler-test.mjs'
       - 'scripts/binding-backup-test.mjs'
+      - 'scripts/backup-retention-test.mjs'
       - 'scripts/membership-collection-test.mjs'
       - 'scripts/membership-scanner-test.mjs'
       - '.github/workflows/deploy-scheduled-workers.yml'
@@ -33,7 +34,7 @@ jobs:
       - run: npm ci --no-audit --no-fund
       - run: npm ci --prefix mcp-oauth --no-audit --no-fund
       - name: Verify backup and restore integrity
-        run: node scripts/binding-backup-test.mjs && node scripts/backup-test.mjs && node scripts/security-restore-test.mjs
+        run: node scripts/binding-backup-test.mjs && node scripts/backup-retention-test.mjs && node scripts/backup-test.mjs && node scripts/security-restore-test.mjs
       - name: Verify financial scheduling and offline transactions
         run: node scripts/finance-scheduler-test.mjs && node scripts/membership-scanner-test.mjs && node scripts/membership-collection-test.mjs
       - run: npm install --no-save --no-package-lock --no-audit --no-fund wrangler@4.152.0

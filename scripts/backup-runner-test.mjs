@@ -21,7 +21,7 @@ globalThis.fetch=async (input,options={})=>{
  if(url.hostname==='backup.invalid') {signedAuthorization=!!options.headers?.Authorization;return new Response(fixture.sql);}
  if(p.endsWith('/domains/managed'))return json({result:{enabled:false}});
  if(p.endsWith('/domains/custom'))return json({result:{domains:[]}});
- if(p.endsWith('/lifecycle'))return json({result:{rules:[{enabled:true,conditions:{prefix:'backups/'},deleteObjectsTransition:{condition:{type:'Age',maxAge:2592000}}}]}});
+ if(p.endsWith('/lifecycle'))return json({result:{rules:[{enabled:true,conditions:{prefix:''},abortMultipartUploadsTransition:{condition:{type:'Age',maxAge:86400}}}]}});
  if(p.endsWith('/query'))return json({result:[{results:[{mode:'open',epoch:process.env.BACKUP_SCENARIO==='epoch'?'different':'fixture'}]}]});
  if(p.endsWith('/export'))return json({result:{status:'complete',result:{signed_url:'https://backup.invalid/export.sql'}}});
  if(p.endsWith('/easybook-attachments/objects'))return json({result:[{key:fixture.base,http_metadata:{contentType:'text/plain'},custom_metadata:{name:'Fixture'}}],result_info:{is_truncated:false}});

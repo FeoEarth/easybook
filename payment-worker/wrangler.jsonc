@@ -7,8 +7,17 @@
   ],
   "observability": {
     "enabled": true,
+    "redact_query_string": true,
+    "logs": {
+      "enabled": true,
+      "invocation_logs": false,
+      "head_sampling_rate": 1,
+      "persist": true
+    },
     "traces": {
-      "enabled": true
+      "enabled": true,
+      "head_sampling_rate": 0.1,
+      "persist": true
     }
   },
   "triggers": {
@@ -35,5 +44,7 @@
       "service": "easybook-collections",
       "entrypoint": "CollectionScheduler"
     }
-  ]
+  ],
+  "workers_dev": false,
+  "preview_urls": false
 }

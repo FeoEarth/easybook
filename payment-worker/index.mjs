@@ -17,7 +17,7 @@ export async function financeTick(env,now=Date.now()){
  const jobs=[(async()=>{if(await paymentDue(env,now))return run(env);return {skipped:true}})()];
  // Retry at the next eligible tick; active signed/broadcast transactions retain priority.
  if(Math.floor(now/60000)%2===0||Math.floor(now/60000)%15===0)jobs.push((async()=>{if(!env.COLLECTION_SCHEDULER)throw Error('collection_scheduler_missing');return env.COLLECTION_SCHEDULER.tick()})());
- const result=await Promise.allSettled(jobs);if(result.some(r=>r.status==='rejected'))throw Error('financial_maintenance_incomplete');return result.map(r=>r.value);
+ const result=await Promise.allSettled(jobs);if(result.some(r=>r.status==='rejected')){console.error(JSON.stringify({event:'financial_maintenance_incomplete',paymentFailed:result[0]?.status==='rejected',collectionFailed:result[1]?.status==='rejected'}));throw Error('financial_maintenance_incomplete');}return result.map(r=>r.value);
 }
 export default {
  async scheduled(controller,env,ctx){ctx.waitUntil(financeTick(env,controller.scheduledTime||Date.now()))},

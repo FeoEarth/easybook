@@ -27,9 +27,10 @@ assert.equal(restored.prepare('SELECT body FROM fixture').get().body,"quote ' an
 const strict=new DatabaseSync(':memory:');strict.exec('PRAGMA foreign_keys=ON;BEGIN;');strict.exec(dump.sql);strict.exec('COMMIT;');assert.equal(strict.prepare('PRAGMA foreign_key_check').all().length,0,'D1-style enforced foreign keys allow out-of-order inserts only with transaction deferral');strict.close();
 assert.equal(inspectSnapshot(dump.sql).references.length,1);
 const result=await backup(f.env);assert.equal(result.status,'complete');
-const completed=JSON.parse(f.env.BACKUPS.data.get(result.manifestKey).value);assert.equal(completed.temporaryUploadsExcluded,1);
+const completed=JSON.parse(f.env.BACKUPS.data.get(result.manifestKey).value);assert.equal(completed.storageLayout,'cas-v2');assert.ok(completed.objects.every(e=>e.storageKey==='blobs/sha256/'+e.sha256));assert.equal(completed.temporaryUploadsExcluded,1);
 assert.equal((await verifyBackup(completed,e=>f.env.BACKUPS.data.get(e.storageKey).value)).attachments,1,'independent Node verifier restores Worker-generated SQL and validates R2 closure');
 assert.equal((await backup(f.env)).status,'skipped','daily completion prevents duplicate snapshots');
+const sharedKeys=completed.objects.map(e=>e.storageKey).sort();f.db.exec("UPDATE identity_maintenance_runs SET completed_at=0 WHERE name='business-backup'");const repeated=await backup(f.env);const again=JSON.parse(f.env.BACKUPS.data.get(repeated.manifestKey).value);assert.deepEqual(again.objects.map(e=>e.storageKey).sort(),sharedKeys);assert.equal([...f.env.BACKUPS.data.keys()].filter(k=>k.startsWith('blobs/sha256/')).length,new Set(sharedKeys).size);
 const broken=fixture();broken.db.prepare('INSERT INTO notes_json VALUES(?,?,0)').run(workspace,JSON.stringify({doc:{type:'doc',content:[{type:'image',attrs:{assetId:'sha256:'+id}}]}}));
 await assert.rejects(backup(broken.env),/attachment_missing/);assert.ok(!broken.env.BACKUPS.data.has('status/latest-success.json'));assert.ok([...broken.env.BACKUPS.data.keys()].every(k=>!k.endsWith('/manifest.json')));
 assert.ok([...broken.env.BACKUPS.data.keys()].some(k=>k.endsWith('/missing-references.json')),'pre-existing missing references are reported before copying objects');

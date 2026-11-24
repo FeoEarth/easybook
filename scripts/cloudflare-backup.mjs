@@ -72,7 +72,7 @@ const status={format:1,id,startedAt,release:process.env.GITHUB_SHA || null};
 try {
  await privateBucket(destination);
  const lifecycle=(await json('/r2/buckets/'+destination+'/lifecycle')).result;
- if(!lifecycle?.rules?.some(r=>r.enabled && r.conditions?.prefix==='backups/' && r.deleteObjectsTransition?.condition?.type==='Age' && r.deleteObjectsTransition.condition.maxAge===2592000))throw Error('backup_retention_missing');
+ if(!lifecycle?.rules?.some(r=>r.enabled && r.abortMultipartUploadsTransition)||lifecycle.rules.some(r=>r.enabled&&r.deleteObjectsTransition))throw Error('backup_retention_missing');
  await put(prefix+'status.json',Buffer.from(JSON.stringify({...status,status:'running'})));
  const checkpoint=await securityState();
  const sql=await exportDatabase();const inspected=inspectSnapshot(sql.toString('utf8'));

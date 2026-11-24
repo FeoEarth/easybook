@@ -8,8 +8,17 @@
   "keep_vars": true,
   "observability": {
     "enabled": true,
+    "redact_query_string": true,
+    "logs": {
+      "enabled": true,
+      "invocation_logs": false,
+      "head_sampling_rate": 1,
+      "persist": true
+    },
     "traces": {
-      "enabled": true
+      "enabled": true,
+      "head_sampling_rate": 0.1,
+      "persist": true
     }
   },
   "triggers": {
@@ -38,5 +47,7 @@
       "database_name": "easybook-security",
       "database_id": "d1761c2d-6372-489c-ae5e-114f3d5baa80"
     }
-  ]
+  ],
+  "workers_dev": false,
+  "preview_urls": false
 }
