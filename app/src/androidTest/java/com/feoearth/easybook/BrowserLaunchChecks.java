@@ -8,6 +8,7 @@ import android.os.Parcel;
 import android.os.ResultReceiver;
 import android.os.SystemClock;
 import android.view.accessibility.AccessibilityNodeInfo;
+import java.lang.reflect.Field;
 import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CountDownLatch;
@@ -44,6 +45,11 @@ final class BrowserLaunchChecks {
         run();
         MainActivity main = (MainActivity) test.startActivitySync(new Intent(test.getTargetContext(), MainActivity.class)
             .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK));
+        Field documentReady = MainActivity.class.getDeclaredField("ready");
+        documentReady.setAccessible(true);
+        long initializationDeadline = SystemClock.uptimeMillis() + 15000;
+        while (!documentReady.getBoolean(main) && SystemClock.uptimeMillis() < initializationDeadline) SystemClock.sleep(100);
+        DataLayerChecks.require(documentReady.getBoolean(main), "Easybook WebView did not finish initializing");
         JSONObject args = new JSONObject().put("token", UUID.randomUUID().toString()).put("preset", "search");
         CompletableFuture<JSONObject> ready = new CompletableFuture<>();
         UiAutomation automation = test.getUiAutomation();
@@ -55,10 +61,10 @@ final class BrowserLaunchChecks {
             long deadline = SystemClock.uptimeMillis() + 20000;
             while (!ready.isDone() && SystemClock.uptimeMillis() < deadline && !approved) {
                 AccessibilityNodeInfo window = automation.getRootInActiveWindow();
-                if (window != null && AgentBrowserProtocol.PACKAGE.contentEquals(window.getPackageName()) &&
+                if (window != null && AgentBrowserProtocol.PACKAGE.equals(String.valueOf(window.getPackageName())) &&
                     !window.findAccessibilityNodeInfosByText("开始使用本地浏览器？").isEmpty()) {
                     for (AccessibilityNodeInfo button : window.findAccessibilityNodeInfosByText("允许")) {
-                        if ("允许".contentEquals(button.getText())) approved = button.performAction(AccessibilityNodeInfo.ACTION_CLICK);
+                        if ("允许".equals(String.valueOf(button.getText()))) approved = button.performAction(AccessibilityNodeInfo.ACTION_CLICK);
                         if (approved) break;
                     }
                 }

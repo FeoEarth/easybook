@@ -61,4 +61,5 @@ jobs:
             adb install app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk
             adb shell am instrument -w -e browserLaunch true com.feoearth.easybook.notes.test/com.feoearth.easybook.PhaseTwoInstrumentation | tee "$RUNNER_TEMP/browser-launch.txt"
             adb logcat -b crash -d -t 120
+            adb logcat -d -s EasybookBrowser ActivityTaskManager GeckoRuntime GeckoSession
             grep -q 'passed=true' "$RUNNER_TEMP/browser-launch.txt"

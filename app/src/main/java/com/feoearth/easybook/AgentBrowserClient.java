@@ -168,6 +168,7 @@ final class AgentBrowserClient {
     }
 
     void activityReturned(int resultCode) {
+        android.util.Log.d("EasybookBrowser", "Companion activity finished: " + resultCode);
         activityOpen = false;
         if (task != null) {
             if (resultCode == Activity.RESULT_OK) clear(task, true);
@@ -177,6 +178,7 @@ final class AgentBrowserClient {
 
     void close(boolean notify) {
         if (task != null) {
+            android.util.Log.d("EasybookBrowser", "Host closed browser task");
             sendEnd(task);
             clear(task, notify);
             if (activityOpen) activity.finishActivity(REQUEST);
