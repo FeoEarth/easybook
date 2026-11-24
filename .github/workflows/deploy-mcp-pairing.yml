@@ -1,27 +1,11 @@
 name: Deploy MCP OAuth Worker
 on:
   workflow_dispatch:
-  push:
-    branches: [main]
-    paths:
-      - 'mcp-oauth/**'
-      - 'worker/mcp*.mjs'
-      # OAuth Worker imports the full shared AI implementation, including search quotas.
-      - 'worker/ai*.mjs'
-      - 'worker/migrations/0008-mcp-capabilities.sql'
-      - 'worker/migrations/0018-ai-credentials.sql'
-      - 'worker/migrations/0021-ai-profiles.sql'
-      - 'worker/notes.mjs'
-      - 'worker/management.mjs'
-      - 'shared/**'
-      - 'scripts/cloudflare-release.mjs'
-      - 'scripts/oauth-release-smoke.mjs'
-      - 'scripts/mcp-oauth-runtime-test.mjs'
-      - '.github/workflows/deploy-mcp-pairing.yml'
+  workflow_call:
 permissions:
   contents: read
 concurrency:
-  group: easybook-mcp-production
+  group: ${{ github.workflow == 'Deploy Cloudflare Worker' && format('easybook-oauth-child-{0}', github.run_id) || 'easybook-production-worker' }}
   cancel-in-progress: false
 jobs:
   deploy:
@@ -52,6 +36,7 @@ jobs:
           node scripts/mcp-upload-test.mjs
           node scripts/mcp-pairing-release-test.mjs
           node scripts/ai-byok-test.mjs
+          node scripts/ai-execution-boundary-test.mjs
           node scripts/mcp-oauth-runtime-test.mjs
           # Migration is applied via authorized Cloudflare; candidate smoke verifies runtime D1 readiness.
       - name: Upload OAuth candidate only
@@ -66,7 +51,7 @@ jobs:
         run: node scripts/cloudflare-release.mjs promote --oauth
       - name: Verify OAuth production
         if: github.ref == 'refs/heads/main'
-        run: node scripts/oauth-release-smoke.mjs https://easybook-mcp-oauth.1902521952.workers.dev && node scripts/native-transport-release-probe.mjs https://easybook-mcp-oauth.1902521952.workers.dev
+        run: node scripts/oauth-release-smoke.mjs https://easybook.loonxy.com && node scripts/native-transport-release-probe.mjs https://easybook.loonxy.com
       - name: Roll back failed OAuth promotion
         if: ${{ (failure() || cancelled()) && github.ref == 'refs/heads/main' }}
         run: node scripts/cloudflare-release.mjs rollback --oauth

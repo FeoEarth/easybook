@@ -7,7 +7,9 @@
     "global_fetch_strictly_public"
   ],
   "workers_dev": true,
-  "browser": { "binding": "WEB_SEARCH_BROWSER" },
+  "browser": {
+    "binding": "WEB_SEARCH_BROWSER"
+  },
   "keep_vars": true,
   "observability": {
     "enabled": true,
@@ -52,5 +54,10 @@
       "binding": "MEMBERSHIP_SCANNER",
       "service": "easybook-payments"
     }
+  ],
+  "tags": [
+    "project:easybook",
+    "role:sync",
+    "access:public"
   ]
 }

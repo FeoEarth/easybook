@@ -1,4 +1,5 @@
-import {AI_CHAT_MAX_BODY_BYTES} from '../../shared/ai-context-policy.mjs';
+import {nativeAI,webAI,aiReadiness,AI_READINESS_PATH,aiPath} from '../../worker/ai-transport.mjs';
+import {legacyMcpRetirement} from '../../worker/legacy-mcp-policy.mjs';
 import {requireRestoreAccess} from '../../worker/security-checkpoint.mjs';
 import {modernWorkspaces,V2_SCOPES} from '../../worker/oauth-workspace-policy.mjs';
 import {IDENTITY_ORIGIN,LEGACY_IDENTITY_ORIGIN,identityEnabled,publicOrigin,hasLegacyIdentity,identityHttpsAllowed} from '../../worker/identity-origin.mjs';
@@ -16,7 +17,7 @@ import {boundedJSON,object,validate,schema,str} from '../../worker/mcp-common.mj
 import {permissions} from '../../worker/mcp-access.mjs';
 import { verifyGithubIdentity } from '../../worker/mcp-github-identity.mjs';
 import { verifyWorkspaceAssertion } from './pairing.mjs';
-import {aiAPI,aiMcpOAuthPage,isAiMcpOAuthPage} from '../../worker/ai.mjs';
+import {aiMcpOAuthPage,isAiMcpOAuthPage} from '../../worker/ai.mjs';
 
 import {escape,oauthAppearance,htmlHeaders} from './appearance.mjs';
 const pairingWebOrigins = env=>new Set([...validateServerConfig(env).webClientOrigins,...(hasLegacyIdentity(env)?['https://easybook-sync.1902521952.workers.dev']:[])]);
@@ -26,23 +27,10 @@ const oauthHandler = {
   const oauth = env.OAUTH_PROVIDER;
   const web=await webAccountRoutes(request,env);if(web)return web;
   if(url.pathname==='/account/native/ai'&&request.method==='POST'){
-   const {nativeSession}=await import('./native-sessions.mjs');const current=await nativeSession(request,env);if(!current)return Response.json({error:'unauthorized'},{status:401});
-   let input;try{input=await boundedJSON(request,AI_CHAT_MAX_BODY_BYTES)}catch(error){if(error?.code==='PAYLOAD_TOO_LARGE')return Response.json({error:'payload_too_large'},{status:413});return Response.json({error:'invalid_request'},{status:400})}if(!object(input))return Response.json({error:'invalid_request'},{status:400});
-   const principal={kind:'account',accountId:current.account_id,sessionId:current.id,authenticatedAt:current.authenticated_at};let target,method='GET',body;
-   if(input.action==='config')target='/api/ai/config';
-   else if(input.action==='credential'&&['PUT','DELETE'].includes(input.method)){target='/api/ai/config';method=input.method;body=JSON.stringify(input)}
-   else if(input.action==='mcp'&&['GET','PUT','DELETE'].includes(input.method)){target='/api/ai/mcp';method=input.method;if(method!=='GET')body=JSON.stringify(input.config)}
-   else if(input.action==='preferences'&&['GET','PUT'].includes(input.method)){target='/api/ai/preferences';method=input.method;if(method==='PUT')body=JSON.stringify(input.preferences)}
-   else if(input.action==='models'){target='/api/ai/models?credentialId='+encodeURIComponent(input.credentialId||'')+(input.refresh?'&refresh=1':'')}
-   else if(input.action==='select'){target='/api/ai/select';method='POST';body=JSON.stringify({credentialId:input.credentialId})}
-   else if(input.action==='search'){target='/api/ai/search';method='POST';body=JSON.stringify({messages:input.messages,stream:input.stream===true})}
-   else if(input.action==='chat'){target='/api/ai/chat';method='POST';body=JSON.stringify({messages:input.messages,mode:input.mode,attachments:input.attachments,stream:input.stream===true,externalTools:input.externalTools===true,localSandbox:input.localSandbox===true,localSandboxBackend:input.localSandboxBackend==='linux'?'linux':'javascript',credentialId:input.credentialId,model:input.model,...(input.localBrowser===true?{localBrowser:true,browserPreset:input.browserPreset,browserHistory:input.browserHistory}:{}),...((['title','memory','browser_answer'].includes(input.purpose)||typeof input.purpose==='string'&&/^agent_run:[a-f0-9-]{36}$/.test(input.purpose))?{purpose:input.purpose}:{})})}
-    else if(input.action==='execute'){target='/api/ai/execute';method='POST';body=JSON.stringify({approvalId:input.approvalId})}
-   else return Response.json({error:'invalid_request'},{status:400});
-   const headers={'Content-Type':'application/json'};return aiAPI(new Request(new URL(target,request.url),{method,headers,body,signal:request.signal}),env,principal,{workspaceId:input.workspace||'',identityWorker:true});
+   return nativeAI(request,env);
   }
   if(identityEnabled(env)&&hasLegacyIdentity(env)&&url.origin===LEGACY_IDENTITY_ORIGIN&&((url.pathname==='/callback'&&url.searchParams.get('state')?.startsWith('account_'))||url.pathname==='/account/login'))return new Response(null,{status:303,headers:{Location:publicOrigin(env)+url.pathname+url.search,'Cache-Control':'no-store','Referrer-Policy':'no-referrer'}});
-  if(modernWorkspaces(env)&&(url.pathname==='/pairing/complete'||url.pathname==='/callback'&&!url.searchParams.get('state')?.startsWith('account_')))return new Response('Legacy authorization retired; authorize your Easybook account',{status:410});
+  const retired=legacyMcpRetirement(request,env,'identity');if(retired)return retired;
   if(url.pathname.startsWith('/account/native/passkeys/')){const {nativePasskeyRoutes}=await import('./native-passkeys.mjs');return nativePasskeyRoutes(request,env);}
   if(url.pathname==='/oauth/workspace-grants'){const {session,requireForm,redirect,json}=await import('./accounts.mjs');const s=await session(request,env);if(!s)return json({error:'unauthorized'},401);if(request.method!=='POST')return json({error:'method_not_allowed'},405);const form=await requireForm(request,s);const {revokeWorkspaceGrant}=await import('../../worker/grant-revocation.mjs');if(!await revokeWorkspaceGrant(env,s.account_id,form.get('id'),form.get('workspace')))return json({error:'not_found'},404);return redirect('/account');}
   if(url.pathname==='/account/native/manage'){const {nativeManagementRoutes}=await import('./native-management.mjs');return nativeManagementRoutes(request,env);}
@@ -318,7 +306,9 @@ export default {async fetch(request,env,ctx){
   if(!hasLegacyIdentity(env)&&requestUrl.origin!==publicOrigin(env))return Response.json({error:'identity_origin_required'},{status:403,headers:{'Cache-Control':'no-store'}});
   if(requestUrl.pathname==='/.well-known/oauth-protected-resource'){requestUrl.pathname+='\/mcp';request=new Request(requestUrl,request);}
   const path=requestUrl.pathname;
+  if(path===AI_READINESS_PATH)return modernWorkspaces(env)?await aiReadiness(request,env):new Response('Not found',{status:404});
   if(modernWorkspaces(env)&&request.method==='GET'&&isAiMcpOAuthPage(requestUrl))return await aiMcpOAuthPage(request,env);
+  if(modernWorkspaces(env)&&aiPath(path)&&requestUrl.origin===publicOrigin(env))return await webAI(request,env);
   const web=await webAccountRoutes(request,env);if(web)return web;
   // Fixed first-party native API transport. Do not redirect POSTs or proxy OAuth
   // endpoints: browser login/consent and the WebAuthn RP remain canonical.

@@ -50,5 +50,10 @@
   ],
   "vars": {
     "SECURITY_CHECKPOINT_V2": "true"
-  }
+  },
+  "tags": [
+    "project:easybook",
+    "role:admin",
+    "access:custom-domain"
+  ]
 }

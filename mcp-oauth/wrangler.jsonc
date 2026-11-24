@@ -7,7 +7,9 @@
     "global_fetch_strictly_public"
   ],
   "workers_dev": true,
-  "browser": { "binding": "WEB_SEARCH_BROWSER" },
+  "browser": {
+    "binding": "WEB_SEARCH_BROWSER"
+  },
   "observability": {
     "enabled": true,
     "redact_query_string": true
@@ -36,5 +38,10 @@
       "binding": "ATTACHMENTS",
       "bucket_name": "easybook-attachments"
     }
+  ],
+  "tags": [
+    "project:easybook",
+    "role:identity",
+    "access:public"
   ]
 }

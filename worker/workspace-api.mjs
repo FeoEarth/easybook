@@ -1,8 +1,9 @@
 import {deleteWorkspace} from './workspace-delete.mjs';
-import {nativeSession} from '../mcp-oauth/src/native-sessions.mjs';
+import {workspacePrincipal} from './request-principal.mjs';
+export {workspacePrincipal} from './request-principal.mjs';
 import {webSession} from '../mcp-oauth/src/web-sessions.mjs';
 import {isWebClientOriginAllowed} from './server-config.mjs';
-import {session,csrf,rateLimit,readCookie,ACCOUNT_COOKIE} from '../mcp-oauth/src/accounts.mjs';
+import {session,csrf,rateLimit} from '../mcp-oauth/src/accounts.mjs';
 import {boundedJSON,object} from './mcp-common.mjs';
 import {verifyWorkspaceCreation} from './turnstile.mjs';
 import {createInvitation,managedInvitations,inboxInvitations,previewInvitation,revokeInvitation,respondInvitation} from './workspace-invitations.mjs';
@@ -14,34 +15,8 @@ import {
 
 const reply=(body,status=200)=>Response.json(body,{status,headers:{'Cache-Control':'no-store','Referrer-Policy':'no-referrer','X-Content-Type-Options':'nosniff'}});
 const problem=(code,status)=>{throw new WorkspaceError(code,status)};
-const bearer=request=>request.headers.get('Authorization')?.match(/^Bearer ([a-f0-9]{64})$/)?.[1];
 async function inputBody(request){const value=await boundedJSON(request,4096);if(!object(value))problem('invalid_request',400);return value;}
 
-export async function workspacePrincipal(request,env,{mutation=false,allowAnonymous=false}={}){
- if(request.headers.get('Authorization')?.startsWith('Easybook-Web ')){
-  const s=await webSession(request,env);if(!s)problem('web_session_expired',401);
-  return {kind:'account',accountId:s.account_id,sessionId:s.id,authenticatedAt:s.authenticated_at,webClientOrigin:s.client_origin};
- }
- if(request.headers.get('Authorization')?.startsWith('Easybook-Session ')){
-  if(request.headers.has('Origin'))problem('native_origin_not_allowed',403);
-  const s=await nativeSession(request,env);if(!s)problem('account_session_expired',401);
-  return {kind:'account',accountId:s.account_id,sessionId:s.id,authenticatedAt:s.authenticated_at};
- }
- const token=bearer(request);
- // Explicit credentials never fall back to an unrelated cookie or anonymous mode.
- if(request.headers.has('Authorization')){
-  if(!token)problem('invalid_workspace_key',401);
-  const resolved=await resolveWorkspaceKey(env,token,{allowLegacy:env.WORKSPACE_LEGACY_IMPORT==='true'});
-  if(!resolved)problem('invalid_workspace_key',401);return {...resolved.principal,workspaceId:resolved.workspace.id};
- }
- const s=await session(request,env);
- if(s){
-  if(mutation&&(request.headers.get('Origin')!==new URL(request.url).origin||request.headers.get('X-Easybook-CSRF')!==await csrf(request,s)))problem('invalid_csrf',403);
-  return {kind:'account',accountId:s.account_id,sessionId:s.id,authenticatedAt:s.authenticated_at};
- }
- if(readCookie(request,ACCOUNT_COOKIE))problem('account_session_expired',401);
- if(!allowAnonymous)problem('authentication_required',401);return null;
-}
 
 // Returns null for unrelated paths. Activation is a coordinated release decision
 // in index.mjs, after stable-ID clients and external revocation recovery exist.

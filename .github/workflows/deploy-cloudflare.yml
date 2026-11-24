@@ -5,6 +5,9 @@ on:
     branches: [main]
     paths:
       - 'worker/**'
+      - 'mcp-oauth/**'
+      - '.github/workflows/deploy-mcp-pairing.yml'
+      - 'scripts/ai-execution-boundary-test.mjs'
       - 'editor/**'
       - 'shared/**'
       - 'app/src/main/assets/**'
@@ -37,7 +40,11 @@ concurrency:
 permissions:
   contents: read
 jobs:
+  identity:
+    uses: ./.github/workflows/deploy-mcp-pairing.yml
+    secrets: inherit
   deploy:
+    needs: identity
     runs-on: ubuntu-latest
     timeout-minutes: 15
     env:
@@ -65,6 +72,7 @@ jobs:
           node scripts/mcp-pairing-release-test.mjs
           node scripts/mcp-capabilities-test.mjs
           node scripts/mcp-upload-test.mjs
+          node scripts/ai-execution-boundary-test.mjs
       - name: Install pinned Wrangler
         run: npm install --no-save --no-package-lock --no-audit --no-fund wrangler@4.152.0
       - name: Validate bundle without deployment
@@ -101,8 +109,8 @@ jobs:
       - name: Verify production browser and API
         if: github.ref == 'refs/heads/main'
         run: |
-          node scripts/web-release-smoke.mjs https://easybook-sync.1902521952.workers.dev
-          if [ '${{ steps.candidate.outputs.identity_v2 }}' = 'true' ]; then node scripts/live-core-workspace-probe.mjs https://easybook-sync.1902521952.workers.dev; else node scripts/live-pairing-probe.mjs https://easybook-sync.1902521952.workers.dev; fi
+          node scripts/web-release-smoke.mjs https://easybook.loonxy.com
+          if [ '${{ steps.candidate.outputs.identity_v2 }}' = 'true' ]; then node scripts/live-core-workspace-probe.mjs https://easybook.loonxy.com; node scripts/live-ai-execution-probe.mjs https://easybook.loonxy.com; else node scripts/live-pairing-probe.mjs https://easybook.loonxy.com; fi
           node scripts/custom-domain-release-check.mjs verify
       - name: Roll back failed or cancelled promotion
         if: ${{ (failure() || cancelled()) && github.ref == 'refs/heads/main' }}
