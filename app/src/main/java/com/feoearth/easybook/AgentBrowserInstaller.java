@@ -29,7 +29,7 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 final class AgentBrowserInstaller {
-    private static final int CURRENT_VERSION = 5;
+    private static final int CURRENT_VERSION = 6;
     private static final long ESTIMATED_BYTES = 100L * 1024 * 1024;
     private static final long MAX_BYTES = 160L * 1024 * 1024;
     private final MainActivity activity;
@@ -76,7 +76,8 @@ final class AgentBrowserInstaller {
         long installedVersion = installedVersion();
         JSONObject result = new JSONObject().put("available", installedVersion > 0).put("supported", !abi.isEmpty())
             .put("downloadable", !abi.isEmpty() && !BuildConfig.LOCAL_AI_RUNTIME_TAG.isEmpty())
-            .put("estimatedBytes", ESTIMATED_BYTES).put("autoSearch", preferences.getBoolean("autoSearch", false));
+            .put("estimatedBytes", ESTIMATED_BYTES).put("autoSearch", preferences.getBoolean("autoSearch", false))
+            .put("publicDns", preferences.getBoolean("publicDns", true));
         if (installedVersion >= CURRENT_VERSION) {
             discardDownload();
             return result.put("state", "installed");

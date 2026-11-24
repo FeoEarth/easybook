@@ -242,5 +242,25 @@ try{
  const requestB=app.send('并发 B');await wait(()=>completeB);assert.equal(app.busy(),true);
  app.select(concurrentA.id);assert.equal(app.busy(),true);app.stop();await requestA;
  assert.equal(concurrentA.messages.at(-1).status,'stopped');app.select(concurrentB.id);assert.equal(app.busy(),true,'Stopping A does not unlock or cancel B');completeB();await requestB;assert.equal(concurrentB.messages.at(-1).content,'B 完成');assert.equal(app.busy(),false);
+ app.setup();
+ const directButton=$('aiBrowserPresets').querySelector('[data-browser-preset="web-search"]');
+ assert.equal(directButton.hidden,false,'Web search does not require an Android browser component');
+ directButton.click();
+ const query='公开资料',source={url:'https://example.org/background',title:'后台搜索来源'};
+ let directCalls=0;
+ app.cloud(async body=>{
+  directCalls++;
+  assert.equal(body.purpose,'web_search');assert.equal(body.credentialId,undefined);
+  assert.deepEqual(JSON.parse(JSON.stringify(body.messages)),[{role:'user',content:query}]);
+  return {message:{content:'确认关键词'},approval:{id:'direct-approval',tool:'web_search',arguments:{query},directSearch:true}};
+ });
+ await app.send('请联网搜索：'+query);
+ app.execute(async path=>{assert.equal(path,'execute');return {ok:true,result:{results:[source]}}});
+ await app.approve(true);
+ assert.equal(directCalls,1,'Approval loads sources without launching a model');
+ assert.equal(app.session().messages.at(-1).receipt.directSearch,true);
+ const summarize=$('aiHubMessages').querySelector('[data-ai-search-summary]');assert.ok(summarize);
+ app.cloud(async body=>{assert.equal(body.purpose,'browser_answer');assert.ok(body.messages.some(message=>message.content.includes(source.url)));return {message:{content:'只总结已有来源'}}});
+ summarize.click();await wait(()=>app.session().messages.at(-1).content==='只总结已有来源');
  console.log('AI UI: isolated drafts, streaming DOM, attachments, error/stop recovery, approval continuation and context controls OK');
 }finally{dom.window.close()}

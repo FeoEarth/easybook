@@ -540,6 +540,15 @@ assert.equal(webSearchQuota(monthStart,{permanent:1,expires_at:0}).kind,'member'
  assert.equal((await call('mcp','PUT',{parallelSearch:true})).status,200);
  const listed=(await (await call('mcp','GET')).json()).parallelSearch;
  assert.equal(listed.enabled,true);assert.equal(listed.approval,'ask');
+ const directApi=(path,body)=>aiAPI(request('/api/ai/'+path,'POST',body),{...env,AI_CREDENTIAL_KEY:undefined},principal,{workspaceId:workspace,fetcher:async(url,init)=>{
+  assert.ok(['mcp.parallel.ai','cloudflare-dns.com'].includes(new URL(url).hostname),'Direct search never invokes a model provider');
+  return parallelFetcher(url,init);
+ }});
+ const directQuery={credentialId:'missing-profile',messages:[{role:'user',content:searchQuery}]};
+ const directApproval=(await (await directApi('search',directQuery)).json()).approval;
+ assert.equal(directApproval.directSearch,true);
+ assert.deepEqual(directApproval.providers,{primary:false,parallel:true});
+ assert.equal((await (await directApi('execute',{approvalId:directApproval.id})).json()).result.results[0].url,source);
  const proposal=(await chat()).json();
  const approval=(await proposal).approval;
  assert.equal(approval.tool,'web_search');
@@ -551,6 +560,11 @@ assert.equal(webSearchQuota(monthStart,{permanent:1,expires_at:0}).kind,'member'
  assert.equal(executed.result.results[0].url,source);
  assert.equal(sqlite.prepare("SELECT count FROM account_rate_limits WHERE bucket LIKE 'ai-web-search:month:%'").get().count,before,'Parallel uses no Easybook quota');
  assert.equal((await call('mcp','PUT',{parallelSearchApproval:'always'})).status,200);
+ const backgroundSearch=await directApi('search',{...directQuery,stream:true});
+ assert.match(backgroundSearch.headers.get('Content-Type'),/text\/event-stream/);
+ const backgroundResult=JSON.parse((await backgroundSearch.text()).match(/event: done\ndata: (.+)/)[1]);
+ assert.equal(backgroundResult.webSearch.result.results[0].url,source);
+ assert.equal(backgroundResult.message,undefined);
  const automatic=await (await chat()).json();
  assert.equal(automatic.approval,undefined);
  assert.equal(automatic.webSearch.result.source,'parallel');

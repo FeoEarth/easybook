@@ -96,4 +96,22 @@ public class AgentBrowserProxyTest {
         }
         assertThrows(java.io.IOException.class, () -> AgentBrowserDns.parse(publicAnswer.replace("\"Status\":0", "\"Status\":3"), 1));
     }
+
+    @Test public void defaultPublicDnsPrecedesSystemDnsAndKeepsPrivateDestinationsBlocked() throws Exception {
+        InetAddress local = InetAddress.getByName("10.0.0.1");
+        java.util.List<String> queries = new java.util.ArrayList<>();
+        try (AgentBrowserProxy proxy = new AgentBrowserProxy(host -> {
+            queries.add("system"); return new InetAddress[]{local};
+        }, host -> {
+            queries.add("public"); return new InetAddress[]{local};
+        })) {
+            proxy.setActive(true, true);
+            assertTrue(request(proxy, "CONNECT example.com:443 HTTP/1.1").contains("403 Forbidden"));
+            assertEquals(Arrays.asList("public", "system"), queries);
+            queries.clear();
+            proxy.setActive(true, false);
+            assertTrue(request(proxy, "CONNECT example.com:443 HTTP/1.1").contains("403 Forbidden"));
+            assertEquals(Arrays.asList("system"), queries);
+        }
+    }
 }

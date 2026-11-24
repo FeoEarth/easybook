@@ -53,6 +53,7 @@ final class AgentBrowser {
     private final Activity activity;
     private final boolean dark;
     private final boolean autoSearch;
+    private final boolean publicDns;
     private final FrameLayout container;
     private final Consumer<String> stopped;
     private final Runnable failed;
@@ -88,10 +89,11 @@ final class AgentBrowser {
         Pending(CompletableFuture<JSONObject> reply) { this.reply = reply; }
     }
 
-    AgentBrowser(Activity activity, FrameLayout container, boolean dark, boolean autoSearch, Consumer<String> stopped, Runnable failed) {
+    AgentBrowser(Activity activity, FrameLayout container, boolean dark, boolean autoSearch, boolean publicDns, Consumer<String> stopped, Runnable failed) {
         this.activity = activity;
         this.dark = dark;
         this.autoSearch = autoSearch;
+        this.publicDns = publicDns;
         this.container = container;
         this.stopped = stopped;
         this.failed = failed;
@@ -127,6 +129,7 @@ final class AgentBrowser {
         preset = requestedPreset;
         starting = reply;
         String disclosure = "网页在手机上打开。网页标题、链接和有限的正文摘录会发送到当前云端模型。";
+        if (publicDns) disclosure += "\n\n域名默认通过 Cloudflare HTTPS DNS 查询。可在 AI 设置中改用系统 DNS。";
         if (preset.equals("search")) disclosure += "\n\n本次联网搜索可直接打开搜索结果中的公开站点。";
         confirm("开始使用本地浏览器？", disclosure, granted -> {
             if (!requested.equals(token)) return;
@@ -188,7 +191,7 @@ final class AgentBrowser {
                     scheduleRead(250);
                 }
             }, CHANNEL);
-            proxy.setActive(true);
+            proxy.setActive(true, publicDns);
             session.open(engine);
             view.setSession(session);
             String lease = token;
