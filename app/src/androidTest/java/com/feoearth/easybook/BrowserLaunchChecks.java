@@ -64,7 +64,8 @@ final class BrowserLaunchChecks {
             request(test, main, "browser.step", step, content);
             approve(automation, "打开公开网页？", content);
             JSONObject page = content.get(40, TimeUnit.SECONDS);
-            DataLayerChecks.require("ok".equals(page.optString("status")) && page.optString("text").contains("Example Domain"),
+            DataLayerChecks.require("ok".equals(page.optString("status")) && "Example Domain".equals(page.optString("title"))
+                && page.optString("text").contains("documentation examples"),
                 "companion did not read the public HTTPS page: " + page);
         } finally {
             test.runOnMainSync(() -> main.agentBrowserClient().call("browser.end", args));

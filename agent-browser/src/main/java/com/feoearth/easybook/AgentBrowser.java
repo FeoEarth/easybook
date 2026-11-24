@@ -70,7 +70,7 @@ final class AgentBrowser {
     private Pending pending;
     private CompletableFuture<JSONObject> starting;
     private AlertDialog dialog;
-    private boolean paused, loading, canGoBack, externalOpened, proxyVerified, probeStopped;
+    private boolean paused, loading, canGoBack, externalOpened, proxyVerified, probeStarted, probeStopped;
     private int revision, requestNumber;
 
     private static final class Pending {
@@ -282,7 +282,11 @@ final class AgentBrowser {
         });
         session.setProgressDelegate(new GeckoSession.ProgressDelegate() {
             @Override public void onPageStart(GeckoSession browser, String value) {
-                if (browser != session || starting != null) return;
+                if (browser != session) return;
+                if (starting != null) {
+                    if (("https://" + probeHost() + "/").equals(value)) probeStarted = true;
+                    return;
+                }
                 try { AgentBrowserProxy.publicUrl(value); } catch (RuntimeException error) { return; }
                 if (pending != null && pending.navigates) pending.navigationStarted = true;
                 loading = true;
@@ -291,7 +295,7 @@ final class AgentBrowser {
             }
             @Override public void onPageStop(GeckoSession browser, boolean success) {
                 if (browser != session) return;
-                if (starting != null) { probeStopped = true; ready(); return; }
+                if (starting != null) { if (probeStarted) { probeStopped = true; ready(); } return; }
                 if (!loading || pending != null && pending.navigates && !pending.navigationStarted) return;
                 loading = false;
                 if (success) scheduleRead(550); else if (pending != null && pending.navigates) loadFailed();
@@ -524,7 +528,7 @@ final class AgentBrowser {
         int hash = url.indexOf('#');
         if (hash >= 0) url = url.substring(0, hash);
         String host = host(uri);
-        if (host.equals(SEARCH_HOST) || host.endsWith("." + SEARCH_HOST) || host.equals(FALLBACK_SEARCH_HOST)) {
+        if (host.equals(SEARCH_HOST) || host.endsWith("." + SEARCH_HOST) || host.equals(FALLBACK_SEARCH_HOST) || host.equals("cn.bing.com")) {
             int query = url.indexOf('?'); if (query >= 0) url = url.substring(0, query);
         }
         return limit(url, 500);
@@ -612,7 +616,7 @@ final class AgentBrowser {
         if (runtime != null && closedToken != null) runtime.getStorageController().clearDataForSessionContext(closedToken);
         chrome = null;
         url = lastPublicUrl = attemptedUrl = handoffCode = "";
-        loading = paused = canGoBack = externalOpened = proxyVerified = probeStopped = false;
+        loading = paused = canGoBack = externalOpened = proxyVerified = probeStarted = probeStopped = false;
         allowed.clear(); declined.clear(); actions.clear(); invalidate();
         if (notify && closedToken != null) stopped.accept(closedToken);
     }
@@ -645,6 +649,7 @@ final class AgentBrowser {
                 if (pending != step) return;
                 if (!accepted) { finish(result("load_failed")); return; }
                 allowed.add(FALLBACK_SEARCH_HOST);
+                allowed.add("cn.bing.com");
                 openPage(searchUri(FALLBACK_SEARCH_HOST, "/search", query), "AI 正在使用 Bing 搜索…");
             });
             return;
