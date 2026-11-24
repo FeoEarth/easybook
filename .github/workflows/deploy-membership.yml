@@ -58,9 +58,14 @@ jobs:
         if: inputs.scanner_only
         continue-on-error: true
         run: npx --no-install wrangler d1 execute easybook-data --config worker/wrangler.jsonc --remote --file scripts/membership-production-audit.sql --json
+      - name: Deploy isolated collection worker with transitional trigger
+        if: ${{ !inputs.scanner_only }}
+        run: |
+          node -e 'const fs=require("fs"),c=JSON.parse(fs.readFileSync("collection-worker/wrangler.jsonc"));c.triggers.crons=["*/2 * * * *"];fs.writeFileSync("collection-worker/wrangler-transition.json",JSON.stringify(c))'
+          npx --no-install wrangler deploy --config collection-worker/wrangler-transition.json --keep-vars
       - name: Deploy membership scanner
         run: npx --no-install wrangler deploy --config payment-worker/wrangler.jsonc --keep-vars
-      - name: Deploy isolated collection worker
+      - name: Remove superseded collection trigger
         if: ${{ !inputs.scanner_only }}
         run: npx --no-install wrangler deploy --config collection-worker/wrangler.jsonc --keep-vars
       - name: Deploy checkout and web app

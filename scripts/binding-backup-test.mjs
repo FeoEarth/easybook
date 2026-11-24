@@ -18,8 +18,11 @@ const f=fixture(),workspace='a'.repeat(64),raw=Buffer.from('Synthetic gzipped at
 const manifest={v:2,id,wireId,size:raw.length,wireSize:wire.length,encoding:'gzip',localOnly:false,parts:[{hash:wireId,size:wire.length}]};
 await f.env.ATTACHMENTS.put(base+'/manifest-v2',JSON.stringify(manifest));await f.env.ATTACHMENTS.put(base+'/'+wireId+'/0',wire,{customMetadata:{hash:wireId}});await f.env.ATTACHMENTS.put('_mcp_uploads/temporary',Buffer.from('Excluded'));
 f.db.prepare('INSERT INTO notes_json VALUES(?,?,0)').run(workspace,JSON.stringify({schemaVersion:1,doc:{type:'doc',content:[{type:'attachment',attrs:{assetId:'sha256:'+id}}]}}));
+// Regression: production has more than 75 tables; preserve every table and its data.
+for(let i=0;i<110;i++)f.db.exec(`CREATE TABLE extra_${i}(value TEXT); INSERT INTO extra_${i} VALUES('row-${i}');`);
 const dump=await snapshot(f.env),restored=new DatabaseSync(':memory:');restored.exec(dump.sql);
 assert.equal(restored.prepare('PRAGMA integrity_check').get().integrity_check,'ok');
+assert.equal(restored.prepare('SELECT value FROM extra_109').get().value,'row-109');
 assert.equal(restored.prepare('SELECT body FROM fixture').get().body,"quote ' and Unicode 中文");assert.equal(Buffer.from(restored.prepare('SELECT bytes FROM fixture').get().bytes).toString('hex'),'00ff');restored.close();
 const strict=new DatabaseSync(':memory:');strict.exec('PRAGMA foreign_keys=ON;BEGIN;');strict.exec(dump.sql);strict.exec('COMMIT;');assert.equal(strict.prepare('PRAGMA foreign_key_check').all().length,0,'D1-style enforced foreign keys allow out-of-order inserts only with transaction deferral');strict.close();
 assert.equal(inspectSnapshot(dump.sql).references.length,1);

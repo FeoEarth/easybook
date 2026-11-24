@@ -28,5 +28,12 @@
       "database_id": "d1761c2d-6372-489c-ae5e-114f3d5baa80"
     }
   ],
-  "keep_vars": true
+  "keep_vars": true,
+  "services": [
+    {
+      "binding": "COLLECTION_SCHEDULER",
+      "service": "easybook-collections",
+      "entrypoint": "CollectionScheduler"
+    }
+  ]
 }

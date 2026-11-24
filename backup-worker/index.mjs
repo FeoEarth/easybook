@@ -16,10 +16,12 @@ async function checkpoint(env){
 export async function snapshot(env){
  const db=env.DB.withSession?.('first-primary') || env.DB;
  const schema=await rows(db.prepare(schemaSQL)),tables=schema.filter(x=>x.type==='table');
- if(tables.length>75 || !tables.some(x=>x.name==='notes_json') || tables.some(x=>x.name==='security_revocations'||/CREATE VIRTUAL TABLE/i.test(x.sql)))throw Error('unsupported_schema');
+ if(tables.length>256 || !tables.some(x=>x.name==='notes_json') || tables.some(x=>x.name==='security_revocations'||/CREATE VIRTUAL TABLE/i.test(x.sql)))throw Error('unsupported_schema');
  const statements=[db.prepare(schemaSQL)];
- for(const table of tables){
-  const columns=(await rows(db.prepare('PRAGMA table_info('+quoteId(table.name)+')'))).map(c=>quoteId(c.name));
+ // Batch metadata separately; the data and schema recheck still share one transaction.
+ const metadata=await db.batch(tables.map(table=>db.prepare('PRAGMA table_info('+quoteId(table.name)+')')));
+ for(const [i,table] of tables.entries()){
+  const columns=metadata[i].results.map(c=>quoteId(c.name));
   if(!columns.length)throw Error('missing_columns');
   const prefix='INSERT INTO '+quoteId(table.name)+'('+columns.join(',')+') VALUES(';
   const literal=value=>"'"+value.replaceAll("'","''")+"'";

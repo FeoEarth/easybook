@@ -4,7 +4,7 @@ import {HDKey} from '@scure/bip32';
 import {Transaction} from 'ethers';
 import {fixture} from './membership-fixture.mjs';
 import {ensureWallet} from '../worker/membership-ledger.mjs';
-import {runCollections} from '../collection-worker/index.mjs';
+import {runCollections,collectionTick} from '../collection-worker/index.mjs';
 const f=await fixture();
 try {
  const root=HDKey.fromMasterSeed(new Uint8Array(32).fill(7)).derive("m/44'/60'/0'/0");
@@ -30,6 +30,7 @@ try {
   return Response.json({jsonrpc:'2.0',id:q.id,result});
  };
  const tick=async()=>{f.sql.exec('UPDATE membership_collection_lease SET expires_at=0; UPDATE membership_collection_jobs SET next_attempt_at=0');return runCollections(env,{fetcher,chainId:137})};
+ let calls=0;const quiet=await collectionTick(env,{fetcher:async(...args)=>{calls++;return fetcher(...args)}});assert.equal(quiet.skipped,'disabled');assert.equal(calls,0);assert.equal(f.sql.prepare('SELECT COUNT(*) n FROM membership_collection_jobs').get().n,0);
  await tick();assert.equal(raws.size,0);assert.equal(f.sql.prepare('SELECT state FROM membership_collection_jobs').get().state,'paused');
  env.COLLECTION_ENABLED='true';await tick();assert.equal(raws.size,1);const gas=f.sql.prepare("SELECT * FROM membership_collection_tx WHERE kind='gas'").get();assert.ok(gas);
  await tick();assert.equal(raws.size,1);assert.equal(f.sql.prepare("SELECT COUNT(*) n FROM membership_collection_tx WHERE kind='gas'").get().n,1);

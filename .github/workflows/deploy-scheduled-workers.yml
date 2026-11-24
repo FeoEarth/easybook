@@ -1,0 +1,53 @@
+name: Deploy scheduled workers
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - 'backup-worker/**'
+      - 'payment-worker/**'
+      - 'collection-worker/**'
+      - 'scripts/finance-scheduler-test.mjs'
+      - 'scripts/binding-backup-test.mjs'
+      - 'scripts/membership-collection-test.mjs'
+      - '.github/workflows/deploy-scheduled-workers.yml'
+permissions:
+  contents: read
+concurrency:
+  group: easybook-production-worker
+  cancel-in-progress: false
+jobs:
+  deploy:
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - run: npm ci --no-audit --no-fund
+      - run: npm ci --prefix mcp-oauth --no-audit --no-fund
+      - name: Verify backup and restore integrity
+        run: node scripts/binding-backup-test.mjs && node scripts/backup-test.mjs && node scripts/security-restore-test.mjs
+      - name: Verify financial scheduling and offline transactions
+        run: node scripts/finance-scheduler-test.mjs && node scripts/membership-scanner-test.mjs && node scripts/membership-collection-test.mjs
+      - run: npm install --no-save --no-package-lock --no-audit --no-fund wrangler@4.152.0
+      - name: Validate bundles
+        run: |
+          for dir in backup-worker collection-worker payment-worker; do
+            npx --no-install wrangler deploy --config "$dir/wrangler.jsonc" --dry-run --outdir "/tmp/$dir"
+          done
+      - name: Repair backup worker
+        run: npx --no-install wrangler deploy --config backup-worker/wrangler.jsonc --keep-vars --var RELEASE_SHA:${{ github.sha }}
+      - name: Deploy collection RPC before caller (retain fallback cron)
+        run: |
+          node -e 'const fs=require("fs"),c=JSON.parse(fs.readFileSync("collection-worker/wrangler.jsonc"));c.triggers.crons=["*/2 * * * *"];fs.writeFileSync("collection-worker/wrangler-transition.json",JSON.stringify(c))'
+          npx --no-install wrangler deploy --config collection-worker/wrangler-transition.json --keep-vars --var RELEASE_SHA:${{ github.sha }}
+      - name: Deploy finance scheduler
+        run: npx --no-install wrangler deploy --config payment-worker/wrangler.jsonc --keep-vars --var RELEASE_SHA:${{ github.sha }}
+      - name: Remove old collection cron only after scheduler deployment
+        run: npx --no-install wrangler deploy --config collection-worker/wrangler.jsonc --keep-vars --var RELEASE_SHA:${{ github.sha }}

@@ -1,0 +1,14 @@
+import assert from 'node:assert/strict';
+import {paymentDue,financeTick} from '../payment-worker/index.mjs';
+const minute=60000;let due=0,reads=0,ticks=0;
+const env={MEMBERSHIP_ENABLED:'true',DB:{prepare(){reads++;return {bind(){return this},async first(){return {due}}}}},COLLECTION_SCHEDULER:{async tick(){ticks++;return {skipped:true}}}};
+assert.equal(await paymentDue(env,5*minute),true);
+assert.equal(await paymentDue(env,6*minute),false);
+due=1;assert.equal(await paymentDue(env,6*minute),true);
+env.MEMBERSHIP_ENABLED='false';assert.equal(await paymentDue(env,5*minute),false);
+await financeTick(env,2*minute);assert.equal(ticks,1);
+await financeTick(env,3*minute);assert.equal(ticks,1);
+await financeTick(env,15*minute);assert.equal(ticks,2);
+env.COLLECTION_SCHEDULER={async tick(){throw Error('test failure')}};
+await assert.rejects(financeTick(env,4*minute),/financial_maintenance_incomplete/);
+console.log('PASS dynamic payment schedule, collection ticks, and failure propagation');

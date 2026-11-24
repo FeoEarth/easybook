@@ -1,6 +1,6 @@
 {
   "name": "easybook-collections",
-  "main": "index.mjs",
+  "main": "entry.mjs",
   "compatibility_date": "2026-11-16",
   "compatibility_flags": [
     "nodejs_compat"
@@ -13,9 +13,7 @@
     }
   },
   "triggers": {
-    "crons": [
-      "*/2 * * * *"
-    ]
+    "crons": []
   },
   "vars": {
     "COLLECTION_ENABLED": "false",
