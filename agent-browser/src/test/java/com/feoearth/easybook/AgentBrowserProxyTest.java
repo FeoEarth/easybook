@@ -6,6 +6,7 @@ import java.net.Socket;
 import java.nio.charset.StandardCharsets;
 import java.util.Arrays;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicInteger;
 import static org.junit.Assert.*;
 
 public class AgentBrowserProxyTest {
@@ -60,5 +61,39 @@ public class AgentBrowserProxyTest {
         assertEquals(2500, AgentBrowserProxy.connectionTimeout(10000, 2));
         assertEquals(7500, AgentBrowserProxy.connectionTimeout(7500, 1));
         assertEquals(600, AgentBrowserProxy.connectionTimeout(600, 2));
+    }
+
+    @Test public void resolverFallbackRequiresConsentAndCannotConnectToPrivateAddresses() throws Exception {
+        InetAddress synthetic = InetAddress.getByName("198.18.0.10");
+        InetAddress local = InetAddress.getByName("10.0.0.1");
+        AtomicInteger queries = new AtomicInteger();
+        try (AgentBrowserProxy proxy = new AgentBrowserProxy(host -> new InetAddress[]{synthetic}, host -> {
+            assertEquals("example.com", host);
+            queries.incrementAndGet();
+            return new InetAddress[]{local};
+        })) {
+            String request = "CONNECT example.com:443 HTTP/1.1";
+            proxy.setActive(true);
+            assertTrue(request(proxy, request).contains("403 Forbidden"));
+            assertEquals(AgentBrowserProxy.Failure.ADDRESS, proxy.failureFor("example.com", 0));
+            assertEquals(0, queries.get());
+            proxy.allowPublicDns();
+            assertTrue(request(proxy, request).contains("403 Forbidden"));
+            assertEquals(AgentBrowserProxy.Failure.PUBLIC_DNS, proxy.failureFor("example.com", 0));
+            assertEquals(1, queries.get());
+            proxy.setActive(false);
+            proxy.setActive(true);
+            assertTrue(request(proxy, request).contains("403 Forbidden"));
+            assertEquals(1, queries.get());
+        }
+    }
+
+    @Test public void alternateResolverAcceptsOnlyNumericPublicAnswers() throws Exception {
+        String publicAnswer = "{\"Status\":0,\"Answer\":[{\"type\":5,\"data\":\"example.org.\"},{\"type\":1,\"data\":\"93.184.215.14\"}]}";
+        assertArrayEquals(new InetAddress[]{InetAddress.getByName("93.184.215.14")}, AgentBrowserDns.parse(publicAnswer, 1));
+        for (String forbidden : new String[]{"192.168.1.1", "198.18.0.1", "example.org", "127.0.0.1"}) {
+            assertThrows(java.io.IOException.class, () -> AgentBrowserDns.parse(publicAnswer.replace("93.184.215.14", forbidden), 1));
+        }
+        assertThrows(java.io.IOException.class, () -> AgentBrowserDns.parse(publicAnswer.replace("\"Status\":0", "\"Status\":3"), 1));
     }
 }

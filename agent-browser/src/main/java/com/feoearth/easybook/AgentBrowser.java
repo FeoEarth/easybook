@@ -70,7 +70,7 @@ final class AgentBrowser {
     private Pending pending;
     private CompletableFuture<JSONObject> starting;
     private AlertDialog dialog;
-    private boolean paused, loading, canGoBack, externalOpened, proxyVerified, probeStarted, probeStopped;
+    private boolean paused, loading, canGoBack, externalOpened, proxyVerified, probeStarted, probeStopped, publicDnsOffered;
     private int revision, requestNumber;
 
     private static final class Pending {
@@ -83,6 +83,8 @@ final class AgentBrowser {
         String searchQuery;
         String diagnostic;
         long navigationStart = System.nanoTime();
+        URI target;
+        boolean addressRejected;
         Pending(CompletableFuture<JSONObject> reply) { this.reply = reply; }
     }
 
@@ -442,8 +444,15 @@ final class AgentBrowser {
     }
 
     private void openPage(URI target, String label) {
+        openPage(target, label, false);
+    }
+
+    private void openPage(URI target, String label, boolean refresh) {
         pending.navigates = true;
         pending.navigationStarted = false;
+        pending.request = 0;
+        pending.target = target;
+        pending.addressRejected = false;
         pending.diagnostic = null;
         pending.navigationStart = System.nanoTime();
         timeout(pending);
@@ -454,8 +463,9 @@ final class AgentBrowser {
         system.setEnabled(true);
         status.setText(label);
         shield.setBackgroundColor(android.graphics.Color.TRANSPARENT);
-        GeckoSession.Loader loader = new GeckoSession.Loader().uri(target.toASCIIString());
-        if (url.isEmpty()) loader.flags(GeckoSession.LOAD_FLAGS_REPLACE_HISTORY);
+        int flags = url.isEmpty() ? GeckoSession.LOAD_FLAGS_REPLACE_HISTORY : GeckoSession.LOAD_FLAGS_NONE;
+        if (refresh) flags |= GeckoSession.LOAD_FLAGS_BYPASS_CACHE;
+        GeckoSession.Loader loader = new GeckoSession.Loader().uri(target.toASCIIString()).flags(flags);
         session.load(loader);
     }
 
@@ -624,7 +634,7 @@ final class AgentBrowser {
         if (runtime != null && closedToken != null) runtime.getStorageController().clearDataForSessionContext(closedToken);
         chrome = null;
         url = lastPublicUrl = attemptedUrl = handoffCode = "";
-        loading = paused = canGoBack = externalOpened = proxyVerified = probeStarted = probeStopped = false;
+        loading = paused = canGoBack = externalOpened = proxyVerified = probeStarted = probeStopped = publicDnsOffered = false;
         allowed.clear(); declined.clear(); actions.clear(); invalidate();
         if (notify && closedToken != null) stopped.accept(closedToken);
     }
@@ -650,6 +660,17 @@ final class AgentBrowser {
         loading = false;
         Pending step = pending;
         String diagnostic = step == null ? null : step.diagnostic;
+        if (step != null && step.addressRejected && step.target != null && !paused && !publicDnsOffered) {
+            publicDnsOffered = true;
+            status.setText(diagnostic);
+            confirm("使用公共 DNS 重试？", "当前网络返回了浏览器无法使用的地址。允许后，本次浏览任务遇到这种地址时可向 Cloudflare HTTPS DNS 重新查询域名。查询只包含域名。", accepted -> {
+                if (pending != step) return;
+                if (!accepted) { loadFailed(); return; }
+                proxy.allowPublicDns();
+                openPage(step.target, "正在重新解析域名并打开网页…", true);
+            });
+            return;
+        }
         JSONObject outcome = diagnostic == null ? result("load_failed") : object("status", "load_failed", "diagnostic", diagnostic);
         if (step != null && step.searchQuery != null && !paused) {
             String query = step.searchQuery;
@@ -673,10 +694,12 @@ final class AgentBrowser {
         boolean transportError = error.category == WebRequestError.ERROR_CATEGORY_PROXY ||
             error.category == WebRequestError.ERROR_CATEGORY_NETWORK || error.code == WebRequestError.ERROR_UNKNOWN;
         AgentBrowserProxy.Failure failure = transportError && proxy != null ? proxy.failureFor(host(target), startedAt) : null;
+        pending.addressRejected = failure == AgentBrowserProxy.Failure.ADDRESS;
         if (failure != null) {
             switch (failure) {
                 case DNS: message = "域名解析失败"; break;
                 case ADDRESS: message = "域名未解析到可访问的公网地址"; break;
+                case PUBLIC_DNS: message = "Cloudflare HTTPS DNS 未返回可用公网地址"; break;
                 case TIMEOUT: message = "连接网站超时"; break;
                 default: message = "无法建立到网站的连接";
             }
