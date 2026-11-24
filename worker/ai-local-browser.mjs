@@ -14,6 +14,7 @@ export const browserTools = Object.entries(definitions).map(([name,[description,
  type:'function',function:{name,description,parameters:{type:'object',properties,required,additionalProperties:false}}
 }));
 export const isBrowserTool = name => Object.hasOwn(definitions,name);
+const MAX_BROWSER_REASONING=64000;
 
 function invalid(){return Object.assign(Error('Invalid local browser data'),{status:400,code:'invalid_local_browser'});}
 
@@ -48,7 +49,7 @@ export function browserHistory(input,{reasoning=false}={}){
   const content=JSON.stringify(item.result);
   size+=content.length;
   if(content.length>10000||size>48000)throw invalid();
-  const thought=reasoning&&typeof item.reasoning==='string'?item.reasoning.slice(0,4000):'';
+  const thought=reasoning&&typeof item.reasoning==='string'&&item.reasoning.length<=MAX_BROWSER_REASONING?item.reasoning:'';
   return [{role:'assistant',content:'',...(thought?{reasoning_content:thought}:{}),tool_calls:[{id:item.id,type:'function',function:{name:item.name,arguments:JSON.stringify(args)}}]},
    {role:'tool',tool_call_id:item.id,content}];
  });
@@ -57,7 +58,7 @@ export function browserHistory(input,{reasoning=false}={}){
 export function browserAction(call,reasoning){
  let args;try{args=JSON.parse(call.function.arguments||'{}')}catch{throw invalid()}
  return {id:crypto.randomUUID(),name:call.function.name,arguments:browserArguments(call.function.name,args),
-  ...(typeof reasoning==='string'&&reasoning?{reasoning:reasoning.slice(0,4000)}:{})};
+  ...(typeof reasoning==='string'&&reasoning&&reasoning.length<=MAX_BROWSER_REASONING?{reasoning}:{})};
 }
 
 export function browserInstruction(preset){

@@ -89,6 +89,36 @@ const agentTools=[];
  const continuation=await next.json();
  assert.deepEqual(continuation.browserAction.arguments,{id:'1:0'});
  assert.equal(continuation.agentRunId,undefined,'Local snapshots never enter the Worker queue');
+ let calls=0;
+ const compatible=await browse({browserHistory:[{...action,result:page}]},async(_url,init)=>{
+  const payload=JSON.parse(init.body);
+  if(++calls===1){assert.equal(payload.messages.at(-1).role,'tool');return Response.json({error:{message:'Tool transcript rejected'}},{status:400});}
+  assert.equal(payload.tools,undefined);
+  assert.ok(payload.messages.every(message=>['system','user','assistant'].includes(message.role)&&!message.tool_calls));
+  assert.match(payload.messages.at(-1).content,/Page content only/);
+  return Response.json({choices:[{message:{role:'assistant',content:'已根据浏览来源整理'}}]});
+ });
+ assert.equal(calls,2);
+ assert.equal((await compatible.json()).message.content,'已根据浏览来源整理');
+ const answerOnly=await browse({purpose:'browser_answer',localBrowser:false},async(_url,init)=>{
+  const payload=JSON.parse(init.body);
+  assert.equal(payload.tools,undefined);
+  assert.match(payload.messages[0].content,/不可信数据/);
+  return Response.json({choices:[{message:{role:'assistant',content:'根据已保留链接回答'}}]});
+ });
+ assert.equal((await answerOnly.json()).message.content,'根据已保留链接回答');
+ const deepseekId=sqlite.prepare("SELECT id FROM account_ai_profiles WHERE provider='deepseek'").get().id;
+ const reasoning='搜索关键词和来源范围。'.repeat(600);
+ const planned=await browse({credentialId:deepseekId,model:'deepseek-v4-flash'},async()=>Response.json({choices:[{message:{
+  role:'assistant',content:null,reasoning_content:reasoning,tool_calls:[{id:'deepseek-browser-call',type:'function',function:{name:'browser_search',arguments:'{"query":"黄仁勋"}'}}]
+ }}]}));
+ const deepseekAction=(await planned.json()).browserAction;
+ assert.equal(deepseekAction.reasoning,reasoning,'The DeepSeek tool turn is not truncated');
+ const summarized=await browse({credentialId:deepseekId,model:'deepseek-v4-flash',browserHistory:[{...deepseekAction,result:page}]},async(_url,init)=>{
+  assert.equal(JSON.parse(init.body).messages.at(-2).reasoning_content,reasoning);
+  return Response.json({choices:[{message:{role:'assistant',content:'DeepSeek 已根据搜索结果回答'}}]});
+ });
+ assert.equal((await summarized.json()).message.content,'DeepSeek 已根据搜索结果回答');
  assert.equal((await browse({},async()=>tool('browser_open',{url:'file:///secret'}))).status,400);
  assert.equal((await browse({browserHistory:[{...action,result:{text:'x'.repeat(10001)}}]},neverFetch)).status,400);
  const noBrowser=async(url,init)=>{
