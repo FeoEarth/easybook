@@ -29,7 +29,7 @@ final class BrowserLaunchChecks {
             wire.writeBundle(extras);
             wire.setDataPosition(0);
             // The companion APK cannot see any classes defined by the main APK.
-            ResultReceiver remote = wire.readBundle(new ClassLoader(null) {}).getParcelable("receiver");
+            ResultReceiver remote = wire.readBundle(ResultReceiver.class.getClassLoader()).getParcelable("receiver");
             DataLayerChecks.require(remote.getClass() == ResultReceiver.class, "browser callback uses a framework parcelable");
             Bundle response = new Bundle();
             response.putBoolean("attached", true);
