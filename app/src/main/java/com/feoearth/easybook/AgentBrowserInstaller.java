@@ -29,6 +29,7 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 final class AgentBrowserInstaller {
+    private static final int CURRENT_VERSION = 2;
     private static final long ESTIMATED_BYTES = 100L * 1024 * 1024;
     private static final long MAX_BYTES = 160L * 1024 * 1024;
     private final MainActivity activity;
@@ -52,9 +53,18 @@ final class AgentBrowserInstaller {
     }
 
     boolean installed() {
+        return installedVersion() > 0;
+    }
+
+    private long installedVersion() {
         try {
-            return trusted(activity.getPackageManager().getPackageInfo(AgentBrowserProtocol.PACKAGE, AgentBrowserProtocol.SIGNATURE_FLAGS));
-        } catch (PackageManager.NameNotFoundException error) { return false; }
+            PackageInfo browser = activity.getPackageManager().getPackageInfo(AgentBrowserProtocol.PACKAGE, AgentBrowserProtocol.SIGNATURE_FLAGS);
+            return trusted(browser) ? version(browser) : 0;
+        } catch (PackageManager.NameNotFoundException error) { return 0; }
+    }
+
+    private static long version(PackageInfo browser) {
+        return Build.VERSION.SDK_INT >= 28 ? browser.getLongVersionCode() : browser.versionCode;
     }
 
     private boolean trusted(PackageInfo browser) throws PackageManager.NameNotFoundException {
@@ -63,11 +73,11 @@ final class AgentBrowserInstaller {
     }
 
     JSONObject status() throws Exception {
-        boolean installed = installed();
-        JSONObject result = new JSONObject().put("available", installed).put("supported", !abi.isEmpty())
+        long installedVersion = installedVersion();
+        JSONObject result = new JSONObject().put("available", installedVersion > 0).put("supported", !abi.isEmpty())
             .put("downloadable", !abi.isEmpty() && !BuildConfig.LOCAL_AI_RUNTIME_TAG.isEmpty())
             .put("estimatedBytes", ESTIMATED_BYTES).put("autoSearch", preferences.getBoolean("autoSearch", false));
-        if (installed) {
+        if (installedVersion >= CURRENT_VERSION) {
             discardDownload();
             return result.put("state", "installed");
         }
@@ -84,13 +94,13 @@ final class AgentBrowserInstaller {
             }
         }
         String failure = preferences.getString("failure", "");
-        return result.put("state", failure.isEmpty() ? "missing" : "failed").put("error", failure);
+        return result.put("state", failure.isEmpty() ? (installedVersion > 0 ? "update" : "missing") : "failed").put("error", failure);
     }
 
     JSONObject download() throws Exception {
         if (abi.isEmpty() || BuildConfig.LOCAL_AI_RUNTIME_TAG.isEmpty() || temporary == null) throw new IOException("此版本或设备无法下载浏览器组件");
         JSONObject current = status();
-        if (!Arrays.asList("missing", "failed").contains(current.getString("state"))) return current;
+        if (!Arrays.asList("missing", "update", "failed").contains(current.getString("state"))) return current;
         if (new StatFs(activity.getCacheDir().getPath()).getAvailableBytes() < ESTIMATED_BYTES * 4) throw new IOException("请至少预留 400 MiB 存储空间");
         discardDownload();
         DownloadManager.Request request = new DownloadManager.Request(Uri.parse(releaseBase() + asset()));
@@ -162,6 +172,7 @@ final class AgentBrowserInstaller {
                 for (byte value : digest.digest()) hash.append(String.format(Locale.ROOT, "%02x", value & 255));
                 PackageInfo archive = activity.getPackageManager().getPackageArchiveInfo(staging.getPath(), AgentBrowserProtocol.SIGNATURE_FLAGS);
                 if (!expected.contentEquals(hash) || !trusted(archive)) throw new IOException("浏览器组件校验值或签名不匹配");
+                if (version(archive) < CURRENT_VERSION) throw new IOException("浏览器组件版本过低");
                 if (!staging.renameTo(apk)) throw new IOException("无法保存浏览器组件");
                 preferences.edit().putString("verifiedBuild", BuildConfig.LOCAL_AI_RUNTIME_TAG).putLong("verifiedBytes", bytes).remove("download").remove("failure").apply();
             } catch (Exception error) {

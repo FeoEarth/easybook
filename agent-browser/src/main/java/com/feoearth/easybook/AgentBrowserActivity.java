@@ -50,7 +50,8 @@ public final class AgentBrowserActivity extends Activity {
         });
         setContentView(container);
         container.requestApplyInsets();
-        browser = new AgentBrowser(this, container, dark, getIntent().getBooleanExtra("autoSearch", false), token -> stop(true));
+        browser = new AgentBrowser(this, container, dark, getIntent().getBooleanExtra("autoSearch", false),
+            token -> stop(true), this::finishUnexpectedly);
     }
 
     private boolean command(Message message) {
@@ -66,17 +67,28 @@ public final class AgentBrowserActivity extends Activity {
                 result.putInt("id", id);
                 if (error == null) result.putString("result", value.toString());
                 receiver.send(AgentBrowserProtocol.RESPONSE, result);
-                if (method.equals("browser.end") || method.equals("browser.begin") &&
-                    (error != null || !"ready".equals(value.optString("status")))) stop(false);
+                if (method.equals("browser.end")) stop(false);
+                else if (method.equals("browser.begin")) {
+                    String status = error == null ? value.optString("status") : "failed";
+                    if (status.equals("cancelled")) stop(false);
+                    else if (!status.equals("ready")) finishUnexpectedly();
+                }
             });
-        } catch (Exception error) { stop(true); }
+        } catch (Exception error) { finishUnexpectedly(); }
         return true;
     }
 
     private void stop(boolean notify) {
         if (ended) return;
         ended = true;
+        setResult(RESULT_OK);
         if (notify) receiver.send(AgentBrowserProtocol.STOPPED, Bundle.EMPTY);
+        finish();
+    }
+
+    private void finishUnexpectedly() {
+        if (ended) return;
+        ended = true;
         finish();
     }
 
@@ -92,9 +104,10 @@ public final class AgentBrowserActivity extends Activity {
         }
     }
 
-    @Override protected void onPause() {
-        if (browser != null && !ended) browser.backgrounded();
-        super.onPause();
+    @Override protected void onStop() {
+        // A transient pause can leave the consent dialog visible.
+        if (browser != null && !ended && !browser.backgrounded()) stop(true);
+        super.onStop();
     }
 
     @Override public void onBackPressed() {
