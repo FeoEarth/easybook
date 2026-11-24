@@ -309,9 +309,9 @@ public class MainActivity extends Activity {
             if(destroyed||serverSwitching||generation!=documentGeneration||!LOCAL.equals(web.getUrl()))throw new SecurityException();
             repository.assertActiveProfile();
             security.authorize(method,args,generation);
-            if(agentBrowser==null)agentBrowser=new AgentBrowserClient(this,token->{
+            if(agentBrowser==null)agentBrowser=new AgentBrowserClient(this,(token,failed)->{
                 if(!destroyed&&!serverSwitching&&LOCAL.equals(web.getUrl()))
-                    web.evaluateJavascript("window.easybookAgentBrowserStopped?.("+JSONObject.quote(token)+")",null);
+                    web.evaluateJavascript("window.easybookAgentBrowserStopped?.("+JSONObject.quote(token)+","+failed+")",null);
             });
             agentBrowser.call(method,args).whenComplete((value,error)->browserReply(reply,generation,id,value,error));
         }catch(Exception|LinkageError error){browserReply(reply,generation,id,null,error);}
@@ -671,7 +671,7 @@ public class MainActivity extends Activity {
     }
     @Override protected void onActivityResult(int request, int result, Intent data) {
         super.onActivityResult(request, result, data);
-        if(request==AgentBrowserClient.REQUEST){if(agentBrowser!=null)agentBrowser.activityReturned();return;}
+        if(request==AgentBrowserClient.REQUEST){if(agentBrowser!=null)agentBrowser.activityReturned(result);return;}
         if(request==WebSearchActivity.REQUEST){
             String token=aiSearchToken;aiSearchToken=null;
             if(token!=null&&aiSearchGeneration==documentGeneration){

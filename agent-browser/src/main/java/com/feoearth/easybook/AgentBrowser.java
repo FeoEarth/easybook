@@ -54,6 +54,7 @@ final class AgentBrowser {
     private final boolean autoSearch;
     private final FrameLayout container;
     private final Consumer<String> stopped;
+    private final Runnable failed;
     private final Handler handler = new Handler(Looper.getMainLooper());
     private final Set<String> allowed = new HashSet<>(), declined = new HashSet<>(), actions = new HashSet<>();
     private final Map<String,URI> links = new LinkedHashMap<>();
@@ -80,12 +81,13 @@ final class AgentBrowser {
         Pending(CompletableFuture<JSONObject> reply) { this.reply = reply; }
     }
 
-    AgentBrowser(Activity activity, FrameLayout container, boolean dark, boolean autoSearch, Consumer<String> stopped) {
+    AgentBrowser(Activity activity, FrameLayout container, boolean dark, boolean autoSearch, Consumer<String> stopped, Runnable failed) {
         this.activity = activity;
         this.dark = dark;
         this.autoSearch = autoSearch;
         this.container = container;
         this.stopped = stopped;
+        this.failed = failed;
     }
 
     CompletableFuture<JSONObject> call(String method, JSONObject args) {
@@ -288,7 +290,8 @@ final class AgentBrowser {
             }
         });
         session.setContentDelegate(new GeckoSession.ContentDelegate() {
-            @Override public void onCrash(GeckoSession browser) { if (browser == session) close(true); }
+            @Override public void onCrash(GeckoSession browser) { rendererExited(browser); }
+            @Override public void onKill(GeckoSession browser) { rendererExited(browser); }
         });
         session.setPermissionDelegate(new GeckoSession.PermissionDelegate() {
             @Override public void onAndroidPermissionsRequest(GeckoSession browser, String[] permissions, Callback callback) { callback.reject(); }
@@ -563,7 +566,11 @@ final class AgentBrowser {
         } catch (ActivityNotFoundException error) { externalOpened = false; status.setText("未找到可用的系统浏览器。"); }
     }
 
-    void backgrounded() { if (token != null && !externalOpened) close(true); }
+    boolean backgrounded() {
+        if (externalOpened) return true;
+        close(true);
+        return false;
+    }
     void foregrounded() { externalOpened = false; }
 
     void close(boolean notify) {
@@ -587,6 +594,17 @@ final class AgentBrowser {
 
     private void failStartup() {
         if (starting != null) { starting.complete(result("unavailable")); starting = null; }
+        close(false);
+    }
+
+    private void rendererExited(GeckoSession browser) {
+        if (browser != session || token == null) return;
+        JSONObject outcome = result("browser_closed");
+        CompletableFuture<JSONObject> launch = starting;
+        starting = null;
+        if (launch != null) launch.complete(outcome);
+        finish(outcome);
+        failed.run();
         close(false);
     }
 

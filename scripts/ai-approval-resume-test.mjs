@@ -4,7 +4,8 @@ import vm from 'node:vm';
 import * as aiChat from '../shared/ai-chat.mjs';
 const html=readFileSync('app/src/main/assets/index.html','utf8');
 const contextSource=html.slice(html.indexOf('function aiHubContextModel('),html.indexOf('function renderAiHubContext('));
-const source=contextSource+html.slice(html.indexOf('let aiHubStreamAbort=null'),html.indexOf('function localAiMarkdownDocument('));
+const browserEvents=html.slice(html.indexOf('const aiBrowserClosedMessage='),html.indexOf('const aiHubStorageKey='));
+const source=contextSource+browserEvents+html.slice(html.indexOf('let aiHubStreamAbort=null'),html.indexOf('function localAiMarkdownDocument('));
 async function scenario({local=false,accept=true,toolError=false,networkError=false,generationError=false,nextApproval=false}={}){
  const pending={id:'approval-1',tool:'notes_create',arguments:{title:'First'},local};
  const session={id:'session',profileId:local?'__local__':'cloud',model:'model',mode:'agent',messages:[{role:'user',content:'创建两篇笔记并总结'}],pendingApproval:pending};
@@ -43,39 +44,99 @@ for(const local of [false,true]){
 }
 console.log('AI approval continuation: cloud/local, cancellation, failures and next approval OK');
 
-// The preset is captured from the Android UI, and its page evidence stays in the live request.
+// A restarted Android task keeps its preset but opens a new browser run without old page evidence.
 {
  const session={id:'browser-chat',profileId:'cloud',model:'model',mode:'agent',messages:[]};
  const calls=[], snapshot={status:'ok',url:'https://example.org/docs',text:'Transient browser excerpt'};
  const action={id:crypto.randomUUID(),name:'browser_search',arguments:{query:'public docs'}};
+ let savedWhileStreaming,interrupt=true,expectedPreset='search',installed=true,available=true,statusRefreshes=0,unexpectedExit=false,launchStatus='ready';
+ const notices=[];
  const context={AbortController,DOMException,window:{EasybookAiChat:aiChat},localSpace:'workspace',tab:'ai-hub',
   aiHubCurrent:session.id,aiHubRuns:new Map(),aiHubExecutions:new Set(),aiConfigured:true,aiHubFiles:[],aiHubDraftFiles:new Map(),
-  aiProfiles:[],aiBrowserPresets:new Map([[session.id,'search']]),browserAvailable:()=>true,sandboxSessionActive:()=>false,
+  aiProfiles:[],aiBrowserPresets:new Map([[session.id,'search']]),browserAvailable:()=>available,sandboxSessionActive:()=>false,
+  async refreshAiBrowser(){statusRefreshes++;available=installed},toast:message=>notices.push(message),
   currentAiHubSession:()=>session,uuid:()=>crypto.randomUUID(),requestAnimationFrame:()=>1,cancelAnimationFrame(){},
   $:()=>({style:{},scrollHeight:0}),renderAiHub(){},renderAiHubSessions(){},recordAiToolEvent(){},saveAiHubSessions(){},
   syncAiHubRun(){},updateAiHubComposer(){},clearAiHubFiles(){},activateAiHubModel:async()=>{},generateAiHubTitle:async()=>{},autoRememberAi:async()=>{},
   native:{async call(method,args){
    calls.push([method,args]);
-   if(method==='browser.begin')return {status:'ready'};
+   if(method==='browser.begin')return {status:launchStatus};
    if(method==='browser.step')return snapshot;
    return {status:'closed'};
   }},
   async aiStreamRequest(body){
    assert.equal(body.localBrowser,true);
-   assert.equal(body.browserPreset,'search');
+   assert.equal(body.browserPreset,expectedPreset);
+   assert.doesNotMatch(body.messages.at(-1).content,/已确认操作的实际结果/);
    if(!body.browserHistory.length)return {browserAction:action};
    assert.equal(body.browserHistory[0].result,snapshot);
+   if(unexpectedExit){
+    const token=context.aiHubRuns.get(session.id).browserToken;
+    context.window.easybookAgentBrowserStopped(token,true);
+    throw new DOMException('已停止生成','AbortError');
+   }
+   if(interrupt){
+    savedWhileStreaming=JSON.stringify(session);
+    context.aiHubRuns.get(session.id).stop();
+    throw new DOMException('已停止生成','AbortError');
+   }
    return {message:{content:'[Docs](https://example.org/docs)'}};
   }
  };
  vm.createContext(context);vm.runInContext(source,context);
- await context.sendAiHubMessage('查阅公开文档');
+ await context.sendAiHubMessage('请联网搜索：公开文档');
  assert.deepEqual(calls.map(([method])=>method),['browser.begin','browser.step','browser.end']);
  assert.equal(calls[0][1].preset,'search');
  assert.equal(calls[0][1].token,calls[2][1].token);
- assert.equal(session.messages.at(-1).status,'done');
- assert.match(session.messages.at(-1).content,/https:\/\/example\.org\/docs/);
- assert.doesNotMatch(JSON.stringify(session),/Transient browser excerpt/);
+ assert.equal(session.messages.at(-1).status,'stopped');
+ assert.equal(session.messages[0].browserPreset,'search');
+ assert.equal(context.aiBrowserPresets.size,0);
+ const restored=aiChat.recoverChatSession(JSON.parse(savedWhileStreaming));
+ assert.equal(restored.messages.at(-1).status,'stopped');
+ const firstToken=calls[0][1].token;
+ calls.length=0;
+ interrupt=false;
+ available=false;
+ await context.sendAiHubMessage('',restored);
+ assert.equal(statusRefreshes,1);
+ assert.deepEqual(calls.map(([method])=>method),['browser.begin','browser.step','browser.end']);
+ assert.equal(calls[0][1].preset,'search');
+ assert.notEqual(calls[0][1].token,firstToken);
+ assert.equal(restored.messages.at(-1).status,'done');
+ assert.match(restored.messages.at(-1).content,/https:\/\/example\.org\/docs/);
+ assert.doesNotMatch(JSON.stringify(restored),/Transient browser excerpt/);
+
+ const legacy=JSON.parse(JSON.stringify(session));
+ delete legacy.messages[0].browserPreset;
+ expectedPreset='';
+ calls.length=0;
+ await context.sendAiHubMessage('',legacy);
+ assert.equal(calls[0][1].preset,'');
+ assert.equal(legacy.messages.at(-1).status,'done');
+
+ const missing=aiChat.recoverChatSession(JSON.parse(savedWhileStreaming));
+ installed=false;
+ available=false;
+ calls.length=0;
+ await context.sendAiHubMessage('',missing);
+ assert.match(notices.at(-1),/检查浏览器组件/);
+ assert.equal(calls.length,0);
+ assert.equal(missing.messages.at(-1).status,'stopped');
+
+ const crashed=aiChat.recoverChatSession(JSON.parse(savedWhileStreaming));
+ installed=available=true;
+ expectedPreset='search';
+ unexpectedExit=true;
+ await context.sendAiHubMessage('',crashed);
+ assert.equal(crashed.messages.at(-1).status,'error');
+ assert.match(crashed.messages.at(-1).error,/本地浏览器意外退出/);
+
+ launchStatus='browser_closed';
+ calls.length=0;
+ await context.sendAiHubMessage('',crashed);
+ assert.deepEqual(calls.map(([method])=>method),['browser.begin','browser.end']);
+ assert.equal(crashed.messages.at(-1).status,'error');
+ assert.match(crashed.messages.at(-1).error,/本地浏览器意外退出/);
  assert.match(readFileSync('mcp-oauth/src/index.mjs','utf8'),/localBrowser:true,browserPreset:input\.browserPreset,browserHistory:input\.browserHistory/);
 }
 
