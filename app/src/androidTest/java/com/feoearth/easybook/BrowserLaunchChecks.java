@@ -54,27 +54,42 @@ final class BrowserLaunchChecks {
         CompletableFuture<JSONObject> ready = new CompletableFuture<>();
         UiAutomation automation = test.getUiAutomation();
         try {
-            test.runOnMainSync(() -> main.agentBrowserClient().call("browser.begin", args).whenComplete((value, error) -> {
-                if (error == null) ready.complete(value); else ready.completeExceptionally(error);
-            }));
-            boolean approved = false;
-            long deadline = SystemClock.uptimeMillis() + 20000;
-            while (!ready.isDone() && SystemClock.uptimeMillis() < deadline && !approved) {
-                AccessibilityNodeInfo window = automation.getRootInActiveWindow();
-                if (window != null && AgentBrowserProtocol.PACKAGE.equals(String.valueOf(window.getPackageName())) &&
-                    !window.findAccessibilityNodeInfosByText("开始使用本地浏览器？").isEmpty()) {
-                    for (AccessibilityNodeInfo button : window.findAccessibilityNodeInfosByText("允许")) {
-                        if ("允许".equals(String.valueOf(button.getText()))) approved = button.performAction(AccessibilityNodeInfo.ACTION_CLICK);
-                        if (approved) break;
-                    }
-                }
-                if (!approved) SystemClock.sleep(200);
-            }
-            DataLayerChecks.require(approved, "companion consent did not appear: " + (ready.isDone() ? ready.get() : "timed out"));
+            request(test, main, "browser.begin", args, ready);
+            approve(automation, "开始使用本地浏览器？", ready);
             JSONObject outcome = ready.get(45, TimeUnit.SECONDS);
             DataLayerChecks.require("ready".equals(outcome.optString("status")), "companion did not start: " + outcome);
+            CompletableFuture<JSONObject> content = new CompletableFuture<>();
+            JSONObject step = new JSONObject().put("token", args.getString("token")).put("id", UUID.randomUUID().toString())
+                .put("name", "browser_open").put("arguments", new JSONObject().put("url", "https://example.com/"));
+            request(test, main, "browser.step", step, content);
+            approve(automation, "打开公开网页？", content);
+            JSONObject page = content.get(40, TimeUnit.SECONDS);
+            DataLayerChecks.require("ok".equals(page.optString("status")) && "Example Domain".equals(page.optString("title"))
+                && page.optString("text").contains("documentation examples"),
+                "companion did not read the public HTTPS page: " + page);
         } finally {
             test.runOnMainSync(() -> main.agentBrowserClient().call("browser.end", args));
         }
+    }
+
+    private static void request(Instrumentation test, MainActivity main, String method, JSONObject args, CompletableFuture<JSONObject> reply) {
+        test.runOnMainSync(() -> main.agentBrowserClient().call(method, args).whenComplete((value, error) -> {
+            if (error == null) reply.complete(value); else reply.completeExceptionally(error);
+        }));
+    }
+
+    private static void approve(UiAutomation automation, String title, CompletableFuture<JSONObject> reply) throws Exception {
+        long deadline = SystemClock.uptimeMillis() + 20000;
+        while (!reply.isDone() && SystemClock.uptimeMillis() < deadline) {
+            AccessibilityNodeInfo window = automation.getRootInActiveWindow();
+            if (window != null && AgentBrowserProtocol.PACKAGE.equals(String.valueOf(window.getPackageName())) &&
+                !window.findAccessibilityNodeInfosByText(title).isEmpty()) {
+                for (AccessibilityNodeInfo button : window.findAccessibilityNodeInfosByText("允许")) {
+                    if ("允许".equals(String.valueOf(button.getText())) && button.performAction(AccessibilityNodeInfo.ACTION_CLICK)) return;
+                }
+            }
+            SystemClock.sleep(200);
+        }
+        throw new AssertionError(title + " did not appear: " + (reply.isDone() ? reply.get() : "timed out"));
     }
 }

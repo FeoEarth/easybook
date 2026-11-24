@@ -29,7 +29,7 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 final class AgentBrowserInstaller {
-    private static final int CURRENT_VERSION = 2;
+    private static final int CURRENT_VERSION = 3;
     private static final long ESTIMATED_BYTES = 100L * 1024 * 1024;
     private static final long MAX_BYTES = 160L * 1024 * 1024;
     private final MainActivity activity;

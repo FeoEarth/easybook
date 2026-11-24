@@ -8,7 +8,10 @@ import java.net.ServerSocket;
 import java.net.Socket;
 import java.net.URI;
 import java.nio.charset.StandardCharsets;
+import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.HashSet;
+import java.util.List;
 import java.util.Locale;
 import java.util.Set;
 import java.util.concurrent.ExecutorService;
@@ -113,15 +116,7 @@ final class AgentBrowserProxy implements AutoCloseable {
             String host = request[1].substring(0, request[1].length() - 4);
             if (seeProbe(host, lease)) throw new IOException("Local proxy check");
             if (!publicHost(host)) throw new IOException("Invalid destination");
-            InetAddress[] resolved = InetAddress.getAllByName(host);
-            for (InetAddress address : resolved) if (!publicDestination(address)) throw new IOException("Private destination");
-            remote = new Socket();
-            synchronized (this) {
-                if (!active || lease != generation) throw new IOException("Expired tunnel");
-                sockets.add(remote);
-            }
-            // Connect to the validated address itself, so a second lookup cannot change it.
-            remote.connect(new InetSocketAddress(resolved[0], 443), 10000);
+            remote = connectPublic(InetAddress.getAllByName(host), lease);
             remote.setSoTimeout(30000);
             client.setSoTimeout(30000);
             client.getOutputStream().write("HTTP/1.1 200 Connection Established\r\n\r\n".getBytes(StandardCharsets.US_ASCII));
@@ -136,6 +131,45 @@ final class AgentBrowserProxy implements AutoCloseable {
             close(remote);
             synchronized (this) { sockets.remove(client); sockets.remove(remote); }
         }
+    }
+
+    static List<InetAddress> connectionOrder(InetAddress[] resolved) throws IOException {
+        List<InetAddress> candidates = new ArrayList<>(Arrays.asList(resolved));
+        for (InetAddress candidate : candidates) if (!publicDestination(candidate)) throw new IOException("Private destination");
+        if (candidates.isEmpty()) throw new IOException("No destination");
+        int family = candidates.get(0).getAddress().length;
+        for (int i = 1; i < candidates.size(); i++) {
+            if (candidates.get(i).getAddress().length != family) {
+                candidates.add(1, candidates.remove(i));
+                break;
+            }
+        }
+        return candidates;
+    }
+
+    private Socket connectPublic(InetAddress[] resolved, long lease) throws IOException {
+        List<InetAddress> candidates = connectionOrder(resolved);
+        IOException failure = null;
+        for (InetAddress address : candidates.subList(0, Math.min(4, candidates.size()))) {
+            Socket remote = new Socket();
+            try {
+                synchronized (this) {
+                    if (!active || lease != generation) throw new IOException("Expired tunnel");
+                    sockets.add(remote);
+                }
+                // Connect to the validated address itself without a second DNS lookup.
+                remote.connect(new InetSocketAddress(address, 443), 2500);
+                return remote;
+            } catch (IOException error) {
+                failure = error;
+                close(remote);
+                synchronized (this) {
+                    sockets.remove(remote);
+                    if (!active || lease != generation) throw error;
+                }
+            }
+        }
+        throw failure;
     }
 
     private static String requestHeader(InputStream input) throws IOException {
