@@ -2,6 +2,8 @@ import assert from 'node:assert/strict';
 import {aiReadiness,aiServiceReady,dispatchWebAI,webAI,AI_READINESS_PATH} from '../worker/ai-transport.mjs';
 import {legacyMcpRetirement} from '../worker/legacy-mcp-policy.mjs';
 import {identityTransportAlias} from '../worker/identity-origin.mjs';
+import {checkResourceBindings} from './release-binding-contract.mjs';
+const cfg={name:'easybook-sync',d1_databases:[{binding:'DB',database_id:'expected'}],services:[{binding:'IDENTITY_SERVICE',service:'identity'}]};const resources=[{name:'DB',type:'d1',id:'expected'},{name:'IDENTITY_SERVICE',type:'service',service:'identity'}];checkResourceBindings(cfg,resources);assert.throws(()=>checkResourceBindings(cfg,[...resources,{name:'BACKUP',type:'r2_bucket',bucket_name:'backup'}]),/undeclared_resource_binding/);assert.throws(()=>checkResourceBindings(cfg,[{...resources[0],id:'wrong'},resources[1]]),/resource_binding_target_mismatch/);assert.throws(()=>checkResourceBindings(cfg,[...resources,{name:'COLLECTION_XPRV',type:'secret_text'}]),/unexpected_finance_secret/);
 assert.equal(identityTransportAlias('https://1234abcd-easybook-mcp-oauth.zerolooo.workers.dev',{preview:true}),true);
 assert.equal(identityTransportAlias('https://evil-easybook-mcp-oauth.zerolooo.workers.dev',{preview:true}),false);
 assert.equal(identityTransportAlias('https://easybook-mcp-oauth.zerolooo.workers.dev.evil.test',{preview:true}),false);

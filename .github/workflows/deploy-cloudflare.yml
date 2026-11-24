@@ -105,14 +105,17 @@ jobs:
       - name: Verify active workspace protocol with synthetic data
         if: steps.candidate.outputs.identity_v2 == 'true'
         run: node scripts/live-core-workspace-probe.mjs '${{ steps.candidate.outputs.url }}'
+      - name: Verify AI execution service before promotion
+        if: steps.candidate.outputs.identity_v2 == 'true'
+        run: node scripts/live-ai-execution-probe.mjs '${{ steps.candidate.outputs.url }}'
       - name: Promote verified candidate
         if: github.ref == 'refs/heads/main'
         run: node scripts/cloudflare-release.mjs promote
       - name: Verify production browser and API
         if: github.ref == 'refs/heads/main'
         run: |
-          node scripts/web-release-smoke.mjs https://easybook.loonxy.com
-          if [ '${{ steps.candidate.outputs.identity_v2 }}' = 'true' ]; then node scripts/live-core-workspace-probe.mjs https://easybook.loonxy.com; node scripts/live-ai-execution-probe.mjs https://easybook.loonxy.com; else node scripts/live-pairing-probe.mjs https://easybook.loonxy.com; fi
+          node scripts/web-release-smoke.mjs '${{ steps.candidate.outputs.production_url }}'
+          if [ '${{ steps.candidate.outputs.identity_v2 }}' = 'true' ]; then node scripts/live-core-workspace-probe.mjs '${{ steps.candidate.outputs.production_url }}'; node scripts/live-ai-execution-probe.mjs '${{ steps.candidate.outputs.production_url }}'; else node scripts/live-pairing-probe.mjs '${{ steps.candidate.outputs.production_url }}'; fi
           node scripts/custom-domain-release-check.mjs verify
       - name: Roll back failed or cancelled promotion
         if: ${{ (failure() || cancelled()) && github.ref == 'refs/heads/main' }}
@@ -132,8 +135,22 @@ jobs:
             mcp-upload-live-evidence.json
           if-no-files-found: ignore
           retention-days: 14
-
-
-
-
-
+  rollback-identity:
+    needs: [identity, deploy]
+    if: ${{ always() && github.ref == 'refs/heads/main' && needs.identity.result == 'success' && needs.deploy.result == 'failure' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    env:
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - uses: actions/download-artifact@v4
+        with:
+          name: oauth-release-${{ github.run_id }}
+          path: .
+      - name: Roll back coordinated identity release if the main app failed
+        run: node scripts/cloudflare-release.mjs rollback --oauth
