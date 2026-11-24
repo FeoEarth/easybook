@@ -54,8 +54,10 @@ final class AgentBrowserClient {
             switch (method) {
                 case "browser.status": reply.complete(installer.status()); break;
                 case "browser.configure":
-                    if (!(args.opt("autoSearch") instanceof Boolean)) throw new IllegalArgumentException("无效的浏览器设置");
-                    preferences.edit().putBoolean("autoSearch", args.getBoolean("autoSearch")).apply();
+                    if (args.has("autoSearch") == args.has("publicDns")) throw new IllegalArgumentException("无效的浏览器设置");
+                    String setting = args.has("publicDns") ? "publicDns" : "autoSearch";
+                    if (!(args.opt(setting) instanceof Boolean)) throw new IllegalArgumentException("无效的浏览器设置");
+                    preferences.edit().putBoolean(setting, args.getBoolean(setting)).apply();
                     reply.complete(installer.status()); break;
                 case "browser.download": reply.complete(installer.download()); break;
                 case "browser.install": installer.install(); reply.complete(installer.status()); break;
@@ -115,7 +117,8 @@ final class AgentBrowserClient {
             connection.putBinder("owner", run.owner);
             activity.startActivityForResult(new Intent().setComponent(new ComponentName(AgentBrowserProtocol.PACKAGE, AgentBrowserProtocol.ACTIVITY))
                 .putExtras(connection).putExtra("receiver", transportReceiver(receiver)).putExtra("dark", activity.agentBrowserDark())
-                .putExtra("autoSearch", preferences.getBoolean("autoSearch", false)), REQUEST);
+                .putExtra("autoSearch", preferences.getBoolean("autoSearch", false))
+                .putExtra("publicDns", preferences.getBoolean("publicDns", true)), REQUEST);
             activityOpen = true;
             ui.postDelayed(() -> {
                 if (task == run && run.remote == null) {

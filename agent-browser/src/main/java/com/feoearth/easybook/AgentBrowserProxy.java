@@ -33,6 +33,7 @@ final class AgentBrowserProxy implements AutoCloseable {
     private long generation;
     private boolean active;
     private boolean publicDnsAllowed;
+    private boolean publicDnsDefault;
     private String probeHost;
     private Runnable probeNotice;
 
@@ -61,7 +62,12 @@ final class AgentBrowserProxy implements AutoCloseable {
     }
 
     synchronized void setActive(boolean active) {
+        setActive(active, false);
+    }
+
+    synchronized void setActive(boolean active, boolean publicDnsDefault) {
         this.active = active;
+        this.publicDnsDefault = active && publicDnsDefault;
         publicDnsAllowed = false;
         generation++;
         probeHost = null;
@@ -80,6 +86,10 @@ final class AgentBrowserProxy implements AutoCloseable {
 
     private synchronized boolean mayUsePublicDns(long lease) {
         return active && publicDnsAllowed && lease == generation;
+    }
+
+    private synchronized boolean usesPublicDnsByDefault(long lease) {
+        return active && publicDnsDefault && lease == generation;
     }
 
     private synchronized boolean seeProbe(String host, long lease) {
@@ -147,16 +157,23 @@ final class AgentBrowserProxy implements AutoCloseable {
             host = request[1].substring(0, request[1].length() - 4).toLowerCase(Locale.ROOT);
             if (seeProbe(host, lease)) throw new IOException("Local proxy check");
             if (!publicHost(host)) throw new IOException("Invalid destination");
-            stage = Failure.DNS;
-            InetAddress[] resolved = systemDns.resolve(host);
-            stage = Failure.ADDRESS;
-            List<InetAddress> candidates;
-            try {
-                candidates = connectionOrder(resolved);
-            } catch (IOException error) {
-                if (!mayUsePublicDns(lease)) throw error;
-                stage = Failure.PUBLIC_DNS;
-                candidates = connectionOrder(publicDns.resolve(host));
+            boolean publicFirst = usesPublicDnsByDefault(lease);
+            List<InetAddress> candidates = null;
+            if (publicFirst) {
+                try { candidates = connectionOrder(publicDns.resolve(host)); }
+                catch (IOException ignored) { }
+            }
+            if (candidates == null) {
+                stage = Failure.DNS;
+                InetAddress[] resolved = systemDns.resolve(host);
+                stage = publicFirst ? Failure.PUBLIC_DNS : Failure.ADDRESS;
+                try {
+                    candidates = connectionOrder(resolved);
+                } catch (IOException error) {
+                    if (publicFirst || !mayUsePublicDns(lease)) throw error;
+                    stage = Failure.PUBLIC_DNS;
+                    candidates = connectionOrder(publicDns.resolve(host));
+                }
             }
             stage = Failure.CONNECT;
             remote = connectPublic(candidates, lease);

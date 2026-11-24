@@ -51,6 +51,7 @@ public final class AgentBrowserActivity extends Activity {
         setContentView(container);
         container.requestApplyInsets();
         browser = new AgentBrowser(this, container, dark, getIntent().getBooleanExtra("autoSearch", false),
+            getIntent().getBooleanExtra("publicDns", true),
             token -> stop(true), this::finishUnexpectedly);
     }
 

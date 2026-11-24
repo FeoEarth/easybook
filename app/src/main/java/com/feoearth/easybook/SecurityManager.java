@@ -52,7 +52,7 @@ public final class SecurityManager {
             case "ai.web.search.assist":fields=fields("query","token");break;
             case "ai.web.search.open":fields=fields("query");break;
             case "browser.status":case "browser.download":case "browser.install":case "browser.cancelDownload":case "browser.remove":fields=Collections.emptySet();break;
-            case "browser.configure":fields=fields("autoSearch");break;
+            case "browser.configure":fields=fields("autoSearch","publicDns");break;
             case "browser.begin":fields=fields("token","preset");break;
             case "browser.step":fields=fields("token","id","name","arguments");break;
             case "browser.end":fields=fields("token");break;
