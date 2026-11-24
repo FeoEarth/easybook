@@ -46,6 +46,7 @@ final class AgentBrowser {
     private static final String CHANNEL = "easybookAgentBrowser";
     private static final String EXTENSION = "agent-browser@easybook.invalid";
     private static final String SEARCH_HOST = "duckduckgo.com";
+    private static final String FALLBACK_SEARCH_HOST = "www.bing.com";
     private static GeckoRuntime runtime;
     private static AgentBrowserProxy proxy;
 
@@ -58,7 +59,7 @@ final class AgentBrowser {
     private final Handler handler = new Handler(Looper.getMainLooper());
     private final Set<String> allowed = new HashSet<>(), declined = new HashSet<>(), actions = new HashSet<>();
     private final Map<String,URI> links = new LinkedHashMap<>();
-    private String token, preset, url = "", lastPublicUrl = "", handoffCode = "";
+    private String token, preset, url = "", lastPublicUrl = "", attemptedUrl = "", handoffCode = "";
     private GeckoSession session;
     private GeckoView view;
     private LinearLayout chrome;
@@ -69,7 +70,7 @@ final class AgentBrowser {
     private Pending pending;
     private CompletableFuture<JSONObject> starting;
     private AlertDialog dialog;
-    private boolean paused, loading, canGoBack, externalOpened, proxyVerified;
+    private boolean paused, loading, canGoBack, externalOpened, proxyVerified, probeStopped;
     private int revision, requestNumber;
 
     private static final class Pending {
@@ -78,6 +79,8 @@ final class AgentBrowser {
         int revision;
         int deadline;
         boolean navigates;
+        boolean navigationStarted;
+        String searchQuery;
         Pending(CompletableFuture<JSONObject> reply) { this.reply = reply; }
     }
 
@@ -189,7 +192,7 @@ final class AgentBrowser {
             proxy.expectProbe(host, () -> handler.post(() -> {
                 if (lease.equals(token) && starting != null) {
                     proxyVerified = true;
-                    handler.postDelayed(() -> { if (lease.equals(token) && starting != null) ready(); }, 900);
+                    ready();
                 }
             }));
             session.loadUri("https://" + host + "/");
@@ -199,7 +202,7 @@ final class AgentBrowser {
     private String probeHost() { return token + ".browser-proxy.invalid"; }
 
     private void ready() {
-        if (!proxyVerified || starting == null) return;
+        if (!proxyVerified || !probeStopped || starting == null) return;
         loading = false;
         status.setText("等待 AI 操作");
         starting.complete(result("ready"));
@@ -272,20 +275,24 @@ final class AgentBrowser {
                 if (browser == session) { canGoBack = value && !url.isEmpty(); back.setEnabled(canGoBack); }
             }
             @Override public GeckoResult<String> onLoadError(GeckoSession browser, String value, WebRequestError error) {
-                if (browser == session && starting == null && !value.contains(".browser-proxy.invalid/")) loadFailed();
+                if (browser == session && starting == null && pending != null)
+                    android.util.Log.d("EasybookBrowser", "Gecko navigation error: " + error.code);
                 return null;
             }
         });
         session.setProgressDelegate(new GeckoSession.ProgressDelegate() {
             @Override public void onPageStart(GeckoSession browser, String value) {
                 if (browser != session || starting != null) return;
+                try { AgentBrowserProxy.publicUrl(value); } catch (RuntimeException error) { return; }
+                if (pending != null && pending.navigates) pending.navigationStarted = true;
                 loading = true;
                 port = null;
                 invalidate();
             }
             @Override public void onPageStop(GeckoSession browser, boolean success) {
                 if (browser != session) return;
-                if (starting != null) { ready(); return; }
+                if (starting != null) { probeStopped = true; ready(); return; }
+                if (!loading || pending != null && pending.navigates && !pending.navigationStarted) return;
                 loading = false;
                 if (success) scheduleRead(550); else if (pending != null && pending.navigates) loadFailed();
             }
@@ -374,14 +381,19 @@ final class AgentBrowser {
             allowed.add(SEARCH_HOST);
             allowed.add("html." + SEARCH_HOST);
             allowed.add("lite." + SEARCH_HOST);
-            openPage(URI.create(new Uri.Builder().scheme("https").authority(SEARCH_HOST).path("/")
-                .appendQueryParameter("q", query).build().toString()), "AI 正在联网搜索…");
+            step.searchQuery = query;
+            openPage(searchUri("html." + SEARCH_HOST, "/html/", query), "AI 正在使用 DuckDuckGo 搜索…");
         };
         if (autoSearch) navigate.run();
         else confirm("发送公开搜索关键词？", "DuckDuckGo\n\n" + query, accepted -> {
             if (pending != step) return;
             if (accepted) navigate.run(); else finish(result("search_declined"));
         });
+    }
+
+    private static URI searchUri(String host, String path, String query) {
+        return URI.create(new Uri.Builder().scheme("https").authority(host).path(path)
+            .appendQueryParameter("q", query).build().toString());
     }
 
     private void open(URI target) {
@@ -421,9 +433,13 @@ final class AgentBrowser {
 
     private void openPage(URI target, String label) {
         pending.navigates = true;
+        pending.navigationStarted = false;
         timeout(pending);
         loading = true;
         invalidate();
+        attemptedUrl = target.toASCIIString();
+        address.setText(attemptedUrl);
+        system.setEnabled(true);
         status.setText(label);
         shield.setBackgroundColor(android.graphics.Color.TRANSPARENT);
         GeckoSession.Loader loader = new GeckoSession.Loader().uri(target.toASCIIString());
@@ -435,6 +451,7 @@ final class AgentBrowser {
         String value = location.toASCIIString();
         if (!value.equals(url)) invalidate();
         url = value;
+        attemptedUrl = value;
         address.setText(value);
         system.setEnabled(true);
         scheduleRead(450);
@@ -467,7 +484,8 @@ final class AgentBrowser {
         Pending step = pending;
         if (step == null || paused || step.request == 0 || step.request != data.optInt("id") || step.revision != revision) return;
         if (data.optBoolean("blocked")) {
-            pause("网页需要验证或暂时限流。请接管后处理，再点恢复。");
+            if (step.searchQuery != null) loadFailed();
+            else pause("网页需要验证或暂时限流。请接管后处理，再点恢复。");
             return;
         }
         if (data.optBoolean("signIn")) { handoff("此网页需要登录。请在系统浏览器继续。", "sign_in"); return; }
@@ -493,6 +511,7 @@ final class AgentBrowser {
                 remaining -= size;
             } catch (RuntimeException | org.json.JSONException ignored) { }
         }
+        if (output.length() == 0 && step.searchQuery != null) { loadFailed(); return; }
         status.setText("等待 AI 操作");
         lastPublicUrl = url;
         finish(object("status", "ok", "url", displayUrl(URI.create(url)), "title", limit(data.optString("title"), 180),
@@ -504,7 +523,10 @@ final class AgentBrowser {
         // Fragments and the search engine's keyword URL are unnecessary in source citations.
         int hash = url.indexOf('#');
         if (hash >= 0) url = url.substring(0, hash);
-        if (host(uri).endsWith(SEARCH_HOST)) { int query = url.indexOf('?'); if (query >= 0) url = url.substring(0, query); }
+        String host = host(uri);
+        if (host.equals(SEARCH_HOST) || host.endsWith("." + SEARCH_HOST) || host.equals(FALLBACK_SEARCH_HOST)) {
+            int query = url.indexOf('?'); if (query >= 0) url = url.substring(0, query);
+        }
         return limit(url, 500);
     }
 
@@ -557,9 +579,10 @@ final class AgentBrowser {
     }
 
     private void openExternally() {
-        if (url.isEmpty()) return;
+        String destination = attemptedUrl.isEmpty() ? url : attemptedUrl;
+        if (destination.isEmpty()) return;
         try {
-            URI target = AgentBrowserProxy.publicUrl(url);
+            URI target = AgentBrowserProxy.publicUrl(destination);
             if (handoffCode.isEmpty()) handoffCode = "system_browser";
             pause("已交给系统浏览器。返回 Easybook 后可以恢复 AI 浏览。");
             externalOpened = true;
@@ -588,8 +611,8 @@ final class AgentBrowser {
         if (proxy != null && closedToken != null) proxy.setActive(false);
         if (runtime != null && closedToken != null) runtime.getStorageController().clearDataForSessionContext(closedToken);
         chrome = null;
-        url = lastPublicUrl = handoffCode = "";
-        loading = paused = canGoBack = externalOpened = proxyVerified = false;
+        url = lastPublicUrl = attemptedUrl = handoffCode = "";
+        loading = paused = canGoBack = externalOpened = proxyVerified = probeStopped = false;
         allowed.clear(); declined.clear(); actions.clear(); invalidate();
         if (notify && closedToken != null) stopped.accept(closedToken);
     }
@@ -613,7 +636,20 @@ final class AgentBrowser {
 
     private void loadFailed() {
         loading = false;
-        if (status != null) status.setText("网页未能加载。");
+        Pending step = pending;
+        if (step != null && step.searchQuery != null && !paused) {
+            String query = step.searchQuery;
+            step.searchQuery = null;
+            status.setText("DuckDuckGo 暂时不可用。");
+            confirm("改用 Bing 搜索？", "允许后，本地浏览器会把同一关键词发送给 Bing。\n\n" + query, accepted -> {
+                if (pending != step) return;
+                if (!accepted) { finish(result("load_failed")); return; }
+                allowed.add(FALLBACK_SEARCH_HOST);
+                openPage(searchUri(FALLBACK_SEARCH_HOST, "/search", query), "AI 正在使用 Bing 搜索…");
+            });
+            return;
+        }
+        if (status != null) status.setText("网页未能加载，可点「系统浏览器」尝试打开。");
         finish(result("load_failed"));
     }
 
@@ -621,7 +657,7 @@ final class AgentBrowser {
         int window = ++step.deadline;
         handler.postDelayed(() -> {
             if (pending == step && !paused && dialog == null && step.deadline == window) {
-                if (session != null && loading) session.stop();
+                if (session != null && loading) { loading = false; session.stop(); }
                 loadFailed();
             }
         }, 24000);

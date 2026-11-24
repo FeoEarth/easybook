@@ -9,8 +9,8 @@ android {
         applicationId 'com.feoearth.easybook.browser'
         minSdk 26
         targetSdk 35
-        versionCode 2
-        versionName '1.1'
+        versionCode 3
+        versionName '1.2'
     }
     sourceSets.main.java.srcDir(rootProject.file('android-shared/java'))
     packaging { jniLibs { useLegacyPackaging = true } }

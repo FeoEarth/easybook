@@ -4,6 +4,7 @@ import org.junit.Test;
 import java.net.InetAddress;
 import java.net.Socket;
 import java.nio.charset.StandardCharsets;
+import java.util.Arrays;
 import java.util.concurrent.atomic.AtomicBoolean;
 import static org.junit.Assert.*;
 
@@ -35,6 +36,15 @@ public class AgentBrowserProxyTest {
             assertTrue(request(proxy, "CONNECT 127.0.0.1:443 HTTP/1.1").contains("403 Forbidden"));
             assertTrue(request(proxy, "GET https://example.org/ HTTP/1.1").contains("403 Forbidden"));
         }
+    }
+
+    @Test public void dualStackConnectionsTryTheOtherFamilyEarlyAndRejectMixedPrivateAnswers() throws Exception {
+        InetAddress first = InetAddress.getByName("2606:4700:4700::1111");
+        InetAddress second = InetAddress.getByName("2606:4700:4700::1001");
+        InetAddress alternate = InetAddress.getByName("1.1.1.1");
+        assertEquals(Arrays.asList(first, alternate, second), AgentBrowserProxy.connectionOrder(new InetAddress[]{first, second, alternate}));
+        InetAddress privateAddress = InetAddress.getByName("10.1.2.3");
+        assertThrows(java.io.IOException.class, () -> AgentBrowserProxy.connectionOrder(new InetAddress[]{first, privateAddress}));
     }
 
     private static String request(AgentBrowserProxy proxy, String line) throws Exception {

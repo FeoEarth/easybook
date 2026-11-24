@@ -4,25 +4,33 @@
   const challenge = () => document.querySelector('#challenge-form,#anomaly-modal,.anomaly-modal,iframe[src*="captcha"],#cf-challenge-running,form#challenge-form') ||
     /^(just a moment|too many requests|access denied|attention required)/i.test(document.title);
   const visible = node => node.getClientRects().length && getComputedStyle(node).visibility === 'visible';
-  const searchHost = () => ['duckduckgo.com','html.duckduckgo.com','lite.duckduckgo.com'].includes(location.hostname);
+  const duck = ['duckduckgo.com','html.duckduckgo.com','lite.duckduckgo.com'].includes(location.hostname);
+  const bing = ['www.bing.com','cn.bing.com'].includes(location.hostname);
   function collectLinks() {
     const results = [], seen = new Set();
-    const matches = searchHost() ? 'a[data-testid="result-title-a"],a.result__a,a.result-link' : 'a[href]';
+    const matches = duck ? 'a[data-testid="result-title-a"],a.result__a,a.result-link' : bing ? 'li.b_algo h2 a[href]' : 'a[href]';
     for (const anchor of [...document.querySelectorAll(matches)].slice(0, 500)) {
       if (!visible(anchor) || anchor.hasAttribute('download') || anchor.closest('form,[data-testid="ad"],.result--ad')) continue;
       let url;
       try {
         url = new URL(anchor.href);
-        if (searchHost() && /(^|\.)duckduckgo\.com$/.test(url.hostname) && url.pathname === '/l/') {
+        if (duck && /(^|\.)duckduckgo\.com$/.test(url.hostname) && url.pathname === '/l/') {
           url = new URL(url.searchParams.get('uddg'));
+        }
+        if (bing && url.hostname === location.hostname && url.pathname === '/ck/a') {
+          const encoded = url.searchParams.get('u');
+          if (!encoded?.startsWith('a1')) continue;
+          const decoded = atob(encoded.slice(2).replace(/-/g, '+').replace(/_/g, '/'));
+          url = new URL(new TextDecoder().decode(Uint8Array.from(decoded, char => char.charCodeAt(0))));
         }
         if (url.protocol !== 'https:' || url.username || url.password || url.href.length > 2048 || seen.has(url.href)) continue;
       } catch { continue; }
       const title = clean(anchor.innerText || anchor.getAttribute('aria-label'), 140);
       if (!title) continue;
       seen.add(url.href);
-      const snippet = searchHost() ? clean(anchor.closest('article,.result,[data-testid="result"]')
-        ?.querySelector('[data-result="snippet"],[data-testid="result-snippet"],.result__snippet')?.innerText, 160) : '';
+      const snippet = duck ? clean(anchor.closest('article,.result,[data-testid="result"]')
+        ?.querySelector('[data-result="snippet"],[data-testid="result-snippet"],.result__snippet')?.innerText, 160) :
+        bing ? clean(anchor.closest('li.b_algo')?.querySelector('.b_caption p')?.innerText, 160) : '';
       results.push({url:url.href,title,snippet});
       if (results.length === 18) break;
     }
