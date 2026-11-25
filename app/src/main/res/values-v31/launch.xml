@@ -1,0 +1,7 @@
+<resources>
+    <style name="Theme.Easybook.Main" parent="Theme.Easybook.Main.Base">
+        <item name="android:windowBackground">@color/launch_surface</item>
+        <item name="android:windowSplashScreenBackground">@color/launch_surface</item>
+        <item name="android:windowSplashScreenAnimatedIcon">@drawable/launch_mark</item>
+    </style>
+</resources>

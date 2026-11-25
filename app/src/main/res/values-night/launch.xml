@@ -1,0 +1,10 @@
+<resources>
+    <bool name="launch_light_bars">false</bool>
+    <color name="launch_surface">#000000</color>
+    <color name="launch_glass_rim">#ffc9d3df</color>
+    <color name="launch_front_light">#f4f6fc</color>
+    <color name="launch_front_mid">#a7b1c0</color>
+    <color name="launch_front_shadow">#627083</color>
+    <color name="launch_rear_light">#b6c1d0</color>
+    <color name="launch_rear_shadow">#3e4a5c</color>
+</resources>
