@@ -1,0 +1,23 @@
+<resources>
+    <style name="Theme.Easybook.Main.Base" parent="android:style/Theme.Material.Light.NoActionBar">
+        <item name="android:statusBarColor">@color/launch_surface</item>
+        <item name="android:navigationBarColor">@color/launch_surface</item>
+        <item name="android:windowLightStatusBar">@bool/launch_light_bars</item>
+        <item name="android:windowLightNavigationBar">@bool/launch_light_bars</item>
+    </style>
+    <style name="Theme.Easybook.Main" parent="Theme.Easybook.Main.Base">
+        <item name="android:windowBackground">@drawable/launch_window</item>
+    </style>
+
+    <dimen name="launch_icon_canvas">288dp</dimen>
+    <bool name="launch_light_bars">true</bool>
+    <color name="launch_surface">#f2f2f7</color>
+    <color name="launch_glass_rim">#ff929baa</color>
+    <color name="launch_front_light">#fafbff</color>
+    <color name="launch_front_mid">#d7dce5</color>
+    <color name="launch_front_shadow">#96a2b5</color>
+    <color name="launch_rear_light">#e2e7ef</color>
+    <color name="launch_rear_shadow">#7b889e</color>
+    <color name="launch_sheen_clear">#00fff4da</color>
+    <color name="launch_sheen_light">#cafff4da</color>
+</resources>

@@ -3,6 +3,7 @@ package com.feoearth.easybook;
 import android.app.Activity;
 import android.content.*;
 import android.content.res.Configuration;
+import android.graphics.drawable.ColorDrawable;
 import android.os.Bundle;
 import android.webkit.*;
 import android.net.Uri;
@@ -20,6 +21,7 @@ import java.util.concurrent.ExecutorService;
 
 public class MainActivity extends Activity {
     private WebView web;
+    private LaunchAnimation launchAnimation;
     public com.feoearth.easybook.glass.NativeGlassMenu nativeGlass;
     private long glassGeneration=-1;
     private android.widget.FrameLayout safeArea;
@@ -89,6 +91,7 @@ public class MainActivity extends Activity {
         boolean dark = AppAppearance.dark(AppAppearance.mode(this), darkSystem);
         int color = AppAppearance.windowColor(dark);
         if(security!=null)security.setDark(dark);
+        getWindow().setBackgroundDrawable(new ColorDrawable(color));
         AppAppearance.applyWindow(getWindow(), dark, color);
         if(safeArea!=null)safeArea.setBackgroundColor(color);
         if(web!=null){
@@ -123,6 +126,7 @@ public class MainActivity extends Activity {
         boolean dark = darkAppearance();
         if(security!=null)security.setDark(dark);
         int color = AppAppearance.windowColor(dark);
+        getWindow().setBackgroundDrawable(new ColorDrawable(color));
         AppAppearance.applyWindow(getWindow(), dark, color);
         getWindow().setSoftInputMode(WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE);
         if (android.os.Build.VERSION.SDK_INT >= 30) getWindow().setDecorFitsSystemWindows(false);
@@ -290,6 +294,9 @@ public class MainActivity extends Activity {
                 if(!repository.profile().httpKeyOnly&&!r.isForMainFrame()&&"GET".equals(r.getMethod())&&"https".equals(uri.getScheme())&&"challenges.cloudflare.com".equals(uri.getHost())&&(uri.getPort()==-1||uri.getPort()==443)&&uri.getUserInfo()==null)return false;return !r.isForMainFrame() || !LOCAL.equals(uri.toString()); }
             @Override public void onPageStarted(WebView v,String url,android.graphics.Bitmap icon){if(agentBrowser!=null)agentBrowser.close(false);if(localAiEngine!=null)localAiEngine.cancel();if(nativeAccount!=null)nativeAccount.cancelAiStream(null);ready=false;updateUiReady=false;documentGeneration++;if(nativeGlass!=null){nativeGlass.clearFormatFrame();nativeGlass.dismiss(true);}}
         });
+        if (state == null && android.animation.ValueAnimator.areAnimatorsEnabled()) {
+            launchAnimation = new LaunchAnimation(this);
+        }
         web.loadUrl(LOCAL);
     }
     private String readAsset(String name)throws IOException {try(InputStream in=getAssets().open(name);ByteArrayOutputStream out=new ByteArrayOutputStream()){byte[] b=new byte[8192];int n;while((n=in.read(b))!=-1)out.write(b,0,n);return out.toString("UTF-8");}}
@@ -616,7 +623,15 @@ public class MainActivity extends Activity {
                 runOnUiThread(()->{if(!destroyed && ready && generation==documentGeneration){glassGeneration=generation;if(!nativeGlass.show(args))web.evaluateJavascript("window.easybookNativeGlassFallback && window.easybookNativeGlassFallback()",null);}});
                 return new JSONObject().put("accepted",true);
             }
-            case "ui.ready":runOnUiThread(()->{if(!destroyed&&generation==documentGeneration){ready=true;refreshAppearance(systemDark());if(updateUiReady)webOta.ready();webOta.checkAsync();receiveShare(getIntent());}});return new JSONObject();
+            case "ui.ready":runOnUiThread(()->{
+                if(destroyed||generation!=documentGeneration)return;
+                ready=true;
+                refreshAppearance(systemDark());
+                if(launchAnimation!=null)launchAnimation.revealWhenDrawn(web);
+                if(updateUiReady)webOta.ready();
+                webOta.checkAsync();
+                receiveShare(getIntent());
+            });return new JSONObject();
             case "device.theme":{String mode=bounded(args,"value",10);if(!mode.matches("auto|light|dark"))throw new IllegalArgumentException();new DeviceActions().theme(mode);break;}
             case "device.haptic":runOnUiThread(()->web.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP));break;
             case "device.copy":new DeviceActions().copy(bounded(args,"value",100000));break;
@@ -765,7 +780,7 @@ public class MainActivity extends Activity {
     }
     @Override protected void onResume(){super.onResume();if(ready&&LOCAL.equals(web.getUrl()))web.evaluateJavascript("window.easybookAgentBrowserChanged?.()",null);refreshAppearance(systemDark());if(nativeAccount!=null){nativeAccount.resume();accountChanged();}}
     @Override protected void onPause() { if(localAiEngine!=null)localAiEngine.cancel();if(security!=null)security.dismissConnection(); if(nativeGlass!=null)nativeGlass.dismiss(true);web.evaluateJavascript("window.EasybookVideo?.pauseAll();window.persistNow && window.persistNow()", null); super.onPause(); }
-    @Override protected void onDestroy() { if(agentBrowser!=null)agentBrowser.close(false); hideVideoFullscreen(); if(nativeAccount!=null){nativeAccount.cancel();nativeAccount.shutdownAiStream();} if(localAiEngine!=null)localAiEngine.shutdown();if(localAiModels!=null)localAiModels.shutdown();if(localAiRuntime!=null)localAiRuntime.shutdown(); if(security!=null)security.dismissConnection(); if(connectivity!=null&&networkCallback!=null)connectivity.unregisterNetworkCallback(networkCallback); if(nativeGlass!=null){nativeGlass.clearFormatFrame();nativeGlass.dismiss(true);}ready=false; destroyed=true;if(WebViewFeature.isFeatureSupported(WebViewFeature.WEB_MESSAGE_LISTENER))WebViewCompat.removeWebMessageListener(web,"EasybookNative");web.destroy();if(appUpdater!=null)appUpdater.shutdown();vmIo.shutdownNow();dockIo.shutdown();io.shutdown();super.onDestroy(); }
+    @Override protected void onDestroy() { if(launchAnimation!=null)launchAnimation.remove(); if(agentBrowser!=null)agentBrowser.close(false); hideVideoFullscreen(); if(nativeAccount!=null){nativeAccount.cancel();nativeAccount.shutdownAiStream();} if(localAiEngine!=null)localAiEngine.shutdown();if(localAiModels!=null)localAiModels.shutdown();if(localAiRuntime!=null)localAiRuntime.shutdown(); if(security!=null)security.dismissConnection(); if(connectivity!=null&&networkCallback!=null)connectivity.unregisterNetworkCallback(networkCallback); if(nativeGlass!=null){nativeGlass.clearFormatFrame();nativeGlass.dismiss(true);}ready=false; destroyed=true;if(WebViewFeature.isFeatureSupported(WebViewFeature.WEB_MESSAGE_LISTENER))WebViewCompat.removeWebMessageListener(web,"EasybookNative");web.destroy();if(appUpdater!=null)appUpdater.shutdown();vmIo.shutdownNow();dockIo.shutdown();io.shutdown();super.onDestroy(); }
 }
 
 
