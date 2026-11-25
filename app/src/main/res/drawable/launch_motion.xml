@@ -1,21 +1,19 @@
 <animated-vector xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:aapt="http://schemas.android.com/aapt"
     android:drawable="@drawable/launch_mark">
-    <target android:name="front_plate">
+    <target android:name="rear_plate">
         <aapt:attr name="android:animation">
-            <objectAnimator android:duration="410" android:interpolator="@android:interpolator/overshoot">
-                <propertyValuesHolder android:propertyName="translateX" android:valueFrom="-13" android:valueTo="0" android:valueType="floatType" />
-                <propertyValuesHolder android:propertyName="translateY" android:valueFrom="-16" android:valueTo="0" android:valueType="floatType" />
-                <propertyValuesHolder android:propertyName="rotation" android:valueFrom="-12" android:valueTo="0" android:valueType="floatType" />
+            <objectAnimator android:duration="510" android:interpolator="@android:interpolator/accelerate_decelerate">
+                <propertyValuesHolder android:propertyName="translateX" android:valueFrom="-38" android:valueTo="0" android:valueType="floatType" />
+                <propertyValuesHolder android:propertyName="translateY" android:valueFrom="23" android:valueTo="0" android:valueType="floatType" />
             </objectAnimator>
         </aapt:attr>
     </target>
-    <target android:name="rear_plate">
+    <target android:name="front_plate">
         <aapt:attr name="android:animation">
-            <objectAnimator android:startOffset="66" android:duration="430" android:interpolator="@android:interpolator/overshoot">
-                <propertyValuesHolder android:propertyName="translateX" android:valueFrom="14" android:valueTo="0" android:valueType="floatType" />
-                <propertyValuesHolder android:propertyName="translateY" android:valueFrom="15" android:valueTo="0" android:valueType="floatType" />
-                <propertyValuesHolder android:propertyName="rotation" android:valueFrom="12" android:valueTo="0" android:valueType="floatType" />
+            <objectAnimator android:startOffset="68" android:duration="510" android:interpolator="@android:interpolator/accelerate_decelerate">
+                <propertyValuesHolder android:propertyName="translateX" android:valueFrom="38" android:valueTo="0" android:valueType="floatType" />
+                <propertyValuesHolder android:propertyName="translateY" android:valueFrom="-23" android:valueTo="0" android:valueType="floatType" />
             </objectAnimator>
         </aapt:attr>
     </target>
@@ -23,8 +21,8 @@
         <aapt:attr name="android:animation">
             <objectAnimator
                 android:propertyName="translateX"
-                android:startOffset="335"
-                android:duration="310"
+                android:startOffset="400"
+                android:duration="245"
                 android:interpolator="@android:interpolator/fast_out_slow_in"
                 android:valueFrom="0"
                 android:valueTo="184"
