@@ -26,7 +26,7 @@ public final class NativeGlassMenu {
     private JSONObject state;
     private boolean sort,closing,disabled,renderingFailed;
     private View oldFocus;
-    private final FormatGlassFrame formatFrame,toolbarFrame,moveFrame,syncFrame;private final FormatGlassFrame[] dockFrames,pdfFrames;
+    private final FormatGlassFrame formatFrame,toolbarFrame,moveFrame,syncFrame;private final FormatGlassFrame[] dockFrames,pdfFrames,chromeFrames;
     private EditText linkInput;
     private final java.util.ArrayList<PaletteSwatch> paletteSwatches=new java.util.ArrayList<>();
     private String pendingCommand;
@@ -41,6 +41,7 @@ public final class NativeGlassMenu {
         syncFrame=new FormatGlassFrame(activity,root,web,backdrop,this::captureCurrent,valid,"sync");
         dockFrames=new FormatGlassFrame[]{new FormatGlassFrame(activity,root,web,backdrop,this::captureCurrent,valid,"DockSearch"),new FormatGlassFrame(activity,root,web,backdrop,this::captureCurrent,valid,"DockFolder"),new FormatGlassFrame(activity,root,web,backdrop,this::captureCurrent,valid,"DockCompose")};
         pdfFrames=new FormatGlassFrame[8];for(int i=0;i<pdfFrames.length;i++)pdfFrames[i]=new FormatGlassFrame(activity,root,web,backdrop,this::captureCurrent,valid,"Pdf"+i);
+        chromeFrames=new FormatGlassFrame[2];for(int i=0;i<chromeFrames.length;i++)chromeFrames[i]=new FormatGlassFrame(activity,root,web,backdrop,this::captureCurrent,valid,"Chrome"+i);
     }
     private int dp(float x){return Math.round(x*activity.getResources().getDisplayMetrics().density);}
     public boolean isShowing(){return shield!=null;}
@@ -103,6 +104,7 @@ public final class NativeGlassMenu {
         if(syncFrame.surface()!=null){web.invalidate();backdrop.invalidate();syncFrame.surface().invalidate();}
         for(FormatGlassFrame frame:dockFrames)if(frame.surface()!=null){web.invalidate();backdrop.invalidate();frame.surface().invalidate();}
         for(FormatGlassFrame frame:pdfFrames)if(frame.surface()!=null){web.invalidate();backdrop.invalidate();frame.surface().invalidate();}
+        for(FormatGlassFrame frame:chromeFrames)if(frame.surface()!=null){web.invalidate();backdrop.invalidate();frame.surface().invalidate();}
         if(isShowing()&&!closing){web.invalidate();backdrop.invalidate();surface.invalidate();}
         else if(formatFrame.surface()!=null){web.invalidate();backdrop.invalidate();formatFrame.surface().invalidate();}
         if(moveFrame.surface()!=null){web.invalidate();backdrop.invalidate();moveFrame.surface().invalidate();}
@@ -110,14 +112,15 @@ public final class NativeGlassMenu {
     }
     public void updateSyncFrame(JSONObject args){if(valid.getAsBoolean())syncFrame.update(args);}
     public void updatePdfFrame(JSONObject args){if(valid.getAsBoolean())pdfFrames[args.optInt("slot")].update(args);}
+    public void updateChromeFrame(JSONObject args){if(valid.getAsBoolean())chromeFrames[args.optInt("slot")].update(args);}
     public void updateDockFrame(JSONObject args){if(valid.getAsBoolean())dockFrames[args.optInt("slot")].update(args);}
     public void updateMoveFrame(JSONObject args){if(valid.getAsBoolean())moveFrame.update(args);}
     public void updateToolbarFrame(JSONObject args){if(valid.getAsBoolean())toolbarFrame.update(args);}
     public void updateFormatFrame(JSONObject args){if(valid.getAsBoolean())formatFrame.update(args);}
-    public void clearFormatFrame(){syncFrame.dispose();formatFrame.dispose();toolbarFrame.dispose();moveFrame.dispose();for(FormatGlassFrame frame:dockFrames)frame.dispose();for(FormatGlassFrame frame:pdfFrames)frame.dispose();}
-    private void captureCurrent(){android.view.View primary=isShowing()?surface:moveFrame.surface()!=null?moveFrame.surface():formatFrame.surface(),bar=toolbarFrame.surface();java.util.ArrayList<View> consumers=new java.util.ArrayList<>();if(primary!=null)consumers.add(primary);if(syncFrame.surface()!=null)consumers.add(syncFrame.surface());if(bar!=null)consumers.add(bar);for(FormatGlassFrame frame:dockFrames)if(frame.surface()!=null)consumers.add(frame.surface());for(FormatGlassFrame frame:pdfFrames)if(frame.surface()!=null)consumers.add(frame.surface());backdrop.captureConsumers(consumers.toArray(new View[0]));}
+    public void clearFormatFrame(){syncFrame.dispose();formatFrame.dispose();toolbarFrame.dispose();moveFrame.dispose();for(FormatGlassFrame frame:dockFrames)frame.dispose();for(FormatGlassFrame frame:pdfFrames)frame.dispose();for(FormatGlassFrame frame:chromeFrames)frame.dispose();}
+    private void captureCurrent(){android.view.View primary=isShowing()?surface:moveFrame.surface()!=null?moveFrame.surface():formatFrame.surface(),bar=toolbarFrame.surface();java.util.ArrayList<View> consumers=new java.util.ArrayList<>();if(primary!=null)consumers.add(primary);if(syncFrame.surface()!=null)consumers.add(syncFrame.surface());if(bar!=null)consumers.add(bar);for(FormatGlassFrame frame:dockFrames)if(frame.surface()!=null)consumers.add(frame.surface());for(FormatGlassFrame frame:pdfFrames)if(frame.surface()!=null)consumers.add(frame.surface());for(FormatGlassFrame frame:chromeFrames)if(frame.surface()!=null)consumers.add(frame.surface());backdrop.captureConsumers(consumers.toArray(new View[0]));}
     public void onBoundsChanged(){
-        syncFrame.boundsChanged();formatFrame.boundsChanged();toolbarFrame.boundsChanged();moveFrame.boundsChanged();for(FormatGlassFrame frame:dockFrames)frame.boundsChanged();for(FormatGlassFrame frame:pdfFrames)frame.boundsChanged();
+        syncFrame.boundsChanged();formatFrame.boundsChanged();toolbarFrame.boundsChanged();moveFrame.boundsChanged();for(FormatGlassFrame frame:dockFrames)frame.boundsChanged();for(FormatGlassFrame frame:pdfFrames)frame.boundsChanged();for(FormatGlassFrame frame:chromeFrames)frame.boundsChanged();
         if(!isShowing())return;
         if(anchored()){
             root.post(()->{if(!isShowing()||closing)return;positionAnchored();if(valid.getAsBoolean())web.evaluateJavascript("window.easybookNativeGlassReanchor&&window.easybookNativeGlassReanchor()",null);});return;

@@ -1,0 +1,90 @@
+<!doctype html>
+<html lang="zh-CN"><head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; base-uri 'none'; form-action 'none'">
+<style id="originalStyles"></style>
+<style>
+html:root,body{background:transparent!important;min-height:0!important;overflow:hidden!important;margin:0!important}
+:is(#batchbar,#appUpdateDialog){position:fixed!important;right:auto!important;bottom:auto!important;margin:0!important;max-width:none!important;min-height:0!important;opacity:1!important;transform:none!important;transition:none!important;animation:none!important;background:transparent!important;backdrop-filter:none!important;-webkit-backdrop-filter:none!important;box-shadow:none!important;border-color:transparent!important}
+</style>
+</head><body>
+<div id="batchbar" class="batchbar ui-material" hidden></div>
+<dialog id="appUpdateDialog" open hidden></dialog>
+<script>
+(() => {
+ const panels = ['batchbar', 'appUpdateDialog'].map(id => document.getElementById(id));
+ const allowedTags = new Set(['DIV', 'SECTION', 'P', 'H2', 'H3', 'BUTTON', 'PROGRESS', 'SPAN', 'STRONG']);
+ const allowedAttributes = new Set(['id', 'class', 'type', 'hidden', 'disabled', 'value', 'max', 'role',
+   'aria-label', 'aria-live', 'data-format-token']);
+ const send = event => FormatActions.postMessage(JSON.stringify(event));
+ let panel, signature = '', gesture, pending, suppress = false;
+ window.renderFormat = (content, geometry) => {
+  if (gesture && (content || pending)) {
+   pending = [content || pending[0], geometry];
+   return;
+  }
+  if (content) {
+   const next = JSON.stringify(content);
+   if (signature !== next) {
+    panel = panels.find(el => el.id === content.panel);
+    if (!panel) return;
+    panels.forEach(el => { el.hidden = el !== panel; });
+    document.getElementById('originalStyles').textContent = content.css;
+    document.documentElement.dataset.theme = content.theme;
+    document.documentElement.style.cssText = content.rootStyle;
+    document.body.className = content.bodyClass;
+    const notesScroll = panel.querySelector('#appUpdateNotes')?.scrollTop || 0;
+    const template = document.createElement('template');
+    template.innerHTML = content.html;
+    for (const element of template.content.querySelectorAll('*')) {
+     if (!allowedTags.has(element.tagName)) {
+      element.remove();
+      continue;
+     }
+     for (const attr of [...element.attributes]) if (!allowedAttributes.has(attr.name)) element.removeAttribute(attr.name);
+    }
+    panel.replaceChildren(template.content);
+    const notes = panel.querySelector('#appUpdateNotes');
+    if (notes) notes.scrollTop = notesScroll;
+    signature = next;
+   }
+  }
+  if (!panel) return;
+  for (const [property, value] of Object.entries({left: geometry.left, top: geometry.top, width: geometry.width,
+    height: geometry.height, 'max-height': geometry.height})) panel.style.setProperty(property, value + 'px', 'important');
+  if (Math.abs(panel.scrollTop - geometry.scrollTop) > 1) panel.scrollTop = geometry.scrollTop;
+  if (content) send({type:'ready', revision:geometry.revision});
+ };
+ document.body.addEventListener('pointerdown', event => {
+  gesture = {x:event.clientX, y:event.clientY};
+  suppress = false;
+ }, {passive:true});
+ const release = event => {
+  if (!gesture) return;
+  suppress = event.type === 'pointercancel' || Math.abs(event.clientX - gesture.x) > 8
+    || Math.abs(event.clientY - gesture.y) > 8;
+  gesture = null;
+  requestAnimationFrame(() => {
+   if (pending) {
+    const args = pending;
+    pending = null;
+    window.renderFormat(...args);
+   }
+  });
+ };
+ window.addEventListener('pointerup', release, true);
+ window.addEventListener('pointercancel', release, true);
+ document.body.addEventListener('click', event => {
+  const button = event.target.closest('[data-format-token]');
+  if (!button) return;
+  event.preventDefault();
+  if (!suppress && !button.disabled) send({type:'click', token:button.dataset.formatToken});
+  suppress = false;
+ }, true);
+ document.body.addEventListener('scroll', event => {
+  if (event.target === panel) send({type:'scroll', top:panel.scrollTop});
+ }, {capture:true,passive:true});
+})();
+</script>
+</body></html>
