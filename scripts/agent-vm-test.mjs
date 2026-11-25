@@ -7,6 +7,7 @@ new Script(html.split('<script>')[1].split('</script>')[0]);
 const protocol=read('shared/local-ai-protocol.mjs');
 const worker=read('worker/ai.mjs');
 const oauth=read('mcp-oauth/src/index.mjs');
+const transport=read('worker/ai-transport.mjs');
 const manifest=read('app/src/main/AndroidManifest.xml');
 const vm=read('app/src/main/java/com/feoearth/easybook/AgentVmBridge.java');
 const java=read('app/src/main/java/com/feoearth/easybook/MainActivity.java');
@@ -67,8 +68,10 @@ assert.match(html,/sandbox\.vm\.execute/);
 assert.match(html,/sandbox\.export/);
 for(const name of ['listSandboxFiles','importSandboxFiles','getSandboxExport','clearSandboxFiles','removeSandboxFile'])
  assert.ok(files.includes('export async function '+name),name);
-for(const layer of [protocol,worker,oauth,security])
+for(const layer of [protocol,worker,security])
  assert.match(layer,/localSandboxBackend|sandboxBackend|sandbox_execute/);
+assert.match(oauth,/url\.pathname==='\/account\/native\/ai'&&request\.method==='POST'\)\s*\{\s*return nativeAI\(request,env\)/);
+assert.match(transport,/localSandboxBackend:input\.localSandboxBackend==='linux'\?'linux':'javascript'/);
 assert.match(manifest,/com\.termux\.permission\.RUN_COMMAND/);
 assert.match(manifest,/AgentVmResultReceiver" android:exported="false"/);
 assert.match(vm,/RUN_COMMAND_PATH","~\/easybook-agent-vm\/runner\.sh"/);
