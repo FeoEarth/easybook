@@ -5,6 +5,7 @@ import {chromium} from 'playwright';
 const read = path => readFileSync(new URL('../' + path, import.meta.url), 'utf8');
 const index = read('app/src/main/assets/index.html');
 const batch = index.match(/<div class="batchbar[^\n]+/)[0];
+const confirm = index.match(/<dialog id="confirmDialog"[^\n]+/)[0];
 const styles = index.match(/<style>[\s\S]*?<\/style>/)[0];
 const glassAssets = 'app/src/main/assets/native-glass/';
 const browser = await chromium.launch({executablePath: process.env.CHROME_PATH || undefined});
@@ -13,7 +14,7 @@ try {
   const foreground = await browser.newPage({viewport: {width: 390, height: 640}});
   const errors = [];
   for (const target of [page, foreground]) target.on('pageerror', error => errors.push(error.message));
-  await page.setContent(styles + '<button id="appUpdateEntry">更新</button>' + batch);
+  await page.setContent(styles + '<button id="appUpdateEntry">更新</button>' + batch + confirm);
   await page.evaluate(() => {
     window.updates = [];
     window.commands = [];
@@ -92,14 +93,34 @@ try {
   await ready(0, reopenedBatch.revision);
   assert.equal(await page.locator('#batchbar.native-chrome-mounted').count(), 1);
 
+  await page.evaluate(() => {
+    const dialog = document.getElementById('confirmDialog');
+    const accept = document.getElementById('confirmAccept');
+    accept.textContent = '删除';
+    accept.className = 'danger';
+    accept.onclick = () => { window.commands.push('delete'); dialog.close(); };
+    dialog.showModal();
+  });
+  await mount(2);
+  assert.equal(await foreground.locator('#confirmAccept').textContent(), '删除');
+  assert.equal(await foreground.locator('#confirmAccept').evaluate(button => getComputedStyle(button).borderRadius), '999px');
+  await click(2, '#confirmAccept');
+  assert.deepEqual(await page.evaluate(() => window.commands), ['move', 'download', 'delete']);
+  await readUpdate(2, false);
+
+  const beforeReopen = await count();
   await page.locator('#appUpdateEntry').click();
+  await readUpdate(1, true, beforeReopen, false);
   const beforeDark = await count();
   await page.emulateMedia({colorScheme: 'dark'});
   const darkUpdate = await readUpdate(1, true, beforeDark, true);
   assert.equal(darkUpdate.dark, true);
   assert.ok(darkUpdate.content && darkUpdate.revision > oldUpdateRevision);
-  await ready(1, darkUpdate.revision);
-  await page.locator('#appUpdateDialog.native-chrome-mounted').waitFor();
+  await page.waitForFunction(after => {
+    const latest = window.updates.slice(after).findLast(args => args.slot === 1);
+    if (latest?.visible && latest.dark) window.easybookChrome1SurfaceReady(latest.revision);
+    return document.getElementById('appUpdateDialog').classList.contains('native-chrome-mounted');
+  }, beforeDark);
   await page.keyboard.press('Tab');
   assert.equal(await page.locator('#appUpdateDialog.native-chrome-mounted').count(), 0);
   const beforePointer = await count();
@@ -110,7 +131,7 @@ try {
   await page.evaluate(() => window.easybookChrome1SurfaceFallback());
   assert.equal(await page.locator('#appUpdateDialog.native-chrome-mounted').count(), 0);
   assert.deepEqual(errors, []);
-  console.log('PASS Android glass projections for batch actions and updater, including actions, fallback, and lifecycle');
+  console.log('PASS Android glass projections for batch actions, updater, and confirmations, including actions and fallback');
 } finally {
   await browser.close();
 }

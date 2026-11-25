@@ -67,7 +67,7 @@
  }
  window.easybookNativeGlassFallback=()=>{
   active=false;
-  if(source){blocked.add(source);fallbackSource=source;fallbackKey='';restore();source=null;actions.clear();schedule();return}
+  if(source){blocked.add(source);fallbackSource=source;fallbackKey='';restore();if(source.id==='linkDialog'&&source.open)$('linkUrl').focus();source=null;actions.clear();schedule();return}
   bypass=true;button.click();bypass=false;
  };
  window.easybookNativeGlassClosed=command=>{
