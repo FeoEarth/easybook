@@ -32,6 +32,7 @@ public final class NativeGlassMenu {
     private String pendingCommand;
     private String pendingValue;
     private boolean panel(){return state!=null&&!state.optString("kind","list").equals("list");}
+    private boolean linkPanel(){return state!=null&&"link".equals(state.optString("kind"));}
     public NativeGlassMenu(Activity activity,FrameLayout root,WebView web,BooleanSupplier valid){
         this.activity=activity;this.root=root;this.web=web;this.valid=valid;
         backdrop=new GlassBackdrop(activity);
@@ -41,7 +42,7 @@ public final class NativeGlassMenu {
         syncFrame=new FormatGlassFrame(activity,root,web,backdrop,this::captureCurrent,valid,"sync");
         dockFrames=new FormatGlassFrame[]{new FormatGlassFrame(activity,root,web,backdrop,this::captureCurrent,valid,"DockSearch"),new FormatGlassFrame(activity,root,web,backdrop,this::captureCurrent,valid,"DockFolder"),new FormatGlassFrame(activity,root,web,backdrop,this::captureCurrent,valid,"DockCompose")};
         pdfFrames=new FormatGlassFrame[8];for(int i=0;i<pdfFrames.length;i++)pdfFrames[i]=new FormatGlassFrame(activity,root,web,backdrop,this::captureCurrent,valid,"Pdf"+i);
-        chromeFrames=new FormatGlassFrame[2];for(int i=0;i<chromeFrames.length;i++)chromeFrames[i]=new FormatGlassFrame(activity,root,web,backdrop,this::captureCurrent,valid,"Chrome"+i);
+        chromeFrames=new FormatGlassFrame[3];for(int i=0;i<chromeFrames.length;i++)chromeFrames[i]=new FormatGlassFrame(activity,root,web,backdrop,this::captureCurrent,valid,"Chrome"+i);
     }
     private int dp(float x){return Math.round(x*activity.getResources().getDisplayMetrics().density);}
     public boolean isShowing(){return shield!=null;}
@@ -53,22 +54,31 @@ public final class NativeGlassMenu {
         oldFocus=root.findFocus();
         shield=new FrameLayout(activity);shield.setTag("native-glass-shield");shield.setFocusableInTouchMode(true);shield.setClickable(true);
         shield.setOnClickListener(v->dismiss(false));
+        if(linkPanel())shield.setBackgroundColor(dark?0x66000000:0x48000000);
         try{surface=new GlassSurface(activity,backdrop,dark,()->{disabled=true;renderingFailed=true;dismiss(true);fallback();});}catch(Exception|LinkageError error){disabled=true;shield=null;surface=null;return false;}
         surface.setTag("native-glass-menu");surface.setClickable(true);surface.setOnClickListener(v->{});
         rows=new LinearLayout(activity);rows.setOrientation(LinearLayout.VERTICAL);rows.setPadding(dp(8),dp(8),dp(8),dp(8));
         ScrollView scroll=new ScrollView(activity);scroll.setFillViewport(false);scroll.setVerticalScrollBarEnabled(false);scroll.addView(rows);
         surface.addView(scroll,new FrameLayout.LayoutParams(-1,-1));
         populate();
-        int width=Math.min(dp("palette".equals(state.optString("kind"))?280:292),web.getWidth()-dp(24));
+        int width=Math.min(dp(linkPanel()?344:"palette".equals(state.optString("kind"))?280:292),web.getWidth()-dp(24));
         rows.measure(View.MeasureSpec.makeMeasureSpec(width,View.MeasureSpec.EXACTLY),View.MeasureSpec.makeMeasureSpec(web.getHeight()-dp(24),View.MeasureSpec.AT_MOST));
         int height=Math.min(rows.getMeasuredHeight(),web.getHeight()-dp(24));
         float scale=web.getWidth()/(float)Math.max(1,input.optDouble("viewportWidth",web.getWidth()));
         int x=Math.max(dp(12),Math.min(web.getWidth()-width-dp(12),Math.round((float)input.optDouble("right")*scale)-width));
         int y=Math.max(dp(12),Math.min(web.getHeight()-height-dp(12),Math.round((float)input.optDouble("bottom")*scale)+dp(8)));
-        FrameLayout.LayoutParams lp=new FrameLayout.LayoutParams(width,height);lp.leftMargin=x;lp.topMargin=y;shield.addView(surface,lp);if(anchored())positionAnchored();
+        FrameLayout.LayoutParams lp=new FrameLayout.LayoutParams(width,height);
+        if(linkPanel())lp.gravity=Gravity.CENTER;
+        else {lp.leftMargin=x;lp.topMargin=y;}
+        shield.addView(surface,lp);if(anchored())positionAnchored();
         root.addView(shield,new FrameLayout.LayoutParams(-1,-1));captureCurrent();if(!panel())shield.requestFocus();
-        if(!anchored()){surface.setPivotX(width-dp(22));surface.setPivotY(0);}surface.setAlpha(0);surface.setScaleX(.94f);surface.setScaleY(.94f);
+        if(!anchored()&&!linkPanel()){surface.setPivotX(width-dp(22));surface.setPivotY(0);}surface.setAlpha(0);surface.setScaleX(.94f);surface.setScaleY(.94f);
         surface.animate().alpha(1).scaleX(1).scaleY(1).setDuration(ValueAnimator.areAnimatorsEnabled()?GlassMaterial.OPEN_MS:0).setInterpolator(new PathInterpolator(.2f,.75f,.25f,1)).start();
+        if(linkInput!=null){linkInput.requestFocus();linkInput.setSelection(linkInput.length());
+            android.view.inputmethod.InputMethodManager keyboard=activity.getSystemService(android.view.inputmethod.InputMethodManager.class);
+            EditText field=linkInput;
+            if(keyboard!=null)field.post(()->{if(linkInput==field&&!closing&&field.hasFocus())keyboard.showSoftInput(field,android.view.inputmethod.InputMethodManager.SHOW_IMPLICIT);});
+        }
         web.evaluateJavascript("document.getElementById('listMore').setAttribute('aria-expanded','true')",null);return true;
     }
     private int ink(){return state.optBoolean("dark")?0xfff4f4f7:0xff1c1c1e;}
@@ -130,9 +140,10 @@ public final class NativeGlassMenu {
         root.post(()->{if(!isShowing()||closing)return;
             FrameLayout.LayoutParams lp=(FrameLayout.LayoutParams)surface.getLayoutParams();
             int available=Math.max(dp(100),web.getHeight()-dp(24));
+            if(linkPanel())lp.width=Math.max(1,Math.min(dp(344),web.getWidth()-dp(24)));
             rows.measure(View.MeasureSpec.makeMeasureSpec(lp.width,View.MeasureSpec.EXACTLY),View.MeasureSpec.makeMeasureSpec(available,View.MeasureSpec.AT_MOST));
             lp.height=Math.min(rows.getMeasuredHeight(),available);
-            lp.topMargin=Math.max(dp(12),Math.min(lp.topMargin,web.getHeight()-lp.height-dp(12)));
+            if(!linkPanel())lp.topMargin=Math.max(dp(12),Math.min(lp.topMargin,web.getHeight()-lp.height-dp(12)));
             surface.setLayoutParams(lp);refreshBackdrop();});
     }
     private boolean anchored(){return state!=null&&state.has("placement");}
@@ -200,18 +211,12 @@ public final class NativeGlassMenu {
         }
     }
     private void populatePanel(){
+        if(linkPanel()){populateLink();return;}
         LinearLayout header=new LinearLayout(activity);header.setGravity(Gravity.CENTER_VERTICAL);header.setPadding(dp(12),dp(4),dp(4),dp(6));
         TextView title=new TextView(activity);title.setText(state.optString("title","操作"));title.setTextColor(ink());title.setTextSize(18);title.setTypeface(null,Typeface.BOLD);
         header.addView(title,new LinearLayout.LayoutParams(0,-2,1));
         TextView close=new TextView(activity);close.setText("×");close.setTextSize(25);close.setTextColor(ink());close.setGravity(Gravity.CENTER);close.setContentDescription("关闭");close.setOnClickListener(v->dismiss(false));header.addView(close,new LinearLayout.LayoutParams(dp(44),dp(44)));rows.addView(header);
         if(state.optString("kind").equals("palette")){populatePalette();return;}
-        if(state.optString("kind").equals("link")){
-            linkInput=new EditText(activity);linkInput.setSingleLine(true);linkInput.setText(state.optString("value"));linkInput.setTextColor(ink());linkInput.setHintTextColor(state.optBoolean("dark")?0xffaaaab0:0xff66666c);linkInput.setHint("https://");linkInput.setTextSize(16);
-            linkInput.setInputType(android.text.InputType.TYPE_CLASS_TEXT|android.text.InputType.TYPE_TEXT_VARIATION_URI);
-            linkInput.setFilters(new android.text.InputFilter[]{new android.text.InputFilter.LengthFilter(2048)});
-            linkInput.setImportantForAutofill(View.IMPORTANT_FOR_AUTOFILL_NO_EXCLUDE_DESCENDANTS);
-            LinearLayout.LayoutParams inputLp=new LinearLayout.LayoutParams(-1,dp(52));inputLp.setMargins(dp(12),0,dp(12),dp(10));rows.addView(linkInput,inputLp);
-        }
         JSONArray items=state.optJSONArray("items");if(items==null)return;
         for(int i=0;i<items.length();i++){
             JSONObject item=items.optJSONObject(i);if(item==null)continue;
@@ -220,6 +225,51 @@ public final class NativeGlassMenu {
             View row=rows.getChildAt(rows.getChildCount()-1);row.setEnabled(!item.optBoolean("disabled"));row.setAlpha(row.isEnabled()?1f:.4f);
             if(item.optBoolean("danger")){LinearLayout text=(LinearLayout)((LinearLayout)row).getChildAt(0);((TextView)text.getChildAt(0)).setTextColor(0xffe5484d);}
         }
+    }
+    private GradientDrawable linkControl(int color,float radius){
+        GradientDrawable shape=new GradientDrawable();shape.setColor(color);shape.setCornerRadius(dp(radius));return shape;
+    }
+    private Button linkAction(String label,int color,int fill){
+        Button button=new Button(activity);button.setAllCaps(false);button.setText(label);button.setTextColor(color);
+        button.setTextSize(15);button.setTypeface(null,Typeface.BOLD);button.setStateListAnimator(null);button.setBackgroundTintList(null);
+        button.setBackground(new RippleDrawable(android.content.res.ColorStateList.valueOf(0x33888888),linkControl(fill,28),null));
+        return button;
+    }
+    private void populateLink(){
+        boolean dark=state.optBoolean("dark");
+        rows.setPadding(dp(18),dp(18),dp(18),dp(16));
+        TextView title=new TextView(activity);title.setText(state.optString("title","添加链接"));title.setTextColor(ink());
+        title.setTextSize(19);title.setTypeface(null,Typeface.BOLD);rows.addView(title);
+        linkInput=new EditText(activity);linkInput.setSingleLine(true);linkInput.setTextColor(ink());
+        linkInput.setHintTextColor(dark?0xffb4b4bd:0xff66666c);linkInput.setHint("https://");linkInput.setTextSize(16);
+        linkInput.setBackground(linkControl(dark?0xff35353d:0xfff3f2f6,20));linkInput.setPadding(dp(13),dp(7),dp(13),dp(7));
+        linkInput.setInputType(android.text.InputType.TYPE_CLASS_TEXT|android.text.InputType.TYPE_TEXT_VARIATION_URI);
+        linkInput.setImeOptions(android.view.inputmethod.EditorInfo.IME_ACTION_DONE);
+        linkInput.setFilters(new android.text.InputFilter[]{new android.text.InputFilter.LengthFilter(2048)});
+        linkInput.setImportantForAutofill(View.IMPORTANT_FOR_AUTOFILL_NO_EXCLUDE_DESCENDANTS);
+        linkInput.setText(state.optString("value"));
+        LinearLayout.LayoutParams fieldParams=new LinearLayout.LayoutParams(-1,dp(48));fieldParams.topMargin=dp(15);rows.addView(linkInput,fieldParams);
+        JSONArray items=state.optJSONArray("items");
+        JSONObject item=items==null?null:items.optJSONObject(0);
+        if(item==null)return;
+        LinearLayout actions=new LinearLayout(activity);
+        LinearLayout.LayoutParams actionsParams=new LinearLayout.LayoutParams(-1,-2);actionsParams.topMargin=dp(16);rows.addView(actions,actionsParams);
+        Button cancel=linkAction("取消",ink(),dark?0xff35353d:0xffeae9ee),save=linkAction(item.optString("label","添加"),0xff241c00,dark?0xffffd24a:0xffdbad30);
+        LinearLayout.LayoutParams cancelParams=new LinearLayout.LayoutParams(0,dp(46),1);cancelParams.setMarginEnd(dp(8));actions.addView(cancel,cancelParams);
+        actions.addView(save,new LinearLayout.LayoutParams(0,dp(46),1));
+        cancel.setOnClickListener(v->dismiss(false));
+        Runnable submit=()->{
+            String url=linkInput.getText().toString().trim();
+            if(!url.regionMatches(true,0,"https://",0,8)&&!url.regionMatches(true,0,"http://",0,7)){
+                linkInput.setError("请输入 http 或 https 地址");return;
+            }
+            command(item.optString("id"));
+        };
+        save.setOnClickListener(v->submit.run());
+        linkInput.setOnEditorActionListener((view,action,event)->{
+            if(action!=android.view.inputmethod.EditorInfo.IME_ACTION_DONE)return false;
+            submit.run();return true;
+        });
     }
     public void dismiss(boolean immediate){
         if(shield==null||closing)return;closing=true;

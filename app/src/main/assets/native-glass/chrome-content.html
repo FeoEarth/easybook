@@ -6,14 +6,15 @@
 <style id="originalStyles"></style>
 <style>
 html:root,body{background:transparent!important;min-height:0!important;overflow:hidden!important;margin:0!important}
-:is(#batchbar,#appUpdateDialog){position:fixed!important;right:auto!important;bottom:auto!important;margin:0!important;max-width:none!important;min-height:0!important;opacity:1!important;transform:none!important;transition:none!important;animation:none!important;background:transparent!important;backdrop-filter:none!important;-webkit-backdrop-filter:none!important;box-shadow:none!important;border-color:transparent!important}
+:is(#batchbar,#appUpdateDialog,#confirmDialog){position:fixed!important;right:auto!important;bottom:auto!important;margin:0!important;max-width:none!important;min-height:0!important;opacity:1!important;transform:none!important;transition:none!important;animation:none!important;background:transparent!important;backdrop-filter:none!important;-webkit-backdrop-filter:none!important;box-shadow:none!important;border-color:transparent!important}
 </style>
 </head><body>
 <div id="batchbar" class="batchbar ui-material" hidden></div>
 <dialog id="appUpdateDialog" open hidden></dialog>
+<dialog id="confirmDialog" class="ui-material easy-alert" open hidden></dialog>
 <script>
 (() => {
- const panels = ['batchbar', 'appUpdateDialog'].map(id => document.getElementById(id));
+ const panels = ['batchbar', 'appUpdateDialog', 'confirmDialog'].map(id => document.getElementById(id));
  const allowedTags = new Set(['DIV', 'SECTION', 'P', 'H2', 'H3', 'BUTTON', 'PROGRESS', 'SPAN', 'STRONG']);
  const allowedAttributes = new Set(['id', 'class', 'type', 'hidden', 'disabled', 'value', 'max', 'role',
    'aria-label', 'aria-live', 'data-format-token']);

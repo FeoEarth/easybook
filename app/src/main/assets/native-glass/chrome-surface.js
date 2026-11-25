@@ -1,12 +1,12 @@
-// Project the Android update dialog and batch action bar onto QWEA0 surfaces.
+// Project Android confirmations, updates, and batch actions onto QWEA0 surfaces.
 (() => {
- const ids = ['batchbar', 'appUpdateDialog'];
+ const ids = ['batchbar', 'appUpdateDialog', 'confirmDialog'];
  const root = document.documentElement;
  const transparency = matchMedia('(prefers-reduced-transparency:reduce)');
  const darkScheme = matchMedia('(prefers-color-scheme:dark)');
  const skin = document.createElement('style');
  skin.textContent = `
-   #batchbar.native-chrome-mounted, #appUpdateDialog.native-chrome-mounted { opacity: 0 !important }
+   :is(#batchbar,#appUpdateDialog,#confirmDialog).native-chrome-mounted { opacity: 0 !important }
    #appUpdateDialog.native-chrome-mounted::backdrop { backdrop-filter: none; -webkit-backdrop-filter: none }
  `;
  document.head.append(skin);
@@ -134,7 +134,10 @@
   window[`easybook${prefix}SurfaceClick`] = token => {
    const button = buttons.get(token);
    if (button && mounted && visible() && source.contains(button) && !button.hidden && !button.disabled
-       && button.getClientRects().length) button.click();
+       && button.getClientRects().length) {
+    if (id === 'confirmDialog') hide();
+    button.click();
+   }
   };
   window[`easybook${prefix}SurfaceScroll`] = top => {
    if (mounted && visible()) source.scrollTop = top;
