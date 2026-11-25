@@ -37,7 +37,44 @@ for(const native of [false,true]){
  }
  console.log((native?'Android adapter bridge stub':'Web')+': actual PDF.js page raster, filename, close and reopen passed');
 }
-await open({bytes:new Uint8Array([1,2]),id:'bad',stage:document.getElementById('stage'),dialog:document.getElementById('dialog'),file:{name:'null'}});assert.equal(document.querySelector('[data-pdf="filename"]').textContent,'PDF 文档');assert.equal(document.querySelector('[data-pdf="erroractions"]').hidden,false);await close();dom.window.close();console.log('Invalid PDF: visible failure + retry/back, fallback filename passed');
+await open({bytes:new Uint8Array([1,2]),id:'bad',stage:document.getElementById('stage'),dialog:document.getElementById('dialog'),file:{name:'null'}});assert.equal(document.querySelector('[data-pdf="filename"]').textContent,'PDF 文档');assert.equal(document.querySelector('[data-pdf="erroractions"]').hidden,false);await close();console.log('Invalid PDF: visible failure + retry/back, fallback filename passed');
+
+const {mountGlass}=await import('../app/src/main/assets/pdf/glass.mjs');
+const glassUpdates=[];
+window.NativeStore={call:async(method,args)=>{if(method==='ui.glass.pdf')glassUpdates.push(args);return {accepted:true}}};
+const root=document.createElement('section');
+const glassButton=document.createElement('button');
+glassButton.dataset.pdfGlass='3';
+glassButton.style.opacity='1';
+glassButton.getBoundingClientRect=()=>({left:20,top:30,width:100,height:40});
+root.append(glassButton);
+document.body.append(root);
+const nextGlassUpdate=async()=>{await new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve)));return glassUpdates.at(-1)};
+const glass=mountGlass(root,new AbortController().signal);
+const first=await nextGlassUpdate();
+assert.equal(first.visible,true);
+glassButton.hidden=true;
+assert.equal((await nextGlassUpdate()).visible,false);
+window.easybookPdf3SurfaceReady(first.revision);
+assert.equal(glassButton.classList.contains('pdf-native-mounted'),false);
+glassButton.hidden=false;
+const reopened=await nextGlassUpdate();
+assert.ok(reopened.revision>first.revision);
+window.easybookPdf3SurfaceReady(first.revision);
+assert.equal(glassButton.classList.contains('pdf-native-mounted'),false);
+window.easybookPdf3SurfaceReady(reopened.revision);
+assert.equal(glassButton.classList.contains('pdf-native-mounted'),true);
+glass.dispose();
+const secondGlass=mountGlass(root,new AbortController().signal);
+const secondReader=await nextGlassUpdate();
+assert.ok(secondReader.revision>reopened.revision);
+window.easybookPdf3SurfaceReady(reopened.revision);
+assert.equal(glassButton.classList.contains('pdf-native-mounted'),false);
+window.easybookPdf3SurfaceReady(secondReader.revision);
+assert.equal(glassButton.classList.contains('pdf-native-mounted'),true);
+secondGlass.dispose();
+dom.window.close();
+console.log('PDF glass projection rejects stale ACKs when a slot or reader reopens');
 
 // Isolated native projection input protocol: no Android/browser/UI automation.
 const events=[];const hostHTML=await readFile(new URL('../app/src/main/assets/native-glass/pdf-content.html',import.meta.url),'utf8');

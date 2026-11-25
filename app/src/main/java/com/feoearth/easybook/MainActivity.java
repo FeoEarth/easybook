@@ -195,9 +195,9 @@ public class MainActivity extends Activity {
                     return;
                 }
                 Runnable operation=()->{try{if(destroyed||serverSwitching||generation!=documentGeneration)throw new SecurityException();repository.assertActiveProfile();security.authorize(method,input,generation);JSONObject output=dispatch(method,input,generation);respond(reply,generation,new JSONObject().put("id",requestId).put("ok",true).put("result",output));}catch(Exception e){try{respond(reply,generation,new JSONObject().put("id",requestId).put("ok",false).put("error",operationErrorMessage(e)).put("code",operationErrorCode(e)));}catch(Exception ignored){}}};
-                // Dock visibility updates must stay ordered and cannot wait for the storage queue.
+                // Floating control updates must stay ordered without waiting for storage or update checks.
                 if(method.startsWith("sandbox.vm."))vmIo.execute(operation);
-                else if(method.equals("ui.glass.dock"))dockIo.execute(operation);
+                else if(method.equals("ui.glass.dock")||method.equals("ui.glass.chrome"))dockIo.execute(operation);
                 else if(method.equals("sync")||method.equals("attachment.get")||method.equals("attachment.open")||method.equals("attachment.share")||method.equals("attachment.export"))syncIo.execute(operation);else io.execute(operation);
             }catch(Exception ignored){}
         });
@@ -280,7 +280,7 @@ public class MainActivity extends Activity {
                         String html=readWebAsset("index.html");boolean glassAvailable=BuildConfig.NATIVE_GLASS_PROTOTYPE&&android.os.Build.VERSION.SDK_INT>=33;html=html.replace("<head>","<head><script>"+appearanceBootstrap()+"</script>");html=html.replace("</head>","<script>localStorage.setItem(\"easybook-fast-mode\",\""+getPreferences(MODE_PRIVATE).getBoolean("fastMode",false)+"\");window.EasybookNativeGlassFallback="+(!glassAvailable)+";</script></head>");if(!legacy)html=html.replace("connect-src 'self' https://easybook-sync.1902521952.workers.dev","connect-src 'self'");
                         html=html.replaceFirst("<script>",java.util.regex.Matcher.quoteReplacement("<script>"+(legacy?"window.EasybookRollbackMode=true;":"")+readAsset("native-api.js")+"</script><script>"));
                          html=html.replace("</body>",nativeUpdateScriptTags()+"</body>");
-                        if(BuildConfig.NATIVE_GLASS_PROTOTYPE && android.os.Build.VERSION.SDK_INT>=33&&!getPreferences(MODE_PRIVATE).getBoolean("fastMode",false))html=html.replace("</body>","<script>"+readAsset("native-glass/dock-surface.js")+";"+readAsset("native-glass/toolbar-surface.js")+";"+readAsset("native-glass/format-surface.js")+";"+readAsset("native-glass/move-surface.js")+";"+readAsset("native-glass/sync-surface.js")+";"+readAsset("native-glass/menu.js")+"</script></body>");
+                        if(BuildConfig.NATIVE_GLASS_PROTOTYPE && android.os.Build.VERSION.SDK_INT>=33&&!getPreferences(MODE_PRIVATE).getBoolean("fastMode",false))html=html.replace("</body>","<script>"+readAsset("native-glass/dock-surface.js")+";"+readAsset("native-glass/toolbar-surface.js")+";"+readAsset("native-glass/format-surface.js")+";"+readAsset("native-glass/move-surface.js")+";"+readAsset("native-glass/sync-surface.js")+";"+readAsset("native-glass/chrome-surface.js")+";"+readAsset("native-glass/menu.js")+"</script></body>");
                         return new WebResourceResponse("text/html","UTF-8",200,"OK",Collections.singletonMap("Cache-Control","no-store"),new ByteArrayInputStream(html.getBytes(StandardCharsets.UTF_8)));
                     }
                     catch (IOException e) { return new WebResourceResponse("text/plain", "UTF-8", new ByteArrayInputStream(new byte[0])); }
@@ -557,16 +557,18 @@ public class MainActivity extends Activity {
                 if(nativeGlass!=null)runOnUiThread(()->{if(!destroyed && ready && generation==documentGeneration)nativeGlass.refreshBackdrop();});
                 return new JSONObject();
             }
-            case "ui.glass.pdf":case "ui.glass.sync":case "ui.glass.dock":case "ui.glass.move":case "ui.glass.toolbar":case "ui.glass.format":{
+            case "ui.glass.chrome":case "ui.glass.pdf":case "ui.glass.sync":case "ui.glass.dock":case "ui.glass.move":case "ui.glass.toolbar":case "ui.glass.format":{
                 boolean available=BuildConfig.NATIVE_GLASS_PROTOTYPE && android.os.Build.VERSION.SDK_INT>=33 && nativeGlass!=null;
                 if(!available)return new JSONObject().put("accepted",false);
                 if(method.equals("ui.glass.pdf")&&(args.getInt("slot")<0||args.getInt("slot")>7))throw new IllegalArgumentException();
                 if(method.equals("ui.glass.dock")&&(args.getInt("slot")<0||args.getInt("slot")>2))throw new IllegalArgumentException();
+                if(method.equals("ui.glass.chrome")&&(args.getInt("slot")<0||args.getInt("slot")>1))throw new IllegalArgumentException();
                 if(!(args.get("visible") instanceof Boolean))throw new IllegalArgumentException();
                 if(method.equals("ui.glass.dock")&&args.has("focused")&&!(args.get("focused") instanceof Boolean))throw new IllegalArgumentException();
                 if(args.getBoolean("visible")){
                     if(method.equals("ui.glass.move")||method.equals("ui.glass.sync")){double scroll=args.getDouble("scrollTop"),bottom=args.getDouble("bottomCorner");if(!Double.isFinite(scroll)||scroll<0||scroll>100000||!Double.isFinite(bottom)||bottom<0||bottom>10000)throw new IllegalArgumentException();}
                     if(method.equals("ui.glass.toolbar")){double scroll=args.getDouble("scrollLeft");if(!Double.isFinite(scroll)||scroll<0||scroll>100000)throw new IllegalArgumentException();}
+                    if(method.equals("ui.glass.chrome")){double scroll=args.getDouble("scrollTop");if(!Double.isFinite(scroll)||scroll<0||scroll>100000)throw new IllegalArgumentException();}
                     for(String field:new String[]{"left","top","width","height","viewportWidth","opacity","corner"}){
                         double value=args.getDouble(field);if(!Double.isFinite(value)||Math.abs(value)>10000)throw new IllegalArgumentException();
                     }
@@ -581,7 +583,7 @@ public class MainActivity extends Activity {
                         if(content.toString().length()>260000)throw new IllegalArgumentException();
                     }
                 }
-                runOnUiThread(()->{if(!destroyed && ready && generation==documentGeneration){glassGeneration=generation;if(method.equals("ui.glass.pdf"))nativeGlass.updatePdfFrame(args);else if(method.equals("ui.glass.sync"))nativeGlass.updateSyncFrame(args);else if(method.equals("ui.glass.dock"))nativeGlass.updateDockFrame(args);else if(method.equals("ui.glass.move"))nativeGlass.updateMoveFrame(args);else if(method.equals("ui.glass.toolbar"))nativeGlass.updateToolbarFrame(args);else nativeGlass.updateFormatFrame(args);}});
+                runOnUiThread(()->{if(!destroyed && ready && generation==documentGeneration){glassGeneration=generation;if(method.equals("ui.glass.chrome"))nativeGlass.updateChromeFrame(args);else if(method.equals("ui.glass.pdf"))nativeGlass.updatePdfFrame(args);else if(method.equals("ui.glass.sync"))nativeGlass.updateSyncFrame(args);else if(method.equals("ui.glass.dock"))nativeGlass.updateDockFrame(args);else if(method.equals("ui.glass.move"))nativeGlass.updateMoveFrame(args);else if(method.equals("ui.glass.toolbar"))nativeGlass.updateToolbarFrame(args);else nativeGlass.updateFormatFrame(args);}});
                 return new JSONObject().put("accepted",true);
             }
             case "ui.glass.palette":{
