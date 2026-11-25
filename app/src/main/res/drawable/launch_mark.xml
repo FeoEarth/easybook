@@ -7,11 +7,8 @@
     <group android:translateX="88" android:translateY="88">
         <group
             android:name="rear_plate"
-            android:pivotX="72"
-            android:pivotY="64"
-            android:rotation="12"
-            android:translateX="14"
-            android:translateY="15">
+            android:translateX="-38"
+            android:translateY="23">
             <path
                 android:pathData="M39,91 C36,99 40,102 47,100 L73,93 C81,91 87,86 90,79 L105,39 C108,31 102,26 95,28 L63,36 C56,38 51,42 48,49 Z"
                 android:strokeColor="@color/launch_glass_rim"
@@ -28,11 +25,8 @@
         </group>
         <group
             android:name="front_plate"
-            android:pivotX="46"
-            android:pivotY="51"
-            android:rotation="-12"
-            android:translateX="-13"
-            android:translateY="-16">
+            android:translateX="38"
+            android:translateY="-23">
             <path
                 android:pathData="M9,81 C6,89 10,92 18,90 L48,81 C57,79 62,75 65,68 L83,23 C86,15 82,11 75,13 L46,21 C37,24 31,28 28,36 Z"
                 android:fillAlpha="0.88"
