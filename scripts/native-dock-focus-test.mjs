@@ -3,6 +3,7 @@ import {readFileSync} from 'node:fs';
 import vm from 'node:vm';
 
 const source=readFileSync('app/src/main/assets/native-glass/dock-surface.js','utf8');
+const activity=readFileSync('app/src/main/java/com/feoearth/easybook/MainActivity.java','utf8');
 const frame=readFileSync('app/src/main/java/com/feoearth/easybook/glass/FormatGlassFrame.java','utf8');
 const calls=[],frames=[],listeners={},bodyClasses=new Set();
 const classes=()=>{const values=new Set();return {toggle(name,on){if(on)values.add(name);else values.delete(name)},remove:name=>values.delete(name),contains:name=>values.has(name)}};
@@ -15,7 +16,7 @@ const document={
  activeElement:null,body:{className:'',dataset:{page:'folders'},classList:{toggle(name,on){if(on)bodyClasses.add(name);else bodyClasses.delete(name)}}},
  documentElement:{dataset:{glass:'normal',theme:'light'}},head:{append(){}},createElement:()=>({textContent:''}),
  getElementById:id=>({navigation:nav,search,createFolder:folder,newTop:compose})[id],
- querySelector:()=>null,querySelectorAll:()=>[]
+ querySelector:()=>null,querySelectorAll:()=>[],addEventListener(){}
 };
 const getComputedStyle=el=>el===document.documentElement?rootStyle:{display:bodyClasses.has('native-dock-searching')&&(el===folder||el===compose)?'none':'flex',opacity:'1',borderTopLeftRadius:'27px'};
 const window={visualViewport:{width:390,offsetLeft:0,offsetTop:0,scale:1,addEventListener(){}},NativeStore:{call(method,args){calls.push({method,args});return Promise.resolve({accepted:true})}},addEventListener(){}};
@@ -25,6 +26,11 @@ function flush(){for(let i=0;frames.length&&i<20;i++)frames.shift()();assert.equ
 const updates=()=>calls.filter(c=>c.method==='ui.glass.dock');
 const mounted=()=>[searchbar,folder,compose].map(control=>control.classList.contains('native-dock-mounted'));
 const ready=(slot,name)=>window['easybook'+name+'SurfaceReady'](updates().findLast(c=>c.args.slot===slot&&c.args.visible).args.revision);
+flush();
+assert.deepEqual(updates(),[],'no bridge requests while Android bootstrap is pending');
+assert.match(activity,/ready=true;\s*if\(nativeGlass!=null\)web\.evaluateJavascript\("window\.EasybookNativeUiReady=true;window\.easybookSyncDockSearchSurface/);
+window.EasybookNativeUiReady=true;
+window.easybookSyncDockSearchSurface();
 flush();assert.deepEqual(updates().filter(c=>c.args.visible).map(c=>c.args.slot),[0,1,2]);
 ready(0,'DockSearch');ready(2,'DockCompose');flush();
 assert.deepEqual(mounted(),[false,false,false],'the dock keeps CSS while one native projection is pending');

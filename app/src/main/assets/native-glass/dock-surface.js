@@ -6,7 +6,7 @@
  const slots=controls.map((element,slot)=>({element,slot,ready:false,mounted:false,last:'',revision:0,signature:''}));
  const darkScheme=matchMedia('(prefers-color-scheme:dark)'),reducedTransparency=matchMedia('(prefers-reduced-transparency:reduce)');
  let queued=false,dirty=true,content=null,disabled=false,group='';
- function hide(state){state.ready=false;state.mounted=false;if(state.element.classList.contains('native-dock-mounted'))state.element.classList.remove('native-dock-mounted');if(state.last!=='closed'){state.last='closed';state.signature='';window.NativeStore.call('ui.glass.dock',{slot:state.slot,visible:false}).catch(()=>{})}}
+ function hide(state){state.ready=false;state.mounted=false;if(state.element.classList.contains('native-dock-mounted'))state.element.classList.remove('native-dock-mounted');if(state.last&&state.last!=='closed'){state.last='closed';state.signature='';window.NativeStore.call('ui.glass.dock',{slot:state.slot,visible:false}).catch(()=>{})}}
  function clearSurfaces(){group='';slots.forEach(hide)}
  function fallback(){if(disabled)return;disabled=true;clearSurfaces()}
  function dockVisible(){const style=getComputedStyle(nav);return !nav.hidden&&!document.body.dataset.settingsDetail&&style.display!=='none'&&style.visibility!=='hidden'}
@@ -20,8 +20,11 @@
   const clone=nav.cloneNode(true);clone.querySelectorAll('.native-dock-mounted').forEach(el=>el.classList.remove('native-dock-mounted'));
   clone.querySelector('#search').setAttribute('value',search.value);
   const ids=['clearSearch','createFolder','newTop'];ids.forEach((id,i)=>{const button=clone.querySelector('#'+id);if(button)button.dataset.formatToken='d-'+i});
-  const root=getComputedStyle(document.documentElement),vars=[...root].filter(key=>key.startsWith('--')).map(key=>key+':'+root.getPropertyValue(key)+';').join('');
-  return {html:clone.outerHTML,css:[...document.querySelectorAll('style')].filter(el=>el!==skin).map(el=>el.textContent).join('\n'),symbols:[...document.querySelectorAll('svg symbol')].map(el=>el.outerHTML).join(''),rootStyle:vars,bodyClass:document.body.className,panel:document.body.dataset.page||'',theme:document.documentElement.dataset.theme||'auto'};
+  const root=getComputedStyle(document.documentElement);
+  const rootStyle=['--ink','--muted'].map(key=>key+':'+root.getPropertyValue(key)+';').join('');
+  const symbolIds=new Set([...clone.querySelectorAll('use[href^="#"]')].map(use=>use.getAttribute('href').slice(1)));
+  const symbols=[...symbolIds].map(id=>document.getElementById(id)).filter(el=>el?.localName==='symbol').map(el=>el.outerHTML).join('');
+  return {html:clone.outerHTML,css:'',symbols,rootStyle,bodyClass:'',panel:'',theme:document.documentElement.dataset.theme||'auto'};
  }
  slots.forEach((state,i)=>{
   window['easybook'+names[i]+'SurfaceFallback']=fallback;
@@ -31,9 +34,11 @@
  });
  window.easybookDockSearchFocus=()=>{if(!dockVisible()||document.querySelector('dialog[open]'))return false;clearSurfaces();search.focus({preventScroll:true});schedule();return document.activeElement===search};
  function sync(){
+  // An early bridge call can be rejected before native bootstrap, or accepted before UI dispatch can attach the frame.
+  if(!window.EasybookNativeUiReady)return;
   if(!dockVisible()){hideDock();return}
   const searchFocused=document.activeElement===search;document.body.classList.toggle('native-dock-searching',searchFocused);
-  const vp=window.visualViewport,blocked=disabled||searchFocused||document.querySelector('dialog[open]')||document.documentElement.dataset.glass==='reduced'||reducedTransparency.matches||Math.abs((vp?.scale||1)-1)>.01;
+  const vp=window.visualViewport,blocked=disabled||document.hidden||searchFocused||document.querySelector('dialog[open]')||document.documentElement.dataset.glass==='reduced'||reducedTransparency.matches||Math.abs((vp?.scale||1)-1)>.01;
   if(blocked){clearSurfaces();return}
   const visible=[];
   for(const state of slots){
@@ -60,10 +65,11 @@
   }
  }
  function schedule(){if(queued)return;queued=true;requestAnimationFrame(()=>{queued=false;sync();if(slots.some(s=>s.mounted))window.NativeStore.call('ui.glass.invalidate').catch(()=>{})})}
- new MutationObserver(records=>{if(nav.hidden||document.body.dataset.settingsDetail)hideDock();if(records.some(r=>!(controls.includes(r.target)&&r.attributeName==='class')))dirty=true;schedule()}).observe(document.documentElement,{subtree:true,attributes:true,childList:true,characterData:true});
+ new MutationObserver(records=>{if(nav.hidden||document.body.dataset.settingsDetail)hideDock();if(records.some(({target,attributeName})=>target===document.documentElement&&attributeName==='data-theme'||nav.contains(target)&&!(controls.includes(target)&&attributeName==='class')))dirty=true;schedule()}).observe(document.documentElement,{subtree:true,attributes:true,childList:true,characterData:true});
  if(window.ResizeObserver){const observer=new ResizeObserver(schedule);observer.observe(nav);controls.forEach(el=>observer.observe(el))}
  for(const type of ['focus','blur','input','change'])search.addEventListener(type,()=>{dirty=true;schedule()});
  for(const type of ['scroll','resize','load','transitionend','animationend'])window.addEventListener(type,schedule,true);
+ document.addEventListener('visibilitychange',schedule);
  for(const type of ['scroll','resize'])window.visualViewport?.addEventListener(type,schedule);
  darkScheme.addEventListener('change',()=>{dirty=true;schedule()});
  reducedTransparency.addEventListener('change',schedule);

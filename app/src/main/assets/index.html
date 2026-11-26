@@ -149,12 +149,9 @@ dialog::backdrop{background:var(--scrim)}
 @media(min-width:700px){#moveDialog{border-radius:var(--radius-surface)}}
 .dock-wrap{bottom:max(17px,env(safe-area-inset-bottom));padding-left:max(18px,env(safe-area-inset-left));padding-right:max(18px,env(safe-area-inset-right))}
 @media(max-width:599px){
- body[data-page=folders]:not(.editing){overflow:hidden}
  body[data-page=folders]:not(.editing) .app{
-  display:grid;grid-template-rows:auto minmax(0,1fr);min-height:0;padding-bottom:0;
-  height:max(0px,calc(var(--viewport-height,100dvh) - var(--folder-dock-height,119px) - max(17px,env(safe-area-inset-bottom)) - 8px));
+  padding-bottom:calc(var(--folder-dock-height,119px) + max(17px,env(safe-area-inset-bottom)) + 8px);
  }
- body[data-page=folders]:not(.editing) .app>:is(#folders,#home){min-height:0;overflow:auto;overscroll-behavior-y:contain}
 }
 .searchbar button{min-width:44px;min-height:44px}.batchbar{border-radius:999px}
 .attachment-card,.inline-media{border-radius:var(--radius-group);border:1px solid var(--border);background:var(--bg)}

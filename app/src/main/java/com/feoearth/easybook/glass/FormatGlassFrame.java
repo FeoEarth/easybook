@@ -62,7 +62,13 @@ final class FormatGlassFrame {
         if(content==null){fail();return;}
         if(glass==null){
             try{
-                glass=new GlassSurface(activity,backdrop,newDark,this::fail);if(move||sync)glass.useMoveSurface();else if(toolbar||dock||pdf||"Chrome0".equals(slotPrefix))glass.useToolbarSurface();else glass.useFormatSurface();glass.setTag(chrome?"chrome-glass-surface-"+slotPrefix:sync?"sync-glass-surface":move?"move-glass-surface":toolbar?"toolbar-glass-surface":"format-glass-surface");dark=newDark;
+                glass=new GlassSurface(activity,backdrop,newDark,this::fail);
+                if(dock)glass.useDockSurface();
+                else if(move||sync)glass.useMoveSurface();
+                else if(toolbar||pdf||"Chrome0".equals(slotPrefix))glass.useToolbarSurface();
+                else glass.useFormatSurface();
+                glass.setTag(dock?"dock-glass-surface-"+slotPrefix:chrome?"chrome-glass-surface-"+slotPrefix:sync?"sync-glass-surface":move?"move-glass-surface":toolbar?"toolbar-glass-surface":"format-glass-surface");
+                dark=newDark;
                 controls=new WebView(activity);controls.setBackgroundColor(Color.TRANSPARENT);boolean pdfInput=pdf&&("Pdf6".equals(slotPrefix)||"Pdf7".equals(slotPrefix));controls.setFocusable(pdfInput);controls.setFocusableInTouchMode(pdfInput);controls.setOverScrollMode(View.OVER_SCROLL_NEVER);
                 controls.setImportantForAutofill(View.IMPORTANT_FOR_AUTOFILL_NO_EXCLUDE_DESCENDANTS);
                 WebSettings settings=controls.getSettings();settings.setJavaScriptEnabled(true);settings.setAllowFileAccess(false);settings.setAllowContentAccess(false);settings.setBlockNetworkLoads(true);settings.setBlockNetworkImage(true);settings.setSupportZoom(false);

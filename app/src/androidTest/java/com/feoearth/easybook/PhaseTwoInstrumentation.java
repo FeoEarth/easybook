@@ -5,10 +5,12 @@ import org.json.*;
 public class PhaseTwoInstrumentation extends Instrumentation {
  private String crossPhase;
  private boolean browserLaunch;
- @Override public void onCreate(Bundle args){super.onCreate(args);crossPhase=args.getString("crossPhase");browserLaunch="true".equals(args.getString("browserLaunch"));start();}
+ private boolean nativeDock;
+ @Override public void onCreate(Bundle args){super.onCreate(args);crossPhase=args.getString("crossPhase");browserLaunch="true".equals(args.getString("browserLaunch"));nativeDock="true".equals(args.getString("nativeDock"));start();}
  @Override public void onStart(){Bundle out=new Bundle();try{
   DocumentModel.initialize(getTargetContext());
   if(browserLaunch){BrowserLaunchChecks.launch(this);out.putString("passed","true");finish(-1,out);return;}
+  if(nativeDock){GlassInstrumentation.checkDock(this);out.putString("passed","true");finish(-1,out);return;}
   if(crossPhase!=null){CrossClientChecks.run(getTargetContext(),crossPhase);out.putString("passed","true");finish(-1,out);return;}
   java.io.InputStream in=getContext().getAssets().open("document-fixtures.json");java.io.ByteArrayOutputStream bytes=new java.io.ByteArrayOutputStream();byte[] b=new byte[4096];int n;while((n=in.read(b))!=-1)bytes.write(b,0,n);in.close();JSONObject fixtures=new JSONObject(bytes.toString("UTF-8"));JSONArray valid=fixtures.getJSONArray("valid"),invalid=fixtures.getJSONArray("invalid");
   for(int i=0;i<valid.length();i++){JSONObject v=valid.getJSONObject(i);DocumentModel.validate(v);DocumentModel.validate(new JSONObject(v.toString()));}
