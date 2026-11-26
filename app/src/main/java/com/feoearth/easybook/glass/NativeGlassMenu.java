@@ -1,5 +1,6 @@
 package com.feoearth.easybook.glass;
 
+import com.feoearth.easybook.R;
 import android.animation.ValueAnimator;
 import android.app.Activity;
 import android.graphics.*;
@@ -254,7 +255,8 @@ public final class NativeGlassMenu {
         if(item==null)return;
         LinearLayout actions=new LinearLayout(activity);
         LinearLayout.LayoutParams actionsParams=new LinearLayout.LayoutParams(-1,-2);actionsParams.topMargin=dp(16);rows.addView(actions,actionsParams);
-        Button cancel=linkAction("取消",ink(),dark?0xff35353d:0xffeae9ee),save=linkAction(item.optString("label","添加"),0xff241c00,dark?0xffffd24a:0xffdbad30);
+        int actionFill=activity.getColor(dark?R.color.easybook_accent_fill_dark:R.color.easybook_accent_fill_light);
+        Button cancel=linkAction("取消",ink(),dark?0xff35353d:0xffeae9ee),save=linkAction(item.optString("label","添加"),Color.WHITE,actionFill);
         LinearLayout.LayoutParams cancelParams=new LinearLayout.LayoutParams(0,dp(46),1);cancelParams.setMarginEnd(dp(8));actions.addView(cancel,cancelParams);
         actions.addView(save,new LinearLayout.LayoutParams(0,dp(46),1));
         cancel.setOnClickListener(v->dismiss(false));

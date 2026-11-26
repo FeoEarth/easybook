@@ -26,7 +26,7 @@ final class ConnectionSheet {
     void useMcp(){mcp=true;}
     private int dp(float n){return Math.round(n*activity.getResources().getDisplayMetrics().density);}
     private int ink(){return dark?0xfff2f2f7:0xff1c1c1e;} private int muted(){return dark?0xff98989f:0xff8e8e93;}
-    private int accent(){return dark?0xffe6bb32:0xffb88a00;} private int background(){return dark?0xff000000:0xfff2f2f7;} private int paper(){return dark?0xff1c1c1e:0xffffffff;}
+    private int accent(){return activity.getColor(dark?R.color.easybook_accent_dark:R.color.easybook_accent_light);} private int background(){return dark?0xff000000:0xfff2f2f7;} private int paper(){return dark?0xff1c1c1e:0xffffffff;}
     private GradientDrawable fill(int color,int radius){GradientDrawable d=new GradientDrawable();d.setColor(color);d.setCornerRadius(dp(radius));return d;}
     private TextView text(String value,int size,int color){TextView v=new TextView(activity);v.setText(value);v.setTextSize(size);v.setTextColor(color);v.setLineSpacing(dp(3),1);v.setIncludeFontPadding(false);return v;}
     private Button button(String title,Runnable action){Button b=new Button(activity);b.setText(title);b.setTextSize(17);b.setAllCaps(false);b.setTextColor(accent());b.setMinimumHeight(dp(50));b.setMinHeight(dp(50));b.setMinWidth(0);b.setMinimumWidth(0);b.setPadding(dp(16),dp(12),dp(16),dp(12));b.setStateListAnimator(null);b.setBackground(new android.graphics.drawable.RippleDrawable(android.content.res.ColorStateList.valueOf(dark?0x22ffffff:0x16000000),fill(paper(),20),null));b.setOnClickListener(v->{if(!busy)action.run();});return b;}

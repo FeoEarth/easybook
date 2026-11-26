@@ -1,5 +1,6 @@
 <resources>
     <style name="Theme.Easybook.Main.Base" parent="android:style/Theme.Material.Light.NoActionBar">
+        <item name="android:colorAccent">@color/easybook_accent_light</item>
         <item name="android:statusBarColor">@color/launch_surface</item>
         <item name="android:navigationBarColor">@color/launch_surface</item>
         <item name="android:windowLightStatusBar">@bool/launch_light_bars</item>

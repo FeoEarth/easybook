@@ -6,7 +6,7 @@
   const clone=panel.cloneNode(true),original=[...panel.querySelectorAll('button')],copies=[...clone.querySelectorAll('button')];targets.clear();
   original.forEach((el,i)=>{let token=tokens.get(el);if(!token){token='s-'+(++next);tokens.set(el,token)}targets.set(token,el);copies[i].dataset.formatToken=token});
   clone.classList.remove('sync-native-mounted');
-  return {html:clone.innerHTML,css:[...document.querySelectorAll('style')].map(el=>el.textContent).join('\n'),symbols:[...document.querySelectorAll('svg symbol')].map(el=>el.outerHTML).join(''),rootStyle:['--ink','--muted','--accent','--bg','--paper','--border','--line','--control-fill','--on-accent','--danger'].map(n=>n+':'+getComputedStyle(document.documentElement).getPropertyValue(n)+';').join(''),bodyClass:document.body.className,panel:'sync',theme:document.documentElement.dataset.theme||'auto'};
+  return {html:clone.innerHTML,css:[...document.querySelectorAll('style')].map(el=>el.textContent).join('\n'),symbols:[...document.querySelectorAll('svg symbol')].map(el=>el.outerHTML).join(''),rootStyle:['--ink','--muted','--accent','--accent-fill','--bg','--paper','--border','--line','--control-fill','--on-accent','--danger'].map(n=>n+':'+getComputedStyle(document.documentElement).getPropertyValue(n)+';').join(''),bodyClass:document.body.className,panel:'sync',theme:document.documentElement.dataset.theme||'auto'};
  }
  function hide(){mounted=false;panel.classList.remove('sync-native-mounted');if(last!=='closed'){last='closed';window.NativeStore.call('ui.glass.sync',{visible:false}).catch(()=>{})}}
  window.easybookSyncSurfaceFallback=()=>{disabled=true;hide()};
