@@ -22,7 +22,7 @@
     #appUpdateDialog progress::-webkit-progress-value{background:var(--accent);border-radius:20px}
     #appUpdateDialog .update-actions{display:flex;justify-content:flex-end;gap:10px;flex-wrap:wrap;margin-top:16px}
     #appUpdateDialog .update-actions button{border-radius:19px;background:var(--selected);font-weight:600}
-    #appUpdateDialog .update-actions button.primary{background:var(--accent);color:white}
+    #appUpdateDialog .update-actions button.primary{background:var(--accent-fill,#0064df);color:white}
     #appUpdateDialog .update-message{font-size:13px;color:var(--muted);min-height:20px;line-height:1.5}
     #appUpdateDialog .update-required{padding:12px 14px;border-radius:15px;background:var(--selected);font-size:13px;line-height:1.55;margin:10px 0}
     #appUpdateDialog .update-required strong{display:block;font-size:14px;margin-bottom:3px}

@@ -9,7 +9,7 @@
   original.forEach((el,i)=>{let token=tokens.get(el);if(!token){token='f-'+(++next);tokens.set(el,token);targets.set(token,el)}copies[i].dataset.formatToken=token});
   clone.classList.remove('native-format-mounted');
   const theme=document.documentElement.dataset.theme||'auto';
-  return {html:clone.innerHTML,css:[...document.querySelectorAll('style')].filter(el=>el!==skin).map(el=>el.textContent).join('\n'),symbols:[...document.querySelectorAll('svg symbol')].map(el=>el.outerHTML).join(''),rootStyle:['--ink','--muted','--accent','--bg','--paper','--border','--line','--control-fill','--on-accent','--danger'].map(name=>name+':'+getComputedStyle(document.documentElement).getPropertyValue(name)+';').join(''),bodyClass:document.body.className,panel:panel.dataset.panel||'all',theme};
+  return {html:clone.innerHTML,css:[...document.querySelectorAll('style')].filter(el=>el!==skin).map(el=>el.textContent).join('\n'),symbols:[...document.querySelectorAll('svg symbol')].map(el=>el.outerHTML).join(''),rootStyle:['--ink','--muted','--accent','--accent-fill','--bg','--paper','--border','--line','--control-fill','--on-accent','--danger'].map(name=>name+':'+getComputedStyle(document.documentElement).getPropertyValue(name)+';').join(''),bodyClass:document.body.className,panel:panel.dataset.panel||'all',theme};
  }
  function hide(){
   mounted=false;panel.classList.remove('native-format-mounted');

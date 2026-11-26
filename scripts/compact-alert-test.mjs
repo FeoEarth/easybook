@@ -5,7 +5,7 @@ import {chromium} from 'playwright';
 const assets = new URL('../app/src/main/assets/', import.meta.url);
 const browser = await chromium.launch({executablePath: process.env.CHROME_PATH || undefined});
 try {
-  const page = await browser.newPage({viewport: {width: 360, height: 580}, isMobile: true, locale: 'zh-CN',
+  const page = await browser.newPage({viewport: {width: 360, height: 580}, isMobile: true, locale: 'zh-CN', colorScheme: 'light',
     reducedMotion: 'reduce'});
   await page.addInitScript(() => Object.defineProperty(navigator, 'onLine', {value: false}));
   await page.route('https://easybook.test/**', route => {
@@ -32,11 +32,18 @@ try {
   };
   await dialogCenter();
   assert.equal(await input.evaluate(el => getComputedStyle(el).borderRadius), '20px');
-  assert.equal(await page.locator('#createFolderSubmit').isDisabled(), true);
+  const submit = page.locator('#createFolderSubmit');
+  const buttonColors = () => submit.evaluate(button => {
+    const style = getComputedStyle(button);
+    return [style.backgroundColor, style.color];
+  });
+  assert.equal(await submit.isDisabled(), true);
+  assert.deepEqual(await buttonColors(), ['rgb(0, 100, 223)', 'rgb(255, 255, 255)']);
 
   await page.emulateMedia({colorScheme: 'dark', reducedMotion: 'reduce'});
   await page.setViewportSize({width: 320, height: 270});
   await dialogCenter();
+  assert.deepEqual(await buttonColors(), ['rgb(25, 99, 221)', 'rgb(255, 255, 255)']);
   await input.fill('弹窗测试');
   await input.press('Enter');
   await dialog.waitFor({state: 'hidden'});
