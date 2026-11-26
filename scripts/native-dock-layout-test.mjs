@@ -32,35 +32,66 @@ try {
     group.append(...rows);
   });
   const bounds = selector => page.locator(selector).boundingBox();
-  const checkDockClearance = async selector => {
-    const content = await bounds(selector);
-    const dock = await bounds('#navigation');
-    assert.ok(content.y + content.height <= dock.y - 6, 'scrolling area stays above the search bar');
-  };
-  await checkDockClearance('#folders');
-  await page.locator('#folders').evaluate(folders => { folders.scrollTop = folders.scrollHeight; });
-  const last = await bounds('#customFolders .folder-row:last-child');
   const dock = await bounds('#navigation');
+  const content = await bounds('#folders');
+  assert.ok(content.y + content.height > dock.y + dock.height, 'folder content can pass under the dock');
+  assert.equal(await page.locator('#folders').evaluate(el => getComputedStyle(el).overflowY), 'visible',
+    'the list is not clipped by a separate scrolling box');
+  await page.evaluate(() => scrollTo(0, document.scrollingElement.scrollHeight));
+  const last = await bounds('#customFolders .folder-row:last-child');
   assert.ok(last.y + last.height < dock.y, 'the last folder is fully reachable above the dock');
-  assert.equal(await page.evaluate(() => window.scrollY), 0);
+  assert.ok(await page.evaluate(() => window.scrollY) > 0);
 
-  await page.evaluate(() => { window.NativeStore = {call: async () => ({accepted: true})}; });
+  await page.evaluate(() => {
+    window.dockUpdates = [];
+    window.NativeStore = {call: async (method, params) => {
+      if (method === 'ui.glass.dock' && params.visible && params.content) window.dockUpdates.push(params);
+      return {accepted: true};
+    }};
+  });
   await page.addScriptTag({content: readFileSync(new URL('native-glass/dock-surface.js', assets), 'utf8')});
+  await page.evaluate(() => new Promise(requestAnimationFrame));
+  assert.equal(await page.evaluate(() => window.dockUpdates.length), 0);
+  await page.evaluate(() => {
+    window.EasybookNativeUiReady = true;
+    window.easybookSyncDockSearchSurface();
+  });
+  await page.waitForFunction(() => new Set(window.dockUpdates.map(update => update.slot)).size === 3);
+  const updates = await page.evaluate(() => Array.from({length: 3}, (_, slot) =>
+    window.dockUpdates.findLast(update => update.slot === slot)));
+  const foreground = await browser.newPage({viewport: {width: 360, height: 620}});
+  await foreground.setContent(readFileSync(new URL('native-glass/dock-content.html', assets), 'utf8'));
+  const names = ['DockSearch', 'DockFolder', 'DockCompose'];
+  const controls = ['.searchbar', '#createFolder', '#newTop'];
+  for (const update of updates) {
+    assert.ok(JSON.stringify(update.content).length < 5000, 'dock projects only its own controls and symbols');
+    const ready = await foreground.evaluate(args => {
+      let payload;
+      window.FormatActions = {postMessage: message => { payload = JSON.parse(message); }};
+      window.renderFormat(args.content, {...args, dockSlot:args.slot});
+      return payload;
+    }, update);
+    assert.deepEqual(ready, {type:'ready', revision:update.revision});
+    const rect = await foreground.locator(controls[update.slot]).boundingBox();
+    assert.ok(rect && Math.abs(rect.y - update.top) < 1);
+    assert.equal(await foreground.locator(controls[update.slot]).evaluate(el => getComputedStyle(el).backgroundColor),
+      'rgba(0, 0, 0, 0)', 'foreground leaves glass drawing to Android');
+    await page.evaluate(({name, revision}) => window['easybook' + name + 'SurfaceReady'](revision),
+      {name:names[update.slot], revision:update.revision});
+  }
+  await page.waitForFunction(() => document.querySelectorAll('#navigation .native-dock-mounted').length === 3);
+  await foreground.close();
   assert.equal(await page.evaluate(() => window.easybookDockSearchFocus()), true);
   await page.locator('#createFolder').waitFor({state: 'hidden'});
   await page.setViewportSize({width: 360, height: 440});
   await page.locator('#search').fill('不存在的笔记');
   await page.locator('#home').waitFor({state: 'visible'});
-  await checkDockClearance('#home');
+  assert.equal(await page.locator('#home').evaluate(el => getComputedStyle(el).overflowY), 'visible');
   await page.locator('#search').fill('');
   await page.locator('#search').blur();
   await page.locator('#folders').waitFor({state: 'visible'});
   await page.locator('#createFolder').waitFor({state: 'visible'});
-  await page.waitForFunction(() => {
-    const content = document.getElementById('folders').getBoundingClientRect();
-    return content.bottom <= document.getElementById('navigation').getBoundingClientRect().top - 6;
-  });
-  console.log('PASS folder dock clearance, last row scrolling, and search on short viewports');
+  console.log('PASS continuous folder scrolling, dock backdrop content, delayed Android bootstrap, and native projections');
 } finally {
   await browser.close();
 }

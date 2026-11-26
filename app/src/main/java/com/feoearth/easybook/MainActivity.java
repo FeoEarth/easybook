@@ -628,6 +628,7 @@ public class MainActivity extends Activity {
             case "ui.ready":runOnUiThread(()->{
                 if(destroyed||generation!=documentGeneration)return;
                 ready=true;
+                if(nativeGlass!=null)web.evaluateJavascript("window.EasybookNativeUiReady=true;window.easybookSyncDockSearchSurface?.()",null);
                 refreshAppearance(systemDark());
                 if(launchAnimation!=null)launchAnimation.revealWhenDrawn(web);
                 if(updateUiReady)webOta.ready();
