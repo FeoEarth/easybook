@@ -34,6 +34,13 @@ final class WebOtaManager {
         this.context=context.getApplicationContext();
         root=new File(context.getFilesDir(),"web-ota");
         prefs=context.getSharedPreferences("web-ota",Context.MODE_PRIVATE);
+        // A previously installed Web bundle can be older than the new APK's
+        // embedded UI. Start from the complete APK bundle after a binary change.
+        if(prefs.getInt("nativeVersionCode",0)!=BuildConfig.VERSION_CODE){
+            prefs.edit().putInt("nativeVersionCode",BuildConfig.VERSION_CODE)
+                .remove("active").remove("previous").remove("rejected").remove("bootPending").apply();
+            return;
+        }
         String revision=prefs.getString("active","");
         // Pre-v2 slots have no updater UI asset. Return to the APK's complete
         // fallback bundle without deleting user data or the old slot on disk.

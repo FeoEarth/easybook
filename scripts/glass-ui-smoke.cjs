@@ -1,6 +1,6 @@
 const {chromium}=require('playwright'),fs=require('node:fs'),assert=require('node:assert/strict');
 (async()=>{
- const browser=await chromium.launch({headless:true,args:['--no-sandbox']});
+ const browser=await chromium.launch({executablePath:process.env.CHROME_PATH||undefined,headless:true,args:['--no-sandbox']});
  try{
  const page=await browser.newPage({viewport:{width:320,height:640}}),errors=[];
  page.on('pageerror',e=>errors.push(e.message));
@@ -40,6 +40,54 @@ const {chromium}=require('playwright'),fs=require('node:fs'),assert=require('nod
  await page.locator('#moreButton').click();await page.locator('#findButton').click();await bounds('#findbar');
  const find=await page.evaluate(()=>({nav:document.querySelector('.editor-header').getBoundingClientRect().bottom,top:document.getElementById('findbar').getBoundingClientRect().top}));assert.ok(find.top>=find.nav-1);
  await page.locator('#findClose').click();
+ // The Web menu and the Android bridge use the same five attachment actions.
+ const attachmentMenu=page.locator('#nativeAttachmentMenu');
+ await page.locator('#attachmentButton').click();
+ await bounds('#nativeAttachmentMenu');
+ const attachmentItems=await attachmentMenu.locator('[data-content-action] span').evaluateAll(labels=>labels.map(label=>{
+  const button=label.parentElement,svg=button.querySelector('svg'),style=getComputedStyle(svg);
+  return {icon:button.dataset.contentAction,label:label.textContent,ref:svg.querySelector('use').getAttribute('href'),
+   drawn:svg.getBoundingClientRect().width===22&&style.fill==='none'&&style.stroke===style.color};
+ }));
+ assert.deepEqual(attachmentItems.map(({icon,ref,drawn})=>[icon,ref,drawn]),[
+  ['media','#i-photo',true],['files','#i-file',true],['table','#i-table',true],['link','#i-link',true],['task','#i-check',true]
+ ]);
+ await attachmentMenu.locator('[data-close]').click();
+ await page.evaluate(()=>{
+  window.NativeStore={call:async(method,args)=>{
+   if(method==='ui.glass.toolbar'){
+    window.toolbarUpdate=args;
+    return {accepted:true};
+   }
+   const accepted=method==='ui.glass.menu'&&args?.kind==='attachment';
+   if(accepted)window.capturedAttachmentMenu=args;
+   return {accepted};
+  }};
+ });
+ await page.addScriptTag({content:fs.readFileSync('app/src/main/assets/native-glass/menu.js','utf8')});
+ await page.locator('#attachmentButton').click();
+ await page.waitForFunction(()=>window.capturedAttachmentMenu?.kind==='attachment');
+ const menuItems=await page.evaluate(()=>window.capturedAttachmentMenu.items);
+ assert.deepEqual(menuItems.slice(0,5).map(({icon,label})=>({icon,label})),attachmentItems.map(({icon,label})=>({icon,label})));
+ assert.equal(menuItems.length,6,'the close button stays out of the bridged action list');
+ await page.addScriptTag({content:fs.readFileSync('app/src/main/assets/native-glass/toolbar-surface.js','utf8')});
+ await page.waitForFunction(()=>window.toolbarUpdate?.visible);
+ await page.evaluate(()=>window.easybookToolbarSurfaceReady(window.toolbarUpdate.revision));
+ assert.equal(await page.locator('#formatbar.native-toolbar-mounted').count(),1);
+ await page.evaluate(id=>window.easybookNativeGlassCommand(id),menuItems[3].id);
+ await page.waitForFunction(()=>window.toolbarUpdate?.visible===false);
+ assert.equal(await page.locator('#formatbar.native-toolbar-mounted').count(),0,'the native toolbar yields to the link modal');
+ const linkDialog=page.locator('#linkDialog'),linkInput=page.locator('#linkUrl');
+ await linkDialog.waitFor({state:'visible'});
+ await page.setViewportSize({width:320,height:300});
+ await bounds('#linkDialog');
+ assert.equal(await linkDialog.evaluate(dialog=>getComputedStyle(dialog).backdropFilter),'blur(24px) saturate(0.55)');
+ assert.deepEqual(await linkDialog.locator('.dialog-actions button').evaluateAll(buttons=>buttons.map(button=>getComputedStyle(button).textAlign)),['center','center']);
+ await linkInput.fill('https://example.test/notes');
+ await linkInput.press('Enter');
+ await linkDialog.waitFor({state:'hidden'});
+ await page.locator('#richEditor a[href="https://example.test/notes"]').waitFor();
+ await page.waitForFunction(()=>window.toolbarUpdate?.visible);
  // Layout-only preview fixture: a tall image and all Android action controls.
  for(const size of [{width:320,height:640},{width:640,height:320}]){
   await page.setViewportSize(size);
@@ -73,7 +121,7 @@ const {chromium}=require('playwright'),fs=require('node:fs'),assert=require('nod
  for(const mode of ['normal','reduced']){
   await page.evaluate(mode=>document.documentElement.dataset.glass=mode,mode);
   const values=await page.evaluate(()=>[...document.querySelectorAll('.ui-material,.glass')].map(e=>({id:e.id,blur:getComputedStyle(e).backdropFilter,fill:getComputedStyle(e).backgroundColor})));
-  assert.ok(values.length>10);assert.ok(values.every(v=>v.blur===(mode==='reduced'?'none':'blur(24px) saturate(1.35)')),JSON.stringify(values));
+  assert.ok(values.length>10);assert.ok(values.every(v=>v.blur===(mode==='reduced'?'none':v.id==='linkDialog'?'blur(24px) saturate(0.55)':'blur(24px) saturate(1.35)')),JSON.stringify(values));
  }
  await page.emulateMedia({reducedMotion:'reduce'});
  assert.equal(await page.locator('#createFolder').evaluate(e=>getComputedStyle(e).transitionDuration),'0s');
