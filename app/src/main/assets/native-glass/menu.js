@@ -48,8 +48,10 @@
   const generation=++serial%10000;actions=new Map();
   return elements.map((el,index)=>{
    const id=`panel-${generation}-${index}`;actions.set(id,el);
-   const label=(el.getAttribute('aria-label')||el.textContent||'操作').trim().replace(/\s+/g,' ').slice(0,120);
-   return {id,label,disabled:!!el.disabled,checked:el.getAttribute('aria-pressed')==='true'||el.getAttribute('aria-checked')==='true',danger:el.classList.contains('danger'),color:/^#[0-9a-f]{6}$/i.test(el.dataset.color||'')?el.dataset.color:''};
+   const action=dialog.id==='nativeAttachmentMenu'&&el.dataset.contentAction;
+   const icon=/^(media|files|table|link|task)$/.test(action)?action:'';
+   const label=(el.getAttribute('aria-label')||(icon&&el.querySelector('span')?.textContent)||el.textContent||'操作').trim().replace(/\s+/g,' ').slice(0,120);
+   return {id,label,...(icon?{icon}:{}),disabled:!!el.disabled,checked:el.getAttribute('aria-pressed')==='true'||el.getAttribute('aria-checked')==='true',danger:el.classList.contains('danger'),color:/^#[0-9a-f]{6}$/i.test(el.dataset.color||'')?el.dataset.color:''};
   });
  };
  function discover(){

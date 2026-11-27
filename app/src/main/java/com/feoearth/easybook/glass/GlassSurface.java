@@ -19,7 +19,7 @@ public final class GlassSurface extends FrameLayout {
     private boolean broken,effectDirty=true;
     private int effectWidth=-1,effectHeight=-1;
     private float press,touchX,touchY;
-    private boolean formatSurface,toolbarSurface,moveSurface,dockSurface;
+    private boolean formatSurface,toolbarSurface,moveSurface,dockSurface,alertSurface;
     private float bottomCornerDp=-1;
     private float cornerDp=GlassMaterial.CORNER;
     private android.animation.ValueAnimator pressAnimator;
@@ -44,6 +44,12 @@ public final class GlassSurface extends FrameLayout {
     public void useToolbarSurface(){useFormatSurface();toolbarSurface=true;setElevation(dp(8));}
     public void useDockSurface(){useToolbarSurface();dockSurface=true;}
     public void useMoveSurface(){useFormatSurface();moveSurface=true;setElevation(dp(14));}
+    public void useAlertSurface(){
+        alertSurface=true;
+        fallback.setColor(dark?0xff26262a:0xfff8f8fb);
+        effectDirty=true;
+        invalidate();
+    }
     public void setMoveCorners(float top,float bottom){setFormatCorner(top);float value=bottom/getResources().getDisplayMetrics().density;if(bottomCornerDp!=value){bottomCornerDp=value;effectDirty=true;invalidateOutline();invalidate();}}
     public void setFormatCorner(float pixels){
         float value=pixels/getResources().getDisplayMetrics().density;
@@ -56,7 +62,7 @@ public final class GlassSurface extends FrameLayout {
             if(!formatSurface)canvas.drawRoundRect(0,0,getWidth(),getHeight(),dp(cornerDp),dp(cornerDp),fallback);return;
         }
         try{
-            float blurRadius=dp(dockSurface?6f:moveSurface?16f:toolbarSurface?8f:formatSurface?10f:GlassMaterial.BLUR);
+            float blurRadius=dp(alertSurface?24f:dockSurface?6f:moveSurface?16f:toolbarSurface?8f:formatSurface?10f:GlassMaterial.BLUR);
             int margin=(int)Math.ceil(blurRadius*2+dp(GlassMaterial.REFRACTION+4));
             int w=getWidth()+2*margin,h=getHeight()+2*margin;
             getLocationInWindow(here);source.getLocationInWindow(there);
@@ -74,17 +80,17 @@ public final class GlassSurface extends FrameLayout {
             shader.setFloatUniform("shape2",0f,0f,0f,0f);
             shader.setFloatUniform("radius2",0f);shader.setFloatUniform("blendK",0f);
             shader.setFloatUniform("rimSoft",dp(.6f));shader.setFloatUniform("bevel",dp(dockSurface?13f:toolbarSurface?10f:GlassMaterial.EDGE));
-            shader.setFloatUniform("refractPx",dp(dockSurface?11f:toolbarSurface?7f:formatSurface?10f:refraction));shader.setFloatUniform("falloff",1.6f);
+            shader.setFloatUniform("refractPx",dp(alertSurface?7f:dockSurface?11f:toolbarSurface?7f:formatSurface?10f:refraction));shader.setFloatUniform("falloff",1.6f);
             shader.setFloatUniform("refractDir",-1f);
             shader.setFloatUniform("sampleLo",margin+1f,margin+1f);
             shader.setFloatUniform("sampleHi",margin+getWidth()-1f,margin+getHeight()-1f);
-            shader.setFloatUniform("dispersion",GlassMaterial.DISPERSION);
+            shader.setFloatUniform("dispersion",alertSurface?.025f:GlassMaterial.DISPERSION);
             shader.setFloatUniform("lightDir",-.7071f,-.7071f);
             shader.setFloatUniform("specStrength",dockSurface&&dark?.82f:dark?.65f:.5f);shader.setFloatUniform("rimBandMax",dp(3));
-            int tint=formatSurface?(dark?0x30202028:0x20ffffff):(dark?GlassMaterial.DARK_TINT:GlassMaterial.LIGHT_TINT);
+            int tint=alertSurface?(dark?0xe626262a:0xd6f8f8fb):formatSurface?(dark?0x30202028:0x20ffffff):(dark?GlassMaterial.DARK_TINT:GlassMaterial.LIGHT_TINT);
             shader.setFloatUniform("tintColor",Color.red(tint)/255f,Color.green(tint)/255f,Color.blue(tint)/255f,Color.alpha(tint)/255f);
             shader.setFloatUniform("adaptiveTint",dockSurface?1f:0f);shader.setFloatUniform("glassTint",0f,0f,0f,0f);
-            shader.setFloatUniform("dimAmount",dark?.035f:0f);shader.setFloatUniform("satFactor",formatSurface?1.02f:GlassMaterial.SATURATION);
+            shader.setFloatUniform("dimAmount",dark?.035f:0f);shader.setFloatUniform("satFactor",alertSurface?.55f:formatSurface?1.02f:GlassMaterial.SATURATION);
             shader.setFloatUniform("press",press);shader.setFloatUniform("touchPos",touchX,touchY);shader.setFloatUniform("touchAmp",press);
             RenderEffect lens=RenderEffect.createRuntimeShaderEffect(shader,"content");
             RenderEffect blur=RenderEffect.createBlurEffect(blurRadius,blurRadius,Shader.TileMode.CLAMP);

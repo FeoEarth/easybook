@@ -6,8 +6,10 @@ public class PhaseTwoInstrumentation extends Instrumentation {
  private String crossPhase;
  private boolean browserLaunch;
  private boolean nativeDock;
- @Override public void onCreate(Bundle args){super.onCreate(args);crossPhase=args.getString("crossPhase");browserLaunch="true".equals(args.getString("browserLaunch"));nativeDock="true".equals(args.getString("nativeDock"));start();}
+ private boolean otaUpgrade;
+ @Override public void onCreate(Bundle args){super.onCreate(args);crossPhase=args.getString("crossPhase");browserLaunch="true".equals(args.getString("browserLaunch"));nativeDock="true".equals(args.getString("nativeDock"));otaUpgrade="true".equals(args.getString("otaUpgrade"));start();}
  @Override public void onStart(){Bundle out=new Bundle();try{
+  if(otaUpgrade){GlassInstrumentation.checkOtaUpgrade(getTargetContext());out.putString("passed","true");finish(-1,out);return;}
   DocumentModel.initialize(getTargetContext());
   if(browserLaunch){BrowserLaunchChecks.launch(this);out.putString("passed","true");finish(-1,out);return;}
   if(nativeDock){GlassInstrumentation.checkDock(this);out.putString("passed","true");finish(-1,out);return;}

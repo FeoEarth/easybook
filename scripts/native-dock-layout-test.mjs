@@ -7,7 +7,20 @@ const browser = await chromium.launch({executablePath: process.env.CHROME_PATH |
 try {
   const page = await browser.newPage({viewport: {width: 360, height: 620}, isMobile: true,
     hasTouch: true, colorScheme: 'dark', reducedMotion: 'reduce'});
-  await page.addInitScript(() => Object.defineProperty(navigator, 'onLine', {value: false}));
+  await page.addInitScript(() => {
+    Object.defineProperties(navigator, {
+      onLine: {value: false},
+      deviceMemory: {value: 4},
+    });
+    window.EasybookNativeGlassFallback = false;
+    window.dockUpdates = [];
+    window.NativeStore = {call: async (method, params) => {
+      if (method === 'bootstrap') return {key: 'dock-test', notes: [], folders: []};
+      if (method === 'search') return {notes: []};
+      if (method === 'ui.glass.dock' && params.visible && params.content) window.dockUpdates.push(params);
+      return {accepted: true};
+    }};
+  });
   await page.route('https://easybook.test/**', route => {
     const path = new URL(route.request().url()).pathname;
     if (path === '/' || path === '/editor.js') {
@@ -21,6 +34,8 @@ try {
   await page.waitForFunction(() => window.easybookRich);
   if (await page.locator('#foldersButton').isVisible()) await page.locator('#foldersButton').click();
   await page.locator('#folders').waitFor({state: 'visible'});
+  assert.deepEqual(await page.locator('html').evaluate(el => [el.dataset.platform, el.dataset.glass]),
+    ['android', 'normal'], 'a coarse 4 GB WebView memory bucket must not disable native glass');
   await page.evaluate(() => {
     const group = document.getElementById('customFolders');
     const rows = Array.from({length: 18}, (_, i) => {
@@ -37,18 +52,20 @@ try {
   assert.ok(content.y + content.height > dock.y + dock.height, 'folder content can pass under the dock');
   assert.equal(await page.locator('#folders').evaluate(el => getComputedStyle(el).overflowY), 'visible',
     'the list is not clipped by a separate scrolling box');
+  const probe = {x: 180, y: dock.y - 4};
+  await page.evaluate(y => {
+    const row = document.querySelector('#customFolders .folder-row:last-child');
+    const rect = row.getBoundingClientRect();
+    scrollBy(0, rect.top + rect.height / 2 - y);
+  }, probe.y);
+  const rowAtOldBoundary = await page.evaluate(({x, y}) =>
+    document.elementsFromPoint(x, y).some(el => el.matches('#customFolders .folder-row')), probe);
+  assert.ok(rowAtOldBoundary, 'folder rows paint through the line where the old scroll box ended');
   await page.evaluate(() => scrollTo(0, document.scrollingElement.scrollHeight));
   const last = await bounds('#customFolders .folder-row:last-child');
   assert.ok(last.y + last.height < dock.y, 'the last folder is fully reachable above the dock');
   assert.ok(await page.evaluate(() => window.scrollY) > 0);
 
-  await page.evaluate(() => {
-    window.dockUpdates = [];
-    window.NativeStore = {call: async (method, params) => {
-      if (method === 'ui.glass.dock' && params.visible && params.content) window.dockUpdates.push(params);
-      return {accepted: true};
-    }};
-  });
   await page.addScriptTag({content: readFileSync(new URL('native-glass/dock-surface.js', assets), 'utf8')});
   await page.evaluate(() => new Promise(requestAnimationFrame));
   assert.equal(await page.evaluate(() => window.dockUpdates.length), 0);

@@ -620,7 +620,8 @@ public class MainActivity extends Activity {
                         for(int i=0;i<items.length();i++)if(!items.getJSONObject(i).optString("color").matches("(?:#[0-9a-fA-F]{6})?"))throw new IllegalArgumentException();
                     }
                     for(int i=0;i<items.length();i++){JSONObject item=items.getJSONObject(i);
-                        if(!item.getString("id").matches("panel-[0-9]{1,4}-[0-9]{1,3}")||item.getString("label").length()>120||item.optString("subtitle").length()>160)throw new IllegalArgumentException();}
+                        if(!item.getString("id").matches("panel-[0-9]{1,4}-[0-9]{1,3}")||item.getString("label").length()>120||item.optString("subtitle").length()>160)throw new IllegalArgumentException();
+                        if(kind.equals("attachment")&&item.has("icon")&&!item.getString("icon").matches("media|files|table|link|task"))throw new IllegalArgumentException();}
                 }
                 runOnUiThread(()->{if(!destroyed && ready && generation==documentGeneration){glassGeneration=generation;if(!nativeGlass.show(args))web.evaluateJavascript("window.easybookNativeGlassFallback && window.easybookNativeGlassFallback()",null);}});
                 return new JSONObject().put("accepted",true);

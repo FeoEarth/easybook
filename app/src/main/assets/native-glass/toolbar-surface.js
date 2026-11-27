@@ -8,7 +8,7 @@
   original.forEach((element,index)=>{let token=tokens.get(element);if(!token){token='t-'+(++serial);tokens.set(element,token);targets.set(token,element)}copies[index].dataset.formatToken=token});
   return {html:clone.innerHTML,css:[...document.querySelectorAll('style')].filter(element=>element!==skin).map(element=>element.textContent).join('\n'),symbols:[...document.querySelectorAll('svg symbol')].map(element=>element.outerHTML).join(''),rootStyle:['--ink','--muted','--accent','--accent-fill','--bg','--paper','--border','--line','--control-fill','--on-accent','--danger'].map(name=>name+':'+getComputedStyle(document.documentElement).getPropertyValue(name)+';').join(''),bodyClass:document.body.className,panel:'toolbar',theme:document.documentElement.dataset.theme||'auto'};
  }
- const blocked=()=>panel.hidden||!document.body.classList.contains('editing')||!!document.querySelector('.media-viewer[open]');
+ const blocked=()=>panel.hidden||!document.body.classList.contains('editing')||!!document.querySelector('.media-viewer[open],#linkDialog[open]');
  function hide(){if(gesturing){gesturing=false;window.dispatchEvent(new CustomEvent('easybook-native-toolbar-gesture',{detail:false}))}mounted=false;if(panel.classList.contains('native-toolbar-mounted'))panel.classList.remove('native-toolbar-mounted');if(last!=='closed'){last='closed';window.NativeStore.call('ui.glass.toolbar',{visible:false}).catch(()=>{})}}
  window.easybookToolbarSurfaceFallback=()=>{disabled=true;hide();window.easybookToolbarSurfaceGesture(false)};
  window.easybookToolbarSurfaceReady=value=>{if(disabled||value!==revision)return;if(blocked()){hide();return;}mounted=true;panel.classList.add('native-toolbar-mounted');last='';sync()};

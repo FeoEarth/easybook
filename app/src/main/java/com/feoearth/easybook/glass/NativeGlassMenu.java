@@ -57,6 +57,7 @@ public final class NativeGlassMenu {
         shield.setOnClickListener(v->dismiss(false));
         if(linkPanel())shield.setBackgroundColor(dark?0x66000000:0x48000000);
         try{surface=new GlassSurface(activity,backdrop,dark,()->{disabled=true;renderingFailed=true;dismiss(true);fallback();});}catch(Exception|LinkageError error){disabled=true;shield=null;surface=null;return false;}
+        if(linkPanel())surface.useAlertSurface();
         surface.setTag("native-glass-menu");surface.setClickable(true);surface.setOnClickListener(v->{});
         rows=new LinearLayout(activity);rows.setOrientation(LinearLayout.VERTICAL);rows.setPadding(dp(8),dp(8),dp(8),dp(8));
         ScrollView scroll=new ScrollView(activity);scroll.setFillViewport(false);scroll.setVerticalScrollBarEnabled(false);scroll.addView(rows);
@@ -99,13 +100,23 @@ public final class NativeGlassMenu {
     }
     private void divider(){View v=new View(activity);v.setBackgroundColor(state.optBoolean("dark")?0x24ffffff:0x18000000);LinearLayout.LayoutParams lp=new LinearLayout.LayoutParams(-1,dp(1));lp.setMargins(dp(12),dp(3),dp(12),dp(3));rows.addView(v,lp);}
     private void row(String title,String subtitle,String id,Runnable action,boolean checked){
+        row(title,subtitle,id,action,checked,null,false);
+    }
+    private void row(String title,String subtitle,String id,Runnable action,boolean checked,String attachmentIcon,boolean danger){
         LinearLayout row=new LinearLayout(activity);row.setTag("native-glass-"+id);row.setGravity(Gravity.CENTER_VERTICAL);row.setPadding(dp(12),dp(8),dp(12),dp(8));row.setMinimumHeight(dp(subtitle.isEmpty()?50:62));row.setContentDescription(title+(checked?"，已选中":""));
         GradientDrawable normal=new GradientDrawable();normal.setColor(Color.TRANSPARENT);normal.setCornerRadius(dp(16));GradientDrawable mask=new GradientDrawable();mask.setColor(Color.WHITE);mask.setCornerRadius(dp(16));
         row.setBackground(new RippleDrawable(android.content.res.ColorStateList.valueOf(state.optBoolean("dark")?0x2affffff:0x16000000),normal,mask));
-        LinearLayout text=new LinearLayout(activity);text.setOrientation(LinearLayout.VERTICAL);TextView label=new TextView(activity);label.setText(title);label.setTextColor(ink());label.setTextSize(16);label.setSingleLine(true);text.addView(label);
+        LinearLayout text=new LinearLayout(activity);text.setOrientation(LinearLayout.VERTICAL);TextView label=new TextView(activity);label.setText(title);label.setTextColor(danger?0xffe5484d:ink());label.setTextSize(16);label.setSingleLine(true);text.addView(label);
         if(!subtitle.isEmpty()){TextView small=new TextView(activity);small.setText(subtitle);small.setTextColor(state.optBoolean("dark")?0xffbbbbc2:0xff66666c);small.setTextSize(12);small.setPadding(0,dp(2),0,0);text.addView(small);}
+        if(attachmentIcon!=null&&!attachmentIcon.isEmpty()){
+            LinearLayout.LayoutParams iconSize=new LinearLayout.LayoutParams(dp(22),dp(22));iconSize.setMarginEnd(dp(12));
+            row.addView(new Icon(activity,attachmentIcon,false,ink()),iconSize);
+        }
         row.addView(text,new LinearLayout.LayoutParams(0,-2,1));
-        Icon icon=new Icon(activity,id,checked,ink());LinearLayout.LayoutParams ilp=new LinearLayout.LayoutParams(dp(22),dp(22));ilp.leftMargin=dp(10);row.addView(icon,ilp);
+        if(attachmentIcon==null){
+            LinearLayout.LayoutParams iconSize=new LinearLayout.LayoutParams(dp(22),dp(22));iconSize.setMarginStart(dp(10));
+            row.addView(new Icon(activity,id,checked,ink()),iconSize);
+        }
         row.setFocusable(true);row.setClickable(true);row.setOnClickListener(v->action.run());
         row.setOnTouchListener((v,event)->{if(event.getActionMasked()==MotionEvent.ACTION_DOWN)v.animate().scaleX(.98f).scaleY(.98f).setDuration(ValueAnimator.areAnimatorsEnabled()?90:0).start();else if(event.getActionMasked()==MotionEvent.ACTION_UP||event.getActionMasked()==MotionEvent.ACTION_CANCEL)v.animate().scaleX(1).scaleY(1).setDuration(ValueAnimator.areAnimatorsEnabled()?120:0).start();return false;});
         rows.addView(row,new LinearLayout.LayoutParams(-1,-2));
@@ -216,15 +227,22 @@ public final class NativeGlassMenu {
         LinearLayout header=new LinearLayout(activity);header.setGravity(Gravity.CENTER_VERTICAL);header.setPadding(dp(12),dp(4),dp(4),dp(6));
         TextView title=new TextView(activity);title.setText(state.optString("title","操作"));title.setTextColor(ink());title.setTextSize(18);title.setTypeface(null,Typeface.BOLD);
         header.addView(title,new LinearLayout.LayoutParams(0,-2,1));
-        TextView close=new TextView(activity);close.setText("×");close.setTextSize(25);close.setTextColor(ink());close.setGravity(Gravity.CENTER);close.setContentDescription("关闭");close.setOnClickListener(v->dismiss(false));header.addView(close,new LinearLayout.LayoutParams(dp(44),dp(44)));rows.addView(header);
+        boolean attachment="attachment".equals(state.optString("kind"));
+        if(attachment){
+            FrameLayout close=new FrameLayout(activity);close.setContentDescription("关闭");close.setFocusable(true);
+            close.addView(new Icon(activity,"close",false,ink()),new FrameLayout.LayoutParams(dp(22),dp(22),Gravity.CENTER));
+            close.setOnClickListener(v->dismiss(false));header.addView(close,new LinearLayout.LayoutParams(dp(44),dp(44)));
+        }else{
+            TextView close=new TextView(activity);close.setText("×");close.setTextSize(25);close.setTextColor(ink());close.setGravity(Gravity.CENTER);close.setContentDescription("关闭");close.setOnClickListener(v->dismiss(false));header.addView(close,new LinearLayout.LayoutParams(dp(44),dp(44)));
+        }
+        rows.addView(header);
         if(state.optString("kind").equals("palette")){populatePalette();return;}
         JSONArray items=state.optJSONArray("items");if(items==null)return;
         for(int i=0;i<items.length();i++){
             JSONObject item=items.optJSONObject(i);if(item==null)continue;
             String id=item.optString("id"),label=item.optString("label");
-            row(label,item.optString("subtitle"),id,()->command(id),item.optBoolean("checked"));
+            row(label,item.optString("subtitle"),id,()->command(id),item.optBoolean("checked"),attachment?item.optString("icon"):null,item.optBoolean("danger"));
             View row=rows.getChildAt(rows.getChildCount()-1);row.setEnabled(!item.optBoolean("disabled"));row.setAlpha(row.isEnabled()?1f:.4f);
-            if(item.optBoolean("danger")){LinearLayout text=(LinearLayout)((LinearLayout)row).getChildAt(0);((TextView)text.getChildAt(0)).setTextColor(0xffe5484d);}
         }
     }
     private GradientDrawable linkControl(int color,float radius){
@@ -232,6 +250,8 @@ public final class NativeGlassMenu {
     }
     private Button linkAction(String label,int color,int fill){
         Button button=new Button(activity);button.setAllCaps(false);button.setText(label);button.setTextColor(color);
+        button.setGravity(Gravity.CENTER);button.setTextAlignment(View.TEXT_ALIGNMENT_CENTER);
+        button.setPadding(dp(8),0,dp(8),0);
         button.setTextSize(15);button.setTypeface(null,Typeface.BOLD);button.setStateListAnimator(null);button.setBackgroundTintList(null);
         button.setBackground(new RippleDrawable(android.content.res.ColorStateList.valueOf(0x33888888),linkControl(fill,28),null));
         return button;
@@ -243,6 +263,7 @@ public final class NativeGlassMenu {
         title.setTextSize(19);title.setTypeface(null,Typeface.BOLD);rows.addView(title);
         linkInput=new EditText(activity);linkInput.setSingleLine(true);linkInput.setTextColor(ink());
         linkInput.setHintTextColor(dark?0xffb4b4bd:0xff66666c);linkInput.setHint("https://");linkInput.setTextSize(16);
+        linkInput.setStateListAnimator(null);linkInput.setElevation(0);linkInput.setBackgroundTintList(null);
         linkInput.setBackground(linkControl(dark?0xff35353d:0xfff3f2f6,20));linkInput.setPadding(dp(13),dp(7),dp(13),dp(7));
         linkInput.setInputType(android.text.InputType.TYPE_CLASS_TEXT|android.text.InputType.TYPE_TEXT_VARIATION_URI);
         linkInput.setImeOptions(android.view.inputmethod.EditorInfo.IME_ACTION_DONE);
@@ -291,9 +312,27 @@ public final class NativeGlassMenu {
     }
     private static final class Icon extends View {
         private final Paint paint=new Paint(3);private final String id;private final boolean checked;
-        Icon(Activity a,String id,boolean checked,int color){super(a);this.id=id;this.checked=checked;paint.setColor(color);paint.setStyle(Paint.Style.STROKE);paint.setStrokeWidth(1.6f);paint.setStrokeCap(Paint.Cap.ROUND);paint.setStrokeJoin(Paint.Join.ROUND);setImportantForAccessibility(IMPORTANT_FOR_ACCESSIBILITY_NO);}
+        private final Path symbol;
+        Icon(Activity a,String id,boolean checked,int color){super(a);this.id=id;this.checked=checked;paint.setColor(color);paint.setStyle(Paint.Style.STROKE);paint.setStrokeWidth(1.6f);paint.setStrokeCap(Paint.Cap.ROUND);paint.setStrokeJoin(Paint.Join.ROUND);setImportantForAccessibility(IMPORTANT_FOR_ACCESSIBILITY_NO);
+            String data=switch(id){
+                case "media" -> "M3.5 16 8 12l3.5 3 4-5 5 5";
+                case "files" -> "M6 3h8l5 5v12a1 1 0 0 1-1 1H6a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1zM14 3v5h5M8.5 12h7M8.5 16h7";
+                case "table" -> "M3 9h18M3 14.5h18M9 4v16M15 4v16";
+                case "link" -> "m10 8 3-3a5 5 0 0 1 7 7l-3 3M14 16l-3 3a5 5 0 0 1-7-7l3-3M8 16l8-8";
+                case "task" -> "m7 12 3 3 7-7";
+                case "close" -> "M6 6l12 12M18 6 6 18";
+                default -> null;
+            };
+            symbol=data==null?null:androidx.core.graphics.PathParser.createPathFromPathData(data);
+        }
         @Override protected void onDraw(Canvas c){super.onDraw(c);c.save();c.scale(getWidth()/24f,getHeight()/24f);Path p=new Path();
-            if(id.equals("sort")||id.equals("back")){float x=id.equals("sort")?9:15;p.moveTo(x,5);p.lineTo(24-x,12);p.lineTo(x,19);c.drawPath(p,paint);}
+            if(symbol!=null){
+                if(id.equals("media")){c.drawRoundRect(3,4,21,20,3,3,paint);c.drawCircle(8,9,1.5f,paint);}
+                else if(id.equals("table"))c.drawRoundRect(3,4,21,20,2,2,paint);
+                else if(id.equals("task"))c.drawRoundRect(3,3,21,21,5,5,paint);
+                c.drawPath(symbol,paint);
+            }
+            else if(id.equals("sort")||id.equals("back")){float x=id.equals("sort")?9:15;p.moveTo(x,5);p.lineTo(24-x,12);p.lineTo(x,19);c.drawPath(p,paint);}
             else if(id.equals("layout")){for(int i=0;i<3;i++){c.drawLine(8,5+i*7,21,5+i*7,paint);c.drawPoint(3,5+i*7,paint);}}
             else if(id.equals("select")||id.equals("checklist")||checked){if(id.equals("select"))c.drawCircle(12,12,9,paint);else if(id.equals("checklist"))c.drawRoundRect(3,3,21,21,5,5,paint);p.moveTo(7,12);p.lineTo(10,15);p.lineTo(18,7);c.drawPath(p,paint);}
             c.restore();
